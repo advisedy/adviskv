@@ -6,6 +6,7 @@
 #include <memory>
 #include <string_view>
 #include "common.pb.h"
+#include "common/define.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/engine/kv_engine.h"
@@ -19,6 +20,22 @@ struct ReplicaInitParam{
     ShardID shard_id;
     pb::ReplicaRole role;
     pb::EngineType engine_type;
+};
+
+struct PutParam{
+    const Key& key;
+    const Value& value;
+
+    Status validate() const {
+        return Status::OK();
+    }
+};
+
+struct GetParam{
+    const Key& key;
+    Status validate() const {
+        return Status::OK();
+    }    
 };
 
 struct ReplicaID{
@@ -39,6 +56,7 @@ struct ReplicaIDHash{
 class Replica{
 
 public:
+
     ReplicaID get_replica_id() const{
         return replica_id_;
     }
@@ -49,8 +67,8 @@ public:
         return replica_id_.shard_id;
     }
 
-    Status put(const rpc::PutRequest& req);
-    Status get(const rpc::GetRequest& req, rpc::GetResponse& res);
+    Status put(const PutParam& param);
+    Status get(const GetParam& param, Value& value);
 
 
 private:

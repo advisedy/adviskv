@@ -1,6 +1,7 @@
 #include "storage/replica/replica.h"
 #include "common.pb.h"
 #include "common/common.h"
+#include "common/define.h"
 #include "common/log.h"
 #include "common/status.h"
 #include "common/type.h"
@@ -37,37 +38,37 @@ Status Replica::init(const ReplicaInitParam& param){
 }
 
 
-Status Replica::put(const rpc::PutRequest& req){
+Status Replica::put(const PutParam& param){
     
     if(!engine_){
         WARN("engine is nullptr, replica: table_id = {}, shard_id = {}", replica_id_.table_id, replica_id_.shard_id);
         return Status{StatusCode::ERROR,"engine is nullptr"};
     }
+    RETURN_IF_INVALID_PARAM(param)
     // TODO 
     // 判断一下是否还可以写入（空间是否够）
     // 第一版就先不添加expire_ts了，后续考虑
-    Status res = engine_->put(req.key(), req.value());
-    if(!res.ok()){
-        WARN("engine put is not ok, key = {}, value = {}, msg = {}", req.key(), req.value(), res.msg());
+    Status status = engine_->put(param.key, param.value);
+    if(status.fail()){
+        WARN("engine put is not ok, key = {}, value = {}, msg = {}", param.key, param.value, status.msg());
     }
-    return res;
+    return status;
 
 }
 
-Status Replica::get(const rpc::GetRequest& req, rpc::GetResponse& rsp){
+Status Replica::get(const GetParam& param, Value& value){
     if(!engine_){
         WARN("engine is nullptr, replica: table_id = {}, shard_id = {}", replica_id_.table_id, replica_id_.shard_id);
         return Status{StatusCode::ERROR,"engine is nullptr"};
     }
-    Value value;
-    Status status = engine_->get(req.key(), value);
-    if(!status.ok()){
-        WARN("engine get is not ok, key = {}, msg = {}", req.key(), status.msg());
-        return status;
+
+    RETURN_IF_INVALID_PARAM(param)
+
+    Status status = engine_->get(param.key, value);
+    if(status.fail()){
+        WARN("engine get is not ok, key = {}, msg = {}", param.key, status.msg());
     }
-    // fill_base_rsp(rsp, status);
-    // rsp.set_value(std::move(value));
-    return Status{StatusCode::OK};
+    return status;
 }
 
 }

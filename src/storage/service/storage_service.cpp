@@ -1,5 +1,6 @@
 #include "storage/service/storage_service.h"
 #include "common/status.h"
+#include "common/type.h"
 #include "storage/replica/replica.h"
 #include <grpcpp/support/status.h>
 
@@ -22,8 +23,11 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
             fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND, "replica not found"});
             return grpc::Status::OK;
         }
-
-        Status status = replica->put(*request);
+        PutParam param{
+            .key = request->key(),
+            .value = request->value()
+        };
+        Status status = replica->put(param);
 
         if(!status.ok()){
             WARN("replica put failed, table_id = {}, shard_id = {}, key = {}, value = {}, msg = {}",
@@ -47,20 +51,22 @@ grpc::Status StorageServiceImpl::Get(grpc::ServerContext* context,
                 fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND, "replica not found"});
                 return grpc::Status::OK;
             }
-    
-            Status status = replica->get(*request, *response);
+            
+            GetParam param{
+                .key = request->key()
+            };
+            Value value;
+            Status status = replica->get(param, value);
     
             if(!status.ok()){
                 WARN("replica get failed, table_id = {}, shard_id = {}, key = {}, msg = {}",
                     request->table_id(), request->shard_id(), request->key(), status.msg());
             }
             fill_base_rsp(response, status);
-
             if(status.fail()){
                 return grpc::Status::OK;
             }
-
-            // response->set_value();
+            response->set_value(value);
 
             return grpc::Status::OK;
     
