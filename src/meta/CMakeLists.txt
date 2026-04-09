@@ -1,0 +1,25 @@
+set(META_SOURCES
+    # current dir
+    ${CMAKE_CURRENT_SOURCE_DIR}/main/main.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/catalog/catalog_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/service/ddl_service.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/handler/meta_service_impl.cpp
+
+    # binary dir
+    ${PROJECT_BINARY_DIR}/generated/common.pb.cc
+    ${PROJECT_BINARY_DIR}/generated/meta.pb.cc
+    ${PROJECT_BINARY_DIR}/generated/meta.grpc.pb.cc
+)
+
+add_executable(meta
+    ${META_SOURCES}
+)
+
+target_link_libraries(meta PRIVATE
+    adviskv_common
+)
+
+target_include_directories(meta PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/build/generated
+)

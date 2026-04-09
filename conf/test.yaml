@@ -1,0 +1,9 @@
+
+# log
+logger_name: "test_log"
+log_dir: "./build/logs/test"
+log_filename: "test.log"
+log_level: "debug"
+log_to_console: true
+log_to_file: true
+

@@ -1,0 +1,11 @@
+{
+    "name": "adviskv",
+    "version": "1.0.0",
+    "dependencies": [
+        "fmt",
+        "spdlog",
+        "protobuf",
+        "yaml-cpp",
+        "grpc"
+    ]
+}

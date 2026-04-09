@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package adviskv.pb;
+
+message BaseRsp {
+    int32 code = 1;
+    string msg = 2;
+}
+
+enum ReplicaRole {
+  LEADER = 0;
+  FOLLOWER = 1;
+  PRE_LEADER = 2;
+  PRE_FOLLOWER = 3;
+}
+
+enum NodeStatus {
+  NODE_ONLINE = 0;
+  NODE_OFFLINE = 1;
+  NODE_DRAINING = 2;
+}
+
+message NodeInfo {
+  string node_name = 1;
+  string host = 2;
+  int32 port = 3;
+  NodeStatus status = 4;
+}
+
+message ReplicaInfo {
+  int32 table_id = 1;
+  int32 shard_id = 2;
+  int32 replica_id = 3;
+  string node_id = 4;
+  ReplicaRole role = 5;
+}
+
+enum EngineType{
+    ENGINE_MAP = 0;
+    ENGINE_ROCKSDB = 1;
+}

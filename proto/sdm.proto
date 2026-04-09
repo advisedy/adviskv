@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package adviskv.rpc;
+
+import "common.proto";
+
+
+
+
+message GetRouteRequest{
+    string db_name = 1;
+    string table_name = 2;
+    bytes key = 3;
+}
+
+message GetRouteResponse{
+    adviskv.pb.BaseRsp base_rsp = 1;
+    int32 table_id = 2;
+    int32 shard_id = 3;
+    string ip = 4;
+    int32 port = 5;
+}
+
+message RegisterNodeRequest{
+    string node_id = 1;
+    string ip = 2;
+    int32 port = 3;
+}
+
+message RegisterNodeResponse{
+    adviskv.pb.BaseRsp base_rsp = 1;
+}
+
+service ShardingManagerService{
+    rpc GetRoute(GetRouteRequest) returns (GetRouteResponse);
+    rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
+}
