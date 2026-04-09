@@ -85,8 +85,8 @@ inline int32_t to_rpc_code(StatusCode code){
 }
 
 template <typename Response>
-inline void fill_base_rsp(Response& rsp, const Status& status) {
-    auto* base_rsp = rsp.mutable_base_rsp();
+inline void fill_base_rsp(Response* rsp, const Status& status) {
+    auto* base_rsp = rsp->mutable_base_rsp();
     base_rsp->set_code(to_rpc_code(status.code()));
     base_rsp->set_msg(status.msg());
 }

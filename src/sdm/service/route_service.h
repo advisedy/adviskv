@@ -11,11 +11,11 @@
 
 namespace adviskv{
 
-struct GetRouteOption{
+struct GetRouteparam{
     std::string db_name;
     std::string table_name;
     Key key;
-    
+
     Status validate()const{
         RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
         RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
@@ -29,7 +29,7 @@ class RouteService{
 public:
 
     explicit RouteService(RouteManager* route_manager);
-    Status get_route(const GetRouteOption& option, ShardRoute* res) const;
+    Status get_route(const GetRouteparam& param, ShardRoute* res) const;
 private:
     
     int32_t calc_shard_id(Key key, int32_t shard_count) const;

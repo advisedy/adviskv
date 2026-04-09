@@ -15,17 +15,17 @@ RouteService::RouteService(RouteManager* route_manager){
 }
 
 
-Status RouteService::get_route(const GetRouteOption& option, ShardRoute* res) const{
+Status RouteService::get_route(const GetRouteparam& param, ShardRoute* res) const{
 
-    RETURN_IF_INVALID_OPTION(option)
+    RETURN_IF_INVALID_PARAM(param)
 
     TableMetaCache table_meta;
-    Status status = route_manager_->get_table_meta(option.db_name, option.table_name, &table_meta);
+    Status status = route_manager_->get_table_meta(param.db_name, param.table_name, &table_meta);
 
     RETURN_IF_INVALID_STATUS(status)
 
     TableID table_id = table_meta.table_id;
-    ShardID shard_id = calc_shard_id(option.key, table_meta.shard_count);
+    ShardID shard_id = calc_shard_id(param.key, table_meta.shard_count);
 
     status = route_manager_->get_route(table_id, shard_id, res);
     

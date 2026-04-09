@@ -65,8 +65,8 @@ Status Replica::get(const rpc::GetRequest& req, rpc::GetResponse& rsp){
         WARN("engine get is not ok, key = {}, msg = {}", req.key(), status.msg());
         return status;
     }
-    fill_base_rsp(rsp, status);
-    rsp.set_value(std::move(value));
+    // fill_base_rsp(rsp, status);
+    // rsp.set_value(std::move(value));
     return Status{StatusCode::OK};
 }
 

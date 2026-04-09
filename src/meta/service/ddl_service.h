@@ -14,7 +14,7 @@ struct SdmClient;
 
 
 
-struct CreateDBOption {
+struct CreateDBParam {
     const std::string& db_name;
 
     Status validate() const {
@@ -23,7 +23,7 @@ struct CreateDBOption {
     }
 };
 
-struct CreateTableOption {
+struct CreateTableParam {
     const std::string& db_name;
     const std::string& table_name;
     int32_t shard_count;
@@ -39,7 +39,7 @@ struct CreateTableOption {
 
 };
 
-struct GetTableOption{
+struct GetTableParam{
     //可选
    const std::string& db_name;
    const std::string& table_name;
@@ -50,11 +50,11 @@ struct GetTableOption{
     return Status::OK();
 }
 
-//    static Status validate(const GetTableOption& option){
-//     if(option.table_id!=-1){
+//    static Status validate(const GetTableParam& param){
+//     if(param.table_id!=-1){
 //         return Status::OK();
 //     }
-//     if(option.db_name.empty() or option.table_name.empty()){
+//     if(param.db_name.empty() or param.table_name.empty()){
 //         return Status{StatusCode::INVALID_ARGUMENT, "please fill table_id or (db_name, table_name)"};
 //     }
 //     return Status::OK();
@@ -68,9 +68,9 @@ public:
     explicit DdlSerivce(CatalogManager* catalog_manager);
 
     //负责一些会涉及到catalog和sdm的操作
-    Status create_table(const CreateTableOption& option, TableMeta* table_meta);
-    Status create_db(const CreateDBOption& option, DBMeta* db_meta);
-    Status get_table(const GetTableOption& option, TableMeta* table_meta);
+    Status create_table(const CreateTableParam& param, TableMeta* table_meta);
+    Status create_db(const CreateDBParam& param, DBMeta* db_meta);
+    Status get_table(const GetTableParam& param, TableMeta* table_meta);
 private:
 
     // SdmClient* sdm_client_;

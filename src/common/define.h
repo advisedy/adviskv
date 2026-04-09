@@ -13,10 +13,7 @@
 #define RETURN_IF_INVALID_STATUS(status) \
     if(status.fail()){return status;}
 
-// #define RETURN_IF_INVALID_STATUS(one, cond) \
-// if(Status one = cond; status.fail()){return status;}
-
-#define RETURN_IF_INVALID_OPTION(option) \
-    if(Status status = option.validate(); status.fail()) { \
+#define RETURN_IF_INVALID_PARAM(param) \
+    if(Status status = param.validate(); status.fail()) { \
         return status;  \
     }

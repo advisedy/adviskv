@@ -12,9 +12,9 @@ public:
     KVEngine() = default;
     virtual ~KVEngine() = default;
 
-    virtual Status put(KeyView key, ValueView value) = 0;
-    virtual Status get(KeyView key, Value& value) = 0;
-    virtual Status del(KeyView key) = 0;
+    virtual Status put(const Key& key, const Value& value) = 0;
+    virtual Status get(const Key& key, Value& value) = 0;
+    virtual Status del(const Key& key) = 0;
 private:
     
 };

@@ -15,15 +15,15 @@ namespace adviskv{
 
 
 struct ReplicaInitParam{
-    int32_t table_id;
-    int32_t shard_id;
+    TableID table_id;
+    ShardID shard_id;
     pb::ReplicaRole role;
     pb::EngineType engine_type;
 };
 
 struct ReplicaID{
-    int32_t table_id;
-    int32_t shard_id;
+    TableID table_id;
+    ShardID shard_id;
     bool operator==(const ReplicaID& one) const {
         return table_id == one.table_id and shard_id == one.shard_id;
     }
@@ -42,10 +42,10 @@ public:
     ReplicaID get_replica_id() const{
         return replica_id_;
     }
-    int32_t get_table_id() const{
+    TableID get_table_id() const{
         return replica_id_.table_id;
     }
-    int32_t get_shard_id() const{
+    ShardID get_shard_id() const{
         return replica_id_.shard_id;
     }
 

@@ -6,6 +6,7 @@
 #include <shared_mutex>
 #include <unordered_set>
 #include "common.pb.h"
+#include "common/define.h"
 #include "common/type.h"
 #include "common/status.h"
 
@@ -25,35 +26,27 @@ struct DBMeta{
     std::string db_name;
 };
 
-struct CreateDBMetaOption {
+struct CreateDBMetaParam {
     std::string db_name;
-    static Status validate(const CreateDBMetaOption& option){
-        if(option.db_name.empty()){
-            return Status{StatusCode::INVALID_ARGUMENT, "db_name is empty"};
-        }
+
+    Status validate() const {
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
         return Status::OK();
     }
+    
 };
 
-struct CreateTableMetaOption {
+struct CreateTableMetaParam {
     std::string db_name;
     std::string table_name;
     int32_t shard_count;
     int32_t replica_count;
 
-    static Status validate(const CreateTableMetaOption& option){
-        if(option.db_name.empty()){
-            return Status{StatusCode::INVALID_ARGUMENT, "db_name is empty"};
-        }
-        if(option.table_name.empty()){
-            return Status{StatusCode::INVALID_ARGUMENT, "table_name is empty"};
-        }
-        if(option.shard_count <= 0){
-            return Status{StatusCode::INVALID_ARGUMENT, "shard_count should be greater than 0"};
-        }
-        if(option.replica_count < 0){
-            return Status{StatusCode::INVALID_ARGUMENT, "replica_count should be greater than or equal to 0"};
-        }
+    Status validate() const {
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
+        RETURN_IF_INVALID_CONDITION(shard_count > 0, "shard count should > 0")
+        RETURN_IF_INVALID_CONDITION(replica_count >= 0, "replica count should >= 0")
         return Status::OK();
     }
 };
@@ -79,8 +72,8 @@ class CatalogManager{
 
 public:
     CatalogManager() = default;
-    Status create_db(const CreateDBMetaOption& option, DBMeta* db_meta);
-    Status create_table(const CreateTableMetaOption& option, TableMeta* table_meta);
+    Status create_db(const CreateDBMetaParam& param, DBMeta* db_meta);
+    Status create_table(const CreateTableMetaParam& param, TableMeta* table_meta);
     Status get_db(const std::string& db_name, DBMeta* db_meta);
     Status get_table_by_id(TableID table_id, TableMeta* table_meta);
     Status get_table_by_name(const std::string& db_name, const std::string& table_name, TableMeta* table_meta);

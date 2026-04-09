@@ -1,4 +1,5 @@
 #include "meta/catalog/catalog_manager.h"
+#include "common/define.h"
 #include "common/status.h"
 #include "common/type.h"
 #include <cassert>
@@ -10,12 +11,11 @@
 
 namespace adviskv{
 
-Status CatalogManager::create_db(const CreateDBMetaOption& option, DBMeta* db_meta){
-    const std::string& db_name = option.db_name;
+Status CatalogManager::create_db(const CreateDBMetaParam& param, DBMeta* db_meta){
+    const std::string& db_name = param.db_name;
 
-    if (Status res = CreateDBMetaOption::validate(option); res.fail()) {
-        return res;
-    }
+    RETURN_IF_INVALID_PARAM(param)
+    
     std::unique_lock lock(mutex_);
     
     Status status = lookup_db_by_name(db_name, nullptr);
@@ -41,22 +41,20 @@ Status CatalogManager::create_db(const CreateDBMetaOption& option, DBMeta* db_me
 
 }
 
-Status CatalogManager::create_table(const CreateTableMetaOption& option, TableMeta* table_meta){
-    const std::string& db_name = option.db_name;
-    const std::string& table_name = option.table_name;
+Status CatalogManager::create_table(const CreateTableMetaParam& param, TableMeta* table_meta){
+    const std::string& db_name = param.db_name;
+    const std::string& table_name = param.table_name;
 
-    if(Status res = CreateTableMetaOption::validate(option); res.fail()){
-        return res;
-    }
+    RETURN_IF_INVALID_PARAM(param)
 
     std::unique_lock lock(mutex_);
 
     DBMeta db_meta;
-    if(Status res = lookup_db_by_name(db_name, &db_meta); res.fail()){
-        return res;
-    }
-
-    Status status = lookup_table_by_name(db_name, table_name, nullptr);
+    Status status = lookup_db_by_name(db_name, &db_meta);
+    
+    RETURN_IF_INVALID_STATUS(status)
+    
+    status = lookup_table_by_name(db_name, table_name, nullptr);
 
     if(status.ok()){
         return Status{StatusCode::ALREADY_EXIST, fmt::format("table_name:{} already exists in db:{}", table_name, db_name)};
@@ -71,8 +69,8 @@ Status CatalogManager::create_table(const CreateTableMetaOption& option, TableMe
     new_table_meta.table_id = table_id_allocator_.get_next_id();
     new_table_meta.db_name = db_name;
     new_table_meta.table_name = table_name;
-    new_table_meta.shard_count = option.shard_count;
-    new_table_meta.replica_count = option.replica_count;
+    new_table_meta.shard_count = param.shard_count;
+    new_table_meta.replica_count = param.replica_count;
     new_table_meta.db_id = db_meta.db_id;
 
     table_id2table_meta_[new_table_meta.table_id] = new_table_meta;

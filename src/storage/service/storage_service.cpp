@@ -11,7 +11,7 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
 
         if(!replica_manager_){
             WARN("replica manager is nullptr");
-            fill_base_rsp(*response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
+            fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
             return grpc::Status::OK;
         }
 
@@ -19,7 +19,7 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
 
         if(!replica){
             WARN("replica not found, table_id = {}, shard_id = {}", request->table_id(), request->shard_id());
-            fill_base_rsp(*response, Status{StatusCode::REPLICA_NOT_FOUND, "replica not found"});
+            fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND, "replica not found"});
             return grpc::Status::OK;
         }
 
@@ -30,7 +30,7 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
                 request->table_id(), request->shard_id(), request->key(), request->value(), status.msg());
         }
 
-        fill_base_rsp(*response, status);
+        fill_base_rsp(response, status);
         return grpc::Status::OK;
 
 
@@ -44,7 +44,7 @@ grpc::Status StorageServiceImpl::Get(grpc::ServerContext* context,
 
             if(!replica){
                 WARN("replica not found, table_id = {}, shard_id = {}", request->table_id(), request->shard_id());
-                fill_base_rsp(*response, Status{StatusCode::REPLICA_NOT_FOUND, "replica not found"});
+                fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND, "replica not found"});
                 return grpc::Status::OK;
             }
     
@@ -54,7 +54,14 @@ grpc::Status StorageServiceImpl::Get(grpc::ServerContext* context,
                 WARN("replica get failed, table_id = {}, shard_id = {}, key = {}, msg = {}",
                     request->table_id(), request->shard_id(), request->key(), status.msg());
             }
-    
+            fill_base_rsp(response, status);
+
+            if(status.fail()){
+                return grpc::Status::OK;
+            }
+
+            // response->set_value();
+
             return grpc::Status::OK;
     
     }

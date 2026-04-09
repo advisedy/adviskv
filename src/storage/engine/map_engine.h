@@ -12,9 +12,9 @@ public:
     MapEngine()=default;
     ~MapEngine()=default;
 
-    virtual Status put(KeyView key, ValueView value) override;
-    virtual Status get(KeyView key, Value& value) override;
-    virtual Status del(KeyView key) override;
+    virtual Status put(const Key& key, const Value& value) override;
+    virtual Status get(const Key& key, Value& value) override;
+    virtual Status del(const Key& key) override;
 
 private:
     std::shared_mutex map_mutex_;

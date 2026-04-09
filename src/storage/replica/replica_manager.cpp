@@ -1,5 +1,6 @@
 #include "storage/replica/replica_manager.h"
 #include "common/status.h"
+#include "common/type.h"
 #include "storage/replica/replica.h"
 #include <cstdint>
 #include <fmt/format.h>
@@ -10,7 +11,7 @@
 namespace adviskv{
 
 
-Replica* ReplicaManager::get_replica(int32_t table_id, int32_t shard_id) const{
+Replica* ReplicaManager::get_replica(TableID table_id, ShardID shard_id) const{
     std::shared_lock<std::shared_mutex> locker(replica_map_mtx_);
     auto it = replica_map_.find({table_id, shard_id});
     if(it == replica_map_.end()){

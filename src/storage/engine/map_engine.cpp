@@ -8,20 +8,20 @@
 
 namespace adviskv{
 
-Status MapEngine::put(KeyView key, ValueView value){
+Status MapEngine::put(const Key& key, const Value& value){
     
-    std::scoped_lock lock(map_mutex_);
+    std::unique_lock lock(map_mutex_);
 
-    map_[Key(key)] = Value(value);
+    map_[key] = value;
 
     DEBUG("map put ok, key = {}, value = {}", key, value);
 
     return Status::OK();
 }
 
-Status MapEngine::get(KeyView key, Value& value){
+Status MapEngine::get(const Key& key, Value& value){
     std::shared_lock lock(map_mutex_);
-    if(!map_.count(Key(key))){
+    if(!map_.count(key)){
         DEBUG("key = {}, not found", key);
         return Status{StatusCode::KEY_NOT_FOUND, fmt::format( "key = {} not found", key)};
     }
@@ -29,8 +29,8 @@ Status MapEngine::get(KeyView key, Value& value){
     return Status::OK();
 }
 
-Status MapEngine::del(KeyView key) {
-
+Status MapEngine::del(const Key& key) {
+    return Status{StatusCode::NOT_SUPPORTED, "del operation is not supported in MapEngine"};
 }
 
 

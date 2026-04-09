@@ -20,10 +20,10 @@ grpc::Status MetaServiceImpl::CreateDB(grpc::ServerContext* context,
                         const rpc::CreateDBRequest* request,
                         rpc::CreateDBResponse* response) {
 
-    CreateDBOption option{request->db_name()};
+    CreateDBParam param{request->db_name()};
 
     DBMeta db_meta;
-    Status status = ddl_service_->create_db(option, &db_meta);
+    Status status = ddl_service_->create_db(param, &db_meta);
     fill_base_rsp(response, status);
     if(status.fail()){
         return grpc::Status::OK;
@@ -35,14 +35,14 @@ grpc::Status MetaServiceImpl::CreateDB(grpc::ServerContext* context,
 grpc::Status MetaServiceImpl::CreateTable(grpc::ServerContext* context,
                         const rpc::CreateTableRequest* request,
                         rpc::CreateTableResponse* response) {
-    CreateTableOption option{
+    CreateTableParam param{
         .db_name = request->db_name(),
         .table_name = request->table_name(),
         .shard_count = request->shard_count(),
         .replica_count = request->replica_count()
     };
     TableMeta table_meta;
-    Status status = ddl_service_->create_table(option, &table_meta);
+    Status status = ddl_service_->create_table(param, &table_meta);
     fill_base_rsp(response, status);
     if(status.fail()){
         return grpc::Status::OK;
@@ -57,13 +57,13 @@ grpc::Status MetaServiceImpl::GetTable(grpc::ServerContext* context,
     const rpc::GetTableRequest* request,
     rpc::GetTableResponse* response) {
 
-        GetTableOption option{
+        GetTableParam param{
             .db_name = request->db_name(),
             .table_name = request->table_name()
         };
 
         TableMeta table_meta;
-        Status status = ddl_service_->get_table(option, &table_meta);
+        Status status = ddl_service_->get_table(param, &table_meta);
         fill_base_rsp(response, status);
         if(status.fail()){
             return grpc::Status::OK;

@@ -15,27 +15,27 @@ DdlSerivce::DdlSerivce(CatalogManager* catalog_manager){
 
     /*
     //负责一些会涉及到catalog和sdm的操作
-    Status create_table(const CreateTableOption& option);
-    Status create_db(const CreateDBOption& option);
-    Status get_table(const GetTableOption& option, TableMeta& table_meta);
+    Status create_table(const CreateTableParam& param);
+    Status create_db(const CreateDBParam& param);
+    Status get_table(const GetTableParam& param, TableMeta& table_meta);
 */
 
-Status DdlSerivce::create_table(const CreateTableOption& option, TableMeta* table_meta){
+Status DdlSerivce::create_table(const CreateTableParam& param, TableMeta* table_meta){
 
     // 这种句式应该也可以搞一个宏定义
-    // if(Status status = CreateTableOption::validate(option); status.fail()){
+    // if(Status status = CreateTableParam::validate(param); status.fail()){
     //     return status;
     // }
-    RETURN_IF_INVALID_OPTION(option)
+    RETURN_IF_INVALID_PARAM(param)
 
-    CreateTableMetaOption meta_option{
-        .table_name = option.table_name,
-        .db_name = option.db_name,
-        .replica_count = option.replica_count,
-        .shard_count = option.shard_count
+    CreateTableMetaParam meta_param{
+        .table_name = param.table_name,
+        .db_name = param.db_name,
+        .replica_count = param.replica_count,
+        .shard_count = param.shard_count
     };
 
-    Status status = catalog_manager_->create_table(meta_option, table_meta);
+    Status status = catalog_manager_->create_table(meta_param, table_meta);
 
     RETURN_IF_INVALID_STATUS(status)
 
@@ -47,34 +47,34 @@ Status DdlSerivce::create_table(const CreateTableOption& option, TableMeta* tabl
 
 }
 
-Status DdlSerivce::create_db(const CreateDBOption& option, DBMeta* db_meta){
-    // if(Status status = CreateDBOption::validate(option); status.fail()){
+Status DdlSerivce::create_db(const CreateDBParam& param, DBMeta* db_meta){
+    // if(Status status = CreateDBParam::validate(param); status.fail()){
     //     return status;
     // }
 
-    // if(Status status = option.validate(); status.fail()){
+    // if(Status status = param.validate(); status.fail()){
     //     return status;
     // }
 
-    RETURN_IF_INVALID_OPTION(option)
+    RETURN_IF_INVALID_PARAM(param)
 
-    CreateDBMetaOption meta_option{
-        .db_name = option.db_name
+    CreateDBMetaParam meta_param{
+        .db_name = param.db_name
     };
 
-    return catalog_manager_->create_db(meta_option, db_meta);
+    return catalog_manager_->create_db(meta_param, db_meta);
 }
 
-Status DdlSerivce::get_table(const GetTableOption& option, TableMeta* table_meta){
-    // if(Status status = GetTableOption::validate(option); status.fail()){
+Status DdlSerivce::get_table(const GetTableParam& param, TableMeta* table_meta){
+    // if(Status status = GetTableParam::validate(param); status.fail()){
     //     return status;
     // }
-    RETURN_IF_INVALID_OPTION(option)
+    RETURN_IF_INVALID_PARAM(param)
 
-    if(option.table_id != -1){
-        return catalog_manager_->get_table_by_id(option.table_id, table_meta);
+    if(param.table_id != -1){
+        return catalog_manager_->get_table_by_id(param.table_id, table_meta);
     } else{
-        return catalog_manager_->get_table_by_name(option.db_name, option.table_name, table_meta);
+        return catalog_manager_->get_table_by_name(param.db_name, param.table_name, table_meta);
     }
 
 }
