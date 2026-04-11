@@ -1,6 +1,7 @@
 #include "meta/service/ddl_service.h"
 #include "common/status.h"
 #include "meta/catalog/catalog_manager.h"
+#include <grpcpp/support/status.h>
 #include <memory>
 #include "sdm.grpc.pb.h"
 #include "sdm.pb.h"
@@ -92,11 +93,17 @@ Status SdmClient::call_place_table(const TableMeta& table_meta){
     rpc::PlaceTableRequest request;
     request.set_db_id(table_meta.db_id);
     request.set_table_id(table_meta.table_id);
+    request.set_db_name(table_meta.db_name);
+    request.set_table_name(table_meta.table_name);
     request.set_shard_count(table_meta.shard_count);
     request.set_replica_count(table_meta.replica_count);
     rpc::PlaceTableResponse response;
     grpc::ClientContext context;
-    sdm_client->PlaceTable(&context, request, &response);
+    grpc::Status status = sdm_client->PlaceTable(&context, request, &response);
+
+    if(!status.ok()){
+        return Status{StatusCode::ERROR, fmt::format("call sdm place_table failed, grpc code = {}, msg = {}", status.error_code(), status.error_message())};
+    }
 
     if(response.mutable_base_rsp()->code() != to_rpc_code(StatusCode::OK)){
         return Status{static_cast<StatusCode>(response.mutable_base_rsp()->code()), response.mutable_base_rsp()->msg()};

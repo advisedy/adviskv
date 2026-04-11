@@ -34,8 +34,10 @@ message RegisterNodeResponse{
 message PlaceTableRequest{
     int32 db_id = 1;
     int32 table_id = 2;
-    int32 shard_count = 3;
-    int32 replica_count = 4;
+    string db_name = 3;
+    string table_name = 4;
+    int32 shard_count = 5;
+    int32 replica_count = 6;
 }
 
 message PlaceTableResponse{

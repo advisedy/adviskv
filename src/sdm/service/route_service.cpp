@@ -20,7 +20,7 @@ Status RouteService::get_route(const GetRouteparam& param, ShardRoute* res) cons
     RETURN_IF_INVALID_PARAM(param)
 
     TableMetaCache table_meta;
-    Status status = route_manager_->get_table_meta(param.db_name, param.table_name, &table_meta);
+    Status status = meta_cache_manager_->get_table_meta(param.db_name, param.table_name, &table_meta);
 
     RETURN_IF_INVALID_STATUS(status)
 

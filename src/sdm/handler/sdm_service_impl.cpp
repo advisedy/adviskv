@@ -10,6 +10,8 @@ grpc::Status SdmServiceImpl::PlaceTable(grpc::ServerContext* context,
     PlaceTableParam param{
         .db_id = request->db_id(),
         .table_id = request->table_id(),
+        .db_name = request->db_name(),
+        .table_name = request->table_name(),
         .replica_count = request->replica_count(),
         .shard_count = request->shard_count(),
     };

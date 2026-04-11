@@ -10,26 +10,6 @@
 #include <vector>
 namespace adviskv{
 
-struct TableMetaCacheKey{
-    std::string db_name;
-    std::string table_name;
-};
-
-struct TableMetaCacheKeyHash{
-    uint64_t operator()(const TableMetaCacheKey& key) const{
-        std::string res = key.db_name + "***&&**" + key.table_name;
-        return std::hash<std::string>{}(res);
-    }
-};
-
-struct TableMetaCache {
-    std::string db_name;
-    std::string table_name;
-    TableID table_id;
-    int32_t shard_count;
-    int32_t replica_count;
-};
-
 
 enum class ReplicaRole{
     LEADER = 1,
@@ -66,18 +46,13 @@ struct ShardRoute{
 
 class RouteManager{
 
-public:
-    Status update_table_meta(const TableMetaCache& meta);
-    Status get_table_meta(const std::string& db_name, const std::string& table_name, TableMetaCache* out) const;
-    Status update_route(const ShardRoute& route);
+public:  Status update_route(const ShardRoute& route);
     Status get_route(TableID table_id, ShardID shard_id, ShardRoute* out) const;
 
 private:
     std::shared_mutex routes_mutex_;
     std::unordered_map<ShardRouteKey, ShardRoute, ShardRouteKeyHash> routes_;
-    
-    std::shared_mutex caches_mutex_;
-    std::unordered_map<TableMetaCacheKey, TableMetaCache, TableMetaCacheKeyHash> table_meta_caches_;
+
 };
 
 }

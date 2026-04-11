@@ -4,6 +4,7 @@
 #include "common/define.h"
 #include "common/status.h"
 #include "common/type.h"
+#include "sdm/manager/meta_cache_manager.h"
 #include "sdm/manager/node_manager.h"
 #include "sdm/manager/route_manager.h"
 #include <cstdint>
@@ -37,6 +38,7 @@ private:
 
 
     RouteManager* route_manager_;
+    MetaCacheManager* meta_cache_manager_;
 };
 
 }
