@@ -56,6 +56,7 @@ grpc::Status StorageServiceImpl::Get(grpc::ServerContext* context,
                 .key = request->key()
             };
             Value value;
+            
             Status status = replica->get(param, value);
     
             if(!status.ok()){

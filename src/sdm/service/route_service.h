@@ -4,6 +4,7 @@
 #include "common/define.h"
 #include "common/status.h"
 #include "common/type.h"
+#include "sdm/manager/node_manager.h"
 #include "sdm/manager/route_manager.h"
 #include <cstdint>
 #include <memory>
@@ -33,6 +34,7 @@ public:
 private:
     
     int32_t calc_shard_id(Key key, int32_t shard_count) const;
+
 
     RouteManager* route_manager_;
 };
