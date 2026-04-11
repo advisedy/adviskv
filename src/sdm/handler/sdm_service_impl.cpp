@@ -8,11 +8,10 @@ grpc::Status SdmServiceImpl::PlaceTable(grpc::ServerContext* context,
         rpc::PlaceTableResponse* response) {
 
     PlaceTableParam param{
-        .db_name = request->db_name(),
-        .table_name = request->table_name(),
+        .db_id = request->db_id(),
+        .table_id = request->table_id(),
         .replica_count = request->replica_count(),
         .shard_count = request->shard_count(),
-        .zone = request->zone()
     };
 
     Status status = placement_service_->place_table(param, nullptr);

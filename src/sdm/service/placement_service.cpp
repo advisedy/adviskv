@@ -3,6 +3,7 @@
 #include "common/status.h"
 #include "common/type.h"
 #include "sdm/manager/node_manager.h"
+#include "sdm/manager/route_manager.h"
 
 namespace adviskv {
 
@@ -15,7 +16,7 @@ Status PlacementService::place_table(const PlaceTableParam &param,
   RETURN_IF_INVALID_PARAM(param)
 
   std::vector<NodeMeta> node_list;
-  ListNodesParam list_nodes_param{.zone = param.zone};
+  ListNodesParam list_nodes_param{};
   Status status = node_manager_->list_nodes(list_nodes_param, &node_list);
   RETURN_IF_INVALID_STATUS(status)
 
@@ -34,6 +35,14 @@ Status PlacementService::place_table(const PlaceTableParam &param,
       // 调用storage的接口，要求node_id去创建replica，参数里应该还要带上table_id和shard_id
     }
   }
+
+  status = route_manager_->update_table_meta(TableMetaCache{
+                                      .table_id = param.table_id,
+                                      .shard_count = param.shard_count,
+                                      .replica_count = param.replica_count});
+
+  RETURN_IF_INVALID_STATUS(status)
+//TODO  这里失败了，得回滚
 
   for (const std::vector<NodeID> &replica_nodes : better_nodes) {
     for (const NodeID &node_id : replica_nodes) {

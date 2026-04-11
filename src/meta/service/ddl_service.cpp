@@ -44,7 +44,10 @@ Status DdlSerivce::create_table(const CreateTableParam& param, TableMeta* table_
         return Status{StatusCode::ERROR, "sdm_client is nullptr"};
     }
 
-    status = sdm_client_->place_table(param);
+    status = sdm_client_->call_place_table(*table_meta);
+
+    //TODO
+    // 记得check下失败的情况，后续补上
 
     return status;
 
@@ -82,17 +85,18 @@ Status DdlSerivce::get_table(const GetTableParam& param, TableMeta* table_meta){
 
 }
 
-Status SdmClient::place_table(const CreateTableParam& param){
+Status SdmClient::call_place_table(const TableMeta& table_meta){
 
     SdmClientStub& sdm_client = this->client();
     
     rpc::PlaceTableRequest request;
-    request.set_db_name(param.db_name);
-    request.set_table_name(param.table_name);
-    request.set_shard_count(param.shard_count);
-    request.set_replica_count(param.replica_count);
+    request.set_db_id(table_meta.db_id);
+    request.set_table_id(table_meta.table_id);
+    request.set_shard_count(table_meta.shard_count);
+    request.set_replica_count(table_meta.replica_count);
     rpc::PlaceTableResponse response;
-    sdm_client->PlaceTable(nullptr, request, &response);
+    grpc::ClientContext context;
+    sdm_client->PlaceTable(&context, request, &response);
 
     if(response.mutable_base_rsp()->code() != to_rpc_code(StatusCode::OK)){
         return Status{static_cast<StatusCode>(response.mutable_base_rsp()->code()), response.mutable_base_rsp()->msg()};

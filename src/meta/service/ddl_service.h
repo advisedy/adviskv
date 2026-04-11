@@ -53,6 +53,13 @@ struct GetTableParam{
 
 };
 
+// struct SdmPlaceTableParam{
+//     int32_t db_id;
+//     int32_t table_id;
+//     int32_t shard_count;
+//     int32_t replica_count;
+// };
+
 using SdmClientStub = std::unique_ptr<rpc::ShardingManagerService::Stub>;
 
 class SdmClient {
@@ -64,7 +71,7 @@ public:
         return stub_;
     }
 
-    Status place_table(const CreateTableParam& param);
+    Status call_place_table(const TableMeta& table_meta);
 
 private:
     SdmClientStub stub_;
@@ -83,7 +90,6 @@ public:
 
 private:
 
-    Status call_sdm_place_table(const CreateTableParam& param);
 
     SdmClient* sdm_client_;
     CatalogManager* catalog_manager_;

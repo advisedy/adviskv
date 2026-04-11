@@ -12,6 +12,13 @@
 
 namespace adviskv{
 
+enum class TableState{
+    ADDING = 1,
+    NORMAL = 2,
+    DROPPING = 3,
+    DELETED = 4
+};
+    
 struct TableMeta{
     TableID table_id;
     int32_t shard_count;
@@ -33,7 +40,7 @@ struct CreateDBMetaParam {
         RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
         return Status::OK();
     }
-    
+
 };
 
 struct CreateTableMetaParam {
