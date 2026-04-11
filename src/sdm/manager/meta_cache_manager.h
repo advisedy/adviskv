@@ -14,6 +14,10 @@ namespace adviskv{
 struct TableMetaCacheKey{
     std::string db_name;
     std::string table_name;
+
+    bool operator==(const TableMetaCacheKey& other) const {
+        return db_name == other.db_name && table_name == other.table_name;
+    }   
 };
 
 struct TableMetaCacheKeyHash{
@@ -46,9 +50,12 @@ class MetaCacheManager{
         Status get_table_meta(const std::string& db_name, const std::string& table_name, TableMetaCache* out) const;
         Status update_db_meta(const DBMetaCache& meta);
         Status get_db_meta(const std::string& db_name, DBMetaCache* out) const;
+
     private:
-        std::shared_mutex caches_mutex_;
+        mutable std::shared_mutex table_caches_mutex_;
+        mutable std::shared_mutex db_caches_mutex_;
         std::unordered_map<TableMetaCacheKey, TableMetaCache, TableMetaCacheKeyHash> table_meta_caches_;
+        std::unordered_map<std::string, DBMetaCache> db_meta_caches_;
     };
         
 

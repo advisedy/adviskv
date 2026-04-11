@@ -59,6 +59,7 @@ public:
 
     Status update_node_owned_replica_count(NodeID node_id, int32_t delta_value);
 
+    Status get_node_meta(const NodeID& node_id, NodeMeta* node_meta) const;
     Status get_node_stats(const NodeID& node_id, NodeStats* node_stats) const;
     Status get_node_list_stats(const std::vector<NodeID>& node_list_id, std::vector<NodeStats>* node_list_stats) const;
 

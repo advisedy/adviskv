@@ -30,6 +30,11 @@ struct ReplicaLocation{
 struct ShardRouteKey{
     TableID table_id;
     ShardID shard_id;
+
+    bool operator==(const ShardRouteKey& other) const {
+        return table_id == other.table_id && shard_id == other.shard_id;
+    }
+
 };
 
 struct ShardRouteKeyHash{
@@ -46,11 +51,12 @@ struct ShardRoute{
 
 class RouteManager{
 
-public:  Status update_route(const ShardRoute& route);
+public:  
+    Status update_route(const ShardRoute& route);
     Status get_route(TableID table_id, ShardID shard_id, ShardRoute* out) const;
 
 private:
-    std::shared_mutex routes_mutex_;
+    mutable std::shared_mutex routes_mutex_;
     std::unordered_map<ShardRouteKey, ShardRoute, ShardRouteKeyHash> routes_;
 
 };

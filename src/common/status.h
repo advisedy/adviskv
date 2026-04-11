@@ -26,7 +26,7 @@ enum class StatusCode : int32_t {
     //sdm 特有
     ROUTE_NOT_FOUND = 1000,
     TABLE_META_CACHE_NOT_FOUND = 1001,
-
+    DB_META_CACHE_NOT_FOUND = 1002,
     //meta 特有
 
     //storage 特有

@@ -1,8 +1,9 @@
-set(META_SOURCES
+set(SDM_SOURCES
     # current dir
     ${CMAKE_CURRENT_SOURCE_DIR}/main/main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/manager/node_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/manager/route_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/manager/meta_cache_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/handler/sdm_service_impl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/service/route_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/service/placement_service.cpp
@@ -16,7 +17,7 @@ set(META_SOURCES
 )
 
 add_executable(sdm
-    ${META_SOURCES}
+    ${SDM_SOURCES}
 )
 
 target_link_libraries(sdm PRIVATE

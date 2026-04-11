@@ -104,6 +104,17 @@ Status NodeManager::update_node_owned_replica_count(NodeID node_id, int32_t delt
     return Status::OK();
 }
 
+Status NodeManager::get_node_meta(const NodeID& node_id, NodeMeta* node_meta) const{
+    std::shared_lock<std::shared_mutex> lock(node_map_mtx_);
+    auto it = node_map_.find(node_id);
+    if(it == node_map_.end()){
+        return Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, fmt::format("node_id: {} not found", node_id)};
+    }
+    *node_meta = it->second;
+    return Status::OK();
+}
+
+
 Status NodeManager::get_node_stats(const NodeID& node_id, NodeStats* node_stats) const{
     std::shared_lock<std::shared_mutex> lock(node_map_mtx_);
     auto it = node_stats_map_.find(node_id);

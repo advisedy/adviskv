@@ -62,7 +62,7 @@ Status PlacementService::place_table(const PlaceTableParam &param,
                                       .replica_count = param.replica_count});
 
   RETURN_IF_INVALID_STATUS(status)
-//TODO  这里失败了，得回滚
+//TODO  这里如果失败了，得回滚
 
   for (const std::vector<NodeID> &replica_nodes : final_nodes) {
     for (const NodeID &node_id : replica_nodes) {
@@ -71,6 +71,33 @@ Status PlacementService::place_table(const PlaceTableParam &param,
       RETURN_IF_INVALID_STATUS(status)
     }
   }
+
+  //TODO 更新route到route_manager里，后续补上
+
+  for(int i=0;i<final_nodes.size(); i++){
+    ShardRoute route;
+    route.table_id = param.table_id;
+    route.shard_id = i;
+
+    for(int j= 0;j<final_nodes[i].size(); j++){
+        ReplicaLocation replica_location;
+        replica_location.replica_index = j;
+        replica_location.node_id = final_nodes[i][j];
+        replica_location.role = (final_nodes[i][j] == leaders[i]) ? ReplicaRole::LEADER : ReplicaRole::FOLLOWER;
+        NodeMeta node_meta;
+        status = node_manager_->get_node_meta(final_nodes[i][j], &node_meta);
+        replica_location.ip = node_meta.ip;
+        replica_location.port = node_meta.port;
+        RETURN_IF_INVALID_STATUS(status)
+        //TODO  这里如果失败了，得回滚
+
+        route.replicas.emplace_back(replica_location);
+    }
+
+    status = route_manager_->update_route(route);
+    RETURN_IF_INVALID_STATUS(status)
+  }
+
   return Status::OK();
 }
 
