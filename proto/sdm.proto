@@ -31,7 +31,19 @@ message RegisterNodeResponse{
     adviskv.pb.BaseRsp base_rsp = 1;
 }
 
+message PlaceTableRequest{
+    string db_name = 1;
+    string table_name = 2;
+    int32 shard_count = 3;
+    int32 replica_count = 4;
+}
+
+message PlaceTableResponse{
+    adviskv.pb.BaseRsp base_rsp = 1;
+}
+
 service ShardingManagerService{
     rpc GetRoute(GetRouteRequest) returns (GetRouteResponse);
     rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
+    rpc PlaceTable(PlaceTableRequest) returns (PlaceTableResponse);
 }

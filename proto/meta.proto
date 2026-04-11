@@ -6,6 +6,7 @@ import "common.proto";
 
 message CreateDBRequest {
   string db_name = 1;
+  string zone = 2;
 }
 
 message CreateDBResponse {

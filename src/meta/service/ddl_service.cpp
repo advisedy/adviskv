@@ -2,15 +2,16 @@
 #include "common/status.h"
 #include "meta/catalog/catalog_manager.h"
 #include <memory>
-
+#include "sdm.grpc.pb.h"
+#include "sdm.pb.h"
 
 namespace adviskv{
 
 
-DdlSerivce::DdlSerivce(CatalogManager* catalog_manager){
+DdlSerivce::DdlSerivce(CatalogManager* catalog_manager, SdmClient* sdm_client){
     catalog_manager_ = catalog_manager;
-    //TODO sdm_client
-}
+    sdm_client_ = sdm_client;
+}   
 
 
     /*
@@ -39,9 +40,11 @@ Status DdlSerivce::create_table(const CreateTableParam& param, TableMeta* table_
 
     RETURN_IF_INVALID_STATUS(status)
 
-    //TODO
-    // 调用sdm的client。应该会有一个函数去分配table。
-    // 这个分配table的函数在sdm里去细讲， 记得得去更新sdm里的TableMetaCache
+    if(!sdm_client_){
+        return Status{StatusCode::ERROR, "sdm_client is nullptr"};
+    }
+
+    status = sdm_client_->place_table(param);
 
     return status;
 
@@ -77,6 +80,24 @@ Status DdlSerivce::get_table(const GetTableParam& param, TableMeta* table_meta){
         return catalog_manager_->get_table_by_name(param.db_name, param.table_name, table_meta);
     }
 
+}
+
+Status SdmClient::place_table(const CreateTableParam& param){
+
+    SdmClientStub& sdm_client = this->client();
+    
+    rpc::PlaceTableRequest request;
+    request.set_db_name(param.db_name);
+    request.set_table_name(param.table_name);
+    request.set_shard_count(param.shard_count);
+    request.set_replica_count(param.replica_count);
+    rpc::PlaceTableResponse response;
+    sdm_client->PlaceTable(nullptr, request, &response);
+
+    if(response.mutable_base_rsp()->code() != to_rpc_code(StatusCode::OK)){
+        return Status{static_cast<StatusCode>(response.mutable_base_rsp()->code()), response.mutable_base_rsp()->msg()};
+    }
+    return Status::OK();
 }
 
 }

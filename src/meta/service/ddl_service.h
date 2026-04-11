@@ -4,9 +4,11 @@
 #include "common/status.h"
 #include "meta/catalog/catalog_manager.h"
 #include <cstdint>
+#include <grpcpp/impl/channel_interface.h>
 #include <memory>
 #include <string>
 #include "common/define.h"
+#include "sdm.grpc.pb.h"
 
 namespace adviskv{
 
@@ -28,7 +30,6 @@ struct CreateTableParam {
     const std::string& table_name;
     int32_t shard_count;
     int32_t replica_count;
-
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
         RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
@@ -50,30 +51,41 @@ struct GetTableParam{
     return Status::OK();
 }
 
-//    static Status validate(const GetTableParam& param){
-//     if(param.table_id!=-1){
-//         return Status::OK();
-//     }
-//     if(param.db_name.empty() or param.table_name.empty()){
-//         return Status{StatusCode::INVALID_ARGUMENT, "please fill table_id or (db_name, table_name)"};
-//     }
-//     return Status::OK();
-//    }
+};
+
+using SdmClientStub = std::unique_ptr<rpc::ShardingManagerService::Stub>;
+
+class SdmClient {
+public:
+    explicit SdmClient(const std::shared_ptr<grpc::ChannelInterface>& channel)
+        : stub_(rpc::ShardingManagerService::NewStub(channel)) {}
+
+    std::unique_ptr<rpc::ShardingManagerService::Stub>& client() {
+        return stub_;
+    }
+
+    Status place_table(const CreateTableParam& param);
+
+private:
+    SdmClientStub stub_;
 };
 
 class DdlSerivce{
 
 public:
 
-    explicit DdlSerivce(CatalogManager* catalog_manager);
+    explicit DdlSerivce(CatalogManager* catalog_manager, SdmClient* sdm_client);
 
     //负责一些会涉及到catalog和sdm的操作
     Status create_table(const CreateTableParam& param, TableMeta* table_meta);
     Status create_db(const CreateDBParam& param, DBMeta* db_meta);
     Status get_table(const GetTableParam& param, TableMeta* table_meta);
+
 private:
 
-    // SdmClient* sdm_client_;
+    Status call_sdm_place_table(const CreateTableParam& param);
+
+    SdmClient* sdm_client_;
     CatalogManager* catalog_manager_;
 };
 

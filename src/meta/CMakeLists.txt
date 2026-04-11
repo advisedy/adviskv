@@ -9,6 +9,9 @@ set(META_SOURCES
     ${PROJECT_BINARY_DIR}/generated/common.pb.cc
     ${PROJECT_BINARY_DIR}/generated/meta.pb.cc
     ${PROJECT_BINARY_DIR}/generated/meta.grpc.pb.cc
+    ${PROJECT_BINARY_DIR}/generated/sdm.pb.cc
+    ${PROJECT_BINARY_DIR}/generated/sdm.grpc.pb.cc
+
 )
 
 add_executable(meta

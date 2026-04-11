@@ -28,3 +28,5 @@ storage: 负责存储。
 首先，这边查询的时候是指定db和table，然后分片是按照table来的。这样可以做到支持某些table热点访问的时候可以支持
 单独给某个table进行分片和扩副本的操作。
 
+有一个zone的概念，create db的时候需要填写，不写就是默认空。 
+然后sdm那边分配node给table的时候，node必须和只有和这个table所在的db是同一个zone。
