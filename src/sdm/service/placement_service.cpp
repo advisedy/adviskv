@@ -8,9 +8,12 @@ namespace adviskv {
 
 Status PlacementService::place_table(const PlaceTableParam &param,
                                      TableMetaCache *table_meta_cache) {
-  // TODO
+
   // 首先列出来所有可以用的node，然后择优选择出来最终的nodes
   // 然后给这些node要求它们去创建replica，最后更新route_manager里的TableMetaCache
+
+  RETURN_IF_INVALID_PARAM(param)
+
   std::vector<NodeMeta> node_list;
   ListNodesParam list_nodes_param{.zone = param.zone};
   Status status = node_manager_->list_nodes(list_nodes_param, &node_list);
@@ -34,12 +37,12 @@ Status PlacementService::place_table(const PlaceTableParam &param,
 
   for (const std::vector<NodeID> &replica_nodes : better_nodes) {
     for (const NodeID &node_id : replica_nodes) {
-      // TODO
       Status status =
           node_manager_->update_node_owned_replica_count(node_id, 1);
       RETURN_IF_INVALID_STATUS(status)
     }
   }
+  return Status::OK();
 }
 
 } // namespace adviskv
