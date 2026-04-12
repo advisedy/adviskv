@@ -12,7 +12,7 @@ namespace adviskv{
 
 class LeaderSelector{
 public:
-    virtual Status select_leader(const std::vector<NodeStats>& nodes, NodeID& leader) const = 0;
+    virtual Status select_leader(const std::vector<NodeStats>& nodes, NodeID& leader_node_id) const = 0;
 };
 
 class DefaultLeaderSelector : public LeaderSelector{

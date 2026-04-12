@@ -21,3 +21,8 @@
   if (Status status = param.validate(); status.fail()) {                       \
     return status;                                                             \
   }
+
+  #define RETURN_IF_INVALID_PLAN(plan)                                         \
+  if (Status status = plan.validate(); status.fail()) {                       \
+    return status;                                                             \
+  }

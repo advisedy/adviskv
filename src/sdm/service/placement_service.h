@@ -29,6 +29,8 @@ struct PlaceTableParam{
     }
 };
 
+class OperationFactory;
+
 class PlacementService{
 
 public:
@@ -40,14 +42,15 @@ public:
 private:
 
 
-    RouteManager* route_manager_;
-    NodeManager* node_manager_;
 
-    NodeSelector* node_selector_;
-    LeaderSelector* leader_selector_;
+    // RouteManager* route_manager_;
+    // NodeManager* node_manager_;
 
-    MetaCacheManager* meta_cache_manager_;
+    // NodeSelector* node_selector_;
+    // LeaderSelector* leader_selector_;
 
+    // MetaCacheManager* meta_cache_manager_;
+    OperationFactory* factory_;
 };
 
 }
