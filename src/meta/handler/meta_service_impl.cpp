@@ -19,7 +19,7 @@ grpc::Status MetaServiceImpl::CreateDB(grpc::ServerContext *context,
                                        const rpc::CreateDBRequest *request,
                                        rpc::CreateDBResponse *response) {
 
-  CreateDBParam param{request->db_name()};
+  CreateDBParam param{request->db_name(), request->zone()};
 
   DBMeta db_meta;
   Status status = ddl_service_->create_db(param, &db_meta);

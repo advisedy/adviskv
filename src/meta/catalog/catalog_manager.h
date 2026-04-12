@@ -31,11 +31,12 @@ struct TableMeta{
 struct DBMeta{
     DatabaseID db_id;
     std::string db_name;
+    std::string zone;
 };
 
 struct CreateDBMetaParam {
     std::string db_name;
-
+    std::string zone;
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
         return Status::OK();

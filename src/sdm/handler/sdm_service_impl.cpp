@@ -1,5 +1,6 @@
 #include "sdm/handler/sdm_service_impl.h"
 #include <cstddef>
+#include <grpcpp/support/status.h>
 
 namespace adviskv{
 
@@ -23,5 +24,15 @@ grpc::Status SdmServiceImpl::PlaceTable(grpc::ServerContext* context,
     return grpc::Status::OK;
 
 }
+
+
+grpc::Status SdmServiceImpl::PlaceDB(grpc::ServerContext* context,
+    const rpc::PlaceDBRequest* request,
+    rpc::PlaceDBResponse* response) {
+
+
+        return grpc::Status::OK;
+    }
+
 
 }

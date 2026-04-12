@@ -18,7 +18,7 @@ struct SdmClient;
 
 struct CreateDBParam {
     const std::string& db_name;
-
+    const std::string& zone;
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
         return Status::OK();
@@ -72,6 +72,8 @@ public:
     }
 
     Status call_place_table(const TableMeta& table_meta);
+    Status call_place_db(const DBMeta& db_meta);
+
 
 private:
     SdmClientStub stub_;

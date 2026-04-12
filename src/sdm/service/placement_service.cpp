@@ -20,4 +20,13 @@ Status PlacementService::place_table(const PlaceTableParam &param,
 
 }
 
+Status PlacementService::place_db(const PlaceDBParam& param, DBMetaCache* db_meta_cache){
+    PlaceDBOperation op;
+    Status status = factory_->create_place_db_operation(param, op);
+    RETURN_IF_INVALID_STATUS(status)
+    status = op.execute();
+    return status;  
+}
+
+
 } // namespace adviskv

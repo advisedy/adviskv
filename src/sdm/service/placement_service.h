@@ -29,6 +29,17 @@ struct PlaceTableParam{
     }
 };
 
+struct PlaceDBParam{
+    int32_t db_id{-1};
+    std::string db_name;
+    std::string zone;
+    Status validate() const {
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
+        RETURN_IF_INVALID_CONDITION(db_id!=-1, "db_id should not is -1")
+        return Status::OK();
+    }
+};
+
 class OperationFactory;
 
 class PlacementService{
@@ -37,6 +48,7 @@ public:
     explicit PlacementService(RouteManager* route_manager, NodeManager* node_manager);
 
     Status place_table(const PlaceTableParam& param, TableMetaCache* table_meta_cache);
+    Status place_db(const PlaceDBParam& param, DBMetaCache* db_meta_cache);
 
 
 private:

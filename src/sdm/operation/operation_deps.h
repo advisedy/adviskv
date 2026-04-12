@@ -35,4 +35,9 @@ namespace adviskv{
         LeaderSelector* leader_selector;    
     };
 
+
+    struct PlaceDBOperationDeps{
+        MetaCacheManager* meta_cache_manager;
+    };
+
 }

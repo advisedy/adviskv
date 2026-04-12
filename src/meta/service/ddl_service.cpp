@@ -1,4 +1,5 @@
 #include "meta/service/ddl_service.h"
+#include "common/define.h"
 #include "common/status.h"
 #include "meta/catalog/catalog_manager.h"
 #include <grpcpp/support/status.h>
@@ -66,10 +67,22 @@ Status DdlService::create_db(const CreateDBParam& param, DBMeta* db_meta){
     RETURN_IF_INVALID_PARAM(param)
 
     CreateDBMetaParam meta_param{
-        .db_name = param.db_name
+        .db_name = param.db_name,
+        .zone = param.zone
     };
 
-    return catalog_manager_->create_db(meta_param, db_meta);
+    Status status = catalog_manager_->create_db(meta_param, db_meta);
+
+    RETURN_IF_INVALID_STATUS(status)
+
+    if(!sdm_client_){
+        return Status{StatusCode::ERROR, "sdm_client is nullptr"};
+    }
+
+    status = sdm_client_->call_place_db(*db_meta);
+
+    //TODO 如果失败了
+    return status;
 }
 
 Status DdlService::get_table(const GetTableParam& param, TableMeta* table_meta){
@@ -100,6 +113,28 @@ Status SdmClient::call_place_table(const TableMeta& table_meta){
     rpc::PlaceTableResponse response;
     grpc::ClientContext context;
     grpc::Status status = sdm_client->PlaceTable(&context, request, &response);
+
+    if(!status.ok()){
+        // return Status{StatusCode::ERROR, fmt::format("call sdm place_table failed, grpc code = {}, msg = {}", status.error_code(), status.error_message())};
+    }
+
+    if(response.mutable_base_rsp()->code() != to_rpc_code(StatusCode::OK)){
+        return Status{static_cast<StatusCode>(response.mutable_base_rsp()->code()), response.mutable_base_rsp()->msg()};
+    }
+    return Status::OK();
+}
+
+Status SdmClient::call_place_db(const DBMeta& db_meta){
+
+    SdmClientStub& sdm_client = this->client();
+    
+    rpc::PlaceDBRequest request;
+    request.set_db_id(db_meta.db_id);
+    request.set_db_name(db_meta.db_name);
+    request.set_zone(db_meta.zone);
+    rpc::PlaceDBResponse response;
+    grpc::ClientContext context;
+    grpc::Status status = sdm_client->PlaceDB(&context, request, &response);
 
     if(!status.ok()){
         // return Status{StatusCode::ERROR, fmt::format("call sdm place_table failed, grpc code = {}, msg = {}", status.error_code(), status.error_message())};

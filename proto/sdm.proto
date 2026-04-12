@@ -44,8 +44,19 @@ message PlaceTableResponse{
     adviskv.pb.BaseRsp base_rsp = 1;
 }
 
+message PlaceDBRequest{
+    int32 db_id = 1;
+    string db_name = 2;
+    string zone = 3;
+}
+
+message PlaceDBResponse{
+    adviskv.pb.BaseRsp base_rsp = 1;
+}
+
 service ShardingManagerService{
     rpc GetRoute(GetRouteRequest) returns (GetRouteResponse);
     rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
     rpc PlaceTable(PlaceTableRequest) returns (PlaceTableResponse);
+    rpc PlaceDB(PlaceDBRequest) returns (PlaceDBResponse);
 }
