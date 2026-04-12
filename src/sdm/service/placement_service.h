@@ -16,9 +16,8 @@ class PlacementService {
 public:
   explicit PlacementService(OperationFactory *factorys);
 
-  Status place_table(const PlaceTableParam &param,
-                     TableMetaCache *table_meta_cache);
-  Status place_db(const PlaceDBParam &param, DBMetaCache *db_meta_cache);
+  Status place_table(const PlaceTableParam &param);
+  Status place_db(const PlaceDBParam &param);
 
 private:
   PlacementServiceDeps get_deps() const;

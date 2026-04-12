@@ -9,7 +9,7 @@
 #include "common/status.h"
 #include "sdm/operation/placetable_operation.h"
 
-#include "sdm/service/placement_service.h"
+
 #include "sdm/operation/operation_deps.h"
 #include <optional>
 

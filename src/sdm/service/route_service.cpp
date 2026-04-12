@@ -2,6 +2,7 @@
 #include "common/define.h"
 #include "common/status.h"
 #include "common/type.h"
+#include "sdm/manager/meta_cache_manager.h"
 #include "sdm/manager/route_manager.h"
 #include <functional>
 #include <memory>
@@ -10,8 +11,9 @@
 namespace adviskv {
     // RouteService::RouteService()explicit RouteService(RouteManager* route_manager);{
 
-RouteService::RouteService(RouteManager* route_manager){
+RouteService::RouteService(RouteManager* route_manager, MetaCacheManager* meta_cache_manager){
     route_manager_ = route_manager;
+    meta_cache_manager_ = meta_cache_manager;
 }
 
 

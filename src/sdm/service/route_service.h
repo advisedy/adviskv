@@ -30,7 +30,7 @@ class RouteService{
     
 public:
 
-    explicit RouteService(RouteManager* route_manager);
+    explicit RouteService(RouteManager* route_manager, MetaCacheManager* meta_cache_manager);
     Status get_route(const GetRouteParam& param, ShardRoute* res) const;
 private:
     

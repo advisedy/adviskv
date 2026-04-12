@@ -17,7 +17,7 @@ grpc::Status SdmServiceImpl::PlaceTable(grpc::ServerContext* context,
         .shard_count = request->shard_count(),
     };
 
-    Status status = placement_service_->place_table(param, nullptr);
+    Status status = placement_service_->place_table(param);
 
     fill_base_rsp(response, status);
 

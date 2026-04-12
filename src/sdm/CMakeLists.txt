@@ -9,7 +9,6 @@ set(SDM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/service/placement_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/selector/node_selector/node_selector.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/selector/leader_selector/leader_selector.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/operation/placedb_operation.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/operation/placetable_operation.cpp
 
     # binary dir
