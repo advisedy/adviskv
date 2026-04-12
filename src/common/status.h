@@ -2,6 +2,7 @@
 #pragma once
 #include <cstdint>
 #include <fmt/format.h>
+#include <optional>
 #include <string>
 #include <fmt/core.h>
 
@@ -79,6 +80,8 @@ private:
     std::string msg_;
 
 };
+
+using StatusOr = std::optional<Status>;
 
 inline int32_t to_rpc_code(StatusCode code){
     return static_cast<int32_t>(code);

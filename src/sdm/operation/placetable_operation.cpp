@@ -16,6 +16,7 @@ std::string PlaceTableOperation::get_name() const {
 }
 
 Status PlaceTableOperation::execute() {
+    RETURN_IF_INVALID_PARAM(param_)
   PlaceTablePlan plan;
   Status status = build_plan(plan);
   RETURN_IF_INVALID_STATUS(status)
@@ -93,6 +94,7 @@ Status PlaceTableOperation::build_plan(PlaceTablePlan &plan) {
 
       shard_placement.replicas.emplace_back(std::move(replica_placement));
     }
+    plan.shard_placements.emplace_back(std::move(shard_placement));
   }
 
 
@@ -140,6 +142,8 @@ Status PlaceTableOperation::commit_plan(const PlaceTablePlan &plan) {
 
       route.replicas.emplace_back(replica_location);
     }
+    status = deps_.route_manager->update_route(route);
+    RETURN_IF_INVALID_STATUS(status)
   }
 
   // TODO:

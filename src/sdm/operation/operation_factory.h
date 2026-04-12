@@ -11,6 +11,7 @@
 #include "sdm/operation/placedb_operation.h"
 #include "sdm/service/placement_service.h"
 #include "sdm/operation/operation_deps.h"
+#include <optional>
 
 namespace adviskv{
 
@@ -28,18 +29,12 @@ class OperationFactory{
 public:
     explicit OperationFactory(OperationFactoryDeps deps):deps_(deps){}
 
-    Status create_place_table_operation(const PlaceTableParam& param, PlaceTableOperation& op){
-        RETURN_IF_INVALID_PARAM(param)
-        // op = PlaceTableOperation{param, build_place_table_operation_deps()};
-        Status status = op.init(param, build_place_table_operation_deps());
-        return status;
+    PlaceTableOperation create_place_table_operation(const PlaceTableParam& param){
+        return PlaceTableOperation{param, build_place_table_operation_deps()};
     }
 
-    Status create_place_db_operation(const PlaceDBParam& param, PlaceDBOperation& op){
-        RETURN_IF_INVALID_PARAM(param)
-        // op = PlaceTableOperation{param, build_place_table_operation_deps()};
-        Status status = op.init(param, build_place_db_operation_deps());
-        return status;
+    PlaceDBOperation create_place_db_operation(const PlaceDBParam& param){
+        return PlaceDBOperation{param, build_place_db_operation_deps()};
     }
 
 private:

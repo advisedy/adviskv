@@ -1,4 +1,5 @@
 #include "sdm/operation/placedb_operation.h"
+#include "common/define.h"
 #include "common/status.h"
 #include "meta/catalog/catalog_manager.h"
 #include "sdm/plan/placement_plan.h"
@@ -18,6 +19,7 @@ private:
 std::string PlaceDBOperation::get_name() const { return "PlaceDBOperation"; }
 
 Status PlaceDBOperation::execute() {
+  RETURN_IF_INVALID_PARAM(param_)
   PlaceDBPlan plan;
   Status status = build_plan(plan);
   RETURN_IF_INVALID_STATUS(status)

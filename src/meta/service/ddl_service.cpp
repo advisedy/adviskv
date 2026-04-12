@@ -115,7 +115,7 @@ Status SdmClient::call_place_table(const TableMeta& table_meta){
     grpc::Status status = sdm_client->PlaceTable(&context, request, &response);
 
     if(!status.ok()){
-        // return Status{StatusCode::ERROR, fmt::format("call sdm place_table failed, grpc code = {}, msg = {}", status.error_code(), status.error_message())};
+        return Status{StatusCode::ERROR, fmt::format("call sdm place_table failed, grpc code = {}, msg = {}", (int)status.error_code(), status.error_message())};
     }
 
     if(response.mutable_base_rsp()->code() != to_rpc_code(StatusCode::OK)){
@@ -137,7 +137,7 @@ Status SdmClient::call_place_db(const DBMeta& db_meta){
     grpc::Status status = sdm_client->PlaceDB(&context, request, &response);
 
     if(!status.ok()){
-        // return Status{StatusCode::ERROR, fmt::format("call sdm place_table failed, grpc code = {}, msg = {}", status.error_code(), status.error_message())};
+        return Status{StatusCode::ERROR, fmt::format("call sdm place_db failed, grpc code = {}, msg = {}", (int)status.error_code(), status.error_message())};
     }
 
     if(response.mutable_base_rsp()->code() != to_rpc_code(StatusCode::OK)){

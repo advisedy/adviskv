@@ -9,23 +9,23 @@
 #include "sdm/operation/operation_factory.h"
 namespace adviskv {
 
+
+PlacementService::PlacementService(OperationFactory* factorys):factory_(factorys){
+
+
+}
+
+
 Status PlacementService::place_table(const PlaceTableParam &param,
                                      TableMetaCache *table_meta_cache) {
-
-    PlaceTableOperation op;
-    Status status = factory_->create_place_table_operation(param, op);
-    RETURN_IF_INVALID_STATUS(status)
-    status = op.execute();
-    return status;
+    PlaceTableOperation op = factory_->create_place_table_operation(param);
+    return op.execute();
 
 }
 
 Status PlacementService::place_db(const PlaceDBParam& param, DBMetaCache* db_meta_cache){
-    PlaceDBOperation op;
-    Status status = factory_->create_place_db_operation(param, op);
-    RETURN_IF_INVALID_STATUS(status)
-    status = op.execute();
-    return status;  
+    PlaceDBOperation op = factory_->create_place_db_operation(param);
+    return op.execute();
 }
 
 

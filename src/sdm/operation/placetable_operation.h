@@ -11,13 +11,7 @@ namespace adviskv{
 class PlaceTableOperation : public IOperation{
 
 public:
-    PlaceTableOperation() = default;
-    // PlaceTableOperation(const PlaceTableParam& param, const PlaceTableOperationDeps& deps):param_(param), deps_(deps){}
-    Status init(const PlaceTableParam& param, const PlaceTableOperationDeps& deps){
-        deps_ = deps;
-        param_ = param;
-        return Status::OK();
-    }
+    PlaceTableOperation(const PlaceTableParam& param, const PlaceTableOperationDeps& deps):param_(param), deps_(deps){}
     Status execute() override;
     std::string get_name() const override;
 

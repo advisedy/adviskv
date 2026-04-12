@@ -45,7 +45,7 @@ class OperationFactory;
 class PlacementService{
 
 public:
-    explicit PlacementService(RouteManager* route_manager, NodeManager* node_manager);
+    explicit PlacementService(OperationFactory* factorys);
 
     Status place_table(const PlaceTableParam& param, TableMetaCache* table_meta_cache);
     Status place_db(const PlaceDBParam& param, DBMetaCache* db_meta_cache);
