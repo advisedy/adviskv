@@ -15,6 +15,10 @@ PlacementService::PlacementService(OperationFactory* factorys):factory_(factorys
 
 }
 
+PlacementServiceDeps PlacementService::get_deps() const{
+    return factory_->get_deps();
+}
+
 
 Status PlacementService::place_table(const PlaceTableParam &param,
                                      TableMetaCache *table_meta_cache) {
@@ -24,8 +28,10 @@ Status PlacementService::place_table(const PlaceTableParam &param,
 }
 
 Status PlacementService::place_db(const PlaceDBParam& param, DBMetaCache* db_meta_cache){
-    PlaceDBOperation op = factory_->create_place_db_operation(param);
-    return op.execute();
+
+    Status status = get_deps().meta_cache_manager->update_db_meta(DBMetaCache{.db_name = param.db_name, .db_id = param.db_id, .zone = param.zone});
+     return status;
+
 }
 
 

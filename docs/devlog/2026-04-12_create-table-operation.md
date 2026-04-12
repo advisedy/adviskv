@@ -26,3 +26,11 @@
 
 之后考虑应该把这个创建算子的部分写成宏，不然每一次都是这种=又臭又长，感觉太丑了。
 
+
+// 4.13 凌晨
+
+现在又搞了个PlaceDBOperation，现在又觉得这个样子有点冗余了。
+现在做出一些规定:
+- 在PlacementService里面添加了个get_deps的函数，可以直接获取到manager，这个基本上应该是全部的manager，因为设计里面是OperationFactory的deps是全部的manager
+- 对于Param，只有Service可以接口里有这个类，对于manager来说只可以使用比较基本的类来当做参数(selector的话打算后续改成Option)
+

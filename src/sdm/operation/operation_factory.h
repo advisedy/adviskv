@@ -8,7 +8,7 @@
 #include "common/define.h"
 #include "common/status.h"
 #include "sdm/operation/placetable_operation.h"
-#include "sdm/operation/placedb_operation.h"
+
 #include "sdm/service/placement_service.h"
 #include "sdm/operation/operation_deps.h"
 #include <optional>
@@ -29,13 +29,14 @@ class OperationFactory{
 public:
     explicit OperationFactory(OperationFactoryDeps deps):deps_(deps){}
 
+    OperationFactoryDeps get_deps() const {
+        return deps_;
+    }
+
     PlaceTableOperation create_place_table_operation(const PlaceTableParam& param){
         return PlaceTableOperation{param, build_place_table_operation_deps()};
     }
 
-    PlaceDBOperation create_place_db_operation(const PlaceDBParam& param){
-        return PlaceDBOperation{param, build_place_db_operation_deps()};
-    }
 
 private:
 
@@ -49,11 +50,6 @@ private:
         return deps;
     }
 
-    PlaceDBOperationDeps build_place_db_operation_deps(){
-        PlaceDBOperationDeps deps;
-        deps.meta_cache_manager = deps_.meta_cache_manager;
-        return deps;
-    }
 
 private:
     OperationFactoryDeps deps_;

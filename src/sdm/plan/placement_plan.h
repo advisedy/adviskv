@@ -102,18 +102,4 @@ public:
 };
 
 
-class PlaceDBPlan : public IPlan{
-public:
-    std::string db_name;
-    DatabaseID db_id;
-    std::string zone;
-    Status validate() const override {
-        RETURN_IF_INVALID_CONDITION(db_id != -1,
-                                    "db_id should be valid");
-        RETURN_IF_INVALID_CONDITION(!db_name.empty(),
-                                    "db_name should not be empty");
-        return Status::OK();
-    }    
-};
-
 } // namespace adviskv

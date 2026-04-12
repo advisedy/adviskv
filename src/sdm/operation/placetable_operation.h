@@ -1,7 +1,8 @@
 #pragma once
 
 #include "sdm/plan/placement_plan.h"
-#include "sdm/service/placement_service.h"
+#include "sdm/model/service_param.h"
+
 #include "sdm/operation/ioperation.h"
 #include "sdm/operation/operation_deps.h"
 #include "sdm/plan/placement_plan.h"

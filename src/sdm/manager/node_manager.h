@@ -16,16 +16,8 @@ namespace adviskv{
 
 
 
-struct RegisterNodeParam{
-    NodeID node_id;
-    std::string ip;
-    int32_t port;
-    std::string zone;
-};
+
     
-struct ListNodesParam{
-    std::string zone;
-};
 
 // struct FilterBetterNodesParam{
 //     int32_t shard_count;
@@ -40,10 +32,10 @@ class NodeManager{
 
 public:
     NodeManager() = default;
-    Status add_node(const pb::NodeInfo& node_info);
 
-    Status register_node(const RegisterNodeParam& param, NodeMeta* node_meta);
-    Status list_nodes(const ListNodesParam& param, std::vector<NodeMeta>* node_list) const;
+
+    Status register_node(const NodeID& node_id,const std::string& ip, int32_t port, const std::string& zone, NodeMeta* node_meta);
+    Status list_nodes(const std::string& zone, std::vector<NodeMeta>* node_list) const;
     Status list_nodes_stats_by_zone(const std::string& zone, std::vector<NodeStats>* node_list) const;
 
     Status update_node_owned_replica_count(NodeID node_id, int32_t delta_value);

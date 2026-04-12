@@ -1,7 +1,7 @@
 #pragma once
 #include "common/status.h"
 #include "sdm/manager/node_manager.h"
-
+#include "sdm/model/service_param.h"
 namespace adviskv {
 
 
