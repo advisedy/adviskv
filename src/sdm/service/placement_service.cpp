@@ -41,6 +41,8 @@ Status PlacementService::place_table(const PlaceTableParam &param,
         status = node_manager_->get_node_list_stats(replica_nodes, &replica_node_stats);
         RETURN_IF_INVALID_STATUS(status)
         status = leader_selector_->select_leader(replica_node_stats, leader);
+        RETURN_IF_INVALID_STATUS(status)
+        leaders.emplace_back(leader);
     }
 
   // 调用storage的接口，要求这些node去创建replica

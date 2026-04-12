@@ -77,11 +77,11 @@ private:
     SdmClientStub stub_;
 };
 
-class DdlSerivce{
+class DdlService{
 
 public:
 
-    explicit DdlSerivce(CatalogManager* catalog_manager, SdmClient* sdm_client);
+    explicit DdlService(CatalogManager* catalog_manager, SdmClient* sdm_client);
 
     //负责一些会涉及到catalog和sdm的操作
     Status create_table(const CreateTableParam& param, TableMeta* table_meta);

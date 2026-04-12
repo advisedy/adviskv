@@ -15,7 +15,7 @@ RouteService::RouteService(RouteManager* route_manager){
 }
 
 
-Status RouteService::get_route(const GetRouteparam& param, ShardRoute* res) const{
+Status RouteService::get_route(const GetRouteParam& param, ShardRoute* res) const{
 
     RETURN_IF_INVALID_PARAM(param)
 

@@ -9,7 +9,7 @@
 namespace adviskv{
 
 
-DdlSerivce::DdlSerivce(CatalogManager* catalog_manager, SdmClient* sdm_client){
+DdlService::DdlService(CatalogManager* catalog_manager, SdmClient* sdm_client){
     catalog_manager_ = catalog_manager;
     sdm_client_ = sdm_client;
 }   
@@ -22,7 +22,7 @@ DdlSerivce::DdlSerivce(CatalogManager* catalog_manager, SdmClient* sdm_client){
     Status get_table(const GetTableParam& param, TableMeta& table_meta);
 */
 
-Status DdlSerivce::create_table(const CreateTableParam& param, TableMeta* table_meta){
+Status DdlService::create_table(const CreateTableParam& param, TableMeta* table_meta){
 
     // 这种句式应该也可以搞一个宏定义
     // if(Status status = CreateTableParam::validate(param); status.fail()){
@@ -54,7 +54,7 @@ Status DdlSerivce::create_table(const CreateTableParam& param, TableMeta* table_
 
 }
 
-Status DdlSerivce::create_db(const CreateDBParam& param, DBMeta* db_meta){
+Status DdlService::create_db(const CreateDBParam& param, DBMeta* db_meta){
     // if(Status status = CreateDBParam::validate(param); status.fail()){
     //     return status;
     // }
@@ -72,7 +72,7 @@ Status DdlSerivce::create_db(const CreateDBParam& param, DBMeta* db_meta){
     return catalog_manager_->create_db(meta_param, db_meta);
 }
 
-Status DdlSerivce::get_table(const GetTableParam& param, TableMeta* table_meta){
+Status DdlService::get_table(const GetTableParam& param, TableMeta* table_meta){
     // if(Status status = GetTableParam::validate(param); status.fail()){
     //     return status;
     // }

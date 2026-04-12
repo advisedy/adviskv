@@ -9,7 +9,7 @@
 
 namespace adviskv {
 
-MetaServiceImpl::MetaServiceImpl(DdlSerivce *ddl_service,
+MetaServiceImpl::MetaServiceImpl(DdlService *ddl_service,
                                  CatalogManager *catalog_manager)
     : ddl_service_(ddl_service), catalog_manager_(catalog_manager) {}
 

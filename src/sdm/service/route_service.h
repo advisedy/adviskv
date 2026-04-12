@@ -13,7 +13,7 @@
 
 namespace adviskv{
 
-struct GetRouteparam{
+struct GetRouteParam{
     std::string db_name;
     std::string table_name;
     Key key;
@@ -31,7 +31,7 @@ class RouteService{
 public:
 
     explicit RouteService(RouteManager* route_manager);
-    Status get_route(const GetRouteparam& param, ShardRoute* res) const;
+    Status get_route(const GetRouteParam& param, ShardRoute* res) const;
 private:
     
     int32_t calc_shard_id(Key key, int32_t shard_count) const;

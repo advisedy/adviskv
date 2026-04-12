@@ -9,7 +9,7 @@
 
 namespace adviskv{
 
-class DdlSerivce;
+class DdlService;
 class CatalogManager;
 
 class MetaServiceImpl final : public rpc::MetaService::Service{
@@ -17,7 +17,7 @@ class MetaServiceImpl final : public rpc::MetaService::Service{
 public:
 
     MetaServiceImpl() = default;
-    MetaServiceImpl(DdlSerivce* ddl_service, CatalogManager* catalog_manager);
+    MetaServiceImpl(DdlService* ddl_service, CatalogManager* catalog_manager);
 
     grpc::Status CreateTable(grpc::ServerContext* context,
                         const rpc::CreateTableRequest* request,
@@ -34,7 +34,7 @@ public:
 
 private:
         // std::unique_ptr<CatalogManager> catalog_manager_{std::make_unique<CatalogManager>()};
-    DdlSerivce* ddl_service_;
+    DdlService* ddl_service_;
     CatalogManager* catalog_manager_;
 };
 
