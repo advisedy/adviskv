@@ -16,6 +16,7 @@ public:
     Status init(const PlaceTableParam& param, const PlaceTableOperationDeps& deps){
         deps_ = deps;
         param_ = param;
+        return Status::OK();
     }
     Status execute() override;
     std::string get_name() const override;

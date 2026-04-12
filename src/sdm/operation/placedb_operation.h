@@ -16,6 +16,7 @@ PlaceDBOperation() = default;
     Status init(const PlaceDBParam& param, const PlaceDBOperationDeps& deps){
         deps_ = deps;
         param_ = param;
+        return Status::OK();
     }
     Status execute() override;
     std::string get_name() const override;
