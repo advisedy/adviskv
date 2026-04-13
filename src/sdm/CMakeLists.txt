@@ -7,6 +7,7 @@ set(SDM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/handler/sdm_service_impl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/service/route_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/service/placement_service.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/service/node_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/selector/node_selector/node_selector.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/selector/leader_selector/leader_selector.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/operation/placetable_operation.cpp

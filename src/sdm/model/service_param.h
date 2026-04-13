@@ -47,8 +47,28 @@ struct RegisterNodeParam{
     std::string ip;
     int32_t port;
     std::string zone;
+    Status validate()const{
+        RETURN_IF_INVALID_CONDITION(!node_id.empty(), "node_id should not empty")
+        RETURN_IF_INVALID_CONDITION(!ip.empty(), "ip should not empty")
+        RETURN_IF_INVALID_CONDITION(port > 0 , "port should > 0")
+        return Status::OK();
+    }
 };
 
+
+//route service
+
+struct GetRouteParam{
+    std::string db_name;
+    std::string table_name;
+    Key key;
+
+    Status validate()const{
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
+        return Status::OK();
+    }
+};
 
 
 

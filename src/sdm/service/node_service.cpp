@@ -5,6 +5,9 @@
 
 namespace adviskv {
 
+NodeService::NodeService(NodeManager *node_manager)
+    : node_manager_(node_manager) {}
+
 Status NodeService::register_node(const RegisterNodeParam &param) {
 
   NodeMeta node_meta;

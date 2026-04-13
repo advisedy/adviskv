@@ -22,9 +22,8 @@ namespace adviskv{
         RouteManager* route_manager;
         NodeSelector* node_selector;
         LeaderSelector* leader_selector;
+        
     };
-    
-    
     
     
     struct PlaceTableOperationDeps{
@@ -35,9 +34,5 @@ namespace adviskv{
         LeaderSelector* leader_selector;    
     };
 
-
-    struct PlaceDBOperationDeps{
-        MetaCacheManager* meta_cache_manager;
-    };
 
 }

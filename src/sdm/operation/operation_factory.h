@@ -16,22 +16,11 @@
 namespace adviskv{
 
 
-
-
-#define DEFINE_OPERATION(OpType, name, ParamType) \
-    public:     \
-        OpType create_##name(const ParamType& param); \
-    private:    \
-        Optype##Deps build_##name##_deps();
-
 class OperationFactory{
 
 public:
     explicit OperationFactory(OperationFactoryDeps deps):deps_(deps){}
 
-    OperationFactoryDeps get_deps() const {
-        return deps_;
-    }
 
     PlaceTableOperation create_place_table_operation(const PlaceTableParam& param){
         return PlaceTableOperation{param, build_place_table_operation_deps()};
