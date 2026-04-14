@@ -28,9 +28,14 @@
 
 
 // 4.13 凌晨
-
 现在又搞了个PlaceDBOperation，现在又觉得这个样子有点冗余了。
 现在做出一些规定:
 - 在PlacementService里面添加了个get_deps的函数，可以直接获取到manager，这个基本上应该是全部的manager，因为设计里面是OperationFactory的deps是全部的manager
 - 对于Param，只有Service可以接口里有这个类，对于manager来说只可以使用比较基本的类来当做参数(selector的话打算后续改成Option)
+
+
+//4.14 早
+目前打算先推进两个
+- 把给key用shard_count取模改成，在table里存放key_range，以后用这个来定位
+- 筹备sdksdk，等到这个完成了，storage侧就可以上报心跳，以及执行add_replica操作
 
