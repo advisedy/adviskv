@@ -30,4 +30,16 @@
 // 4.15 
 目前对于架构要有一次大改了，之前的manager应该都不用了，关于sdm的操作其实service + background_task + 底层的sdm_store就基本能干的差不多了。
 之前设计的operation， plan有点过度设计了。
+
+
+// 晚上:
+
+目前正在写心跳task。
+这个task主要是用来检测各个node的心跳的。
+由于node是和resource pool绑定在一起的，所以我们直接枚举pool里面的nodes。
+
+对于一个node来说，首先他们在注册的时候会用到我们sdm这边的sdsdk，这个里面应该会内置一个心跳发送，设置成每一秒就发送消息。
+然后这边对于心跳来说，主要有两个，一个是接受Handler侧，一个是这边的检测。 
+检测方会对于node的状态进行判断，第一版的内容应该只是涉及是否将这个node去掉。
+然后Handler侧那边就是实时更新Node的状态，至于检测交给了检测方心跳Task去做。
  

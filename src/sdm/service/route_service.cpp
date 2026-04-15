@@ -20,14 +20,18 @@ RouteService::RouteService(SdmStore* sdm_store):sdm_store_(sdm_store){
 Status RouteService::get_route(const GetRouteParam& param, ShardRoute* res) const{
 
     RETURN_IF_INVALID_PARAM(param)
-    Table table;
-    Status status = sdm_store_->get_table_by_name(param.db_name, param.table_name, &table);
+    std::shared_ptr<Table> table;
+    Status status = sdm_store_->get_table_by_name(param.db_name, param.table_name, table);
     RETURN_IF_INVALID_STATUS(status)
 
 
-    ShardID shard_id = calc_shard_id(table, param.key);
-    status = sdm_store_->get_shard_route(table.table_id, shard_id, res);
+    ShardID shard_id = calc_shard_id(*table, param.key);
+    std::shared_ptr<ShardRoute> route;
+    status = sdm_store_->get_shard_route(table->table_id, shard_id, route);
     RETURN_IF_INVALID_STATUS(status)
+    if(res){   
+        *res = *route;
+    }
 
     return status;
 }
