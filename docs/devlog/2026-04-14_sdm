@@ -43,3 +43,6 @@
 检测方会对于node的状态进行判断，第一版的内容应该只是涉及是否将这个node去掉。
 然后Handler侧那边就是实时更新Node的状态，至于检测交给了检测方心跳Task去做。
  
+// 次日凌晨
+
+现在大概是还差一个ReplicaScheduler，可以用来调度node到各个replica上去。

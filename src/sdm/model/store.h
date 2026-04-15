@@ -135,7 +135,7 @@ using TablePtr = std::shared_ptr<Table>;
 struct RouteEntry {
     ReplicaKey replica_key;
     NodeID node_id;
-    std::string ip;
+    std::string sp;
     int32_t port{0};
 };
 

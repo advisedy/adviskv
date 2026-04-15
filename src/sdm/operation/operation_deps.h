@@ -16,23 +16,23 @@ namespace adviskv{
 
 
 
-    struct OperationFactoryDeps{
-        MetaCacheManager* meta_cache_manager;
-        NodeManager* node_manager;
-        RouteManager* route_manager;
-        NodeSelector* node_selector;
-        LeaderSelector* leader_selector;
+    // struct OperationFactoryDeps{
+    //     MetaCacheManager* meta_cache_manager;
+    //     NodeManager* node_manager;
+    //     RouteManager* route_manager;
+    //     NodeSelector* node_selector;
+    //     LeaderSelector* leader_selector;
         
-    };
+    // };
     
     
-    struct PlaceTableOperationDeps{
-        MetaCacheManager* meta_cache_manager;
-        NodeManager* node_manager;
-        RouteManager* route_manager;
-        NodeSelector* node_selector;
-        LeaderSelector* leader_selector;    
-    };
+    // struct PlaceTableOperationDeps{
+    //     MetaCacheManager* meta_cache_manager;
+    //     NodeManager* node_manager;
+    //     RouteManager* route_manager;
+    //     NodeSelector* node_selector;
+    //     LeaderSelector* leader_selector;    
+    // };
 
 
 }

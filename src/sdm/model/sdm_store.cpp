@@ -8,4 +8,8 @@ Status SdmStore::put_table(const Table& table){
     return Status{StatusCode::NOT_SUPPORTED};
 }
 
+Status SdmStore::put_shard_route(const ShardRoute& route){
+    return Status{StatusCode::NOT_SUPPORTED};
+}
+
 }

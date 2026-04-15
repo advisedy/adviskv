@@ -34,6 +34,7 @@ void HeartBeatCheckTask::run(){
         return;
     }
 
+    // 枚举资源池里面的每一个node，然后开始检测node的状态
     for(ResourcePoolPtr& one: pools){
 
         const std::vector<NodeID>& node_ids = one->nodes;
@@ -106,12 +107,17 @@ Status HeartBeatCheckTask::mark_node_offline(Node& node){
     Status status = Status::OK();
     node.state.status = NodeStatus::OFFLINE;
     for(const ReplicaKey& replica_key : node.replicas){
-        ReplicaPtr replica_ptr;
-        status = sdm_store_->get_replica(replica_key, replica_ptr);
+        
+        // 更换逻辑，直接在store里面删除replica，会在CapacityChecker那边补上
+        status  = sdm_store_->del_replica(replica_key);
         RETURN_IF_INVALID_STATUS(status)
-        replica_ptr->state.status = ReplicaStatus::LOST;
-        replica_ptr->state.assign_node_id = "";
-        replica_ptr->state.endpoint = {};
+
+        // ReplicaPtr replica_ptr;
+        // status = sdm_store_->get_replica(replica_key, replica_ptr);
+        // RETURN_IF_INVALID_STATUS(status)
+        // replica_ptr->state.status = ReplicaStatus::LOST;
+        // replica_ptr->state.assign_node_id = "";
+        // replica_ptr->state.endpoint = {};
     }
     node.replicas.clear();
     return status;
