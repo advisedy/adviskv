@@ -8,7 +8,6 @@
 
 namespace adviskv::sdm{
 
-class MetaStore;
 
 class TableService{
 

@@ -5,16 +5,17 @@
 #include "common/type.h"
 #include "sdm.grpc.pb.h"
 #include "sdm/service/placement_service.h"
+#include "sdm/service/table_service.h"
 #include <grpcpp/server_context.h>
 #include <grpcpp/support/status.h>
 #include <memory>
-namespace adviskv {
+namespace adviskv::sdm {
+    
 
 class SdmServiceImpl final : public rpc::ShardingManagerService::Service {
 
 public:
-  explicit SdmServiceImpl(PlacementService *placement_service)
-      : placement_service_(placement_service) {}
+  explicit SdmServiceImpl();
 
 #define DEFINE_METHOD(method_name)                                             \
   grpc::Status method_name(grpc::ServerContext *context,                       \
@@ -27,7 +28,7 @@ public:
 #undef DEFINE_METHOD
 
 private:
-  std::unique_ptr<PlacementService> placement_service_;
+    TableService* table_service_;
 };
 
 } // namespace adviskv

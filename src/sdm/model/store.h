@@ -10,7 +10,7 @@
 
 namespace adviskv::sdm{
 
-using PlaceTableParam = rpc::PlaceTableRequest;
+// using PlaceTableParam = rpc::PlaceTableRequest;
 
 struct Endpoint{
     std::string ip;

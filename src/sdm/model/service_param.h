@@ -6,7 +6,7 @@
 #include "common/type.h"
 #include <cstdint>
 #include <string>
-namespace adviskv {
+namespace adviskv::sdm {
 
 // Placement Param
 struct PlaceTableParam {
