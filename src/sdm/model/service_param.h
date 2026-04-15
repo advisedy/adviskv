@@ -16,7 +16,7 @@ struct PlaceTableParam {
   std::string table_name;
   int32_t replica_count;
   int32_t shard_count;
-
+  std::string resource_pool;
   Status validate() const {
     RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
     RETURN_IF_INVALID_CONDITION(!table_name.empty(),
@@ -46,7 +46,8 @@ struct RegisterNodeParam{
     NodeID node_id;
     std::string ip;
     int32_t port;
-    std::string zone;
+    std::string resource_pool;
+    std::string dc;
     Status validate()const{
         RETURN_IF_INVALID_CONDITION(!node_id.empty(), "node_id should not empty")
         RETURN_IF_INVALID_CONDITION(!ip.empty(), "ip should not empty")

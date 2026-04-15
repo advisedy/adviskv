@@ -10,7 +10,7 @@
 #include "common/define.h"
 #include "sdm.grpc.pb.h"
 
-namespace adviskv{
+namespace adviskv::meta {
 
 struct SdmClient;
 

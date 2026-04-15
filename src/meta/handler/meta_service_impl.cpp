@@ -7,7 +7,7 @@
 #include <grpcpp/support/status.h>
 #include <memory>
 
-namespace adviskv {
+namespace adviskv::meta {
 
 MetaServiceImpl::MetaServiceImpl(DdlService *ddl_service,
                                  CatalogManager *catalog_manager)

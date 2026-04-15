@@ -7,7 +7,7 @@
 #include "sdm.grpc.pb.h"
 #include "sdm.pb.h"
 
-namespace adviskv{
+namespace adviskv::meta {
 
 
 DdlService::DdlService(CatalogManager* catalog_manager, SdmClient* sdm_client){

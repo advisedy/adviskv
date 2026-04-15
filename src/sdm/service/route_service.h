@@ -8,8 +8,11 @@
 
 #include "sdm/manager/route_manager.h"
 #include <cstdint>
+#include "sdm/model/sdm_store.h"
 #include "sdm/model/service_param.h"
-namespace adviskv{
+#include "sdm/model/store.h"
+
+namespace adviskv::sdm{
 
 
 
@@ -17,15 +20,16 @@ class RouteService{
     
 public:
 
-    explicit RouteService(RouteManager* route_manager, MetaCacheManager* meta_cache_manager);
+    explicit RouteService(SdmStore* sdm_store);
     Status get_route(const GetRouteParam& param, ShardRoute* res) const;
 private:
     
-    int32_t calc_shard_id(Key key, int32_t shard_count) const;
+    int32_t calc_shard_id(const Table& table, Key key) const;
 
 
-    RouteManager* route_manager_;
-    MetaCacheManager* meta_cache_manager_;
+    // RouteManager* route_manager_;
+    // MetaCacheManager* meta_cache_manager_;
+    SdmStore* sdm_store_;
 };
 
 }

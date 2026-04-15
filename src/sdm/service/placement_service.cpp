@@ -14,17 +14,21 @@ PlacementService::PlacementService(OperationFactory *factorys,
     : factory_(factorys), meta_cache_manager_(meta_cache_manager) {}
 
 Status PlacementService::place_table(const PlaceTableParam &param) {
-  PlaceTableOperation op = factory_->create_place_table_operation(param);
-  return op.execute();
+//   PlaceTableOperation op = factory_->create_place_table_operation(param);
+//   return op.execute();
+
+    
+
 }
 
 Status PlacementService::place_db(const PlaceDBParam &param) {
-  if (!meta_cache_manager_) {
-    return Status{StatusCode::ERROR, "meta_cache_manager is nullptr"};
-  }
-  Status status = meta_cache_manager_->update_db_meta(DBMetaCache{
-      .db_name = param.db_name, .db_id = param.db_id, .zone = param.zone});
-  return status;
+//   if (!meta_cache_manager_) {
+//     return Status{StatusCode::ERROR, "meta_cache_manager is nullptr"};
+//   }
+//   Status status = meta_cache_manager_->update_db_meta(DBMetaCache{
+//       .db_name = param.db_name, .db_id = param.db_id, .zone = param.zone});
+//   return status;
+    return Status{StatusCode::NOT_SUPPORTED, ""};
 }
 
 } // namespace adviskv

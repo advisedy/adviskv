@@ -7,7 +7,7 @@
 
 
 
-namespace adviskv{
+namespace adviskv::meta {
 
 class DdlService;
 class CatalogManager;

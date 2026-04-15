@@ -25,6 +25,8 @@ message RegisterNodeRequest{
     string node_id = 1;
     string ip = 2;
     int32 port = 3;
+    string resource_pool = 4;
+    string dc = 5;
 }
 
 message RegisterNodeResponse{
@@ -38,6 +40,7 @@ message PlaceTableRequest{
     string table_name = 4;
     int32 shard_count = 5;
     int32 replica_count = 6;
+    string resource_pool = 7;
 }
 
 message PlaceTableResponse{

@@ -23,4 +23,11 @@
 而且关于之前的这个架构设计，应该是要改变了，operation的设计貌似有点鸡肋了放到现在思考的话。
 以后在设计的时候还是先考虑清楚现在的组内的架构设计是啥样的吧。
 
+// wan shang
 
+所以对于createTable来说，就应该直接创建出来table，然后就够了。
+
+// 4.15 
+目前对于架构要有一次大改了，之前的manager应该都不用了，关于sdm的操作其实service + background_task + 底层的sdm_store就基本能干的差不多了。
+之前设计的operation， plan有点过度设计了。
+ 

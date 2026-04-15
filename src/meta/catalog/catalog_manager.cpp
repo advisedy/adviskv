@@ -9,7 +9,7 @@
 #include <string>
 #include <string_view>
 
-namespace adviskv {
+namespace adviskv::meta {
 
 Status CatalogManager::create_db(const CreateDBMetaParam &param,
                                  DBMeta *db_meta) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/type.h"
+#include <cstdint>
 #include <string>
 
 namespace adviskv {
@@ -35,5 +36,8 @@ struct DBMetaCache {
   DatabaseID db_id;
   std::string zone;
 };
+
+
+
 
 } // namespace adviskv

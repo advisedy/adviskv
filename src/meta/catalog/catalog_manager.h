@@ -10,7 +10,7 @@
 #include "common/type.h"
 #include "common/status.h"
 
-namespace adviskv{
+namespace adviskv::meta {
 
 enum class TableState{
     ADDING = 1,
