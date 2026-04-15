@@ -1,28 +1,28 @@
-#pragma once
+// #pragma once
 
-#include "common/status.h"
-#include "sdm/manager/meta_cache_manager.h"
-#include "sdm/model/service_param.h"
-#include "sdm/operation/operation_deps.h"
+// #include "common/status.h"
+// #include "sdm/manager/meta_cache_manager.h"
+// #include "sdm/model/service_param.h"
+// #include "sdm/operation/operation_deps.h"
 
-namespace adviskv {
+// namespace adviskv {
 
-class OperationFactory;
+// class OperationFactory;
 
 
 
-class PlacementService {
+// class PlacementService {
 
-public:
-  PlacementService(OperationFactory *factorys, MetaCacheManager* meta_cache_manager);
+// public:
+//   PlacementService(OperationFactory *factorys, MetaCacheManager* meta_cache_manager);
 
-  Status place_table(const PlaceTableParam &param);
-  Status place_db(const PlaceDBParam &param);
+//   Status place_table(const PlaceTableParam &param);
+//   Status place_db(const PlaceDBParam &param);
 
-private:
+// private:
 
-  OperationFactory *factory_;
-  MetaCacheManager* meta_cache_manager_;
-};
+//   OperationFactory *factory_;
+//   MetaCacheManager* meta_cache_manager_;
+// };
 
-} // namespace adviskv
+// } // namespace adviskv
