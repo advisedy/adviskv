@@ -15,10 +15,16 @@ mkdir build/generated
   proto/sdm.proto
 
 
+find ./src/sdm -name '*.h' -o -name '*.cpp' | xargs clang-format -i
+
+
   #################
   todo: 
   - TableMeta，DBMeta里面加上个时间戳
   - 有些DB里面还没有放zone的概念
+
+
+
 
 meta: 负责元数据，以及提供一些create_table，create_db这样的接口。 sdk侧会调用create_table的函数，然后meta会先在这里创建之后，通知sdm会对于这个新创建的table进行node的分配等操作。其余的暂时先没列出来。
 

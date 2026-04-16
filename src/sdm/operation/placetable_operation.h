@@ -12,9 +12,9 @@
 // class PlaceTableOperation : public IOperation{
 
 // public:
-//     PlaceTableOperation(const PlaceTableParam& param, const PlaceTableOperationDeps& deps):param_(param), deps_(deps){}
-//     Status execute() override;
-//     std::string get_name() const override;
+//     PlaceTableOperation(const PlaceTableParam& param, const
+//     PlaceTableOperationDeps& deps):param_(param), deps_(deps){} Status
+//     execute() override; std::string get_name() const override;
 
 // private:
 
@@ -25,6 +25,5 @@
 //     PlaceTableParam param_;
 
 // };
-
 
 // }

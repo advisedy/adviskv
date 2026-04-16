@@ -37,7 +37,4 @@
 // //   std::string zone;
 // // };
 
-
-
-
 // } // namespace adviskv

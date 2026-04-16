@@ -1,22 +1,21 @@
 #pragma once
-#include "common/type.h"
-#include "meta.pb.h"
-#include "meta/service/ddl_service.h"
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "common/type.h"
+#include "meta.pb.h"
+#include "meta/service/ddl_service.h"
 
-namespace adviskv::sdm{
+namespace adviskv::sdm {
 
 // using PlaceTableParam = rpc::PlaceTableRequest;
 
-struct Endpoint{
+struct Endpoint {
     std::string ip;
     int32_t port;
 };
-
 
 //////////////////////////////
 // resource_pool
@@ -39,29 +38,29 @@ enum class ReplicaStatus {
     ERROR = 5,
 };
 
-enum class ReplicaRole{
+enum class ReplicaRole {
     LEADER = 1,
     FOLLOWER = 2,
 };
 
-struct ReplicaKey{
+struct ReplicaKey {
     TableID table_id;
     ShardID shard_id;
     int32_t replica_index;
 };
 
-struct ReplicaSpec{
+struct ReplicaSpec {
     std::string dc;
 };
 
-struct ReplicaState{
+struct ReplicaState {
     NodeID assign_node_id{""};
     Endpoint endpoint;
     ReplicaStatus status{ReplicaStatus::PENDING};
     ReplicaRole role;
 };
 
-struct Replica{
+struct Replica {
     ReplicaKey replica_key;
     ReplicaSpec spec;
     ReplicaState state;
@@ -72,19 +71,18 @@ using ReplicaPtr = std::shared_ptr<Replica>;
 //////////////////////////////
 // node
 
-enum class NodeStatus{
+enum class NodeStatus {
     ONLINE = 1,
     OFFLINE = 2,
     SUSPECT = 3,
 };
 
-
-struct NodeSpec{
+struct NodeSpec {
     std::string resource_pool;
     std::string dc;
 };
 
-struct NodeState{
+struct NodeState {
     Endpoint endpoint;
     int32_t owned_replica_count{0};
     int32_t leader_count{0};
@@ -92,22 +90,22 @@ struct NodeState{
     NodeStatus status;
 };
 
-struct Node{
+struct Node {
     NodeID id;
     NodeSpec spec;
     NodeState state;
     std::vector<ReplicaKey> replicas;
 };
 
-using NodePtr = std::shared_ptr<Node>; 
+using NodePtr = std::shared_ptr<Node>;
 //////////////////////////////
 // table
 
-enum class TableStatus{
+enum class TableStatus {
     CREATEING = 1,
 };
 
-struct TableSpec{
+struct TableSpec {
     std::string table_name;
     DatabaseID db_id;
     std::string db_name;
@@ -116,18 +114,17 @@ struct TableSpec{
     std::string resource_pool;
 };
 
-struct TableState{
+struct TableState {
     TableStatus status;
 };
 
-struct Table{
+struct Table {
     TableID table_id;
     TableSpec spec;
     TableState state;
 };
 
 using TablePtr = std::shared_ptr<Table>;
-
 
 //////////////////////////////
 // shard_route
@@ -147,4 +144,4 @@ struct ShardRoute {
 
 using ShardRoutePtr = std::shared_ptr<ShardRoute>;
 
-}
+}  // namespace adviskv::sdm

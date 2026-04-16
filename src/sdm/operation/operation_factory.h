@@ -9,23 +9,21 @@
 // #include "common/status.h"
 // #include "sdm/operation/placetable_operation.h"
 
-
 // #include "sdm/operation/operation_deps.h"
 // #include <optional>
 
 // namespace adviskv{
-
 
 // class OperationFactory{
 
 // public:
 //     explicit OperationFactory(OperationFactoryDeps deps):deps_(deps){}
 
-
-//     PlaceTableOperation create_place_table_operation(const PlaceTableParam& param){
-//         return PlaceTableOperation{param, build_place_table_operation_deps()};
+//     PlaceTableOperation create_place_table_operation(const PlaceTableParam&
+//     param){
+//         return PlaceTableOperation{param,
+//         build_place_table_operation_deps()};
 //     }
-
 
 // private:
 
@@ -39,11 +37,9 @@
 //         return deps;
 //     }
 
-
 // private:
 //     OperationFactoryDeps deps_;
 
 // };
-
 
 // }

@@ -18,11 +18,11 @@ namespace adviskv::sdm {
 
 // }
 
-Status DefaultLeaderSelector::select_leader(const std::vector<NodePtr> &nodes,
-                                            NodePtr &leader) const {
-  RETURN_IF_INVALID_CONDITION(!nodes.empty(), "nodes should not be empty")
-  leader = nodes[0];
-  return Status::OK();
+Status DefaultLeaderSelector::select_leader(const std::vector<NodePtr>& nodes,
+                                            NodePtr& leader) const {
+    RETURN_IF_INVALID_CONDITION(!nodes.empty(), "nodes should not be empty")
+    leader = nodes[0];
+    return Status::OK();
 }
 
-} // namespace adviskv::sdm
+}  // namespace adviskv::sdm

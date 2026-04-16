@@ -27,9 +27,9 @@
 
 // Status PlaceTableOperation::build_plan(PlaceTablePlan &plan) {
 
-
 //   // 首先列出来所有可以用的node，然后择优选择出来最终的nodes
-//   // 然后给这些node要求它们去创建replica，最后更新route_manager里的TableMetaCache
+//   //
+//   然后给这些node要求它们去创建replica，最后更新route_manager里的TableMetaCache
 
 //   plan.db_id = param_.db_id;
 //   plan.db_name = param_.db_name;
@@ -97,14 +97,10 @@
 //     plan.shard_placements.emplace_back(std::move(shard_placement));
 //   }
 
-
-
 //   return Status::OK();
 // }
 
 // Status PlaceTableOperation::commit_plan(const PlaceTablePlan &plan) {
-
-
 
 //   Status status = deps_.meta_cache_manager->update_table_meta(
 //       TableMetaCache{.db_name = plan.db_name,
@@ -118,7 +114,8 @@
 //   // TODO  这里如果失败了，得回滚
 
 //   for (const ShardPlacement &shard_placement : plan.shard_placements) {
-//     for (const ReplicaPlacement &replica_placement : shard_placement.replicas) {
+//     for (const ReplicaPlacement &replica_placement :
+//     shard_placement.replicas) {
 //       Status status = deps_.node_manager->update_node_owned_replica_count(
 //           replica_placement.node_id, 1);
 //       RETURN_IF_INVALID_STATUS(status)
@@ -130,7 +127,8 @@
 //     ShardRoute route;
 //     route.table_id = plan.table_id;
 //     route.shard_id = i;
-//     for (int j = 0, j_lim = plan.shard_placements[i].replicas.size(); j < j_lim; j++) {
+//     for (int j = 0, j_lim = plan.shard_placements[i].replicas.size(); j <
+//     j_lim; j++) {
 //       ReplicaLocation replica_location;
 //       replica_location.replica_index = j;
 //       const ReplicaPlacement &replica_placement =

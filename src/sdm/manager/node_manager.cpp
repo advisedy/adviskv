@@ -10,7 +10,8 @@
 
 // namespace adviskv {
 
-// Status NodeManager::register_node(const NodeID &node_id, const std::string &ip,
+// Status NodeManager::register_node(const NodeID &node_id, const std::string
+// &ip,
 //                                   int32_t port, const std::string &zone,
 //                                   NodeMeta *node_meta) {
 //   std::unique_lock<std::shared_mutex> locker(node_map_mtx_);
@@ -34,7 +35,8 @@
 //                                std::vector<NodeMeta> *node_list) const {
 //   std::shared_lock<std::shared_mutex> lock(node_map_mtx_);
 //   // TODO
-//   // 这里以后可以优化一下，直接维护一个zone到node的映射，这样查询的时候就不需要遍历整个node_map了
+//   //
+//   这里以后可以优化一下，直接维护一个zone到node的映射，这样查询的时候就不需要遍历整个node_map了
 //   for (const auto &[node_id, node_meta] : node_map_) {
 //     if (zone.empty() || node_meta.zone == zone) {
 //       node_list->emplace_back(node_meta);
@@ -45,7 +47,8 @@
 
 // Status
 // NodeManager::list_nodes_stats_by_zone(const std::string &zone,
-//                                       std::vector<NodeStats> *node_list) const {
+//                                       std::vector<NodeStats> *node_list)
+//                                       const {
 //   std::shared_lock<std::shared_mutex> lock(node_map_mtx_);
 
 //   for (const auto &[node_id, node_stats] : node_stats_map_) {

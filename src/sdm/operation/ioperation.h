@@ -2,13 +2,13 @@
 
 #include "common/status.h"
 
-namespace adviskv{
+namespace adviskv {
 
-class IOperation{
-public:
+class IOperation {
+   public:
     virtual ~IOperation() = default;
     virtual Status execute() = 0;
     virtual std::string get_name() const = 0;
 };
 
-}
+}  // namespace adviskv

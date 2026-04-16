@@ -1,23 +1,20 @@
 #pragma once
 
 #include "common/status.h"
-
 #include "sdm/model/sdm_store.h"
 #include "sdm/model/service_param.h"
 #include "sdm/model/store.h"
 
-namespace adviskv::sdm{
+namespace adviskv::sdm {
 
-
-class TableService{
-
-public:
+class TableService {
+   public:
     TableService();
-  
+
     Status place_table(const PlaceTableParam& param);
 
-private:
-    SdmStore * sdm_store;
+   private:
+    SdmStore* sdm_store;
 };
 
-}
+}  // namespace adviskv::sdm

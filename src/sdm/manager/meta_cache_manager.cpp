@@ -1,7 +1,10 @@
 #include "sdm/manager/meta_cache_manager.h"
-#include "common/status.h"
+
 #include <fmt/format.h>
+
 #include <mutex>
+
+#include "common/status.h"
 
 namespace adviskv {
 
@@ -13,7 +16,8 @@ namespace adviskv {
 //   auto it = table_meta_caches_.find(key);
 //   if (it == table_meta_caches_.end()) {
 //     return Status{StatusCode::TABLE_META_CACHE_NOT_FOUND,
-//                   fmt::format("db_name: {}, table_name: {} not found in cache",
+//                   fmt::format("db_name: {}, table_name: {} not found in
+//                   cache",
 //                               db_name, table_name)};
 //   } else {
 //     *out = it->second;
@@ -50,16 +54,18 @@ namespace adviskv {
 // Status MetaCacheManager::get_db_meta(const std::string &db_name,
 //                                      DBMetaCache *out) const {
 //                                         //TODO
-// //   return Status{StatusCode::NOT_SUPPORTED, "get_db_meta is not supported now"};
+// //   return Status{StatusCode::NOT_SUPPORTED, "get_db_meta is not supported
+// now"};
 //     std::shared_lock lock{db_caches_mutex_};
 //     auto it = db_meta_caches_.find(db_name);
 //     if (it == db_meta_caches_.end()) {
 //         return Status{StatusCode::DB_META_CACHE_NOT_FOUND,
-//                       fmt::format("db_name: {} not found in cache", db_name)};
+//                       fmt::format("db_name: {} not found in cache",
+//                       db_name)};
 //     } else {
 //         *out = it->second;
 //     }
 //     return Status::OK();
 // }
 
-} // namespace adviskv
+}  // namespace adviskv

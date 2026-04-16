@@ -12,13 +12,12 @@
 // #include "sdm/model/route_model.h"
 // namespace adviskv{
 
-
-
 // class RouteManager{
 
-// public:  
+// public:
 //     Status update_route(const ShardRoute& route);
-//     Status get_route(TableID table_id, ShardID shard_id, ShardRoute* out) const;
+//     Status get_route(TableID table_id, ShardID shard_id, ShardRoute* out)
+//     const;
 
 // private:
 //     mutable std::shared_mutex routes_mutex_;

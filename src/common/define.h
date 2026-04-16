@@ -22,7 +22,11 @@
     return status;                                                             \
   }
 
-  #define RETURN_IF_INVALID_PLAN(plan)                                         \
-  if (Status status = plan.validate(); status.fail()) {                       \
+#define RETURN_IF_INVALID_PLAN(plan)                                           \
+  if (Status status = plan.validate(); status.fail()) {                        \
     return status;                                                             \
   }
+
+#define DEFINE_VECTOR_AND_RESERVE(type, name, size)                            \
+  std::vector<type> name;                                                      \
+  name.reserve(size);

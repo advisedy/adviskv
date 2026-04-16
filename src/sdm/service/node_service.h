@@ -1,26 +1,20 @@
 #pragma once
 #include "common/status.h"
 #include "sdm/manager/node_manager.h"
-#include "sdm/model/service_param.h"
-
 #include "sdm/model/sdm_store.h"
+#include "sdm/model/service_param.h"
 
 namespace adviskv::sdm {
 
-
-class NodeService{
-
-public:
-
-    explicit NodeService(SdmStore * sdm_store);
+class NodeService {
+   public:
+    explicit NodeService(SdmStore* sdm_store);
 
     Status register_node(const RegisterNodeParam& param);
 
-private:
+   private:
     // NodeManager* node_manager_;
-    SdmStore * sdm_store_;
-
-
+    SdmStore* sdm_store_;
 };
 
-}
+}  // namespace adviskv::sdm

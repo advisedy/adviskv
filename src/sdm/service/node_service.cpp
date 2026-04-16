@@ -1,24 +1,22 @@
 #include "sdm/service/node_service.h"
+
 #include "common/define.h"
 #include "common/status.h"
 #include "sdm/manager/node_manager.h"
 #include "sdm/model/store.h"
 
-
 namespace adviskv::sdm {
 
-NodeService::NodeService(SdmStore * sdm_store)
-    : sdm_store_(sdm_store) {}
+NodeService::NodeService(SdmStore* sdm_store) : sdm_store_(sdm_store) {}
 
-Status NodeService::register_node(const RegisterNodeParam &param) {
+Status NodeService::register_node(const RegisterNodeParam& param) {
+    //   NodeMeta node_meta;
+    //   Status status = node_manager_->register_node(
+    //       param.node_id, param.ip, param.port, param.zone, &node_meta);
 
-//   NodeMeta node_meta;
-//   Status status = node_manager_->register_node(
-//       param.node_id, param.ip, param.port, param.zone, &node_meta);
+    //   RETURN_IF_INVALID_STATUS(status)
 
-//   RETURN_IF_INVALID_STATUS(status)
-
-//   return Status::OK();
+    //   return Status::OK();
     Node node{
         .id = param.node_id,
         .spec.dc = param.dc,
@@ -26,13 +24,11 @@ Status NodeService::register_node(const RegisterNodeParam &param) {
         .state.endpoint = {param.ip, param.port},
         .state.owned_replica_count = 0,
         .state.leader_count = 0,
-        .state.last_heartbeat_ts = 0 //这里待定先, //TODO
+        .state.last_heartbeat_ts = 0  // 这里待定先, //TODO
     };
     Status status = sdm_store_->put_node(node);
 
     return status;
-
-
 }
 
-} // namespace adviskv
+}  // namespace adviskv::sdm

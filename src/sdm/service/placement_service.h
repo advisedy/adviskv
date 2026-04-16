@@ -9,12 +9,11 @@
 
 // class OperationFactory;
 
-
-
 // class PlacementService {
 
 // public:
-//   PlacementService(OperationFactory *factorys, MetaCacheManager* meta_cache_manager);
+//   PlacementService(OperationFactory *factorys, MetaCacheManager*
+//   meta_cache_manager);
 
 //   Status place_table(const PlaceTableParam &param);
 //   Status place_db(const PlaceDBParam &param);

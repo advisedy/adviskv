@@ -1,10 +1,11 @@
 #include "sdm/service/table_service.h"
+
 #include "common/define.h"
 #include "sdm/model/store.h"
 
-namespace adviskv::sdm{
+namespace adviskv::sdm {
 
-Status TableService::place_table(const PlaceTableParam& param){
+Status TableService::place_table(const PlaceTableParam& param) {
     Table table{
         .table_id = param.table_id,
         .spec.table_name = param.table_name,
@@ -19,5 +20,4 @@ Status TableService::place_table(const PlaceTableParam& param){
     return status;
 }
 
-
-}
+}  // namespace adviskv::sdm
