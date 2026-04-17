@@ -2,11 +2,12 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+
 #include <vector>
 
+
 #include "common/type.h"
-#include "meta.pb.h"
-#include "meta/service/ddl_service.h"
+
 
 namespace adviskv::sdm {
 
@@ -143,5 +144,7 @@ struct ShardRoute {
 };
 
 using ShardRoutePtr = std::shared_ptr<ShardRoute>;
+
+///////////////// 内置pb对他们的转换
 
 }  // namespace adviskv::sdm

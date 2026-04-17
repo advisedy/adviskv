@@ -14,10 +14,17 @@ enum ReplicaRole {
   PRE_FOLLOWER = 3;
 }
 
+enum ReplicaStatus {
+  ADDING = 0;
+  READY = 1;
+  LOST = 2;
+  ERROR = 3;
+}
+
 enum NodeStatus {
   NODE_ONLINE = 0;
   NODE_OFFLINE = 1;
-  NODE_DRAINING = 2;
+  NODE_SUSPECT = 2;
 }
 
 message NodeInfo {

@@ -9,10 +9,13 @@
 #include "common/status.h"
 #include "common/type.h"
 #include "sdm.grpc.pb.h"
+#include "sdm/service/heartbeat_service.h"
 #include "sdm/service/placement_service.h"
 #include "sdm/service/table_service.h"
 namespace adviskv::sdm {
 
+
+  
 class SdmServiceImpl final : public rpc::ShardingManagerService::Service {
    public:
     explicit SdmServiceImpl();
@@ -24,11 +27,13 @@ class SdmServiceImpl final : public rpc::ShardingManagerService::Service {
 
     DEFINE_METHOD(PlaceTable)
     DEFINE_METHOD(PlaceDB)
+    DEFINE_METHOD(HeartBeat)
 
 #undef DEFINE_METHOD
 
    private:
     TableService* table_service_;
+    HeartBeatService* heartbeat_service_;
 };
 
 }  // namespace adviskv::sdm

@@ -1,5 +1,6 @@
 #include "sdm/background/capacity_check_task.h"
 
+#include <algorithm>
 #include <cstdint>
 
 #include "common/define.h"
@@ -38,6 +39,25 @@ Status CapacityCheckTask::check_replica_list(const Table& table,
     RETURN_IF_INVALID_STATUS(status)
 
     int32_t replica_count = table.spec.replica_count;
+
+
+    // 检测一下有没有lost的replica，直接把他们删掉吧.
+                                            std::vector<ReplicaPtr> lost_replicas;
+
+    std::for_each(replicas.begin(), replicas.end(), [&lost_replicas](const ReplicaPtr& replica){
+        if(replica->state.status == ReplicaStatus::LOST){
+            lost_replicas.emplace_back(replica);
+        }
+    });
+
+    for(const ReplicaPtr& replica: lost_replicas){
+        status = sdm_store_.del_replica(replica->replica_key);
+        RETURN_IF_INVALID_STATUS(status)
+    }
+
+    ad_erase_if(replicas,[](const ReplicaPtr& replica){
+        return replica->state.status == ReplicaStatus::LOST;
+    });
 
     // 检测是否有没有replica超出replica_count了
     for (ReplicaPtr& replica : replicas) {
