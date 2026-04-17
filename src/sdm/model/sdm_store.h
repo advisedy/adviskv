@@ -42,6 +42,9 @@ class SdmStore {
     // Status get_table_shard(TableID table_id, ShardID shard_id) const;
     Status list_replicas_by_shard(TableID table_id, ShardID shard_id,
                                   std::vector<ReplicaPtr>& out) const;
+
+    Status list_replicas_by_node(NodeID node_id,
+                                 std::vector<ReplicaPtr>& out) const;
 };
 
 }  // namespace adviskv::sdm

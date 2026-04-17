@@ -72,7 +72,7 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
         .replica_list = std::move(replica_info_list),
     };
 
-    HeartBeatRes hb_res;
+    HeartBeatResult hb_res;
     Status status = heartbeat_service_->heartbeat(param, hb_res);
 
     //返回给storage侧期望的replica_list

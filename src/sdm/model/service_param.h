@@ -131,13 +131,13 @@ struct HeartBeatParam {
     }
 };
 
-struct HeartBeatResEntry{
+struct HeartBeatResultEntry{
     ReplicaKey replica_key;
     ReplicaRole replica_role;
 };
 
-struct HeartBeatRes{
-  std::vector<HeartBeatResEntry> entry_list;
+struct HeartBeatResult{
+  std::vector<HeartBeatResultEntry> entry_list;
 };
 
 
