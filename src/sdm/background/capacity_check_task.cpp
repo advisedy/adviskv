@@ -45,7 +45,7 @@ Status CapacityCheckTask::check_replica_list(const Table& table,
                                             std::vector<ReplicaPtr> lost_replicas;
 
     std::for_each(replicas.begin(), replicas.end(), [&lost_replicas](const ReplicaPtr& replica){
-        if(replica->state.status == ReplicaStatus::LOST){
+        if(replica->spec.status == ReplicaStatus::LOST){
             lost_replicas.emplace_back(replica);
         }
     });
@@ -56,7 +56,7 @@ Status CapacityCheckTask::check_replica_list(const Table& table,
     }
 
     ad_erase_if(replicas,[](const ReplicaPtr& replica){
-        return replica->state.status == ReplicaStatus::LOST;
+        return replica->spec.status == ReplicaStatus::LOST;
     });
 
     // 检测是否有没有replica超出replica_count了

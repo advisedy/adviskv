@@ -51,7 +51,7 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
             continue;
         }
 
-        if (replica_ptr->state.status != ReplicaStatus::READY) {
+        if (replica_ptr->spec.status != ReplicaStatus::READY) {
             continue;
         }
 
@@ -64,7 +64,7 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
             sdm_store_->get_node(replica_ptr->spec.assign_node_id, node_ptr);
         RETURN_IF_INVALID_STATUS(status)
 
-        if (!node_ptr || node_ptr->state.status != NodeStatus::ONLINE) {
+        if (!node_ptr || node_ptr->spec.status != NodeStatus::ONLINE) {
             continue;
         }
 

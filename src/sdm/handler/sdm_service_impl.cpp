@@ -68,7 +68,7 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
         .port = request->port(),
         .dc = request->dc(),
         .resoure_pool_name = request->resource_pool(),
-        .status = node_status,
+        // .status = node_status,
         .replica_list = std::move(replica_info_list),
     };
 

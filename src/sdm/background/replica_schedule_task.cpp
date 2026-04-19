@@ -44,10 +44,10 @@ Status ReplicaScheduleTask::check_shard(const Table& table, ShardID shard_id) {
     std::for_each(
         replicas.begin(), replicas.end(),
         [&pending_replicas, &ready_replicas](const ReplicaPtr& replica) {
-            if (replica->state.status == ReplicaStatus::READY) {
+            if (replica->spec.status == ReplicaStatus::READY) {
                 ready_replicas.push_back(replica);
             }
-            if (replica->state.status == ReplicaStatus::PENDING and
+            if (replica->spec.status == ReplicaStatus::PENDING and
                 replica->spec.assign_node_id.empty()) {
                 pending_replicas.push_back(replica);
             }
@@ -76,7 +76,7 @@ Status ReplicaScheduleTask::check_shard(const Table& table, ShardID shard_id) {
             // 说明这些那些READY的replica占据了这个node
             continue;
         }
-        if (node->state.status == NodeStatus::ONLINE) {
+        if (node->spec.status == NodeStatus::ONLINE) {
             candi_nodes.emplace_back(node);
         }
     }

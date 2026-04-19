@@ -53,12 +53,12 @@ void HeartBeatCheckTask::run() {
 Status HeartBeatCheckTask::check_and_modify_node(Node& node) {
     int64_t delta_time = get_current_ts_ms() - node.state.last_heartbeat_ts;
     Status status = Status::OK();
-    switch (node.state.status) {
+    switch (node.spec.status) {
         case NodeStatus::ONLINE: {
             if (delta_time < SUSPECT_TIMEOUT_MS) {
                 return Status::OK();
             } else if (delta_time < OFFLINE_TIMEOUT_MS) {
-                node.state.status = NodeStatus::SUSPECT;
+                node.spec.status = NodeStatus::SUSPECT;
             } else {
                 status = mark_node_offline(node);
             }
@@ -67,7 +67,7 @@ Status HeartBeatCheckTask::check_and_modify_node(Node& node) {
 
         case NodeStatus::SUSPECT: {
             if (delta_time < SUSPECT_TIMEOUT_MS) {
-                node.state.status = NodeStatus::ONLINE;
+                node.spec.status = NodeStatus::ONLINE;
             } else if (delta_time < OFFLINE_TIMEOUT_MS) {
             } else {
                 status = mark_node_offline(node);
@@ -77,9 +77,9 @@ Status HeartBeatCheckTask::check_and_modify_node(Node& node) {
 
         case NodeStatus::OFFLINE: {
             if (delta_time < SUSPECT_TIMEOUT_MS) {
-                node.state.status = NodeStatus::ONLINE;
+                node.spec.status = NodeStatus::ONLINE;
             } else if (delta_time < OFFLINE_TIMEOUT_MS) {
-                node.state.status = NodeStatus::SUSPECT;
+                node.spec.status = NodeStatus::SUSPECT;
             }
             break;
         }
@@ -94,9 +94,9 @@ Status HeartBeatCheckTask::check_and_modify_node(Node& node) {
 
 Status HeartBeatCheckTask::mark_node_offline(Node& node) {
     Status status = Status::OK();
-    node.state.status = NodeStatus::OFFLINE;
+    node.spec.status = NodeStatus::OFFLINE;
     // TODO 应该在这里更新sdm_store那边的node2replicas的缓存
-    
+
     // for (const ReplicaKey& replica_key : node.replicas) {
     //     // 更换逻辑，直接在store里面删除replica，会在CapacityChecker那边补上
     //     status = sdm_store_->del_replica(replica_key);

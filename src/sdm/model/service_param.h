@@ -117,7 +117,6 @@ struct HeartBeatParam {
     int32_t port{-1};
     std::string resoure_pool_name{"default"};
     std::string dc;
-    NodeStatus status;
     std::vector<HeartBeatReplicaInfo> replica_list;
 
     Status validate()const{

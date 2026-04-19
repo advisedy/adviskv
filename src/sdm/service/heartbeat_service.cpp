@@ -2,7 +2,7 @@
 
 #include "common/define.h"
 #include "sdm/model/service_param.h"
-
+#include "common/func.h"
 namespace adviskv::sdm {
 
 HeartBeatService::HeartBeatService(SdmStore* sdm_store)
@@ -34,7 +34,7 @@ Status HeartBeatService::update_node_state(const HeartBeatParam& param) {
     //这里对于node的定义可能要变一下了，state里面的内容不全是代表着storage传过来的就要更新的。
     // 例如拥有的leader，这个应该是交给sdm的routeupdatechecker做的才对。 //TODO
     node->state.endpoint = Endpoint{param.ip, param.port};
-    node->state.status = param.status;
+    node->state.last_heartbeat_ts = adviskv::get_current_ts_ms();
     return Status::OK();
 }
 
@@ -83,7 +83,7 @@ Status HeartBeatService::build_desired_replicas(const NodeID& node_id,
         if (replica->spec.assign_node_id != node_id) {
             continue;
         }
-        if (replica->state.status == ReplicaStatus::LOST) {
+        if (replica->spec.status == ReplicaStatus::LOST) {
             continue;
         }
 

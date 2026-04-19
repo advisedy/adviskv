@@ -59,14 +59,14 @@ struct ReplicaKey {
 struct ReplicaSpec {
     std::string dc;
     NodeID assign_node_id{""};
-    ReplicaRole role; // 期望的role ， 目前sdm这边记录的role
+    ReplicaRole role; // 目前sdm这边记录的role
     ReplicaStatus status;  // 目前sdm这边记录的status
-    Endpoint endpoint;  // 目前smd这边记录的endpoint
-};
 
+};
+// 这边replca的status，RPC发送的时候会有，我们在心跳服务里面处理了， 这边就
+// 不会再存起来了。
 struct ReplicaState {
     Endpoint endpoint;
-    ReplicaStatus status{ReplicaStatus::ERROR};
     ReplicaRole role; // 实际返回的role
 };
 
@@ -86,24 +86,21 @@ enum class NodeStatus {
     OFFLINE = 2,
     SUSPECT = 3,
 };
-
+// 注意，node那边只会发送过来心跳时间， 状态是sdm决定的
 struct NodeSpec {
     std::string resource_pool;
     std::string dc;
+    NodeStatus status;
 };
 
 struct NodeState {
     Endpoint endpoint;
-    // int32_t owned_replica_count{0};
-    // int32_t leader_count{0};
     int64_t last_heartbeat_ts{0};
-    NodeStatus status;
 };
 
 struct NodeDerived {
     int32_t owned_replica_count{0};
     int32_t owned_leader_count{0};
-    // bool schedulable{false};
 };
 
 struct Node {
