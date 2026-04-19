@@ -91,6 +91,8 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
             } else {
                 replica_ptr->spec.role = ReplicaRole::FOLLOWER;
             }
+            status = sdm_store_->put_replica(*replica_ptr);
+            RETURN_IF_INVALID_STATUS(status)
         }
     }
 
@@ -101,7 +103,7 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
 
     for (const ReplicaPtr& replica_ptr : healthy_replicas) {
         route.replicas.push_back(RouteEntry{
-            .replica_key = replica_ptr->replica_key,
+            .replica_id = replica_ptr->replica_id,
             .node_id = replica_ptr->spec.assign_node_id,
             .sp = replica_ptr->state.endpoint.ip,
             .port = replica_ptr->state.endpoint.port,

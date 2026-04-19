@@ -35,12 +35,12 @@ Status HeartBeatService::update_node_state(const HeartBeatParam& param) {
     // 例如拥有的leader，这个应该是交给sdm的routeupdatechecker做的才对。 //TODO
     node->state.endpoint = Endpoint{param.ip, param.port};
     node->state.last_heartbeat_ts = adviskv::get_current_ts_ms();
-    return Status::OK();
+    return sdm_store_->put_node(*node);
 }
 
 Status HeartBeatService::apply_reported_replicas(const HeartBeatParam& param) {
     for (const auto& info : param.replica_list) {
-        ReplicaKey key{info.table_id, info.shard_id, info.replica_index};
+        ReplicaID key{info.table_id, info.shard_id, info.replica_index};
         ReplicaPtr replica;
         Status status = sdm_store_->get_replica(key, replica);
         RETURN_IF_INVALID_STATUS(status)
@@ -61,6 +61,8 @@ Status HeartBeatService::apply_reported_replicas(const HeartBeatParam& param) {
         } else {
             replica->spec.status = info.status;
         }
+        status = sdm_store_->put_replica(*replica);
+        RETURN_IF_INVALID_STATUS(status)
     }
     return Status::OK();
 }
@@ -88,9 +90,9 @@ Status HeartBeatService::build_desired_replicas(const NodeID& node_id,
         }
 
         HeartBeatResultEntry one;
-        one.replica_key.table_id = replica->replica_key.table_id;
-        one.replica_key.shard_id = replica->replica_key.shard_id;
-        one.replica_key.replica_index = replica->replica_key.replica_index;
+        one.replica_id.table_id = replica->replica_id.table_id;
+        one.replica_id.shard_id = replica->replica_id.shard_id;
+        one.replica_id.replica_index = replica->replica_id.replica_index;
         one.replica_role = replica->spec.role;
         result->entry_list.push_back(std::move(one));
     }

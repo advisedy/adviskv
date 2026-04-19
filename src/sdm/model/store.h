@@ -2,12 +2,9 @@
 #include <cstdint>
 #include <memory>
 #include <string>
-
 #include <vector>
 
-
 #include "common/type.h"
-
 
 namespace adviskv::sdm {
 
@@ -50,28 +47,41 @@ enum class ReplicaRole {
     FOLLOWER = 2,
 };
 
-struct ReplicaKey {
+struct ReplicaID {
     TableID table_id;
     ShardID shard_id;
     int32_t replica_index;
+
+    bool operator==(const ReplicaID& other) const {
+        return table_id == other.table_id and shard_id == other.shard_id and
+               replica_index == other.replica_index;
+    }
+};
+
+struct ReplicaIDHash {
+    size_t operator()(const ReplicaID& key) const {
+        size_t h1 = std::hash<TableID>{}(key.table_id);
+        size_t h2 = std::hash<ShardID>{}(key.shard_id);
+        size_t h3 = std::hash<int32_t>{}(key.replica_index);
+        return h1 ^ (h2 << 1) ^ (h3 << 2);
+    }
 };
 
 struct ReplicaSpec {
     std::string dc;
     NodeID assign_node_id{""};
-    ReplicaRole role; // 目前sdm这边记录的role
+    ReplicaRole role;      // 目前sdm这边记录的role
     ReplicaStatus status;  // 目前sdm这边记录的status
-
 };
 // 这边replca的status，RPC发送的时候会有，我们在心跳服务里面处理了， 这边就
 // 不会再存起来了。
 struct ReplicaState {
     Endpoint endpoint;
-    ReplicaRole role; // 实际返回的role
+    ReplicaRole role;  // 实际返回的role
 };
 
 struct Replica {
-    ReplicaKey replica_key;
+    ReplicaID replica_id;
     ReplicaSpec spec;
     ReplicaState state;
 };
@@ -143,7 +153,7 @@ using TablePtr = std::shared_ptr<Table>;
 // shard_route
 
 struct RouteEntry {
-    ReplicaKey replica_key;
+    ReplicaID replica_id;
     NodeID node_id;
     std::string sp;
     int32_t port{0};

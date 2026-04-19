@@ -32,6 +32,7 @@
 - TableService ：只负责接收 placement 类请求，写 Table
 - NodeService ：只负责注册 node、维护资源池归属
 - HeartBeatService ：吸收 storage 实际状态，并返回 desired replicas
+
 - CapacityChecker ：只负责“数量对不对”
 - ReplicaScheduler ：只负责“PENDING 分配到哪个 node”
 - HeartBeatCheckTask ：只负责“node 是否超时、旧 replica 是否应删除/失效”

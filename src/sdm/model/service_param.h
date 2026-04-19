@@ -131,7 +131,7 @@ struct HeartBeatParam {
 };
 
 struct HeartBeatResultEntry{
-    ReplicaKey replica_key;
+    ReplicaID replica_id;
     ReplicaRole replica_role;
 };
 

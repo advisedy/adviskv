@@ -51,7 +51,7 @@ Status CapacityCheckTask::check_replica_list(const Table& table,
     });
 
     for(const ReplicaPtr& replica: lost_replicas){
-        status = sdm_store_.del_replica(replica->replica_key);
+        status = sdm_store_.del_replica(replica->replica_id);
         RETURN_IF_INVALID_STATUS(status)
     }
 
@@ -61,16 +61,16 @@ Status CapacityCheckTask::check_replica_list(const Table& table,
 
     // 检测是否有没有replica超出replica_count了
     for (ReplicaPtr& replica : replicas) {
-        if (replica->replica_key.replica_index < replica_count) {
+        if (replica->replica_id.replica_index < replica_count) {
             continue;
         }
-        status = sdm_store_.del_replica(replica->replica_key);
+        status = sdm_store_.del_replica(replica->replica_id);
         RETURN_IF_INVALID_STATUS(status)
     }
 
     // 检测有没有漏掉的
     for (int i = 0; i < replica_count; i++) {
-        ReplicaKey key{table.table_id, shard_id, i};
+        ReplicaID key{table.table_id, shard_id, i};
         ReplicaPtr ptr;
         status = sdm_store_.get_replica(key, ptr);
         RETURN_IF_INVALID_STATUS(status)
@@ -83,7 +83,7 @@ Status CapacityCheckTask::check_replica_list(const Table& table,
             .assign_node_id = "",
         };
         Replica replica{
-            .replica_key = key,
+            .replica_id = key,
             .spec = std::move(spec),
         };
         status = sdm_store_.put_replica(replica);

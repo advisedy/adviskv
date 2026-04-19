@@ -1,12 +1,13 @@
 #pragma once
 
 #include <memory>
+#include <shared_mutex>
 
 #include "common/status.h"
 #include "common/type.h"
 #include "sdm/model/i_sdm_metastore.h"
-#include "sdm/model/store.h"
 #include "sdm/model/sdm_runtime_index.h"
+#include "sdm/model/store.h"
 
 namespace adviskv::sdm {
 
@@ -24,7 +25,8 @@ class SdmStore {
                              std::shared_ptr<Table>& out) const;
     Status list_tables(std::vector<std::shared_ptr<Table>>& out) const;
 
-    Status list_nodes_by_resource_pool(const std::string& pool_name, std::vector<NodePtr>& out)const;
+    Status list_nodes_by_resource_pool(const std::string& pool_name,
+                                       std::vector<NodePtr>& out) const;
 
     Status get_shard_route(TableID table_id, ShardID shard_id,
                            std::shared_ptr<ShardRoute>& out) const;
@@ -41,9 +43,9 @@ class SdmStore {
     Status list_resource_pools(
         std::vector<std::shared_ptr<ResourcePool>>& pools) const;
 
-    Status get_replica(const ReplicaKey& replica_key, ReplicaPtr& out) const;
+    Status get_replica(const ReplicaID& replica_key, ReplicaPtr& out) const;
     Status put_replica(const Replica& replica);
-    Status del_replica(const ReplicaKey& replica_key);
+    Status del_replica(const ReplicaID& replica_key);
 
     // Status get_table_shard(TableID table_id, ShardID shard_id) const;
     Status list_replicas_by_shard(TableID table_id, ShardID shard_id,
@@ -53,6 +55,7 @@ class SdmStore {
                                  std::vector<ReplicaPtr>& out) const;
 
    private:
+    mutable std::shared_mutex mutex_;
     std::unique_ptr<ISdmMetaStore> meta_store_;
     SdmRuntimeIndex runtime_index_;
 };

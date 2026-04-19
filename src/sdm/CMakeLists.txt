@@ -19,7 +19,9 @@ set(SDM_SOURCES
 
     ${CMAKE_CURRENT_SOURCE_DIR}/utility/pb_convert.cpp
 
+    ${CMAKE_CURRENT_SOURCE_DIR}/model/i_sdm_metastore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/model/sdm_store.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/model/sdm_runtime_index.cpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/background/background_task.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/background/capacity_check_task.cpp

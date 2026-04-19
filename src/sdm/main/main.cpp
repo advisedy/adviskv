@@ -24,7 +24,7 @@ int main() {
     auto node_selector = std::make_unique<DefaultNodeSelector>();
     auto leader_selector = std::make_unique<DefaultLeaderSelector>();
 
-    auto sdm_store = std::make_unique<SdmStore>(SdmMetaStoreType::DEFAULT);
+    auto sdm_store = std::make_unique<SdmStore>(SdmMetaStoreType::MEMORY);
 
     // OperationFactoryDeps operation_factory_deps{
     //     meta_cache_manager.get(),

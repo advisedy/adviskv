@@ -88,7 +88,7 @@ Status HeartBeatCheckTask::check_and_modify_node(Node& node) {
             return Status{StatusCode::ERROR, "node status is none"};
         }
     }
-
+    return sdm_store_->put_node(node);
     return status;
 }
 

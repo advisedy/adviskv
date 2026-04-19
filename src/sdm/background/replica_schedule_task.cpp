@@ -98,10 +98,13 @@ Status ReplicaScheduleTask::check_shard(const Table& table, ShardID shard_id) {
         // TODO 这里应该是把node的dc赋值过去吧？ 还有status设成ADDING
         replica->spec.dc = node->spec.dc;
         replica->spec.assign_node_id = node->id;
+        replica->spec.status = ReplicaStatus::ADDING;
         // replica->state.endpoint = node->state.endpoint;
-        // replica->spec.status = ReplicaStatus::ADDING;
         // node->replicas.push_back(replica->replica_key);
         //TODO 应该更新sdm_store那边的缓存， node2replicas
+        status = sdm_store_->put_replica(*replica);
+        RETURN_IF_INVALID_STATUS(status)
+        
     }
 
     return status;
