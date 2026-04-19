@@ -11,6 +11,7 @@
 #include "sdm/model/service_param.h"
 #include "sdm/model/store.h"
 #include "sdm/utility/pb_convert.h"
+#include "common/func.h"
 
 namespace adviskv::sdm {
 
@@ -44,8 +45,8 @@ grpc::Status SdmServiceImpl::PlaceDB(grpc::ServerContext* context,
 grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
                                        const rpc::HeartBeatRequest* request,
                                        rpc::HeartBeatResponse* response) {
-    NodeStatus node_status;
-    CONVERT_PB_TO_NODE_STATUS(request->node_status(), node_status)
+    // NodeStatus node_status;
+    // CONVERT_PB_TO_NODE_STATUS(request->node_status(), node_status)
 
     std::vector<HeartBeatReplicaInfo> replica_info_list;
     for (const auto& replica_info : request->replica_info_list()) {
@@ -70,6 +71,7 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
         .resoure_pool_name = request->resource_pool(),
         // .status = node_status,
         .replica_list = std::move(replica_info_list),
+        .last_heartbeat_ts = adviskv::get_current_ts_ms(),
     };
 
     HeartBeatResult hb_res;

@@ -8,10 +8,13 @@
 #include <string>
 #include <thread>
 
+#include "common/status.h"
+
 namespace adviskv {
 
 /*
 主要就是继承实现run函数。
+使用就是prepare + start，或者手动notify唤醒
 */
 class BackgroundTask {
    public:
@@ -20,13 +23,13 @@ class BackgroundTask {
     virtual ~BackgroundTask() { stop(); }
 
    public:
-    void prepare();
+    Status prepare(); // 如果setup是空的，可以不调用这个
     void start(std::chrono::milliseconds interval);
     void notify();
     void stop();
 
    protected:
-    virtual void setup() {};
+    virtual Status setup() { return Status::OK(); };
     virtual void run() = 0;
     virtual void teardown() {};
 
@@ -40,4 +43,4 @@ class BackgroundTask {
     std::unique_ptr<std::thread> thread_;
 };
 
-}  // namespace adviskv::sdm
+}  // namespace adviskv

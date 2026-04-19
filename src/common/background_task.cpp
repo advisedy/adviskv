@@ -6,9 +6,13 @@
 
 namespace adviskv {
 
-void BackgroundTask::prepare() {
-    setup();
+Status BackgroundTask::prepare() {
+    Status status = setup();
+    if (!status.ok()) {
+        return status;
+    }
     run();
+    return Status::OK();
 }
 
 void BackgroundTask::start(std::chrono::milliseconds interval) {

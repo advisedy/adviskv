@@ -9,10 +9,10 @@
 namespace adviskv::sdsdk {
 
 class IStorageCallback {
-public:
+   public:
     virtual ~IStorageCallback() = default;
 
-public:
+   public:
     virtual Status create_replica(const CreateReplicaArgs& args,
                                   CreateReplicaResult& out) = 0;
 
@@ -20,6 +20,10 @@ public:
 
     virtual Status change_replica_role(const ChangeReplicaRoleArgs& args,
                                        ChangeReplicaRoleResult& out) = 0;
+
+    virtual Status collect_node_report(NodeReport& out) {
+        return Status::OK();
+    }
 
 };
 

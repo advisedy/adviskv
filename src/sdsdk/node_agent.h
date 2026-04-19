@@ -1,37 +1,27 @@
 #pragma once
 
-#include <cstdint>
-#include <string>
-
 #include "common/status.h"
-#include "common/type.h"
-#include "sdsdk/heartbeater.h"
 #include "sdsdk/istorage_callback.h"
+#include "sdsdk/type.h"
+
 namespace adviskv::sdsdk {
 
-struct NodeAgentConf {
-    NodeID node_id;
-    std::string ip;
-    int32_t port;
+class HeartBeater;
+using HeartBeaterPtr = std::shared_ptr<HeartBeater>;
 
-    int64_t heartbeat_ts_ms;
-
-    Status validate() {
-        // TODO
-        return Status::OK();
-    }
-};
 
 class NodeAgent {
    public:
     NodeAgent() = default;
-    Status init(NodeAgentConf conf, StorageCallbackPtr callback);
+    Status init(const NodeAgentConf& conf, StorageCallbackPtr callback);
     Status start();
     Status stop();
 
    private:
     NodeAgentConf conf_;
+    StorageCallbackPtr callback_;
     HeartBeaterPtr heartbeater_;
+    bool initialized_{false};
 };
 
 }  // namespace adviskv::sdsdk

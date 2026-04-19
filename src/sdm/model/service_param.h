@@ -118,6 +118,7 @@ struct HeartBeatParam {
     std::string resoure_pool_name{"default"};
     std::string dc;
     std::vector<HeartBeatReplicaInfo> replica_list;
+    int64_t last_heartbeat_ts{0};
 
     Status validate()const{
       RETURN_IF_INVALID_CONDITION(!node_id.empty(), "node need id");
