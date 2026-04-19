@@ -1,6 +1,6 @@
 #pragma once
 
-#include "sdm/background/background_task.h"
+#include "common/background_task.h"
 #include "sdm/model/sdm_store.h"
 #include "sdm/selector/node_selector/node_selector.h"
 namespace adviskv::sdm {

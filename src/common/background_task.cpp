@@ -1,10 +1,10 @@
-#include "sdm/background/background_task.h"
+#include "common/background_task.h"
 
 #include <memory>
 #include <mutex>
 #include <thread>
 
-namespace adviskv::sdm {
+namespace adviskv {
 
 void BackgroundTask::prepare() {
     setup();

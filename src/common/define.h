@@ -7,7 +7,7 @@
 //     return Status::OK();}
 
 // 这里cond要填写应该合法的情况，如果cond与预期不符合，就会return，跟assert的语义有点像
-#include <algorithm>
+
 #define RETURN_IF_INVALID_CONDITION(cond, msg)            \
     if (!(cond)) {                                        \
         return Status{StatusCode::INVALID_ARGUMENT, msg}; \
@@ -23,8 +23,8 @@
         return status;                                     \
     }
 
-#define RETURN_IF_INVALID_PLAN(plan)                      \
-    if (Status status = plan.validate(); status.fail()) { \
+#define RETURN_IF_INVALID_CONF(conf)                      \
+    if (Status status = conf.validate(); status.fail()) { \
         return status;                                    \
     }
 

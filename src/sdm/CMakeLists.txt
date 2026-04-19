@@ -23,7 +23,6 @@ set(SDM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/model/sdm_store.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/model/sdm_runtime_index.cpp
 
-    ${CMAKE_CURRENT_SOURCE_DIR}/background/background_task.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/background/capacity_check_task.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/background/heartbeat_check_task.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/background/replica_schedule_task.cpp

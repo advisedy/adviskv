@@ -5,6 +5,7 @@
 
 add_library(adviskv_common
     ${CMAKE_CURRENT_SOURCE_DIR}/common/log.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/common/background_task.cpp
     ${PROJECT_BINARY_DIR}/generated/common.pb.cc
 )
 

@@ -8,7 +8,7 @@
 #include <string>
 #include <thread>
 
-namespace adviskv::sdm {
+namespace adviskv {
 
 /*
 主要就是继承实现run函数。
