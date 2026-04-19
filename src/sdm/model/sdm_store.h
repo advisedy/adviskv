@@ -24,6 +24,8 @@ class SdmStore {
                              std::shared_ptr<Table>& out) const;
     Status list_tables(std::vector<std::shared_ptr<Table>>& out) const;
 
+    Status list_nodes_by_resource_pool(const std::string& pool_name, std::vector<NodePtr>& out)const;
+
     Status get_shard_route(TableID table_id, ShardID shard_id,
                            std::shared_ptr<ShardRoute>& out) const;
     Status put_shard_route(const ShardRoute& route);

@@ -33,8 +33,8 @@ Status HeartBeatService::update_node_state(const HeartBeatParam& param) {
 
     //这里对于node的定义可能要变一下了，state里面的内容不全是代表着storage传过来的就要更新的。
     // 例如拥有的leader，这个应该是交给sdm的routeupdatechecker做的才对。 //TODO
-    node->spec.endpoint = Endpoint{param.ip, param.port};
-    node->spec.status = param.status;
+    node->state.endpoint = Endpoint{param.ip, param.port};
+    node->state.status = param.status;
     return Status::OK();
 }
 
@@ -52,8 +52,8 @@ Status HeartBeatService::apply_reported_replicas(const HeartBeatParam& param) {
             continue;
         }
 
-        replica->spec.role = info.role;
-        replica->spec.endpoint = Endpoint{param.ip, param.port};
+        replica->state.role = info.role;
+        replica->state.endpoint = Endpoint{param.ip, param.port};
 
         if (replica->spec.status == ReplicaStatus::ADDING &&
             info.status == ReplicaStatus::READY) {

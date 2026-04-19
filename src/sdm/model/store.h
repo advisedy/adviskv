@@ -29,8 +29,8 @@ struct Endpoint {
 
 struct ResourcePool {
     std::string name;
-    std::vector<NodeID> nodes;
-    std::vector<TableID> tables;
+    // std::vector<NodeID> nodes;
+    // std::vector<TableID> tables;
 };
 using ResourcePoolPtr = std::shared_ptr<ResourcePool>;
 
@@ -90,9 +90,6 @@ enum class NodeStatus {
 struct NodeSpec {
     std::string resource_pool;
     std::string dc;
-    Endpoint endpoint; // 这边sdm实际记录的endpoint
-    NodeStatus status; // 这边sdm 实际记录的status
-
 };
 
 struct NodeState {
@@ -114,7 +111,6 @@ struct Node {
     NodeSpec spec;
     NodeState state;
     NodeDerived derived;
-    std::vector<ReplicaKey> replicas;
 };
 
 using NodePtr = std::shared_ptr<Node>;

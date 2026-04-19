@@ -56,7 +56,7 @@ Status ReplicaScheduleTask::check_shard(const Table& table, ShardID shard_id) {
     if (pending_replicas.empty()) {
         return Status::OK();
     }
-    
+
     std::unordered_set<NodeID> have_used_node_id_list;
 
     std::for_each(
@@ -65,27 +65,19 @@ Status ReplicaScheduleTask::check_shard(const Table& table, ShardID shard_id) {
             have_used_node_id_list.insert(replica->spec.assign_node_id);
         });
 
-    ResourcePoolPtr resource_pool_ptr;
-    status = sdm_store_->get_resource_pool(table.spec.resource_pool,
-                                           resource_pool_ptr);
-    RETURN_IF_INVALID_STATUS(status)
-    RETURN_IF_INVALID_CONDITION(resource_pool_ptr != nullptr,
-                            "resource pool should not be nullptr")
-
-    std::vector<NodeID> node_id_list =
-        resource_pool_ptr->nodes;  // 资源池里面的拥有的nodes
+    std::vector<NodePtr> node_list;
+    status = sdm_store_->list_nodes_by_resource_pool(table.spec.resource_pool,
+                                                     node_list);
+        RETURN_IF_INVALID_STATUS(status)
 
     std::vector<NodePtr> candi_nodes;
-    for (NodeID node_id : node_id_list) {
-        if (have_used_node_id_list.count(node_id)) {
+    for (NodePtr& node : node_list) {
+        if (have_used_node_id_list.count(node->id)) {
             // 说明这些那些READY的replica占据了这个node
             continue;
         }
-        NodePtr one;
-        status = sdm_store_->get_node(node_id, one);
-        RETURN_IF_INVALID_STATUS(status)
-        if (one->state.status == NodeStatus::ONLINE) {
-            candi_nodes.emplace_back(std::move(one));
+        if (node->state.status == NodeStatus::ONLINE) {
+            candi_nodes.emplace_back(node);
         }
     }
 
@@ -108,7 +100,8 @@ Status ReplicaScheduleTask::check_shard(const Table& table, ShardID shard_id) {
         replica->spec.assign_node_id = node->id;
         // replica->state.endpoint = node->state.endpoint;
         // replica->spec.status = ReplicaStatus::ADDING;
-        node->replicas.push_back(replica->replica_key);
+        // node->replicas.push_back(replica->replica_key);
+        //TODO 应该更新sdm_store那边的缓存， node2replicas
     }
 
     return status;
