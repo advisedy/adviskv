@@ -48,7 +48,7 @@ Status ReplicaScheduleTask::check_shard(const Table& table, ShardID shard_id) {
                 ready_replicas.push_back(replica);
             }
             if (replica->state.status == ReplicaStatus::PENDING and
-                replica->state.assign_node_id.empty()) {
+                replica->spec.assign_node_id.empty()) {
                 pending_replicas.push_back(replica);
             }
         });
@@ -62,7 +62,7 @@ Status ReplicaScheduleTask::check_shard(const Table& table, ShardID shard_id) {
     std::for_each(
         ready_replicas.begin(), ready_replicas.end(),
         [&have_used_node_id_list](const ReplicaPtr& replica) {
-            have_used_node_id_list.insert(replica->state.assign_node_id);
+            have_used_node_id_list.insert(replica->spec.assign_node_id);
         });
 
     ResourcePoolPtr resource_pool_ptr;
@@ -105,9 +105,9 @@ Status ReplicaScheduleTask::check_shard(const Table& table, ShardID shard_id) {
         ReplicaPtr& replica = pending_replicas[i];
         // TODO 这里应该是把node的dc赋值过去吧？ 还有status设成ADDING
         replica->spec.dc = node->spec.dc;
-        replica->state.assign_node_id = node->id;
-        replica->state.endpoint = node->state.endpoint;
-        replica->state.status = ReplicaStatus::ADDING;
+        replica->spec.assign_node_id = node->id;
+        // replica->state.endpoint = node->state.endpoint;
+        // replica->spec.status = ReplicaStatus::ADDING;
         node->replicas.push_back(replica->replica_key);
     }
 

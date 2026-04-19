@@ -37,3 +37,19 @@ storage: 负责存储。
 
 有一个zone的概念，create db的时候需要填写，不写就是默认空。 
 然后sdm那边分配node给table的时候，node必须和只有和这个table所在的db是同一个zone。
+
+
+
+- Node.spec.resource_pool ： NodeService
+- Node.spec.dc ： NodeService
+- Node.state.endpoint ： HeartbeatService
+- Node.state.status ： HeartbeatService 或拆出 effective_status
+- Node.state.last_heartbeat_ts ： HeartbeatService
+- NodeDerived.leader_count ： RuntimeIndex /扫描任务
+- NodeDerived.owned_replica_count ： RuntimeIndex /扫描任务`
+- Replica.spec.assign_node_id ： ReplicaScheduler
+- Replica.spec.role ：leader/route 决策逻辑 
+- Replica.state.role ： HeartbeatService
+- Replica.state.status ： HeartbeatService
+- Replica.state.endpoint ： HeartbeatService
+- ShardRoute ： RouteUpdateCheckTask

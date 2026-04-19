@@ -22,9 +22,9 @@ Status NodeService::register_node(const RegisterNodeParam& param) {
         .spec.dc = param.dc,
         .spec.resource_pool = param.resource_pool,
         .state.endpoint = {param.ip, param.port},
-        .state.owned_replica_count = 0,
-        .state.leader_count = 0,
-        .state.last_heartbeat_ts = 0  // 这里待定先, //TODO
+        .state.last_heartbeat_ts = 0,  // 这里待定先, //TODO
+        .derived.owned_replica_count = 0,
+        .derived.owned_leader_count = 0,
     };
     Status status = sdm_store_->put_node(node);
 

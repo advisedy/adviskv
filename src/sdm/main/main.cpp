@@ -5,6 +5,7 @@
 #include "sdm/manager/meta_cache_manager.h"
 #include "sdm/manager/node_manager.h"
 #include "sdm/manager/route_manager.h"
+#include "sdm/model/i_sdm_metastore.h"
 #include "sdm/model/sdm_store.h"
 #include "sdm/operation/operation_factory.h"
 #include "sdm/selector/leader_selector/leader_selector.h"
@@ -23,7 +24,7 @@ int main() {
     auto node_selector = std::make_unique<DefaultNodeSelector>();
     auto leader_selector = std::make_unique<DefaultLeaderSelector>();
 
-    auto sdm_store = std::make_unique<SdmStore>();
+    auto sdm_store = std::make_unique<SdmStore>(SdmMetaStoreType::DEFAULT);
 
     // OperationFactoryDeps operation_factory_deps{
     //     meta_cache_manager.get(),

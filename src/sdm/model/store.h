@@ -11,6 +11,12 @@
 
 namespace adviskv::sdm {
 
+/*
+对于Spec的定义: 控制面定义/相对稳定/desired
+对于State的定义: 运行时观测/heartbeat 上报/observed
+
+*/
+
 // using PlaceTableParam = rpc::PlaceTableRequest;
 
 struct Endpoint {
@@ -52,13 +58,16 @@ struct ReplicaKey {
 
 struct ReplicaSpec {
     std::string dc;
+    NodeID assign_node_id{""};
+    ReplicaRole role; // 期望的role ， 目前sdm这边记录的role
+    ReplicaStatus status;  // 目前sdm这边记录的status
+    Endpoint endpoint;  // 目前smd这边记录的endpoint
 };
 
 struct ReplicaState {
-    NodeID assign_node_id{""};
     Endpoint endpoint;
-    ReplicaStatus status{ReplicaStatus::PENDING};
-    ReplicaRole role;
+    ReplicaStatus status{ReplicaStatus::ERROR};
+    ReplicaRole role; // 实际返回的role
 };
 
 struct Replica {
@@ -81,20 +90,30 @@ enum class NodeStatus {
 struct NodeSpec {
     std::string resource_pool;
     std::string dc;
+    Endpoint endpoint; // 这边sdm实际记录的endpoint
+    NodeStatus status; // 这边sdm 实际记录的status
+
 };
 
 struct NodeState {
     Endpoint endpoint;
-    int32_t owned_replica_count{0};
-    int32_t leader_count{0};
+    // int32_t owned_replica_count{0};
+    // int32_t leader_count{0};
     int64_t last_heartbeat_ts{0};
     NodeStatus status;
+};
+
+struct NodeDerived {
+    int32_t owned_replica_count{0};
+    int32_t owned_leader_count{0};
+    // bool schedulable{false};
 };
 
 struct Node {
     NodeID id;
     NodeSpec spec;
     NodeState state;
+    NodeDerived derived;
     std::vector<ReplicaKey> replicas;
 };
 

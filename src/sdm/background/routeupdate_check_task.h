@@ -2,7 +2,7 @@
 
 #include "common/type.h"
 #include "sdm/background/background_task.h"
-#include "sdm/model/route_model.h"
+
 #include "sdm/model/sdm_store.h"
 #include "sdm/selector/leader_selector/leader_selector.h"
 #include "sdm/selector/node_selector/node_selector.h"

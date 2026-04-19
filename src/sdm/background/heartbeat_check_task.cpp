@@ -2,7 +2,7 @@
 #include "sdm/background/heartbeat_check_task.h"
 
 #include <cassert>
-#include <chrono>
+
 #include <cstdint>
 
 #include "common/define.h"
@@ -10,8 +10,8 @@
 #include "common/status.h"
 #include "common/type.h"
 #include "sdm/model/store.h"
-#include "sdm/selector/node_selector/node_selector.h"
 
+#include "common/func.h"
 namespace adviskv::sdm {
 
 constexpr int64_t SUSPECT_TIMEOUT_MS = 10 * 1000;
@@ -53,11 +53,6 @@ void HeartBeatCheckTask::run() {
     }
 }
 
-inline int64_t get_current_ts_ms() {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-               std::chrono::system_clock::now().time_since_epoch())
-        .count();
-}
 
 Status HeartBeatCheckTask::check_and_modify_node(Node& node) {
     int64_t delta_time = get_current_ts_ms() - node.state.last_heartbeat_ts;

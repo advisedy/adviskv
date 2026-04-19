@@ -80,17 +80,11 @@ Status CapacityCheckTask::check_replica_list(const Table& table,
         // 说明缺失了，我们需要补回来
         ReplicaSpec spec{
             .dc = "",
-        };
-        ReplicaState state{
             .assign_node_id = "",
-            .endpoint = {},
-            .role = ReplicaRole::FOLLOWER,
-            .status = ReplicaStatus::PENDING,
         };
         Replica replica{
             .replica_key = key,
             .spec = std::move(spec),
-            .state = std::move(state),
         };
         status = sdm_store_.put_replica(replica);
         RETURN_IF_INVALID_STATUS(status)

@@ -33,8 +33,8 @@ Status HeartBeatService::update_node_state(const HeartBeatParam& param) {
 
     //这里对于node的定义可能要变一下了，state里面的内容不全是代表着storage传过来的就要更新的。
     // 例如拥有的leader，这个应该是交给sdm的routeupdatechecker做的才对。 //TODO
-    node->state.endpoint = Endpoint{param.ip, param.port};
-    node->state.status = param.status;
+    node->spec.endpoint = Endpoint{param.ip, param.port};
+    node->spec.status = param.status;
     return Status::OK();
 }
 
@@ -48,18 +48,18 @@ Status HeartBeatService::apply_reported_replicas(const HeartBeatParam& param) {
         if (!replica) {
             continue;
         }
-        if (replica->state.assign_node_id != param.node_id) {
+        if (replica->spec.assign_node_id != param.node_id) {
             continue;
         }
 
-        replica->state.role = info.role;
-        replica->state.endpoint = Endpoint{param.ip, param.port};
+        replica->spec.role = info.role;
+        replica->spec.endpoint = Endpoint{param.ip, param.port};
 
-        if (replica->state.status == ReplicaStatus::ADDING &&
+        if (replica->spec.status == ReplicaStatus::ADDING &&
             info.status == ReplicaStatus::READY) {
-            replica->state.status = ReplicaStatus::READY;
+            replica->spec.status = ReplicaStatus::READY;
         } else {
-            replica->state.status = info.status;
+            replica->spec.status = info.status;
         }
     }
     return Status::OK();
@@ -80,7 +80,7 @@ Status HeartBeatService::build_desired_replicas(const NodeID& node_id,
         if (!replica) {
             continue;
         }
-        if (replica->state.assign_node_id != node_id) {
+        if (replica->spec.assign_node_id != node_id) {
             continue;
         }
         if (replica->state.status == ReplicaStatus::LOST) {
@@ -91,7 +91,7 @@ Status HeartBeatService::build_desired_replicas(const NodeID& node_id,
         one.replica_key.table_id = replica->replica_key.table_id;
         one.replica_key.shard_id = replica->replica_key.shard_id;
         one.replica_key.replica_index = replica->replica_key.replica_index;
-        one.replica_role = replica->state.role;
+        one.replica_role = replica->spec.role;
         result->entry_list.push_back(std::move(one));
     }
 

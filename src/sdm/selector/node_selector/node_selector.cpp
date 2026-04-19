@@ -64,8 +64,8 @@ Status DefaultNodeSelector::select_nodes(const std::vector<NodePtr>& nodes,
 
     std::sort(candi_nodes.begin(), candi_nodes.end(),
               [](const NodePtr& q1, const NodePtr& q2) {
-                  return q1->state.owned_replica_count <
-                         q2->state.owned_replica_count;
+                  return q1->derived.owned_replica_count <
+                         q2->derived.owned_replica_count;
               });
 
     res.clear();

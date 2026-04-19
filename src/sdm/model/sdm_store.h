@@ -4,8 +4,10 @@
 
 #include "common/status.h"
 #include "common/type.h"
-#include "sdm/model/route_model.h"
+#include "sdm/model/i_sdm_metastore.h"
 #include "sdm/model/store.h"
+#include "sdm/model/sdm_runtime_index.h"
+
 namespace adviskv::sdm {
 
 /*
@@ -13,6 +15,8 @@ namespace adviskv::sdm {
 */
 class SdmStore {
    public:
+    explicit SdmStore(SdmMetaStoreType type);
+
     Status put_table(const Table& table);
     Status get_table(TableID table_id, std::shared_ptr<Table>& out) const;
     Status get_table_by_name(const std::string& db_name,
@@ -45,6 +49,10 @@ class SdmStore {
 
     Status list_replicas_by_node(NodeID node_id,
                                  std::vector<ReplicaPtr>& out) const;
+
+   private:
+    std::unique_ptr<ISdmMetaStore> meta_store_;
+    SdmRuntimeIndex runtime_index_;
 };
 
 }  // namespace adviskv::sdm

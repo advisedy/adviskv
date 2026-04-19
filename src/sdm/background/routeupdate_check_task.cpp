@@ -55,13 +55,13 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
             continue;
         }
 
-        if (replica_ptr->state.assign_node_id.empty()) {
+        if (replica_ptr->spec.assign_node_id.empty()) {
             continue;
         }
 
         NodePtr node_ptr;
         status =
-            sdm_store_->get_node(replica_ptr->state.assign_node_id, node_ptr);
+            sdm_store_->get_node(replica_ptr->spec.assign_node_id, node_ptr);
         RETURN_IF_INVALID_STATUS(status)
 
         if (!node_ptr || node_ptr->state.status != NodeStatus::ONLINE) {
@@ -86,10 +86,10 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
         RETURN_IF_INVALID_STATUS(status)
 
         for (ReplicaPtr& replica_ptr : healthy_replicas) {
-            if (replica_ptr->state.assign_node_id == leader_node->id) {
-                replica_ptr->state.role = ReplicaRole::LEADER;
+            if (replica_ptr->spec.assign_node_id == leader_node->id) {
+                replica_ptr->spec.role = ReplicaRole::LEADER;
             } else {
-                replica_ptr->state.role = ReplicaRole::FOLLOWER;
+                replica_ptr->spec.role = ReplicaRole::FOLLOWER;
             }
         }
     }
@@ -102,7 +102,7 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
     for (const ReplicaPtr& replica_ptr : healthy_replicas) {
         route.replicas.push_back(RouteEntry{
             .replica_key = replica_ptr->replica_key,
-            .node_id = replica_ptr->state.assign_node_id,
+            .node_id = replica_ptr->spec.assign_node_id,
             .sp = replica_ptr->state.endpoint.ip,
             .port = replica_ptr->state.endpoint.port,
         });
