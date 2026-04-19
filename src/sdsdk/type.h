@@ -88,7 +88,6 @@ struct ReplicaReport {
     pb::ReplicaRole role{pb::ReplicaRole::FOLLOWER};
     pb::ReplicaStatus status{pb::ReplicaStatus::ADDING};
     Endpoint endpoint;
-    std::map<std::string, int64_t> stats;
 };
 
 struct DesiredReplicaSpec {
