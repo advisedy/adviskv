@@ -11,14 +11,13 @@
 #include "common/type.h"
 #include "storage/engine/kv_engine.h"
 #include "storage.pb.h"
+#include "storage/raft/raft_node.h"
 
-namespace adviskv{
+namespace adviskv::storage{
 
 
 struct ReplicaInitParam{
-    TableID table_id;
     ShardID shard_id;
-    pb::ReplicaRole role;
     pb::EngineType engine_type;
 };
 
@@ -38,38 +37,23 @@ struct GetParam{
     }    
 };
 
-struct ReplicaID{
-    TableID table_id;
-    ShardID shard_id;
-    bool operator==(const ReplicaID& one) const {
-        return table_id == one.table_id and shard_id == one.shard_id;
-    }
-};
-
-struct ReplicaIDHash{
-    uint64_t operator()(const ReplicaID& one) const {
-        return (std::hash<int32_t>{}(one.table_id)*1000) + (std::hash<int32_t>{}(one.shard_id));
-    }
-};
-
-
 class Replica{
 
 public:
 
-    ReplicaID get_replica_id() const{
-        return replica_id_;
+    ShardKey get_shard_key() const{
+        return shard_key_;
     }
     TableID get_table_id() const{
-        return replica_id_.table_id;
+        return shard_key_.table_id;
     }
     ShardID get_shard_id() const{
-        return replica_id_.shard_id;
+        return shard_key_;
     }
 
     Status put(const PutParam& param);
     Status get(const GetParam& param, Value& value);
-
+    
 
 private:
     
@@ -79,9 +63,10 @@ private:
 
     // Replica() = default;
 
-    ReplicaID replica_id_;
-    pb::ReplicaRole role_;
+    ShardKey shard_key_;
+    // pb::ReplicaRole role_;
     std::unique_ptr<KVEngine> engine_;
+    std::unique_ptr<RaftNode> raft_node_;
 
 };
 

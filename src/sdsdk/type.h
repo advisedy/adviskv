@@ -13,30 +13,8 @@
 
 namespace adviskv::sdsdk {
 
-struct Endpoint {
-    std::string ip;
-    int32_t port{0};
-};
-
-struct ReplicaKey {
-    TableID table_id{-1};
-    ShardID shard_id{-1};
-    int32_t replica_index{-1};
-
-    bool operator==(const ReplicaKey& other) const {
-        return table_id == other.table_id && shard_id == other.shard_id &&
-               replica_index == other.replica_index;
-    }
-};
-
-struct ReplicaKeyHash {
-    size_t operator()(const ReplicaKey& key) const {
-        size_t h1 = std::hash<TableID>{}(key.table_id);
-        size_t h2 = std::hash<ShardID>{}(key.shard_id);
-        size_t h3 = std::hash<int32_t>{}(key.replica_index);
-        return h1 ^ (h2 << 1) ^ (h3 << 2);
-    }
-};
+using ReplicaKey = ReplicaID;
+using ReplicaKeyHash = ReplicaIDHash;
 
 struct NodeAgentConf {
     NodeID node_id;

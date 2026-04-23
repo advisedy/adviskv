@@ -4,7 +4,8 @@
 #include "storage/engine/kv_engine.h"
 #include <map>
 #include <shared_mutex>
-namespace adviskv{
+
+namespace adviskv::storage{
 
 class MapEngine: public KVEngine{
 

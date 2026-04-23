@@ -4,7 +4,7 @@
 #include "storage/replica/replica.h"
 #include <grpcpp/support/status.h>
 
-namespace adviskv{
+namespace adviskv::storage{
 
 grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
         const rpc::PutRequest* request,
@@ -16,7 +16,11 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
             return grpc::Status::OK;
         }
 
-        Replica* replica = replica_manager_->get_replica(request->table_id(), request->shard_id());
+        const ShardID shard_id{
+            .table_id = request->table_id(),
+            .shard_index = request->shard_id(),
+        };
+        Replica* replica = replica_manager_->get_replica(shard_id);
 
         if(!replica){
             WARN("replica not found, table_id = {}, shard_id = {}", request->table_id(), request->shard_id());
@@ -44,7 +48,11 @@ grpc::Status StorageServiceImpl::Get(grpc::ServerContext* context,
         const rpc::GetRequest* request,
         rpc::GetResponse* response) {
 
-            Replica* replica = replica_manager_->get_replica(request->table_id(), request->shard_id());
+            const ShardID shard_id{
+                .table_id = request->table_id(),
+                .shard_index = request->shard_id(),
+            };
+            Replica* replica = replica_manager_->get_replica(shard_id);
 
             if(!replica){
                 WARN("replica not found, table_id = {}, shard_id = {}", request->table_id(), request->shard_id());

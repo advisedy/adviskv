@@ -9,7 +9,7 @@
 #include "common/status.h"
 #include "common/type.h"
 
-namespace adviskv {
+namespace adviskv::storage {
 
 Status MapEngine::put(const Key& key, const Value& value) {
   std::unique_lock lock(map_mutex_);

@@ -40,7 +40,8 @@ Status HeartBeatService::update_node_state(const HeartBeatParam& param) {
 
 Status HeartBeatService::apply_reported_replicas(const HeartBeatParam& param) {
     for (const auto& info : param.replica_list) {
-        ReplicaID key{info.table_id, info.shard_id, info.replica_index};
+        ReplicaID key{info.shard_id.table_id, info.shard_id.shard_index,
+                      info.replica_index};
         ReplicaPtr replica;
         Status status = sdm_store_->get_replica(key, replica);
         RETURN_IF_INVALID_STATUS(status)
@@ -92,7 +93,7 @@ Status HeartBeatService::build_desired_replicas(const NodeID& node_id,
 
         HeartBeatResultEntry one;
         one.replica_id.table_id = replica->replica_id.table_id;
-        one.replica_id.shard_id = replica->replica_id.shard_id;
+        one.replica_id.shard_index = replica->replica_id.shard_index;
         one.replica_id.replica_index = replica->replica_id.replica_index;
         one.replica_role = replica->spec.role;
         result->entry_list.push_back(std::move(one));

@@ -10,7 +10,7 @@ namespace {
 void test(){
 
     std::string s1{"1"},s2{"2"};
-    adviskv::MapEngine engine;
+    adviskv::storage::MapEngine engine;
     engine.put(s1, s2);
     adviskv::Value value;
     engine.get(s1, value);

@@ -104,9 +104,8 @@ message HeartBeatResponse{
 */
 
 struct HeartBeatReplicaInfo{
-  TableID table_id;
   ShardID shard_id;
-  int32_t replica_index;
+  ReplicaIndex replica_index;
   ReplicaRole role;
   ReplicaStatus status;
 };

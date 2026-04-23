@@ -22,7 +22,7 @@ void ReplicaScheduleTask::run() {
 
     for (TablePtr& table_ptr : table_list) {
         for (int i = 0; i < table_ptr->spec.shard_count; i++) {
-            status = check_shard(*table_ptr, i);
+            status = check_shard(*table_ptr, static_cast<ShardIndex>(i));
             if (status.fail()) {
                 WARN("22");
             }
@@ -30,12 +30,14 @@ void ReplicaScheduleTask::run() {
     }
 }
 
-Status ReplicaScheduleTask::check_shard(const Table& table, ShardID shard_id) {
+Status ReplicaScheduleTask::check_shard(const Table& table,
+                                        ShardIndex shard_index) {
     Status status{Status::OK()};
+    const ShardID shard_id{.table_id = table.table_id,
+                           .shard_index = shard_index};
 
     std::vector<ReplicaPtr> replicas;
-    status =
-        sdm_store_->list_replicas_by_shard(table.table_id, shard_id, replicas);
+    status = sdm_store_->list_replicas_by_shard(shard_id, replicas);
 
     RETURN_IF_INVALID_STATUS(status)
 

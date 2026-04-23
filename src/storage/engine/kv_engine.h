@@ -5,7 +5,7 @@
 #include "common/type.h"
 #include <string_view>
 
-namespace adviskv{
+namespace adviskv::storage{
 
 class KVEngine{
 public:

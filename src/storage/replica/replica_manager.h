@@ -9,20 +9,20 @@
 #include <unordered_map>
 #include <shared_mutex>
 
-namespace adviskv{
+namespace adviskv::storage{
 
 class ReplicaManager{
     
 public:
     
-    Replica* get_replica(int32_t table_id, int32_t shard_id) const;
+    Replica* get_replica(const ShardID& shard_id) const;
     // common::Status AddReplica(); TODO
     
     Status add_replica(const ReplicaInitParam& params);
     
 private:
     mutable std::shared_mutex replica_map_mtx_;
-    std::unordered_map<ReplicaID, std::unique_ptr<Replica>, ReplicaIDHash> replica_map_;
+    std::unordered_map<ShardKey, std::unique_ptr<Replica>, ShardKeyHash> replica_map_;
     
 };
 

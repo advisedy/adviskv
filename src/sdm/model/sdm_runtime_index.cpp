@@ -17,7 +17,7 @@ TableNameKey make_table_name_key(const Table& table) {
 ShardKey make_shard_key(const ReplicaKey& key) {
     return ShardKey{
         .table_id = key.table_id,
-        .shard_id = key.shard_id,
+        .shard_index = key.shard_index,
     };
 }
 
@@ -172,10 +172,9 @@ Status SdmRuntimeIndex::list_nodes_by_resource_pool(
 }
 
 Status SdmRuntimeIndex::list_replicas_by_shard(
-    TableID table_id, ShardID shard_id, std::vector<ReplicaKey>& out) const {
+    const ShardID& shard_id, std::vector<ReplicaKey>& out) const {
     out.clear();
-    const ShardKey key{.table_id = table_id, .shard_id = shard_id};
-    auto it = shard_replicas_index_.find(key);
+    auto it = shard_replicas_index_.find(shard_id);
     if (it == shard_replicas_index_.end()) {
         return Status::OK();
     }
@@ -194,10 +193,9 @@ Status SdmRuntimeIndex::list_replicas_by_node(
     return Status::OK();
 }
 
-Status SdmRuntimeIndex::get_shard_route(TableID table_id, ShardID shard_id,
+Status SdmRuntimeIndex::get_shard_route(const ShardID& shard_id,
                                         ShardRoutePtr& out) const {
-    const ShardKey key{.table_id = table_id, .shard_id = shard_id};
-    auto it = shard_route_cache_.find(key);
+    auto it = shard_route_cache_.find(shard_id);
     if (it == shard_route_cache_.end()) {
         out.reset();
         return Status::OK();
@@ -207,15 +205,13 @@ Status SdmRuntimeIndex::get_shard_route(TableID table_id, ShardID shard_id,
 }
 
 Status SdmRuntimeIndex::put_shard_route(const ShardRoute& route) {
-    const ShardKey key{.table_id = route.table_id, .shard_id = route.shard_id};
-    shard_route_cache_[key] = std::make_shared<ShardRoute>(route);
+    shard_route_cache_[route.shard_id] = std::make_shared<ShardRoute>(route);
     return Status::OK();
 }
 
-Status SdmRuntimeIndex::del_shard_route_entry(TableID table_id, ShardID shard_id,
+Status SdmRuntimeIndex::del_shard_route_entry(const ShardID& shard_id,
                                               const ReplicaKey& replica_id) {
-    const ShardKey key{.table_id = table_id, .shard_id = shard_id};
-    auto it = shard_route_cache_.find(key);
+    auto it = shard_route_cache_.find(shard_id);
     if (it == shard_route_cache_.end() || !(it->second)) {
         return Status::OK();
     }
@@ -224,8 +220,8 @@ Status SdmRuntimeIndex::del_shard_route_entry(TableID table_id, ShardID shard_id
     ad_erase_if(replicas, [&replica_id](const RouteEntry& entry) {
         return entry.replica_id.table_id ==
                    replica_id.table_id &&
-               entry.replica_id.shard_id ==
-                   replica_id.shard_id &&
+               entry.replica_id.shard_index ==
+                   replica_id.shard_index &&
                entry.replica_id.replica_index ==
                    replica_id.replica_index;
     });

@@ -8,12 +8,12 @@
 #include <mutex>
 #include <shared_mutex>
 
-namespace adviskv{
+namespace adviskv::storage{
 
 
-Replica* ReplicaManager::get_replica(TableID table_id, ShardID shard_id) const{
+Replica* ReplicaManager::get_replica(const ShardID& shard_id) const{
     std::shared_lock<std::shared_mutex> locker(replica_map_mtx_);
-    auto it = replica_map_.find({table_id, shard_id});
+    auto it = replica_map_.find(shard_id);
     if(it == replica_map_.end()){
         return nullptr;
     }
@@ -27,10 +27,13 @@ Status ReplicaManager::add_replica(const ReplicaInitParam& param){
         return status;
     }
     std::scoped_lock<std::shared_mutex> locker(replica_map_mtx_);
-    if(replica_map_.count(replica->get_replica_id())){
-        return Status{StatusCode::INVALID_ARGUMENT, fmt::format("table_id: {}, shard_id: {} has been exist", replica->get_table_id(), replica->get_shard_id())};
+    if(replica_map_.count(replica->get_shard_key())){
+        const ShardID shard_id = replica->get_shard_id();
+        return Status{StatusCode::INVALID_ARGUMENT,
+                      fmt::format("table_id: {}, shard_index: {} has been exist",
+                                  shard_id.table_id, shard_id.shard_index)};
     }
-    replica_map_.insert({replica->get_replica_id(), std::move(replica)});
+    replica_map_.insert({replica->get_shard_key(), std::move(replica)});
     return Status::OK();
 }
 

@@ -27,7 +27,7 @@ Status RouteService::get_route(const GetRouteParam& param,
 
     ShardID shard_id = calc_shard_id(*table, param.key);
     std::shared_ptr<ShardRoute> route;
-    status = sdm_store_->get_shard_route(table->table_id, shard_id, route);
+    status = sdm_store_->get_shard_route(shard_id, route);
     RETURN_IF_INVALID_STATUS(status)
     if (res) {
         *res = *route;
@@ -36,9 +36,13 @@ Status RouteService::get_route(const GetRouteParam& param,
     return status;
 }
 
-int32_t RouteService::calc_shard_id(const Table& table, Key key) const {
+ShardID RouteService::calc_shard_id(const Table& table, Key key) const {
     // TODO 将来得搞range
-    return std::hash<Key>{}(key) % table.spec.shard_count;
+    return ShardID{
+        .table_id = table.table_id,
+        .shard_index = static_cast<ShardIndex>(
+            std::hash<Key>{}(key) % table.spec.shard_count),
+    };
 }
 
 }  // namespace adviskv::sdm

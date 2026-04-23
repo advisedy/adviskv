@@ -11,15 +11,16 @@
 namespace adviskv::sdm {
 
 using ReplicaKey = ReplicaID;
+using ShardKey = ShardID;
 
-struct ShardKey {
-    TableID table_id;
-    ShardID shard_id;
+// struct ShardKey {
+//     TableID table_id;
+//     ShardID shard_id;
 
-    bool operator==(const ShardKey& other) const {
-        return table_id == other.table_id and shard_id == other.shard_id;
-    }
-};
+//     bool operator==(const ShardKey& other) const {
+//         return table_id == other.table_id and shard_id == other.shard_id;
+//     }
+// };
 
 struct TableNameKey {
     std::string db_name;
@@ -31,14 +32,14 @@ struct TableNameKey {
 };
 
 using ReplicaKeyHash = ReplicaIDHash;
-
-struct ShardKeyHash {
-    size_t operator()(const ShardKey& key) const {
-        size_t h1 = std::hash<TableID>{}(key.table_id);
-        size_t h2 = std::hash<ShardID>{}(key.shard_id);
-        return h1 ^ (h2 << 1);
-    }
-};
+using ShardKeyHash = ShardIDHash;
+// struct ShardKeyHash {
+//     size_t operator()(const ShardKey& key) const {
+//         size_t h1 = std::hash<TableID>{}(key.table_id);
+//         size_t h2 = std::hash<ShardID>{}(key.shard_id);
+//         return h1 ^ (h2 << 1);
+//     }
+// };
 
 struct TableNameKeyHash {
     size_t operator()(const TableNameKey& key) const {
@@ -74,16 +75,15 @@ class SdmRuntimeIndex {
     Status list_nodes_by_resource_pool(const std::string& pool_name,
                                        std::vector<NodeID>& out) const;
 
-    Status list_replicas_by_shard(TableID table_id, ShardID shard_id,
+    Status list_replicas_by_shard(const ShardID& shard_id,
                                   std::vector<ReplicaKey>& out) const;
 
     Status list_replicas_by_node(const NodeID& node_id,
                                  std::vector<ReplicaKey>& out) const;
 
-    Status get_shard_route(TableID table_id, ShardID shard_id,
-                           ShardRoutePtr& out) const;
+    Status get_shard_route(const ShardID& shard_id, ShardRoutePtr& out) const;
     Status put_shard_route(const ShardRoute& route);
-    Status del_shard_route_entry(TableID table_id, ShardID shard_id,
+    Status del_shard_route_entry(const ShardID& shard_id,
                                  const ReplicaKey& replica_key);
 
    private:

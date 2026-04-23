@@ -56,8 +56,10 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
         ReplicaStatus status;
         CONVERT_PB_TO_REPLICA_STATUS(replica_info.status(), status)
 
-        HeartBeatReplicaInfo one{.table_id = replica_info.table_id(),
-                                 .shard_id = replica_info.shard_id(),
+        HeartBeatReplicaInfo one{.shard_id = ShardID{
+                                     .table_id = replica_info.table_id(),
+                                     .shard_index = replica_info.shard_id(),
+                                 },
                                  .replica_index = replica_info.replica_index(),
                                  .role = role,
                                  .status = status};
@@ -82,7 +84,7 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
       rpc::HeartBeatReplicaExpect* expect =response->add_replica_list();
       rpc::HeartBeatReplicaExpect& one = *expect;
       one.set_table_id(entry.replica_id.table_id);
-      one.set_shard_id(entry.replica_id.shard_id);
+      one.set_shard_id(entry.replica_id.shard_index);
       one.set_replica_index(entry.replica_id.replica_index);
 
       pb::ReplicaRole role;

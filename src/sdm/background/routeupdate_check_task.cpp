@@ -26,7 +26,7 @@ void RouteUpdateCheckTask::run() {
 
     for (TablePtr& table_ptr : table_list) {
         for (int i = 0; i < table_ptr->spec.shard_count; i++) {
-            status = check_shard_route(*table_ptr, i);
+            status = check_shard_route(*table_ptr, static_cast<ShardIndex>(i));
             if (status.fail()) {
                 WARN("22");
             }
@@ -35,11 +35,12 @@ void RouteUpdateCheckTask::run() {
 }
 
 Status RouteUpdateCheckTask::check_shard_route(const Table& table,
-                                               ShardID shard_id) {
+                                               ShardIndex shard_index) {
     Status status{Status::OK()};
+    const ShardID shard_id{.table_id = table.table_id,
+                           .shard_index = shard_index};
     std::vector<ReplicaPtr> replicas;
-    status =
-        sdm_store_->list_replicas_by_shard(table.table_id, shard_id, replicas);
+    status = sdm_store_->list_replicas_by_shard(shard_id, replicas);
     RETURN_IF_INVALID_STATUS(status)
 
     std::vector<ReplicaPtr> healthy_replicas;
@@ -97,7 +98,6 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
     }
 
     ShardRoute route{
-        .table_id = table.table_id,
         .shard_id = shard_id,
     };
 

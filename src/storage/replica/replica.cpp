@@ -11,13 +11,13 @@
 #include <memory>
 
 
-namespace adviskv{
+namespace adviskv::storage{
 
 Status Replica::init(const ReplicaInitParam& param){
 
-    replica_id_ = {param.table_id, param.shard_id};
+    shard_key_ = param.shard_id;
 
-    role_ = param.role;
+    // role_ = param.role;
 
     switch (param.engine_type) {
         case pb::EngineType::ENGINE_MAP:{
@@ -41,7 +41,7 @@ Status Replica::init(const ReplicaInitParam& param){
 Status Replica::put(const PutParam& param){
     
     if(!engine_){
-        WARN("engine is nullptr, replica: table_id = {}, shard_id = {}", replica_id_.table_id, replica_id_.shard_id);
+        WARN("engine is nullptr, replica: table_id = {}, shard_index = {}", shard_key_.table_id, shard_key_.shard_index);
         return Status{StatusCode::ERROR,"engine is nullptr"};
     }
     RETURN_IF_INVALID_PARAM(param)
@@ -58,7 +58,7 @@ Status Replica::put(const PutParam& param){
 
 Status Replica::get(const GetParam& param, Value& value){
     if(!engine_){
-        WARN("engine is nullptr, replica: table_id = {}, shard_id = {}", replica_id_.table_id, replica_id_.shard_id);
+        WARN("engine is nullptr, replica: table_id = {}, shard_index = {}", shard_key_.table_id, shard_key_.shard_index);
         return Status{StatusCode::ERROR,"engine is nullptr"};
     }
 

@@ -12,7 +12,7 @@ class CapacityCheckTask : public BackgroundTask {
     void run() override;
 
    private:
-    Status check_replica_list(const Table& table, ShardID shard_id);
+    Status check_replica_list(const Table& table, ShardIndex shard_index);
 
     SdmStore sdm_store_;
 };

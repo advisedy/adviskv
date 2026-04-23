@@ -12,7 +12,7 @@ class ReplicaScheduleTask : public BackgroundTask {
     void run() override;
 
    private:
-    Status check_shard(const Table& table, ShardID shard_id);
+    Status check_shard(const Table& table, ShardIndex shard_index);
     SdmStore* sdm_store_;
     DefaultNodeSelector node_selector_;
 };

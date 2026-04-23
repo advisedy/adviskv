@@ -74,10 +74,10 @@ Status SdmStore::list_nodes_by_resource_pool(const std::string& pool_name,
     return Status::OK();
 }
 
-Status SdmStore::get_shard_route(TableID table_id, ShardID shard_id,
+Status SdmStore::get_shard_route(const ShardID& shard_id,
                                  std::shared_ptr<ShardRoute>& out) const {
     std::shared_lock locker{mutex_};
-    return runtime_index_.get_shard_route(table_id, shard_id, out);
+    return runtime_index_.get_shard_route(shard_id, out);
 }
 
 Status SdmStore::put_shard_route(const ShardRoute& route) {
@@ -85,11 +85,10 @@ Status SdmStore::put_shard_route(const ShardRoute& route) {
     return runtime_index_.put_shard_route(route);
 }
 
-Status SdmStore::del_shard_route_entry(TableID table_id, ShardID shard_id,
+Status SdmStore::del_shard_route_entry(const ShardID& shard_id,
                                        const ReplicaKey& replica_key) {
     std::unique_lock locker{mutex_};
-    return runtime_index_.del_shard_route_entry(table_id, shard_id,
-                                                replica_key);
+    return runtime_index_.del_shard_route_entry(shard_id, replica_key);
 }
 
 Status SdmStore::put_node(const Node& node) {
@@ -157,13 +156,12 @@ Status SdmStore::del_replica(const ReplicaID& replica_key) {
     return runtime_index_.on_replica_delete(*old_ptr);
 }
 
-Status SdmStore::list_replicas_by_shard(TableID table_id, ShardID shard_id,
+Status SdmStore::list_replicas_by_shard(const ShardID& shard_id,
                                         std::vector<ReplicaPtr>& out) const {
     std::shared_lock locker{mutex_};
 
     std::vector<ReplicaID> replica_ids;
-    Status status =
-        runtime_index_.list_replicas_by_shard(table_id, shard_id, replica_ids);
+    Status status = runtime_index_.list_replicas_by_shard(shard_id, replica_ids);
     RETURN_IF_INVALID_STATUS(status)
 
     out.clear();

@@ -3,7 +3,7 @@
 #include "storage/replica/replica_manager.h"
 #include <memory>
 
-namespace adviskv{
+namespace adviskv::storage{
 
 class StorageServiceImpl final : public rpc::StorageService::Service{
 

@@ -20,7 +20,7 @@ void CapacityCheckTask::run() {
     }
     for (TablePtr table : table_list) {
         for (int i = 0; i < table->spec.shard_count; i++) {
-            status = check_replica_list(*table, i);
+            status = check_replica_list(*table, static_cast<ShardIndex>(i));
             if (status.fail()) {
                 WARN("3");
                 return;
@@ -30,12 +30,13 @@ void CapacityCheckTask::run() {
 }
 
 Status CapacityCheckTask::check_replica_list(const Table& table,
-                                             ShardID shard_id) {
+                                             ShardIndex shard_index) {
     Status status{Status::OK()};
+    const ShardID shard_id{.table_id = table.table_id,
+                           .shard_index = shard_index};
 
     std::vector<ReplicaPtr> replicas;
-    status =
-        sdm_store_.list_replicas_by_shard(table.table_id, shard_id, replicas);
+    status = sdm_store_.list_replicas_by_shard(shard_id, replicas);
     RETURN_IF_INVALID_STATUS(status)
 
     int32_t replica_count = table.spec.replica_count;
@@ -70,7 +71,7 @@ Status CapacityCheckTask::check_replica_list(const Table& table,
 
     // 检测有没有漏掉的
     for (int i = 0; i < replica_count; i++) {
-        ReplicaID key{table.table_id, shard_id, i};
+        ReplicaID key{table.table_id, shard_index, i};
         ReplicaPtr ptr;
         status = sdm_store_.get_replica(key, ptr);
         RETURN_IF_INVALID_STATUS(status)

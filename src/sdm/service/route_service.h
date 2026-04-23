@@ -18,7 +18,7 @@ class RouteService {
     Status get_route(const GetRouteParam& param, ShardRoute* res) const;
 
    private:
-    int32_t calc_shard_id(const Table& table, Key key) const;
+    ShardID calc_shard_id(const Table& table, Key key) const;
 
     // RouteManager* route_manager_;
     // MetaCacheManager* meta_cache_manager_;

@@ -120,7 +120,7 @@ rpc::HeartBeatRequest HeartBeater::make_request(
     for (const ReplicaReport& replica : replicas) {
         auto* info = request.add_replica_info_list();
         info->set_table_id(replica.key.table_id);
-        info->set_shard_id(replica.key.shard_id);
+        info->set_shard_id(replica.key.shard_index);
         info->set_replica_index(replica.key.replica_index);
         info->set_role(replica.role);
         info->set_status(replica.status);
@@ -136,7 +136,7 @@ std::vector<DesiredReplicaSpec> HeartBeater::parse_desired_set(
     for (const auto& replica : response.replica_list()) {
         DesiredReplicaSpec spec{
             .key.table_id = replica.table_id(),
-            .key.shard_id = replica.shard_id(),
+            .key.shard_index = replica.shard_id(),
             .key.replica_index = replica.replica_index(),
             .role = replica.role(),
         };

@@ -14,7 +14,7 @@ class RouteUpdateCheckTask : public BackgroundTask {
     void run() override;
 
    private:
-    Status check_shard_route(const Table& table, ShardID shard_id);
+    Status check_shard_route(const Table& table, ShardIndex shard_index);
 
     SdmStore* sdm_store_;
     DefaultLeaderSelector leader_selector_;

@@ -16,10 +16,7 @@ namespace adviskv::sdm {
 
 // using PlaceTableParam = rpc::PlaceTableRequest;
 
-struct Endpoint {
-    std::string ip;
-    int32_t port;
-};
+
 
 //////////////////////////////
 // resource_pool
@@ -45,26 +42,6 @@ enum class ReplicaStatus {
 enum class ReplicaRole {
     LEADER = 1,
     FOLLOWER = 2,
-};
-
-struct ReplicaID {
-    TableID table_id;
-    ShardID shard_id;
-    int32_t replica_index;
-
-    bool operator==(const ReplicaID& other) const {
-        return table_id == other.table_id and shard_id == other.shard_id and
-               replica_index == other.replica_index;
-    }
-};
-
-struct ReplicaIDHash {
-    size_t operator()(const ReplicaID& key) const {
-        size_t h1 = std::hash<TableID>{}(key.table_id);
-        size_t h2 = std::hash<ShardID>{}(key.shard_id);
-        size_t h3 = std::hash<int32_t>{}(key.replica_index);
-        return h1 ^ (h2 << 1) ^ (h3 << 2);
-    }
 };
 
 struct ReplicaSpec {
@@ -160,8 +137,7 @@ struct RouteEntry {
 };
 
 struct ShardRoute {
-    TableID table_id{-1};
-    ShardID shard_id{-1};
+    ShardID shard_id;
     std::vector<RouteEntry> replicas;
 };
 
