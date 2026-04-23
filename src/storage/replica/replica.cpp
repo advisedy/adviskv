@@ -147,6 +147,7 @@ Status Replica::execute_election() {
     voted_for_ = replica_id_;
     current_term_++;
     granted_vote_count_ = 1;
+    role_ = ReplicaRole::CANDIDATE;
 
     for (PeerMember& member : members_) {
         if (member.replica_id == replica_id_) continue;
@@ -190,12 +191,14 @@ Status Replica::handle_vote_response(const PeerMember& member,
         return Status::OK();
     }
 
-    if (!result.vote_granted) {
-        return Status::OK();
-    }
+
 
     if (result.term > current_term_) {
         become_follower(result.term);
+        return Status::OK();
+    }
+
+    if (!result.vote_granted) {
         return Status::OK();
     }
 
