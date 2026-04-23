@@ -10,32 +10,56 @@
 
 namespace adviskv::storage{
 
-
-Replica* ReplicaManager::get_replica(const ShardID& shard_id) const{
-    std::shared_lock<std::shared_mutex> locker(replica_map_mtx_);
-    auto it = replica_map_.find(shard_id);
-    if(it == replica_map_.end()){
+Replica* ReplicaManager::get_replica_by_id(const ReplicaID& replica_id) const {
+    std::shared_lock locker(mutex_);
+    auto it = replica_map_.find(replica_id);
+    if (it == replica_map_.end()) {
         return nullptr;
     }
     return it->second.get();
 }
 
-Status ReplicaManager::add_replica(const ReplicaInitParam& param){
-    auto&& replica = std::make_unique<Replica>();
-    Status status = replica->init(param);
-    if(!status.ok()){
-        return status;
+Replica* ReplicaManager::get_replica_by_shard(const ShardID& shard_id) const {
+    std::shared_lock locker(mutex_);
+
+    auto shard_it = shard_primary_index_.find(shard_id);
+    if (shard_it == shard_primary_index_.end()) {
+        return nullptr;
     }
-    std::scoped_lock<std::shared_mutex> locker(replica_map_mtx_);
-    if(replica_map_.count(replica->get_shard_key())){
-        const ShardID shard_id = replica->get_shard_id();
-        return Status{StatusCode::INVALID_ARGUMENT,
-                      fmt::format("table_id: {}, shard_index: {} has been exist",
-                                  shard_id.table_id, shard_id.shard_index)};
+
+    auto replica_it = replica_map_.find(shard_it->second);
+    if (replica_it == replica_map_.end()) {
+        return nullptr;
     }
-    replica_map_.insert({replica->get_shard_key(), std::move(replica)});
-    return Status::OK();
+    return replica_it->second.get();
 }
 
+Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
+    auto replica = std::make_unique<Replica>();
+    Status status = replica->init(param);
+    if (!status.ok()) {
+        return status;
+    }
+
+    const ReplicaID replica_id = replica->replica_id_;
+    const ShardID shard_id = replica->shard_id_;
+
+    std::scoped_lock locker(mutex_);
+    if (replica_map_.count(replica_id)) {
+        return Status{StatusCode::INVALID_ARGUMENT,
+                      fmt::format("replica already exists, table_id: {}, shard_index: {}, replica_index: {}",
+                                  replica_id.table_id, replica_id.shard_index,
+                                  replica_id.replica_index)};
+    }
+    if (shard_primary_index_.count(shard_id)) {
+        return Status{StatusCode::INVALID_ARGUMENT,
+                      fmt::format("shard already exists on current node, table_id: {}, shard_index: {}",
+                                  shard_id.table_id, shard_id.shard_index)};
+    }
+
+    shard_primary_index_.insert({shard_id, replica_id});
+    replica_map_.insert({replica_id, std::move(replica)});
+    return Status::OK();
+}
 
 }

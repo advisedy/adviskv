@@ -1,30 +1,29 @@
 #pragma once
 
-#include "storage/replica/replica.h"
-#include "common/status.h"
-#include <cstdint>
 #include <google/protobuf/stubs/port.h>
+
+#include <cstdint>
 #include <map>
 #include <memory>
-#include <unordered_map>
 #include <shared_mutex>
+#include <unordered_map>
 
-namespace adviskv::storage{
+#include "common/status.h"
+#include "storage/replica/replica.h"
 
-class ReplicaManager{
-    
-public:
-    
-    Replica* get_replica(const ShardID& shard_id) const;
-    // common::Status AddReplica(); TODO
-    
-    Status add_replica(const ReplicaInitParam& params);
-    
-private:
-    mutable std::shared_mutex replica_map_mtx_;
-    std::unordered_map<ShardKey, std::unique_ptr<Replica>, ShardKeyHash> replica_map_;
-    
+namespace adviskv::storage {
+
+class ReplicaManager {
+   public:
+    Replica* get_replica_by_id(const ReplicaID& replica_id) const;
+    Replica* get_replica_by_shard(const ShardID& shard_id) const;
+    Status add_replica(const ReplicaInitParam& param);
+
+   private:
+    mutable std::shared_mutex mutex_;
+    std::unordered_map<ReplicaID, std::unique_ptr<Replica>, ReplicaIDHash>
+        replica_map_;
+    std::unordered_map<ShardID, ReplicaID, ShardIDHash> shard_primary_index_;
 };
 
-
-}
+}  // namespace adviskv::storage

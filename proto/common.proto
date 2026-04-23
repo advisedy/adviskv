@@ -46,3 +46,9 @@ enum EngineType{
     ENGINE_MAP = 0;
     ENGINE_ROCKSDB = 1;
 }
+
+message ReplicaID {
+  int32 table_id = 1;
+  int32 shard_index = 2;
+  int32 replica_index = 3;
+}

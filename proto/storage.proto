@@ -70,6 +70,22 @@ message GetReplicaInfoResponse {
   repeated adviskv.pb.ReplicaInfo replicas = 2;
 }
 
+message RequestVoteRequest{
+  adviskv.pb.ReplicaID from = 1;
+  adviskv.pb.ReplicaID to = 2;
+  int64 term = 3;
+  int64 last_log_index = 4;
+  int64 last_log_term = 5;
+}
+
+message RequestVoteResponse{
+  adviskv.pb.BaseRsp base_rsp = 1;
+  int64 term = 2;
+  bool vote_granted = 3;
+}
+
+
+
 service StorageService {
   rpc Put(PutRequest) returns (PutResponse);
   rpc Get(GetRequest) returns (GetResponse);
@@ -78,4 +94,6 @@ service StorageService {
   rpc CreateReplica(CreateReplicaRequest) returns (CreateReplicaResponse);
   rpc DeleteReplica(DeleteReplicaRequest) returns (DeleteReplicaResponse);
   rpc GetReplicaInfo(GetReplicaInfoRequest) returns (GetReplicaInfoResponse);
+
+  rpc RequestVote(RequestVoteRequest) returns(RequestVoteResponse);
 }

@@ -39,6 +39,8 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
     Status status{Status::OK()};
     const ShardID shard_id{.table_id = table.table_id,
                            .shard_index = shard_index};
+
+    // 获取store里面shard里的replicas
     std::vector<ReplicaPtr> replicas;
     status = sdm_store_->list_replicas_by_shard(shard_id, replicas);
     RETURN_IF_INVALID_STATUS(status)
@@ -47,6 +49,8 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
     std::vector<NodePtr> candidate_nodes;
     int have_leader_cnt = 0;
 
+    // 获取里面状态是正常的replicas
+    // 然后更新到我们的路由表里面
     for (const ReplicaPtr& replica_ptr : replicas) {
         if (!replica_ptr) {
             continue;
@@ -76,26 +80,26 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
         }
     }
 
-    if (have_leader_cnt > 1) {
-        return Status{StatusCode::ERROR,
-                      fmt::format("leader count: {}", have_leader_cnt)};
-    }
+    // if (have_leader_cnt > 1) {
+    //     return Status{StatusCode::ERROR,
+    //                   fmt::format("leader count: {}", have_leader_cnt)};
+    // }
 
-    if (!healthy_replicas.empty() && have_leader_cnt == 0) {
-        NodePtr leader_node;
-        status = leader_selector_.select_leader(candidate_nodes, leader_node);
-        RETURN_IF_INVALID_STATUS(status)
+    // if (!healthy_replicas.empty() && have_leader_cnt == 0) {
+    //     NodePtr leader_node;
+    //     status = leader_selector_.select_leader(candidate_nodes,
+    //     leader_node); RETURN_IF_INVALID_STATUS(status)
 
-        for (ReplicaPtr& replica_ptr : healthy_replicas) {
-            if (replica_ptr->spec.assign_node_id == leader_node->id) {
-                replica_ptr->spec.role = ReplicaRole::LEADER;
-            } else {
-                replica_ptr->spec.role = ReplicaRole::FOLLOWER;
-            }
-            status = sdm_store_->put_replica(*replica_ptr);
-            RETURN_IF_INVALID_STATUS(status)
-        }
-    }
+    //     for (ReplicaPtr& replica_ptr : healthy_replicas) {
+    //         if (replica_ptr->spec.assign_node_id == leader_node->id) {
+    //             replica_ptr->spec.role = ReplicaRole::LEADER;
+    //         } else {
+    //             replica_ptr->spec.role = ReplicaRole::FOLLOWER;
+    //         }
+    //         status = sdm_store_->put_replica(*replica_ptr);
+    //         RETURN_IF_INVALID_STATUS(status)
+    //     }
+    // }
 
     ShardRoute route{
         .shard_id = shard_id,
