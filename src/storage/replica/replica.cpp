@@ -89,9 +89,9 @@ Status Replica::handle_request_vote(const RequestVoteParam& param,
     if (param.term < current_term_) {
         return Status::OK();
     } else if (param.term > current_term_) {
-        // TODO
-        // 这里这个函数会把自己的vote_for_给清空掉，会不会导致投了很多次票？
-        // 还是说这样是没有问题的？
+        // 这里这个函数会把自己的vote_for_给清空掉，会不会导致投了很多次票
+        // 但是应该没有问题，毕竟是这种情况应该是发生在多次投票里面，他们的term不一样
+        // 既然不一样的话，肯定是最终term最大的那一个去当的leader了，别的会自动变成follower
         status = become_follower(param.term);
         RETURN_IF_INVALID_STATUS(status)
         result.term = current_term_;
@@ -103,8 +103,8 @@ Status Replica::handle_request_vote(const RequestVoteParam& param,
     }
 
     // 没有投过票，或者投过了，还是这个人
-    // TODO
     // 如果投过了这个同一个人的话，其实这里vote_granted是true还是false都无所谓吧，反正对方已经拿到票了。
+    // 保障一致性，还是设置成true把
     if ((voted_for_.has_value() and
          voted_for_.value() == param.from_replica_id) or
         !voted_for_.has_value()) {
@@ -119,10 +119,12 @@ Term Replica::get_last_log_term() const {
     if (log_entries_.empty()) return 0;
     return log_entries_.back().term;
 }
+
 LogIndex Replica::get_last_log_index() const {
     if (log_entries_.empty()) return 0;
     return log_entries_.back().index;
 }
+
 bool Replica::later_than_other_replica(Term other_last_log_term,
                                        LogIndex other_last_log_index) const {
     if (get_last_log_term() != other_last_log_term) {
