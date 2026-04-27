@@ -72,7 +72,7 @@ Status CapacityCheckTask::check_replica_list(const Table& table,
     // 检测有没有漏掉的
     for (int i = 0; i < replica_count; i++) {
         ReplicaID key{table.table_id, shard_index, i};
-        Replica* ptr;
+        ReplicaPtr ptr;
         status = sdm_store_.get_replica(key, ptr);
         RETURN_IF_INVALID_STATUS(status)
         if (ptr) {

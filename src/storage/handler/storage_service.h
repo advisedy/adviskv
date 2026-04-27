@@ -1,21 +1,20 @@
 #pragma once
-#include "storage.grpc.pb.h"
-#include "storage/replica/replica_manager.h"
 #include <memory>
 
-namespace adviskv::storage{
+#include "storage.grpc.pb.h"
+#include "storage/replica/replica_manager.h"
 
-class StorageServiceImpl final : public rpc::StorageService::Service{
+namespace adviskv::storage {
 
-public:
-
+class StorageServiceImpl final : public rpc::StorageService::Service {
+   public:
 #define DEFINE_METHOD(method_name)                                 \
     grpc::Status method_name(grpc::ServerContext* context,         \
                              const rpc::method_name##Request* req, \
                              rpc::method_name##Response* response) override;
 
     explicit StorageServiceImpl(std::unique_ptr<ReplicaManager> replica_manager)
-    : replica_manager_(std::move(replica_manager)) {}
+        : replica_manager_(std::move(replica_manager)) {}
 
     DEFINE_METHOD(Put)
     DEFINE_METHOD(Get)
@@ -24,7 +23,9 @@ public:
     DEFINE_METHOD(DeleteReplica)
     DEFINE_METHOD(GetReplicaInfo)
     DEFINE_METHOD(RequestVote)
-    #undef DEFINE_METHOD
+    DEFINE_METHOD(AppendEntries)
+
+#undef DEFINE_METHOD
     // grpc::Status Put(grpc::ServerContext* context,
     //             const rpc::PutRequest* request,
     //             rpc::PutResponse* response) override;
@@ -48,11 +49,7 @@ public:
     // grpc::Status GetReplicaInfo(grpc::ServerContext* context,
     //                         const rpc::GetReplicaInfoRequest* request,
     //                         rpc::GetReplicaInfoResponse* response) override;
-private:
-
+   private:
     std::unique_ptr<ReplicaManager> replica_manager_;
-
-
-
 };
-}
+}  // namespace adviskv::storage

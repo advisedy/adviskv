@@ -1,5 +1,6 @@
 #include "storage/handler/storage_service.h"
 
+#include <grpcpp/server_context.h>
 #include <grpcpp/support/status.h>
 
 #include "common/status.h"
@@ -128,48 +129,101 @@ grpc::Status StorageServiceImpl::GetReplicaInfo(
 grpc::Status StorageServiceImpl::RequestVote(
     grpc::ServerContext* context, const rpc::RequestVoteRequest* request,
     rpc::RequestVoteResponse* response) {
+    if (!replica_manager_) {
+        WARN("replica manager is nullptr");
+        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
+                                       "replica manager not found"});
+        return grpc::Status::OK;
+    }
+    const ReplicaID replica_id{
+        .table_id = request->to().table_id(),
+        .shard_index = request->to().shard_index(),
+        .replica_index = request->to().replica_index(),
+    };
 
-        if (!replica_manager_) {
-            WARN("replica manager is nullptr");
-            fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
-                                           "replica manager not found"});
-            return grpc::Status::OK;
-        }
-        const ReplicaID replica_id{
-            .table_id = request->to().table_id(),
-            .shard_index = request->to().shard_index(),
-            .replica_index = request->to().replica_index(),
-        };
-
-        Replica* replica = replica_manager_->get_replica_by_id(replica_id);
-        if (!replica) {
-            fill_base_rsp(response, Status{
-                StatusCode::REPLICA_NOT_FOUND,
-                "target replica not found"
-            });
-            return grpc::Status::OK;
-        }
-        RequestVoteParam param{
-            .to_replica_id = replica_id,
-            .from_replica_id = {
+    Replica* replica = replica_manager_->get_replica_by_id(replica_id);
+    if (!replica) {
+        fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND,
+                                       "target replica not found"});
+        return grpc::Status::OK;
+    }
+    RequestVoteParam param{
+        .to_replica_id = replica_id,
+        .from_replica_id =
+            {
                 .table_id = request->from().table_id(),
                 .shard_index = request->from().shard_index(),
                 .replica_index = request->from().replica_index(),
             },
-            .term = request->term(),
-            .last_log_term = request->last_log_term(),
-            .last_log_index = request->last_log_index(),
-        };
+        .term = request->term(),
+        .last_log_term = request->last_log_term(),
+        .last_log_index = request->last_log_index(),
+    };
 
-        RequestVoteResult result;
-        Status status = replica->handle_request_vote(param, result);
+    RequestVoteResult result;
+    Status status = replica->handle_request_vote(param, result);
 
-        fill_base_rsp(response, status);
-        if (status.ok()) {
-            response->set_term(result.term);
-            response->set_vote_granted(result.vote_granted);
-        }
+    fill_base_rsp(response, status);
+    if (status.ok()) {
+        response->set_term(result.term);
+        response->set_vote_granted(result.vote_granted);
+    }
+    return grpc::Status::OK;
+}
+
+grpc::Status StorageServiceImpl::AppendEntries(
+    grpc::ServerContext* context, const rpc::AppendEntriesRequest* request,
+    rpc::AppendEntriesResponse* response) {
+    if (!replica_manager_) {
+        WARN("replica manager is nullptr");
+        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
+                                       "replica manager not found"});
         return grpc::Status::OK;
     }
+    const ReplicaID replica_id{
+        .table_id = request->to().table_id(),
+        .shard_index = request->to().shard_index(),
+        .replica_index = request->to().replica_index(),
+    };
+
+    Replica* replica = replica_manager_->get_replica_by_id(replica_id);
+    if (!replica) {
+        fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND,
+                                       "target replica not found"});
+        return grpc::Status::OK;
+    }
+
+    AppendEntriesParam param{
+        .from_replica_id =
+            {
+                .table_id = request->from().table_id(),
+                .shard_index = request->from().shard_index(),
+                .replica_index = request->from().replica_index(),
+            },
+        .to_replica_id = replica_id,
+        .term = request->term(),
+        .prev_log_term = request->prev_log_term(),
+        .prev_log_index = request->prev_log_index(),
+        .leader_commit = request->leader_commit(),
+    };
+    for (const rpc::LogEntry& one : request->entries()) {
+        LogEntry entry{
+            .term = one.term(),
+            .index = one.index(),
+        };
+        param.entries.push_back(std::move(entry));
+    }
+
+    AppendEntriesResult result;
+    Status status = replica->handle_append_entries(param, result);
+    if (status.fail()) {
+        return grpc::Status::OK;
+    }
+    fill_base_rsp(response, status);
+    response->set_success(result.success);
+    response->set_term(result.term);
+
+    return grpc::Status::OK;
+}
 
 }  // namespace adviskv::storage

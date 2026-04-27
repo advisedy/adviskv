@@ -1,7 +1,9 @@
 #pragma once
 
+#include <absl/container/internal/inlined_vector.h>
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "common/status.h"
 #include "common/type.h"
@@ -11,7 +13,7 @@ namespace adviskv::storage {
 using Term = int64_t;
 using LogIndex = int64_t;
 
-enum class WriteOpType { PUT = 0, DEL = 1, NONE = 2 };
+enum class WriteOpType : int32_t { PUT = 0, DEL = 1, NONE = 2 };
 
 struct PeerMember {
     NodeID node_id;
@@ -22,6 +24,9 @@ struct PeerMember {
 struct LogEntry {
     Term term{0};
     LogIndex index{0};
+    WriteOpType op_type;
+    Key key;
+    Value value;
 };
 
 struct PutParam {

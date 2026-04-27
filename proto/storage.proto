@@ -84,7 +84,29 @@ message RequestVoteResponse{
   bool vote_granted = 3;
 }
 
+message LogEntry{
+  int64 term = 1;
+  int64 index = 2;
+  int32 op_type = 3;
+  string key = 4;
+  string value = 5;
+}
 
+message AppendEntriesRequest{
+  adviskv.pb.ReplicaID from = 1;
+  adviskv.pb.ReplicaID to = 2;
+  int64 term = 3;
+  int64 prev_log_index = 4;
+  int64 prev_log_term = 5;
+  repeated LogEntry entries = 6;
+  int64 leader_commit = 7;
+}
+
+message AppendEntriesResponse{
+  adviskv.pb.BaseRsp base_rsp = 1;
+  int64 term = 2;
+  bool success = 3;
+}
 
 service StorageService {
   rpc Put(PutRequest) returns (PutResponse);
@@ -96,4 +118,5 @@ service StorageService {
   rpc GetReplicaInfo(GetReplicaInfoRequest) returns (GetReplicaInfoResponse);
 
   rpc RequestVote(RequestVoteRequest) returns(RequestVoteResponse);
+  rpc AppendEntries(AppendEntriesRequest) returns(AppendEntriesResponse);
 }

@@ -39,15 +39,18 @@ class Replica {
                                   LogIndex other_last_log_index) const;
     Status become_follower(Term later_term);
 
-
-    void execute_election();// 处理定时选举的入口
+    void execute_election();  // 处理定时选举的入口
     Status send_member_request_vote(const PeerMember& member,
                                     int32_t generation);
     Status handle_vote_response(const PeerMember& member, int32_t generation,
                                 const RequestVoteResult& result);
 
-    void on_heartbeat_timeout();
-    void execute_heartbeat();
+    void execute_heartbeat();  // 处理心跳的入口
+
+    Status send_members_append_entries();
+    Status try_update_commit_index();
+    Status apply_log_entry(const LogEntry& entry);
+    Status trace_commit_log_entries();
 
    private:
     friend class ReplicaManager;
@@ -57,21 +60,32 @@ class Replica {
     ShardID shard_id_;
     ReplicaID replica_id_;
     ReplicaRole role_;
-    Term current_term_;
 
-    int32_t election_generation_;
-    int32_t granted_vote_count_;
-
-    std::optional<ReplicaID> voted_for_;
-
-    std::vector<LogEntry> log_entries_;
-    std::vector<PeerMember> members_;
     std::unique_ptr<KVEngine> engine_;
 
-    RaftSender raft_sender_;
+    ////////// raft 相关内容
 
+    Term current_term_;  // 当前term
+
+    int32_t election_generation_;  // 选举时期
+    int32_t granted_vote_count_;   // 获得的票数
+
+    std::vector<LogEntry> log_entries_;  // log entires
+    std::vector<PeerMember> members_;    // 成员， 包括了自己
+
+    std::optional<ReplicaID> voted_for_;  // 投给了谁
+
+    RaftSender raft_sender_;  // 负责选举和entry的发送
+
+    // 两个timer，负责定时运行的。
     TimerPtr election_timer_;
     TimerPtr heartbeat_timer_;
+
+    LogIndex commit_index_{0};
+    LogIndex last_applied_{0};
+
+    std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> next_index_;
+    std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> match_index_;
 };
 
 }  // namespace adviskv::storage

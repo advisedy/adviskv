@@ -8,6 +8,7 @@
 
 // 这里cond要填写应该合法的情况，如果cond与预期不符合，就会return，跟assert的语义有点像
 
+#include <chrono>
 #define RETURN_IF_INVALID_CONDITION(cond, msg)            \
     if (!(cond)) {                                        \
         return Status{StatusCode::INVALID_ARGUMENT, msg}; \
@@ -31,6 +32,12 @@
 #define DEFINE_VECTOR_AND_RESERVE(type, name, size) \
     std::vector<type> name;                         \
     name.reserve(size);
+
+#define MILLISECONDS(x) (std::chrono::milliseconds(x))
+
+// inline std::chrono::milliseconds convert_ms(int x) {
+//     return std::chrono::milliseconds(x);
+// }
 
 #include <vector>
 ///////////// function
