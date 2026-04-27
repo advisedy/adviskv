@@ -38,6 +38,8 @@ storage: 负责存储。
 有一个zone的概念，create db的时候需要填写，不写就是默认空。 
 然后sdm那边分配node给table的时候，node必须和只有和这个table所在的db是同一个zone。
 
+目前没有zone的概念了， 改用resource_pool。
+
 
 
 - Node.spec.resource_pool ： NodeService

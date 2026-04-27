@@ -1,44 +1,22 @@
 #pragma once
 
 #include <cstdint>
-#include "common/type.h"
-#include "common/status.h"
-namespace adviskv::storage{
+#include <memory>
 
+#include "common/status.h"
+#include "common/type.h"
+#include "storage/utility/time_scheduler.h"
+namespace adviskv::storage {
 
 using Term = int64_t;
 using LogIndex = int64_t;
 
-enum class WriteOpType{
-    PUT = 0,
-    DEL = 1,
-    NONE = 2
-};
+enum class WriteOpType { PUT = 0, DEL = 1, NONE = 2 };
 
-struct RequestVoteParam{
-    ReplicaID from_replica_id;
-    ReplicaID to_replica_id;
-    Term term;
-    LogIndex last_log_index;
-    Term last_log_term;
-};
-
-struct RequestVoteResult{
-    Term term;
-    bool vote_granted{false};
-};
-
-struct PeerMember{
+struct PeerMember {
     NodeID node_id;
     ReplicaID replica_id;
     Endpoint endpoint;
-};
-
-struct ReplicaInitParam{
-    ReplicaID replica_id;
-    EngineType engine_type;
-    Endpoint local_enopoint;
-    std::vector<PeerMember> members;
 };
 
 struct LogEntry {
@@ -46,22 +24,52 @@ struct LogEntry {
     LogIndex index{0};
 };
 
-struct PutParam{
+struct PutParam {
     const Key& key;
     const Value& value;
 
-    Status validate() const {
-        return Status::OK();
-    }
+    Status validate() const { return Status::OK(); }
 };
 
-struct GetParam{
+struct GetParam {
     const Key& key;
-    Status validate() const {
-        return Status::OK();
-    }    
+    Status validate() const { return Status::OK(); }
 };
 
+struct ReplicaInitParam {
+    ReplicaID replica_id;
+    EngineType engine_type;
+    Endpoint local_enopoint;
+    std::vector<PeerMember> members;
+    std::shared_ptr<TimerScheduler> scheduler;
+};
 
+struct RequestVoteParam {
+    ReplicaID from_replica_id;
+    ReplicaID to_replica_id;
+    Term term;
+    LogIndex last_log_index;
+    Term last_log_term;
+};
 
-}
+struct RequestVoteResult {
+    Term term;
+    bool vote_granted{false};
+};
+
+struct AppendEntriesParam {
+    ReplicaID from_replica_id;
+    ReplicaID to_replica_id;
+    Term term;
+    std::vector<LogEntry> entries;  // 这次想要追加的日志
+    LogIndex prev_log_index;        // 代表公共的最后的那个index
+    Term prev_log_term;
+    LogIndex leader_commit;
+};
+
+struct AppendEntriesResult {
+    Term term;
+    bool success;
+};
+
+}  // namespace adviskv::storage

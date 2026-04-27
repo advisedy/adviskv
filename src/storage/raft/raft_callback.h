@@ -10,15 +10,15 @@
 
 namespace adviskv::storage {
 
-using RequestVoteCallback =
-    std::function<void(const Status&, const RequestVoteResult&)>;
+// using RequestVoteCallback =
+//     std::function<void(const Status&, const RequestVoteResult&)>;
 
 class RaftSender {
    public:
     // TODO 这里看看以后要不要改改
     Status send_request_vote(const PeerMember& member,
                              const RequestVoteParam& param,
-                             RequestVoteResult& result) {
+                             RequestVoteResult& result)const {
         auto channel = grpc::CreateChannel(
             member.endpoint.ip + ":" + std::to_string(member.endpoint.port),
             grpc::InsecureChannelCredentials());
@@ -49,6 +49,13 @@ class RaftSender {
 
         result.term = response.term();
         result.vote_granted = response.vote_granted();
+        return Status::OK();
+    }
+
+    Status send_append_entries(const PeerMember& member, const AppendEntriesParam&param, AppendEntriesResult& result)const{
+
+        //TODO
+
         return Status::OK();
     }
 };

@@ -12,6 +12,7 @@
 #include "storage.pb.h"
 #include "storage/engine/map_engine.h"
 #include "storage/model/param.h"
+#include "storage/utility/timer.h"
 
 namespace adviskv::storage {
 
@@ -36,6 +37,14 @@ Status Replica::init(const ReplicaInitParam& param) {
             return {StatusCode::INVALID_ARGUMENT, "engine type is invaiid"};
             break;
         }
+    }
+
+    if (param.scheduler) {
+        election_timer_ = std::make_shared<Timer>(
+            param.scheduler, [this]() { this->execute_election(); });
+
+        heartbeat_timer_ = std::make_shared<Timer>(
+            param.scheduler, [this]() { this->execute_heartbeat(); });
     }
 
     return Status::OK();
@@ -115,6 +124,44 @@ Status Replica::handle_request_vote(const RequestVoteParam& param,
     return status;
 }
 
+Status Replica::handle_append_entries(const AppendEntriesParam& param,
+                                      AppendEntriesResult& result) {
+    // TODO RETURN_IF_INVALID_PARAM(param)
+
+    result = {
+        .success = false,
+        .term = current_term_,
+    };
+    if (param.term < current_term_) {
+        return Status::OK();
+    }
+
+    if (param.term > current_term_ or role_ != ReplicaRole::FOLLOWER) {
+        // 这里的判断条件是，只要role不是FOLLOWER，就会become，但是如果term和param的term是相等的
+        // 然后prev_log_index不一样呢？ 这个时候不需要比较一下index吗？
+        RETURN_IF_INVALID_STATUS(become_follower(param.term))
+    }
+
+    if (param.prev_log_index > 0) {
+        if (get_last_log_index() < param.prev_log_index) {
+            return Status::OK();
+        }
+
+        const LogEntry& prev_entry = log_entries_[param.prev_log_index - 1];
+        if (prev_entry.term != param.prev_log_term) {
+            return Status::OK();
+        }
+    }
+
+    if (param.entries.empty()) {
+        // 是心跳 //TODO
+    } else {
+        // 是追加日志 //TODO
+    }
+
+    return Status::OK();
+}
+
 Term Replica::get_last_log_term() const {
     if (log_entries_.empty()) return 0;
     return log_entries_.back().term;
@@ -134,15 +181,21 @@ bool Replica::later_than_other_replica(Term other_last_log_term,
 }
 
 Status Replica::become_follower(Term later_term) {
+    RETURN_IF_INVALID_CONDITION(
+        later_term >= current_term_,
+        "later_term should not be smaller than current_term");
+
+    if (later_term > current_term_) {
+        voted_for_.reset();
+    }
     current_term_ = later_term;
     role_ = ReplicaRole::FOLLOWER;
-    voted_for_.reset();
     return Status::OK();
 }
 
-Status Replica::execute_election() {
+void Replica::execute_election() {
     if (role_ == ReplicaRole::LEADER) {
-        return Status::OK();
+        return;
     }
 
     election_generation_++;
@@ -151,19 +204,31 @@ Status Replica::execute_election() {
     granted_vote_count_ = 1;
     role_ = ReplicaRole::CANDIDATE;
 
-    for (PeerMember& member : members_) {
+    // 先自己check一下可不可以当leader，毕竟万一raft的节点数只有1呢？
+    if (members_.size() == 1) {
+        role_ = ReplicaRole::LEADER;
+        // TODO 这里立刻发一次空 AppendEntries
+
+        return;
+    }
+
+    for (const PeerMember& member : members_) {
         if (member.replica_id == replica_id_) continue;
         if (role_ == ReplicaRole::FOLLOWER) break;
 
-        // TODO 这里貌似还是同步发送的，所以其实election_generation_的影响不太大，以后是异步发送的时候
+        // TODO
+        // 这里貌似还是同步发送的，所以其实election_generation_的影响不太大，以后是异步发送的时候
         // 就需要用到了
 
-        //TODO 以后要改成异步的
-        RETURN_IF_INVALID_STATUS(
-            send_member_request_vote(member, election_generation_));
+        // TODO 以后要改成异步的
+        Status status = send_member_request_vote(member, election_generation_);
+        if (status.fail()) {
+            WARN("[execute_election]: send_member_request_vote: fail: {}",
+                 status.msg());
+        }
     }
 
-    return Status::OK();
+    return;
 }
 
 Status Replica::send_member_request_vote(const PeerMember& member,
@@ -180,8 +245,7 @@ Status Replica::send_member_request_vote(const PeerMember& member,
     };
 
     RequestVoteResult result;
-    Status status =
-        raft_sender_.send_request_vote(member, param, result); 
+    Status status = raft_sender_.send_request_vote(member, param, result);
     RETURN_IF_INVALID_STATUS(status)
     return handle_vote_response(member, generation, result);
 }
@@ -192,8 +256,6 @@ Status Replica::handle_vote_response(const PeerMember& member,
     if (generation != election_generation_) {
         return Status::OK();
     }
-
-
 
     if (result.term > current_term_) {
         become_follower(result.term);
@@ -207,6 +269,7 @@ Status Replica::handle_vote_response(const PeerMember& member,
     if (role_ != ReplicaRole::CANDIDATE) {
         return Status::OK();
     }
+
     ++granted_vote_count_;
     int limit_allow_leader_size = static_cast<int>(members_.size()) / 2 + 1;
     if (granted_vote_count_ >= limit_allow_leader_size) {
@@ -216,6 +279,45 @@ Status Replica::handle_vote_response(const PeerMember& member,
     }
 
     return Status::OK();
+}
+
+void Replica::execute_heartbeat() {
+    if (role_ != ReplicaRole::LEADER) {
+        return;
+    }
+    Status status = Status::OK();
+    for (const auto& member : members_) {
+        if (member.replica_id == replica_id_) {
+            continue;
+        }
+
+        AppendEntriesParam param{
+            .from_replica_id = replica_id_,
+            .to_replica_id = member.replica_id,
+            .term = current_term_,
+            .prev_log_index = get_last_log_index(),
+            .prev_log_term = get_last_log_term(),
+            .entries = {},
+            .leader_commit = 0,  // TODO
+        };
+
+        AppendEntriesResult result;
+        status = raft_sender_.send_append_entries(member, param, result);
+        if (status.fail()) {
+            WARN("[broadcast_heartbeat] send fail: {}", status.msg());
+            continue;
+        }
+
+        if (result.term > current_term_) {
+            status = become_follower(result.term);
+            if (status.fail()) {
+                // TODO
+            }
+            return;
+        }
+    }
+
+    return;
 }
 
 }  // namespace adviskv::storage

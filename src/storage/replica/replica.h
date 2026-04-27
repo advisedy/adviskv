@@ -1,6 +1,7 @@
 #pragma once
 
 #include <google/protobuf/stubs/port.h>
+
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -15,7 +16,7 @@
 #include "storage/engine/kv_engine.h"
 #include "storage/model/param.h"
 #include "storage/raft/raft_callback.h"
-
+#include "storage/utility/timer.h"
 namespace adviskv::storage {
 
 class Replica {
@@ -25,8 +26,11 @@ class Replica {
 
     Status put(const PutParam& param);
     Status get(const GetParam& param, Value& value);
+
     Status handle_request_vote(const RequestVoteParam& param,
                                RequestVoteResult& result);
+    Status handle_append_entries(const AppendEntriesParam& param,
+                                 AppendEntriesResult& result);
 
    private:
     Term get_last_log_term() const;
@@ -35,9 +39,16 @@ class Replica {
                                   LogIndex other_last_log_index) const;
     Status become_follower(Term later_term);
 
-    Status execute_election();
-    Status send_member_request_vote(const PeerMember& member, int32_t generation);
-    Status handle_vote_response(const PeerMember& member, int32_t generation, const RequestVoteResult& result);
+
+    void execute_election();// 处理定时选举的入口
+    Status send_member_request_vote(const PeerMember& member,
+                                    int32_t generation);
+    Status handle_vote_response(const PeerMember& member, int32_t generation,
+                                const RequestVoteResult& result);
+
+    void on_heartbeat_timeout();
+    void execute_heartbeat();
+
    private:
     friend class ReplicaManager;
 
@@ -59,6 +70,8 @@ class Replica {
 
     RaftSender raft_sender_;
 
+    TimerPtr election_timer_;
+    TimerPtr heartbeat_timer_;
 };
 
 }  // namespace adviskv::storage

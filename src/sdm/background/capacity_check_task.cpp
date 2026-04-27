@@ -41,22 +41,22 @@ Status CapacityCheckTask::check_replica_list(const Table& table,
 
     int32_t replica_count = table.spec.replica_count;
 
-
     // 检测一下有没有lost的replica，直接把他们删掉吧.
-                                            std::vector<ReplicaPtr> lost_replicas;
+    std::vector<ReplicaPtr> lost_replicas;
 
-    std::for_each(replicas.begin(), replicas.end(), [&lost_replicas](const ReplicaPtr& replica){
-        if(replica->spec.status == ReplicaStatus::LOST){
-            lost_replicas.emplace_back(replica);
-        }
-    });
+    std::for_each(replicas.begin(), replicas.end(),
+                  [&lost_replicas](const ReplicaPtr& replica) {
+                      if (replica->spec.status == ReplicaStatus::LOST) {
+                          lost_replicas.emplace_back(replica);
+                      }
+                  });
 
-    for(const ReplicaPtr& replica: lost_replicas){
+    for (const ReplicaPtr& replica : lost_replicas) {
         status = sdm_store_.del_replica(replica->replica_id);
         RETURN_IF_INVALID_STATUS(status)
     }
 
-    ad_erase_if(replicas,[](const ReplicaPtr& replica){
+    ad_erase_if(replicas, [](const ReplicaPtr& replica) {
         return replica->spec.status == ReplicaStatus::LOST;
     });
 
