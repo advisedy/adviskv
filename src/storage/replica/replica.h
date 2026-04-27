@@ -39,10 +39,12 @@ class Replica {
                                   LogIndex other_last_log_index) const;
     Status become_follower(Term later_term);
 
+        Status become_leader();
+
     void execute_election();  // 处理定时选举的入口
     Status send_member_request_vote(const PeerMember& member,
                                     int32_t generation);
-    Status handle_vote_response(const PeerMember& member, int32_t generation,
+    Status get_member_vote_response(const PeerMember& member, int32_t generation,
                                 const RequestVoteResult& result);
 
     void execute_heartbeat();  // 处理心跳的入口

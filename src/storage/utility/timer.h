@@ -9,9 +9,9 @@ namespace adviskv::storage {
 class Timer {
    public:
     Timer(std::shared_ptr<TimerScheduler> scheduler, TimerTask task);
-    void stop();
     void reset(std::chrono::milliseconds sec);
     void reset_random(std::chrono::milliseconds down, std::chrono::milliseconds up);
+    void stop();
    private:
 };
 

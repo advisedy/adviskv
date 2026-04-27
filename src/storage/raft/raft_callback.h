@@ -55,8 +55,8 @@ class RaftSender {
     Status send_append_entries(const PeerMember& member,
                                const AppendEntriesParam& param,
                                AppendEntriesResult& result) const {
-        // TODO 对于以后来说，应该不能每一次都重新连接， 可能需要提前练好搞个连接池？ 
-        // 待定吧先.
+        // TODO 对于以后来说，应该不能每一次都重新连接，
+        // 可能需要提前练好搞个连接池？ 待定吧先.
         auto channel = grpc::CreateChannel(
             member.endpoint.ip + ":" + std::to_string(member.endpoint.port),
             grpc::InsecureChannelCredentials());
@@ -78,6 +78,15 @@ class RaftSender {
         request.set_prev_log_index(param.prev_log_index);
         request.set_prev_log_term(param.prev_log_term);
         request.set_leader_commit(param.leader_commit);
+
+        for (const LogEntry& entry : param.entries) {
+            auto one = request.add_entries();
+            one->set_index(entry.index);
+            one->set_term(entry.term);
+            one->set_op_type((int32_t)entry.op_type);
+            one->set_key(entry.key);
+            one->set_value(entry.value);
+        }
 
         rpc::AppendEntriesResponse response;
         grpc::ClientContext context;

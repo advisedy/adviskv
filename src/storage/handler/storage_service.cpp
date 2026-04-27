@@ -210,6 +210,9 @@ grpc::Status StorageServiceImpl::AppendEntries(
         LogEntry entry{
             .term = one.term(),
             .index = one.index(),
+            .op_type = (WriteOpType)one.op_type(),
+            .key = one.key(),
+            .value = one.value(),
         };
         param.entries.push_back(std::move(entry));
     }
