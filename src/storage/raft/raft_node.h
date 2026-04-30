@@ -1,16 +1,52 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "common/func.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
-#include "common/func.h"
 namespace adviskv::storage {
+
+// using TickFunc = void (*)();
+using TickFunc = std::function<void()>;
+
+// 这个就是一个计数触发器
+// 手动在外面保证传进来的limit_cnt是非负吧。
+class TickTrigger {
+   public:
+    TickTrigger(int32_t limit_cnt, TickFunc func)
+        : limit_cnt_(limit_cnt), func_(func) {}
+
+    void tick() {
+        cur_cnt_++;
+        if (cur_cnt_ >= limit_cnt_) {
+            cur_cnt_ = 0;
+            func_();
+        }
+    }
+
+    void reset(int32_t limit_cnt) {
+        cur_cnt_ = 0;
+        limit_cnt_ = limit_cnt;
+        if (cur_cnt_ >= limit_cnt_) {
+            cur_cnt_ = 0;
+            func_();
+        }
+    }
+
+    void clear() { cur_cnt_ = 0; }
+
+   private:
+    int32_t cur_cnt_{0};
+    int32_t limit_cnt_;
+    TickFunc func_;
+};
 
 class RaftNode {
    public:
@@ -19,8 +55,10 @@ class RaftNode {
     void tick();
 
     // 处理外层的写请求
-    // 这里返回值第一个是Status， 第二个是commit之后，新的commit_index应该对应是多少
-    std::pair<Status, LogIndex> propose(WriteOpType op, const Key& key, const Value& value);
+    // 这里返回值第一个是Status，
+    // 第二个是commit之后，新的commit_index应该对应是多少
+    std::pair<Status, LogIndex> propose(WriteOpType op, const Key& key,
+                                        const Value& value);
 
     // 处理来自storage_service_impl的RPC的请求
     void handle_request_vote(const RequestVoteParam& param,
@@ -85,10 +123,10 @@ class RaftNode {
     std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> match_index_;
 
     // tick 计数器（替代 Timer）
-    int32_t election_ticks_{0};
-    int32_t heartbeat_ticks_{0};
-    const int32_t ELECTION_TIMEOUT = get_random_int32(15, 30);
-    static constexpr int32_t HEARTBEAT_INTERVAL = 3;
+    // int32_t election_ticks_{0};
+    // int32_t heartbeat_ticks_{0};
+    TickTrigger election_tick_trigger_;
+    TickTrigger heartbeat_tick_trigger_;
 
     // 待发消息队列
     std::vector<RaftMessage> pending_messages_;

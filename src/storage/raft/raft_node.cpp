@@ -5,15 +5,24 @@
 #include <random>
 #include <utility>
 
+#include "common/func.h"
 #include "common/log.h"
 #include "common/type.h"
 #include "storage/model/param.h"
 
 namespace adviskv::storage {
 
+static constexpr int32_t HEARTBEAT_INTERVAL = 3;
+#define ELECTION_TIMEOUT (get_random_int32(15, 30))
+
 RaftNode::RaftNode(const ReplicaID& self_id,
                    const std::vector<PeerMember>& members)
-    : self_id_(self_id), members_(members) {}
+    : self_id_(self_id),
+      members_(members),
+      election_tick_trigger_(ELECTION_TIMEOUT,
+                             [this]() { become_candidate(); }),
+      heartbeat_tick_trigger_(HEARTBEAT_INTERVAL,
+                              [this]() { broadcast_append_entries(); }) {}
 
 LogIndex RaftNode::last_log_index() const {
     if (log_entries_.empty()) return 0;
@@ -33,22 +42,28 @@ bool RaftNode::later_than_other(Term other_term, LogIndex other_index) const {
 }
 
 void RaftNode::tick() {
-    election_ticks_++;
-
+    // election_ticks_++;
     if (role_ == ReplicaRole::LEADER) {
-        heartbeat_ticks_++;
-        if (heartbeat_ticks_ >= HEARTBEAT_INTERVAL) {
-            heartbeat_ticks_ = 0;
-            // 当目前已经是leader的时候，此刻发送如果是日志复制的话，那么pending_message会有内容，否则
-            broadcast_append_entries();
-        }
+        heartbeat_tick_trigger_.tick();
     } else {
-        // FOLLOWER 或 CANDIDATE
-        if (election_ticks_ >= ELECTION_TIMEOUT) {
-            election_ticks_ = 0;
-            become_candidate();
-        }
+        election_tick_trigger_.tick();
     }
+
+    // if (role_ == ReplicaRole::LEADER) {
+    //     heartbeat_ticks_++;
+    //     if (heartbeat_ticks_ >= HEARTBEAT_INTERVAL) {
+    //         heartbeat_ticks_ = 0;
+    //         //
+    //         当目前已经是leader的时候，此刻发送如果是日志复制的话，那么pending_message会有内容，否则
+    //         broadcast_append_entries();
+    //     }
+    // } else {
+    //     // FOLLOWER 或 CANDIDATE
+    //     if (election_ticks_ >= ELECTION_TIMEOUT) {
+    //         election_ticks_ = 0;
+    //         become_candidate();
+    //     }
+    // }
 }
 
 void RaftNode::become_candidate() {
@@ -57,7 +72,8 @@ void RaftNode::become_candidate() {
     voted_for_ = self_id_;
     granted_vote_count_ = 1;
     role_ = ReplicaRole::CANDIDATE;
-    election_ticks_ = 0;
+    // election_ticks_ = 0;
+    election_tick_trigger_.reset(ELECTION_TIMEOUT);
 
     // 如果只有一个节点的话，就直接当选
     if (members_.size() == 1) {
@@ -105,7 +121,7 @@ std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
         return {Status{StatusCode::NOT_LEADER, "not leader"}, -1};
     }
     LogIndex new_commit_idx = last_log_index() + 1;
-    
+
     LogEntry entry{
         .term = current_term_,
         .index = last_log_index() + 1,
@@ -200,10 +216,13 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
     // 没有投过票，或者投过了，还是这个人
     // 如果投过了这个同一个人的话，其实这里vote_granted是true还是false都无所谓吧，反正对方已经拿到票了。
     // 保障一致性，还是设置成true把
+
     if (!voted_for_.has_value() ||
         voted_for_.value() == param.from_replica_id) {
         result.vote_granted = true;
         voted_for_ = param.from_replica_id;
+        // election_ticks_ = 0;
+        election_tick_trigger_.reset(ELECTION_TIMEOUT);
     }
 }
 
@@ -237,7 +256,8 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     }
 
     // 把自己的时间reset一下， 选举的
-    election_ticks_ = 0;
+    // election_ticks_ = 0;
+    election_tick_trigger_.reset(ELECTION_TIMEOUT);
 
     if (param.entries.empty()) {
         // 这里是心跳
@@ -304,8 +324,9 @@ void RaftNode::handle_append_response(const ReplicaID& from,
         try_update_commit_index();
     } else {
         // prev_log 对不上，往前回退
-        if (next_index_[from] > 1) {
-            --next_index_[from];
+        auto it = next_index_.find(from);
+        if (it != next_index_.end() && it->second > 1) {
+            --it->second;
         }
     }
 }
@@ -339,12 +360,15 @@ void RaftNode::become_follower(Term later_term) {
     }
     current_term_ = later_term;
     role_ = ReplicaRole::FOLLOWER;
-    election_ticks_ = 0;
+    // election_ticks_ = 0;
+    election_tick_trigger_.reset(ELECTION_TIMEOUT);
 }
 
 void RaftNode::become_leader() {
     role_ = ReplicaRole::LEADER;
-    heartbeat_ticks_ = election_ticks_ = 0;
+    // heartbeat_ticks_ = election_ticks_ = 0;
+    election_tick_trigger_.reset(ELECTION_TIMEOUT);
+    heartbeat_tick_trigger_.clear();
 
     // TODO 为什么当上了leader之后需要把这些全都初始化呢？ 保留原来的值不行吗？
     for (const PeerMember& member : members_) {
@@ -406,5 +430,7 @@ void RaftNode::try_update_commit_index() {
         }
     }
 }
+
+#undef ELECTION_TIMEOUT
 
 }  // namespace adviskv::storage

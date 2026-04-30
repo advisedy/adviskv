@@ -34,6 +34,7 @@ private:
 
     Status init(const ReplicaInitParam& param);
 
+    friend class RaftTickTask;
     // tick 回调（Timer 定时调用）
     void on_tick();
 
@@ -59,7 +60,7 @@ private:
     RaftSender raft_sender_;
 
     // 定时器（驱动 tick）
-    TimerPtr tick_timer_;
+    // TimerPtr tick_timer_;
 };
 
 }  // namespace adviskv::storage

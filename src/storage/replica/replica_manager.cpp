@@ -1,14 +1,18 @@
 #include "storage/replica/replica_manager.h"
-#include "common/status.h"
-#include "common/type.h"
-#include "storage/replica/replica.h"
-#include <cstdint>
+
 #include <fmt/format.h>
+
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
 
-namespace adviskv::storage{
+#include "common/define.h"
+#include "common/status.h"
+#include "common/type.h"
+#include "storage/replica/replica.h"
+
+namespace adviskv::storage {
 
 Replica* ReplicaManager::get_replica_by_id(const ReplicaID& replica_id) const {
     std::shared_lock locker(mutex_);
@@ -47,13 +51,15 @@ Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
     std::scoped_lock locker(mutex_);
     if (replica_map_.count(replica_id)) {
         return Status{StatusCode::INVALID_ARGUMENT,
-                      fmt::format("replica already exists, table_id: {}, shard_index: {}, replica_index: {}",
+                      fmt::format("replica already exists, table_id: {}, "
+                                  "shard_index: {}, replica_index: {}",
                                   replica_id.table_id, replica_id.shard_index,
                                   replica_id.replica_index)};
     }
     if (shard_primary_index_.count(shard_id)) {
         return Status{StatusCode::INVALID_ARGUMENT,
-                      fmt::format("shard already exists on current node, table_id: {}, shard_index: {}",
+                      fmt::format("shard already exists on current node, "
+                                  "table_id: {}, shard_index: {}",
                                   shard_id.table_id, shard_id.shard_index)};
     }
 
@@ -62,4 +68,19 @@ Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
     return Status::OK();
 }
 
+std::vector<Replica*> ReplicaManager::get_replicas() const {
+    std::shared_lock locker(mutex_);
+    std::vector<Replica*> replicas;
+    replicas.reserve(replica_map_.size());
+    for(const auto& [_, replica]:replica_map_){
+        replicas.push_back(replica.get());
+    }
+    return replicas;
 }
+
+void ReplicaManager::start_tick(){
+    raft_tick_task_ = std::make_unique<RaftTickTask>(this);
+    raft_tick_task_->start(MILLISECONDS(20));
+}
+
+}  // namespace adviskv::storage

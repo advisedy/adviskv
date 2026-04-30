@@ -35,11 +35,11 @@ Status Replica::init(const ReplicaInitParam& param) {
 
     // 创建定时器驱动 tick（统一的 tick timer，替代原来的 election + heartbeat
     // 两个 timer）
-    if (param.scheduler) {
-        tick_timer_ = std::make_shared<Timer>(param.scheduler,
-                                              [this]() { this->on_tick(); });
-        tick_timer_->reset(MILLISECONDS(20));
-    }
+    // if (param.scheduler) {
+    //     tick_timer_ = std::make_shared<Timer>(param.scheduler,
+    //                                           [this]() { this->on_tick(); });
+    //     tick_timer_->reset(MILLISECONDS(20));
+    // }
 
     return Status::OK();
 }
@@ -62,7 +62,7 @@ Status Replica::put(const PutParam& param) {
     if (!raft_node_->is_leader()) {
         return Status{StatusCode::NOT_LEADER, "leader changed during propose"};
     }
-    
+
     if (raft_node_->commit_index() < new_commit_idx) {
         return Status{StatusCode::NOT_YET_COMMIT, "this pyt is not yet commit"};
     }
@@ -184,9 +184,9 @@ void Replica::on_tick() {
     apply_committed_entries();
 
     // 重新调度下一次 tick（Timer 是 one-shot 的）
-    if (tick_timer_) {
-        tick_timer_->reset(MILLISECONDS(20));
-    }
+    // if (tick_timer_) {
+    //     tick_timer_->reset(MILLISECONDS(20));
+    // }
 }
 
 }  // namespace adviskv::storage
