@@ -1,6 +1,7 @@
 #pragma once
 
 #include <absl/container/internal/inlined_vector.h>
+
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -75,6 +76,19 @@ struct AppendEntriesParam {
 struct AppendEntriesResult {
     Term term;
     bool success;
+};
+
+enum class RaftMessageType : uint8_t {
+    REQUEST_VOTE,
+    APPEND_ENTRIES,
+};
+
+// RaftNode 产出的消息，由 Replica 负责，接收到了之后会通过 RaftSender 发送
+struct RaftMessage {
+    RaftMessageType type;
+    PeerMember target;
+    RequestVoteParam vote_param{};
+    AppendEntriesParam append_param{};
 };
 
 }  // namespace adviskv::storage
