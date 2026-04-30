@@ -48,7 +48,7 @@ Status Replica::put(const PutParam& param) {
     RETURN_IF_INVALID_PARAM(param)
 
     // 提交给 RaftNode
-    Status status =
+    auto [status, new_commit_idx] =
         raft_node_->propose(WriteOpType::PUT, param.key, param.value);
     RETURN_IF_INVALID_STATUS(status)
 
@@ -61,6 +61,10 @@ Status Replica::put(const PutParam& param) {
 
     if (!raft_node_->is_leader()) {
         return Status{StatusCode::NOT_LEADER, "leader changed during propose"};
+    }
+    
+    if (raft_node_->commit_index() < new_commit_idx) {
+        return Status{StatusCode::NOT_YET_COMMIT, "this pyt is not yet commit"};
     }
 
     return Status::OK();
@@ -176,7 +180,7 @@ void Replica::on_tick() {
     // 如果put最开始的时候没有推进commit_idx（例如其他的followers都太慢了或者有问题了），
     // 后来这边跑心跳的时候才有回应，这个时候就应该apply一下commmit_entry
     // 所以这个是专门为了raft_node是leader去发送心跳的时候准备的。
-    
+
     apply_committed_entries();
 
     // 重新调度下一次 tick（Timer 是 one-shot 的）

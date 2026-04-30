@@ -31,7 +31,7 @@ enum class StatusCode : int32_t {
 
     //storage 特有
     NOT_LEADER = 2000,
-
+    NOT_YET_COMMIT = 2001,
     //meta 特有
 
     //sdk 特有

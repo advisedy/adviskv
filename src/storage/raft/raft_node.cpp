@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <random>
+#include <utility>
 
 #include "common/log.h"
 #include "common/type.h"
@@ -98,11 +99,13 @@ void RaftNode::send_request_vote_to(const PeerMember& member) {
 
 然后replica侧调用apply_committed_entries，去apply到状态机上。同时也会更新raft_node的last_apply_
 */
-Status RaftNode::propose(WriteOpType op, const Key& key, const Value& value) {
+std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
+                                              const Value& value) {
     if (role_ != ReplicaRole::LEADER) {
-        return Status{StatusCode::NOT_LEADER, "not leader"};
+        return {Status{StatusCode::NOT_LEADER, "not leader"}, -1};
     }
-
+    LogIndex new_commit_idx = last_log_index() + 1;
+    
     LogEntry entry{
         .term = current_term_,
         .index = last_log_index() + 1,
@@ -120,7 +123,7 @@ Status RaftNode::propose(WriteOpType op, const Key& key, const Value& value) {
         try_update_commit_index();
     }
 
-    return Status::OK();
+    return {Status::OK(), new_commit_idx};
 }
 
 /*
@@ -341,7 +344,7 @@ void RaftNode::become_follower(Term later_term) {
 
 void RaftNode::become_leader() {
     role_ = ReplicaRole::LEADER;
-    heartbeat_ticks_ = 0;
+    heartbeat_ticks_ = election_ticks_ = 0;
 
     // TODO 为什么当上了leader之后需要把这些全都初始化呢？ 保留原来的值不行吗？
     for (const PeerMember& member : members_) {
