@@ -8,7 +8,6 @@
 #include "common/type.h"
 #include "storage/engine/map_engine.h"
 #include "storage/model/param.h"
-#include "storage/utility/timer.h"
 
 namespace adviskv::storage {
 

@@ -8,7 +8,7 @@
 
 #include "common/status.h"
 #include "common/type.h"
-#include "storage/utility/time_scheduler.h"
+
 namespace adviskv::storage {
 
 using Term = int64_t;
@@ -47,7 +47,6 @@ struct ReplicaInitParam {
     EngineType engine_type;
     Endpoint local_enopoint;
     std::vector<PeerMember> members;
-    std::shared_ptr<TimerScheduler> scheduler;
 };
 
 struct RequestVoteParam {
