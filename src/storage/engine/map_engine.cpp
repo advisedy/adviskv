@@ -4,6 +4,8 @@
 
 #include <mutex>
 #include <shared_mutex>
+#include <utility>
+#include <vector>
 
 #include "common/log.h"
 #include "common/status.h"
@@ -12,29 +14,45 @@
 namespace adviskv::storage {
 
 Status MapEngine::put(const Key& key, const Value& value) {
-  std::unique_lock lock(map_mutex_);
+    std::unique_lock lock(map_mutex_);
 
-  map_[key] = value;
+    map_[key] = value;
 
-  DEBUG("map put ok, key = {}, value = {}", key, value);
+    DEBUG("map put ok, key = {}, value = {}", key, value);
 
-  return Status::OK();
+    return Status::OK();
 }
 
 Status MapEngine::get(const Key& key, Value& value) {
-  std::shared_lock lock(map_mutex_);
-  if (!map_.count(key)) {
-    DEBUG("key = {}, not found", key);
-    return Status{StatusCode::KEY_NOT_FOUND,
-                  fmt::format("key = {} not found", key)};
-  }
-  value = map_[Key(key)];
-  return Status::OK();
+    std::shared_lock lock(map_mutex_);
+    if (!map_.count(key)) {
+        DEBUG("key = {}, not found", key);
+        return Status{StatusCode::KEY_NOT_FOUND,
+                      fmt::format("key = {} not found", key)};
+    }
+    value = map_[Key(key)];
+    return Status::OK();
 }
 
 Status MapEngine::del(const Key& key) {
-  return Status{StatusCode::NOT_SUPPORTED,
-                "del operation is not supported in MapEngine"};
+    return Status{StatusCode::NOT_SUPPORTED,
+                  "del operation is not supported in MapEngine"};
 }
 
-}  // namespace adviskv
+std::vector<KV> MapEngine::dump_all() const {
+    std::shared_lock lock(map_mutex_);
+    std::vector<KV> kvs;
+    kvs.reserve(map_.size());
+    for (const auto& [k, v] : map_) {
+        KV kv{k, v};
+        kvs.emplace_back(std::move(kv));
+    }
+    return kvs;
+}
+
+Status MapEngine::clear() {
+  std::unique_lock lock(map_mutex_);
+  map_.clear();
+}
+
+}  // namespace adviskv::storage

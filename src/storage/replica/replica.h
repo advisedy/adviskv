@@ -8,14 +8,14 @@
 #include "common/type.h"
 #include "storage/engine/kv_engine.h"
 #include "storage/model/param.h"
+#include "storage/persist/persist_engine.h"
 #include "storage/raft/raft_callback.h"
 #include "storage/raft/raft_node.h"
-
 
 namespace adviskv::storage {
 
 class Replica {
-public:
+   public:
     TableID get_table_id() const { return shard_id_.table_id; }
     ShardID get_shard_id() const { return shard_id_; }
 
@@ -29,7 +29,7 @@ public:
     Status handle_append_entries(const AppendEntriesParam& param,
                                  AppendEntriesResult& result);
 
-private:
+   private:
     friend class ReplicaManager;
 
     Status init(const ReplicaInitParam& param);
@@ -55,6 +55,8 @@ private:
     // replica算是给raft_node包了一层，会帮忙处理RPC的事情和状态机落实的事情
     // 让raft_node专心走协议的事情
     std::unique_ptr<RaftNode> raft_node_;
+
+    std::unique_ptr<PersistEngine> persist_;
 
     // 通信层
     RaftSender raft_sender_;

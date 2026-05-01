@@ -5,6 +5,7 @@
 #include <functional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace adviskv{
 
@@ -13,6 +14,7 @@ using Value = std::string;
 using KeyView = std::string_view;
 using ValueView = std::string_view;
 
+using KV = std::pair<Key,Value>;
 
 using DatabaseID = int32_t;
 using TableID = int32_t;

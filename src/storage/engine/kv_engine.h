@@ -15,6 +15,9 @@ public:
     virtual Status put(const Key& key, const Value& value) = 0;
     virtual Status get(const Key& key, Value& value) = 0;
     virtual Status del(const Key& key) = 0;
+    virtual Status clear() = 0;
+    virtual std::vector<KV> dump_all() const;
+
 private:
     
 };

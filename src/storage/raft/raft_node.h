@@ -11,6 +11,7 @@
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
+
 namespace adviskv::storage {
 
 // using TickFunc = void (*)();
@@ -48,9 +49,12 @@ class TickTrigger {
     TickFunc func_;
 };
 
+class PersistEngine;
+
 class RaftNode {
    public:
-    RaftNode(const ReplicaID& self_id, const std::vector<PeerMember>& members);
+    RaftNode(const ReplicaID& self_id, const std::vector<PeerMember>& members,
+             PersistEngine* persist);
 
     void tick();
 
@@ -130,6 +134,8 @@ class RaftNode {
 
     // 待发消息队列
     std::vector<RaftMessage> pending_messages_;
+
+    PersistEngine* persist_;
 };
 
 }  // namespace adviskv::storage

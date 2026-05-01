@@ -8,6 +8,7 @@
 #include "common/type.h"
 #include "storage/engine/map_engine.h"
 #include "storage/model/param.h"
+#include "storage/persist/persist_engine.h"
 
 namespace adviskv::storage {
 
@@ -30,7 +31,11 @@ Status Replica::init(const ReplicaInitParam& param) {
         }
     }
 
-    raft_node_ = std::make_unique<RaftNode>(param.replica_id, param.members);
+    persist_ =
+        std::make_unique<PersistEngine>(param.data_dir, param.replica_id);
+
+    raft_node_ = std::make_unique<RaftNode>(param.replica_id, param.members,
+                                            persist_.get());
 
     // 创建定时器驱动 tick（统一的 tick timer，替代原来的 election + heartbeat
     // 两个 timer）

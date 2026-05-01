@@ -47,6 +47,7 @@ struct ReplicaInitParam {
     EngineType engine_type;
     Endpoint local_enopoint;
     std::vector<PeerMember> members;
+    std::string data_dir; // 存放那些持久化数据的根目录
 };
 
 struct RequestVoteParam {

@@ -6,3 +6,4 @@ example/
 .clangd
 
 docs/tmp/
+docs/.DS_Store

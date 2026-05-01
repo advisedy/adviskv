@@ -9,20 +9,22 @@
 #include "common/log.h"
 #include "common/type.h"
 #include "storage/model/param.h"
-
+#include "storage/persist/persist_engine.h"
 namespace adviskv::storage {
 
 static constexpr int32_t HEARTBEAT_INTERVAL = 3;
 #define ELECTION_TIMEOUT (get_random_int32(15, 30))
 
 RaftNode::RaftNode(const ReplicaID& self_id,
-                   const std::vector<PeerMember>& members)
+                   const std::vector<PeerMember>& members,
+                   PersistEngine* persist)
     : self_id_(self_id),
       members_(members),
       election_tick_trigger_(ELECTION_TIMEOUT,
                              [this]() { become_candidate(); }),
       heartbeat_tick_trigger_(HEARTBEAT_INTERVAL,
-                              [this]() { broadcast_append_entries(); }) {}
+                              [this]() { broadcast_append_entries(); }),
+      persist_(persist) {}
 
 LogIndex RaftNode::last_log_index() const {
     if (log_entries_.empty()) return 0;
