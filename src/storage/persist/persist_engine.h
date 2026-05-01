@@ -35,7 +35,7 @@ class PersistEngine {
     Status do_snapshot(const SnapshotPtr& snap);
 
    private:
-    // Status write_wal_to_disk(const LogEntry& entry);
+    Status write_wal_to_disk(int fd, const LogEntry& entry);
     // Status read_wal_from_disk() const;
 
     std::string wal_path_;

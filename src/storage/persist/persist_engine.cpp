@@ -55,26 +55,27 @@ Status PersistEngine::close() {
 
 Status PersistEngine::append_wal(const LogEntry& entry) {
     std::unique_lock lock{mutex_};
-    EncodeBuffer buf;
-    /*
-        Term term{0};
-        LogIndex index{0};
-        WriteOpType op_type;
-        Key key;
-        Value value;
-    */
-    buf.write_int64(entry.term);
-    buf.write_int64(entry.index);
-    buf.write_int32((int32_t)entry.op_type);
-    buf.write_str(entry.key);
-    buf.write_str(entry.value);
-    int32_t len = buf.size();
+    return write_wal_to_disk(wal_fd_, entry);
+    // EncodeBuffer buf;
+    // /*
+    //     Term term{0};
+    //     LogIndex index{0};
+    //     WriteOpType op_type;
+    //     Key key;
+    //     Value value;
+    // */
+    // buf.write_int64(entry.term);
+    // buf.write_int64(entry.index);
+    // buf.write_int32((int32_t)entry.op_type);
+    // buf.write_str(entry.key);
+    // buf.write_str(entry.value);
+    // int32_t len = buf.size();
 
-    ::write(wal_fd_, &len, sizeof(int32_t));
-    // TODO crc，这里以后补上
-    ::write(wal_fd_, buf.data(), buf.size());
+    // ::write(wal_fd_, &len, sizeof(int32_t));
+    // // TODO crc，这里以后补上
+    // ::write(wal_fd_, buf.data(), buf.size());
 
-    return Status::OK();
+    // return Status::OK();
 }
 
 Status PersistEngine::read_wal_all(std::vector<LogEntry>& entries) {
@@ -84,6 +85,27 @@ Status PersistEngine::read_wal_all(std::vector<LogEntry>& entries) {
 
 Status PersistEngine::truncate_wal(const LogIndex& snapshot_index) {
     // TODO
+    std::vector<LogEntry> entries, remain;
+    RETURN_IF_INVALID_STATUS(read_wal_all(entries))
+    for (LogEntry& entry : entries) {
+        if (entry.index <= snapshot_index) continue;
+        remain.push_back(std::move(entry));
+    }
+
+    std::string tmp_path = wal_path_ + ".tmp";
+    int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) {
+        return Status{StatusCode::ERROR, "fd < 0"};
+    }
+    for (const LogEntry& entry : remain) {
+        RETURN_IF_INVALID_STATUS(write_wal_to_disk(fd, entry))
+    }
+
+    ::fsync(fd);
+    ::close(fd);
+
+    ::rename(tmp_path.c_str(), wal_path_.c_str());
+
     return Status::OK();
 }
 
@@ -155,7 +177,7 @@ Status PersistEngine::save_raft_meta(const RaftMeta& meta) {
     ::fsync(fd);
     ::close(fd);
 
-    ::rename(tmp_path.c_str(), snapshot_path_.c_str());
+    ::rename(tmp_path.c_str(), raft_meta_path_.c_str());
 }
 Status PersistEngine::load_raft_meta(RaftMeta& meta) const {
     // TODO
@@ -166,6 +188,29 @@ Status PersistEngine::load_raft_meta(RaftMeta& meta) const {
 Status PersistEngine::do_snapshot(const SnapshotPtr& snap) {
     RETURN_IF_INVALID_STATUS(save_snapshot(snap))
     RETURN_IF_INVALID_STATUS(truncate_wal(snap->apply_index))
+    return Status::OK();
+}
+
+Status PersistEngine::write_wal_to_disk(int fd, const LogEntry& entry) {
+    EncodeBuffer buf;
+    /*
+        Term term{0};
+        LogIndex index{0};
+        WriteOpType op_type;
+        Key key;
+        Value value;
+    */
+    buf.write_int64(entry.term);
+    buf.write_int64(entry.index);
+    buf.write_int32((int32_t)entry.op_type);
+    buf.write_str(entry.key);
+    buf.write_str(entry.value);
+    int32_t len = buf.size();
+
+    ::write(fd, &len, sizeof(int32_t));
+    // TODO crc，这里以后补上
+    ::write(fd, buf.data(), buf.size());
+
     return Status::OK();
 }
 

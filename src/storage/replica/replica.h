@@ -52,7 +52,7 @@ class Replica {
 
     ShardID shard_id_;
     ReplicaID replica_id_;
-    std::unique_ptr<KVEngine> engine_;
+    // std::unique_ptr<KVEngine> engine_;
     std::unique_ptr<StateMachine> state_machine_;
     // raft
     // replica算是给raft_node包了一层，会帮忙处理RPC的事情和状态机落实的事情

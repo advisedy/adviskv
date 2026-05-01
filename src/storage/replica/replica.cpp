@@ -147,9 +147,11 @@ Status Replica::apply_log_entry(const LogEntry& entry) {
 }
 
 Status Replica::get(const GetParam& param, Value& value) {
-    if (!engine_) {
-        WARN("engine is nullptr, replica: table_id = {}, shard_index = {}",
-             shard_id_.table_id, shard_id_.shard_index);
+    if (!state_machine_) {
+        WARN(
+            "state_machine is nullptr, replica: table_id = {}, shard_index = "
+            "{}",
+            shard_id_.table_id, shard_id_.shard_index);
         return Status{StatusCode::ERROR, "engine is nullptr"};
     }
 
@@ -160,7 +162,7 @@ Status Replica::get(const GetParam& param, Value& value) {
         return Status{StatusCode::NOT_LEADER, "not leader"};
     }
 
-    Status status = engine_->get(param.key, value);
+    Status status = state_machine_->get(param.key, value);
     if (status.fail()) {
         WARN("engine get is not ok, key = {}, msg = {}", param.key,
              status.msg());

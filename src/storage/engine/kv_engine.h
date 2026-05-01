@@ -1,14 +1,15 @@
 #pragma once
 
+#include <string_view>
+
 #include "common/common.h"
 #include "common/status.h"
 #include "common/type.h"
-#include <string_view>
 
-namespace adviskv::storage{
+namespace adviskv::storage {
 
-class KVEngine{
-public:
+class KVEngine {
+   public:
     KVEngine() = default;
     virtual ~KVEngine() = default;
 
@@ -16,9 +17,8 @@ public:
     virtual Status get(const Key& key, Value& value) = 0;
     virtual Status del(const Key& key) = 0;
     virtual Status clear() = 0;
-    virtual std::vector<KV> dump_all() const;
+    virtual std::vector<KV> dump_all() const = 0;
 
-private:
-    
+   private:
 };
-}
+}  // namespace adviskv::storage

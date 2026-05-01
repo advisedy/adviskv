@@ -35,8 +35,12 @@ Status MapEngine::get(const Key& key, Value& value) {
 }
 
 Status MapEngine::del(const Key& key) {
-    return Status{StatusCode::NOT_SUPPORTED,
-                  "del operation is not supported in MapEngine"};
+    std::unique_lock lock(map_mutex_);
+    if (!map_.count(key)) return Status::OK();
+    map_.erase(key);
+    return Status::OK();
+    // return Status{StatusCode::NOT_SUPPORTED,
+    //               "del operation is not supported in MapEngine"};
 }
 
 std::vector<KV> MapEngine::dump_all() const {
@@ -51,8 +55,9 @@ std::vector<KV> MapEngine::dump_all() const {
 }
 
 Status MapEngine::clear() {
-  std::unique_lock lock(map_mutex_);
-  map_.clear();
+    std::unique_lock lock(map_mutex_);
+    map_.clear();
+    return Status::OK();
 }
 
 }  // namespace adviskv::storage
