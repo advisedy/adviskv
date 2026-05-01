@@ -97,7 +97,7 @@ class RaftNode {
     void advance_last_applied(LogIndex applied);
 
     // 外部用来执行完快照直接要截断log
-        Status truncate_log(LogIndex index);
+    Status truncate_log(LogIndex index);
 
    private:
     void save_raft_meta() const;

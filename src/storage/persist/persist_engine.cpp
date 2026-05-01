@@ -10,6 +10,7 @@
 #include <string>
 
 #include "common/buffer.h"
+#include "common/define.h"
 #include "common/log.h"
 #include "common/status.h"
 #include "common/type.h"
@@ -77,6 +78,11 @@ Status PersistEngine::append_wal(const LogEntry& entry) {
 }
 
 Status PersistEngine::read_wal_all(std::vector<LogEntry>& entries) {
+    // TODO
+    return Status::OK();
+}
+
+Status PersistEngine::truncate_wal(const LogIndex& snapshot_index) {
     // TODO
     return Status::OK();
 }
@@ -154,6 +160,12 @@ Status PersistEngine::save_raft_meta(const RaftMeta& meta) {
 Status PersistEngine::load_raft_meta(RaftMeta& meta) const {
     // TODO
 
+    return Status::OK();
+}
+
+Status PersistEngine::do_snapshot(const SnapshotPtr& snap) {
+    RETURN_IF_INVALID_STATUS(save_snapshot(snap))
+    RETURN_IF_INVALID_STATUS(truncate_wal(snap->apply_index))
     return Status::OK();
 }
 

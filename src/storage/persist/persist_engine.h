@@ -24,6 +24,7 @@ class PersistEngine {
 
     Status append_wal(const LogEntry& entry);
     Status read_wal_all(std::vector<LogEntry>& entries);
+    Status truncate_wal(const LogIndex& snapshot_index);
 
     Status save_raft_meta(const RaftMeta& meta);
     Status load_raft_meta(RaftMeta& meta) const;

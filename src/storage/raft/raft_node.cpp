@@ -8,6 +8,7 @@
 #include "common/define.h"
 #include "common/func.h"
 #include "common/log.h"
+#include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
 #include "storage/persist/persist_engine.h"
@@ -483,8 +484,27 @@ void RaftNode::save_raft_meta() const {
     }
 }
 
-    // void try_take_snapshot();
-    // void RaftNode::()
+// void try_take_snapshot();
+// void RaftNode::()
+
+Status RaftNode::truncate_log(LogIndex new_snapshot_index) {
+    if (new_snapshot_index <= snapshot_index_ or
+        new_snapshot_index > last_applied_) {
+        return StatusCode::ERROR;
+    }
+    // new_snapshot_index should <= last_applied_
+
+    Term new_snapshot_term = get_term(new_snapshot_index);
+
+    int64_t keep_from = index_to_offset(new_snapshot_index + 1);
+
+    log_entries_.erase(log_entries_.begin(), log_entries_.begin() + keep_from);
+
+    snapshot_index_ = new_snapshot_index;
+    snapshot_term_ = new_snapshot_term;
+
+    return Status::OK();
+}
 
 #undef ELECTION_TIMEOUT
 
