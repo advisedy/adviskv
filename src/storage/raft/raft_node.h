@@ -96,6 +96,13 @@ class RaftNode {
     void advance_last_applied(LogIndex applied);
 
    private:
+        void save_raft_meta()const;
+
+    int64_t index_to_offset(LogIndex index) const;
+    LogIndex offset_to_index(int64_t offset) const;
+
+    Term get_term(LogIndex index) const;
+
     void become_follower(Term later_term);
     void become_leader();
     void become_candidate();
@@ -136,6 +143,9 @@ class RaftNode {
     std::vector<RaftMessage> pending_messages_;
 
     PersistEngine* persist_;
+    LogIndex snapshot_index_;
+    Term snapshot_term_;
+    std::mutex mutex_;
 };
 
 }  // namespace adviskv::storage

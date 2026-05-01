@@ -5,6 +5,7 @@
 #include <random>
 #include <utility>
 
+#include "common/define.h"
 #include "common/func.h"
 #include "common/log.h"
 #include "common/type.h"
@@ -119,6 +120,8 @@ void RaftNode::send_request_vote_to(const PeerMember& member) {
 */
 std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
                                               const Value& value) {
+    std::lock_guard lock(mutex_);  // ← 加锁
+
     if (role_ != ReplicaRole::LEADER) {
         return {Status{StatusCode::NOT_LEADER, "not leader"}, -1};
     }
@@ -131,7 +134,14 @@ std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
         .key = key,
         .value = value,
     };
-    log_entries_.push_back(std::move(entry));
+    log_entries_.push_back(entry);
+
+    if (persist_) {
+        Status status = persist_->append_wal(std::move(entry));
+        if (status.fail()) {
+            return {status, -1};
+        }
+    }
 
     // 广播给所有 follower
     broadcast_append_entries();
@@ -170,8 +180,7 @@ void RaftNode::broadcast_append_entries() {
 void RaftNode::send_append_entries_to(const PeerMember& member,
                                       LogIndex next_index) {
     LogIndex prev_log_index = next_index - 1;
-    Term prev_log_term =
-        (prev_log_index == 0) ? 0 : log_entries_[prev_log_index - 1].term;
+    Term prev_log_term = get_term(prev_log_index);
 
     AppendEntriesParam param{
         .from_replica_id = self_id_,
@@ -183,7 +192,7 @@ void RaftNode::send_append_entries_to(const PeerMember& member,
     };
 
     for (LogIndex idx = next_index; idx <= last_log_index(); ++idx) {
-        param.entries.push_back(log_entries_[idx - 1]);
+        param.entries.push_back(log_entries_[index_to_offset(idx)]);
     }
 
     RaftMessage msg;
@@ -225,6 +234,7 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
         voted_for_ = param.from_replica_id;
         // election_ticks_ = 0;
         election_tick_trigger_.reset(ELECTION_TIMEOUT);
+        save_raft_meta();
     }
 }
 
@@ -248,11 +258,10 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     result.term = current_term_;
 
     if (param.prev_log_index > 0) {
-        if (last_log_index() < param.prev_log_index) {
+        if (param.prev_log_index < snapshot_index_) {
             return;
         }
-        const LogEntry& prev_entry = log_entries_[param.prev_log_index - 1];
-        if (prev_entry.term != param.prev_log_term) {
+        if (get_term(param.prev_log_index) != param.prev_log_term) {
             return;
         }
     }
@@ -267,13 +276,20 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
         // 日志复制
         for (const LogEntry& entry : param.entries) {
             LogIndex index = entry.index;
+
+            if (index <= snapshot_index_) continue;
+
             if (index <= last_log_index()) {
-                if (log_entries_[index - 1].term != entry.term) {
-                    log_entries_.resize(index - 1);
+                if (get_term(index) != entry.term) {
+                    log_entries_.resize(index_to_offset(index));
                     log_entries_.push_back(entry);
+
+                    persist_->append_wal(entry);
                 }
             } else {
                 log_entries_.push_back(entry);
+
+                persist_->append_wal(entry);
             }
         }
     }
@@ -281,6 +297,7 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     // 不管是否有entry，也就是不管是日志追加还是心跳，都会需要更新commit_idx
     if (param.leader_commit > commit_index_) {
         commit_index_ = std::min(param.leader_commit, last_log_index());
+        save_raft_meta();
     }
 
     result.success = true;
@@ -343,7 +360,7 @@ std::vector<RaftMessage> RaftNode::extract_messages() {
 std::vector<LogEntry> RaftNode::extract_committed_entries() {
     std::vector<LogEntry> entries;
     for (LogIndex i = last_applied_ + 1; i <= commit_index_; i++) {
-        entries.push_back(log_entries_[i - 1]);
+        entries.push_back(log_entries_[index_to_offset(i)]);
     }
     return entries;
 }
@@ -362,6 +379,7 @@ void RaftNode::become_follower(Term later_term) {
     }
     current_term_ = later_term;
     role_ = ReplicaRole::FOLLOWER;
+    save_raft_meta();
     // election_ticks_ = 0;
     election_tick_trigger_.reset(ELECTION_TIMEOUT);
 }
@@ -387,8 +405,8 @@ void RaftNode::become_leader() {
         .key = {},
         .value = {},
     };
-    log_entries_.push_back(std::move(none_entry));
-
+    log_entries_.push_back(none_entry);
+    persist_->append_wal(none_entry);
     // 立即广播（含 no-op），相当于心跳 + 日志复制合一
     broadcast_append_entries();
 
@@ -409,7 +427,7 @@ void RaftNode::try_update_commit_index() {
         // 被多数派确认后，commit_index 才会推进，此时之前 term 的 entry 会因为
         // commit_index 的递增而被顺带提交（ trace_commit_log_entries 从
         // last_applied_ 推进到 commit_index_ ，包含了之前 term 的 entry）。
-        if (log_entries_[idx - 1].term != current_term_) {
+        if (log_entries_[index_to_offset(idx)].term != current_term_) {
             continue;
         }
 
@@ -430,6 +448,38 @@ void RaftNode::try_update_commit_index() {
         if (success_cnt >= limit_cnt) {
             commit_index_ = idx;
         }
+    }
+    save_raft_meta();
+}
+
+int64_t RaftNode::index_to_offset(LogIndex index) const {
+    return index - snapshot_index_ - 1;
+}
+LogIndex RaftNode::offset_to_index(int64_t offset) const {
+    return offset + 1 + snapshot_index_;
+}
+
+Term RaftNode::get_term(LogIndex index) const {
+    if (index == 0) return 0;
+    if (index == snapshot_index_) return snapshot_term_;
+    if (index < snapshot_index_) {
+        //
+        WARN("... get term");
+        return 0;
+    }
+    int64_t offset = index_to_offset(index);
+    if (offset < 0 || offset >= (int64_t)(log_entries_.size())) {
+        return 0;
+    }
+    return log_entries_[offset].term;
+}
+
+// persist 去 持久化raft_meta
+void RaftNode::save_raft_meta() const {
+    if (persist_) {
+        persist_->save_raft_meta(RaftMeta{.commit_index = commit_index_,
+                                          .current_term = current_term_,
+                                          .voted_for = voted_for_});
     }
 }
 
