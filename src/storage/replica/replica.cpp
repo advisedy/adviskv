@@ -9,8 +9,13 @@
 #include "storage/engine/map_engine.h"
 #include "storage/model/param.h"
 #include "storage/persist/persist_engine.h"
+#include "storage/raft/raft_node.h"
+#include "storage/raft/state_machine/kv_state_machine.h"
+#include "storage/raft/state_machine/state_machine.h"
 
 namespace adviskv::storage {
+
+static constexpr int SNAPSHOT_LIMIT = 1000;
 
 Status Replica::init(const ReplicaInitParam& param) {
     shard_id_ = {.table_id = param.replica_id.table_id,
@@ -36,6 +41,8 @@ Status Replica::init(const ReplicaInitParam& param) {
 
     raft_node_ = std::make_unique<RaftNode>(param.replica_id, param.members,
                                             persist_.get());
+
+    state_machine_ = std::make_unique<KvStateMachine>(EngineType::MAP);
 
     // 创建定时器驱动 tick（统一的 tick timer，替代原来的 election + heartbeat
     // 两个 timer）
@@ -111,7 +118,8 @@ void Replica::flush_messages() {
 void Replica::apply_committed_entries() {
     auto entries = raft_node_->extract_committed_entries();
     for (const auto& entry : entries) {
-        Status status = apply_log_entry(entry);
+        // Status status = apply_log_entry(entry);
+        Status status = state_machine_->apply(entry);
         if (status.fail()) {
             WARN("apply_log_entry failed, index={}, msg={}", entry.index,
                  status.msg());
@@ -122,20 +130,20 @@ void Replica::apply_committed_entries() {
 }
 
 Status Replica::apply_log_entry(const LogEntry& entry) {
-    if (!engine_) {
-        return {StatusCode::ERROR, "engine is nullptr"};
-    }
+    // if (!engine_) {
+    //     return {StatusCode::ERROR, "engine is nullptr"};
+    // }
 
-    switch (entry.op_type) {
-        case WriteOpType::PUT:
-            return engine_->put(entry.key, entry.value);
-        case WriteOpType::DEL:
-            return engine_->del(entry.key);
-        case WriteOpType::NONE:
-            return Status::OK();
-        default:
-            return {StatusCode::INVALID_ARGUMENT, "unknown log op type"};
-    }
+    // switch (entry.op_type) {
+    //     case WriteOpType::PUT:
+    //         return engine_->put(entry.key, entry.value);
+    //     case WriteOpType::DEL:
+    //         return engine_->del(entry.key);
+    //     case WriteOpType::NONE:
+    //         return Status::OK();
+    //     default:
+    //         return {StatusCode::INVALID_ARGUMENT, "unknown log op type"};
+    // }
 }
 
 Status Replica::get(const GetParam& param, Value& value) {
@@ -177,6 +185,20 @@ Status Replica::handle_append_entries(const AppendEntriesParam& param,
     return Status::OK();
 }
 
+void Replica::try_take_snapshot() {
+    LogIndex last_index = raft_node_->last_log_index();
+    LogIndex apply_index = state_machine_->apply_index();
+    if (last_index - apply_index < SNAPSHOT_LIMIT) return;
+    SnapshotPtr snap = state_machine_->snapshot();
+    Status status = persist_->do_snapshot(snap);
+    if (status.ok()) {
+        // 持久化成功了，这边得截断wal日志了。
+        raft_node_->truncate_log(snap->apply_index);
+    } else {
+        WARN("...");
+    }
+}
+
 void Replica::on_tick() {
     raft_node_->tick();
     flush_messages();
@@ -191,6 +213,7 @@ void Replica::on_tick() {
     // if (tick_timer_) {
     //     tick_timer_->reset(MILLISECONDS(20));
     // }
+    try_take_snapshot();
 }
 
 }  // namespace adviskv::storage

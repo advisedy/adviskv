@@ -90,13 +90,17 @@ class RaftNode {
     LogIndex last_applied() const { return last_applied_; }
     LogIndex last_log_index() const;
     Term last_log_term() const;
+    LogIndex snapshot_index() const { return snapshot_index_; }
     bool is_leader() const { return role_ == ReplicaRole::LEADER; }
 
     // 外部更新 last_applied（apply 完成后调用）
     void advance_last_applied(LogIndex applied);
 
+    // 外部用来执行完快照直接要截断log
+        Status truncate_log(LogIndex index);
+
    private:
-        void save_raft_meta()const;
+    void save_raft_meta() const;
 
     int64_t index_to_offset(LogIndex index) const;
     LogIndex offset_to_index(int64_t offset) const;

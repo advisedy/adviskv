@@ -483,6 +483,9 @@ void RaftNode::save_raft_meta() const {
     }
 }
 
+    // void try_take_snapshot();
+    // void RaftNode::()
+
 #undef ELECTION_TIMEOUT
 
 }  // namespace adviskv::storage

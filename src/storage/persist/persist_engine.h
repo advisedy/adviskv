@@ -21,7 +21,7 @@ class PersistEngine {
 
     Status init();
     Status close();
-    
+
     Status append_wal(const LogEntry& entry);
     Status read_wal_all(std::vector<LogEntry>& entries);
 
@@ -30,6 +30,8 @@ class PersistEngine {
 
     Status save_snapshot(const SnapshotPtr& snap);
     Status load_snapshot(SnapshotPtr& snap);
+
+    Status do_snapshot(const SnapshotPtr& snap);
 
    private:
     // Status write_wal_to_disk(const LogEntry& entry);

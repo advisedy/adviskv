@@ -11,6 +11,7 @@
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/raft_callback.h"
 #include "storage/raft/raft_node.h"
+#include "storage/raft/state_machine/state_machine.h"
 
 namespace adviskv::storage {
 
@@ -47,10 +48,12 @@ class Replica {
     // 单条 apply
     Status apply_log_entry(const LogEntry& entry);
 
+    void try_take_snapshot();
+
     ShardID shard_id_;
     ReplicaID replica_id_;
     std::unique_ptr<KVEngine> engine_;
-
+    std::unique_ptr<StateMachine> state_machine_;
     // raft
     // replica算是给raft_node包了一层，会帮忙处理RPC的事情和状态机落实的事情
     // 让raft_node专心走协议的事情
