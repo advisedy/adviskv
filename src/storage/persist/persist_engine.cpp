@@ -124,13 +124,13 @@ Status PersistEngine::save_snapshot(const SnapshotPtr& snapshot) {
     }
 
     EncodeBuffer buf;
-    buf.write_int64(snapshot->apply_index);
-    buf.write_int64(snapshot->apply_term);
-    buf.write_int32((int32_t)snapshot->kvs.size());
+    buf.write<int64>(snapshot->apply_index);
+    buf.write<int64>(snapshot->apply_term);
+    buf.write<int32>((int32_t)snapshot->kvs.size());
     // TODO  感觉这里一直往buf写有点危险。
     for (const auto& [key, value] : snapshot->kvs) {
-        buf.write_str(key);
-        buf.write_str(value);
+        buf.write<std::string>(key);
+        buf.write<std::string>(value);
     }
 
     ::write(fd, buf.data(), buf.size());
@@ -163,14 +163,14 @@ Status PersistEngine::save_raft_meta(const RaftMeta& meta) {
         // term + index + table_id + shard_id + replica_id
     */
     EncodeBuffer buf;
-    buf.write_int64(meta.current_term);
-    buf.write_int64(meta.commit_index);
-    buf.write_bool(meta.voted_for.has_value());
+    buf.write<int64>(meta.current_term);
+    buf.write<int64>(meta.commit_index);
+    buf.write<bool>(meta.voted_for.has_value());
     if (meta.voted_for.has_value()) {
         ReplicaID replica_id = meta.voted_for.value();
-        buf.write_int32(replica_id.table_id);
-        buf.write_int32(replica_id.shard_index);
-        buf.write_int32(replica_id.replica_index);
+        buf.write<int32>(replica_id.table_id);
+        buf.write<int32>(replica_id.shard_index);
+        buf.write<int32>(replica_id.replica_index);
     }
     ::write(fd, buf.data(), buf.size());
 
@@ -200,11 +200,11 @@ Status PersistEngine::write_wal_to_disk(int fd, const LogEntry& entry) {
         Key key;
         Value value;
     */
-    buf.write_int64(entry.term);
-    buf.write_int64(entry.index);
-    buf.write_int32((int32_t)entry.op_type);
-    buf.write_str(entry.key);
-    buf.write_str(entry.value);
+    buf.write<int64>(entry.term);
+    buf.write<int64>(entry.index);
+    buf.write<int32>((int32_t)entry.op_type);
+    buf.write<std::string>(entry.key);
+    buf.write<std::string>(entry.value);
     int32_t len = buf.size();
 
     ::write(fd, &len, sizeof(int32_t));

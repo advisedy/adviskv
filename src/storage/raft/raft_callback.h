@@ -15,7 +15,7 @@ namespace adviskv::storage {
 
 class RaftSender {
    public:
-    // TODO 这里看看以后要不要改改
+    // TODO 以后要改
     Status send_request_vote(const PeerMember& member,
                              const RequestVoteParam& param,
                              RequestVoteResult& result) const {
