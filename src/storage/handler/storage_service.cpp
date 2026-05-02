@@ -3,11 +3,13 @@
 #include <grpcpp/server_context.h>
 #include <grpcpp/support/status.h>
 
+#include "common/log.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage.pb.h"
 #include "storage/model/param.h"
 #include "storage/replica/replica.h"
+#include "storage/raft/state_machine/state_machine.h"
 
 namespace adviskv::storage {
 
@@ -109,7 +111,7 @@ grpc::Status StorageServiceImpl::Delete(grpc::ServerContext* context,
     //         status.msg());
     // }
 
-    // return grpc::Status::OK;
+    return grpc::Status::OK;
 }
 
 grpc::Status StorageServiceImpl::CreateReplica(
@@ -120,11 +122,15 @@ grpc::Status StorageServiceImpl::CreateReplica(
 
 grpc::Status StorageServiceImpl::DeleteReplica(
     grpc::ServerContext* context, const rpc::DeleteReplicaRequest* request,
-    rpc::DeleteReplicaResponse* response) {}
+    rpc::DeleteReplicaResponse* response) {
+    return grpc::Status::OK;
+}
 
 grpc::Status StorageServiceImpl::GetReplicaInfo(
     grpc::ServerContext* context, const rpc::GetReplicaInfoRequest* request,
-    rpc::GetReplicaInfoResponse* response) {}
+    rpc::GetReplicaInfoResponse* response) {
+    return grpc::Status::OK;
+}
 
 grpc::Status StorageServiceImpl::RequestVote(
     grpc::ServerContext* context, const rpc::RequestVoteRequest* request,
@@ -226,6 +232,55 @@ grpc::Status StorageServiceImpl::AppendEntries(
     response->set_success(result.success);
     response->set_term(result.term);
 
+    return grpc::Status::OK;
+}
+
+grpc::Status StorageServiceImpl::InstallSnapshot(
+    grpc::ServerContext* context,
+    const rpc::InstallSnapshotRequest* request,
+    rpc::InstallSnapshotResponse* response) {
+    if (!replica_manager_) {
+        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
+                                       "replica manager not found"});
+        return grpc::Status::OK;
+    }
+
+    ReplicaID replica_id{
+        .table_id = request->to().table_id(),
+        .shard_index = request->to().shard_index(),
+        .replica_index = request->to().replica_index(),
+    };
+
+    Replica* replica = replica_manager_->get_replica_by_id(replica_id);
+    if (!replica) {
+        fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND,
+                                       "target replica not found"});
+        return grpc::Status::OK;
+    }
+
+    InstallSnapshotParam param{
+        .from_replica_id =
+            {
+                .table_id = request->from().table_id(),
+                .shard_index = request->from().shard_index(),
+                .replica_index = request->from().replica_index(),
+            },
+        .to_replica_id = replica_id,
+        .term = request->term(),
+        .snapshot_index = request->apply_index(),
+        .snapshot_term = request->apply_term(),
+    };
+
+    for (const auto& kv : request->kvs()) {
+        param.kvs.emplace_back(kv.key(), kv.value());
+    }
+
+    Status status = replica->handle_install_snapshot(param);
+
+    fill_base_rsp(response, status);
+    if (status.ok()) {
+        response->set_term(request->term());
+    }
     return grpc::Status::OK;
 }
 

@@ -19,7 +19,8 @@ class ReplicaManager {
     Replica* get_replica_by_shard(const ShardID& shard_id) const;
     Status add_replica(const ReplicaInitParam& param);
     std::vector<Replica*> get_replicas() const;
-    void start_tick(); // 记得调用这个，不然没有tick了
+    void start_tick();  // 记得调用这个，不然没有tick了
+    void recover();
 
    private:
     mutable std::shared_mutex mutex_;
@@ -27,7 +28,8 @@ class ReplicaManager {
         replica_map_;
     std::unordered_map<ShardID, ReplicaID, ShardIDHash> shard_primary_index_;
 
-    std::unique_ptr<RaftTickTask> raft_tick_task_; // 这个放到最后面，到时候先析构他。
+    std::unique_ptr<RaftTickTask>
+        raft_tick_task_;  // 这个放到最后面，到时候先析构他。
 };
 
 }  // namespace adviskv::storage

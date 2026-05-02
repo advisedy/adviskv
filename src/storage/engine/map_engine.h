@@ -20,7 +20,7 @@ class MapEngine : public KVEngine {
     Status clear() override;
 
    private:
-    std::shared_mutex map_mutex_;
+    mutable std::shared_mutex map_mutex_;
     std::map<Key, Value> map_;
 };
 

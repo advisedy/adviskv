@@ -7,7 +7,6 @@
 #include <utility>
 #include <vector>
 
-#include "common/func.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
@@ -84,14 +83,44 @@ class RaftNode {
     std::vector<LogEntry>
     extract_committed_entries();  // 提取那些已提交但是还未 apply 的日志
 
-    ReplicaRole role() const { return role_; }
-    Term current_term() const { return current_term_; }
-    LogIndex commit_index() const { return commit_index_; }
-    LogIndex last_applied() const { return last_applied_; }
+    ReplicaRole role() const {
+        std::lock_guard lock(mutex_);
+        return role_;
+    }
+
+    Term current_term() const {
+        std::lock_guard lock(mutex_);
+        return current_term_;
+    }
+
+    LogIndex commit_index() const {
+        std::lock_guard lock(mutex_);
+        return commit_index_;
+    }
+
+    LogIndex last_applied() const {
+        std::lock_guard lock(mutex_);
+        return last_applied_;
+    }
+
     LogIndex last_log_index() const;
+    
     Term last_log_term() const;
-    LogIndex snapshot_index() const { return snapshot_index_; }
-    bool is_leader() const { return role_ == ReplicaRole::LEADER; }
+    
+    LogIndex snapshot_index() const {
+        std::lock_guard lock(mutex_);
+        return snapshot_index_;
+    }
+    
+    Term snapshot_term() const {
+        std::lock_guard lock(mutex_);
+        return snapshot_term_;
+    }
+    
+    bool is_leader() const {
+        std::lock_guard lock(mutex_);
+        return role_ == ReplicaRole::LEADER;
+    }
 
     // 外部更新 last_applied（apply 完成后调用）
     void advance_last_applied(LogIndex applied);
@@ -99,7 +128,17 @@ class RaftNode {
     // 外部用来执行完快照直接要截断log
     Status truncate_log(LogIndex index);
 
+    // Snapshot 支持
+    void install_snapshot(LogIndex snapshot_index, Term snapshot_term,
+                          Term leader_term);
+
+    // InstallSnapshot 回调
+    void handle_install_snapshot_response(const ReplicaID& from, bool success);
+
    private:
+    LogIndex last_log_index_unlocked() const;
+    Term last_log_term_unlocked() const;
+
     void save_raft_meta() const;
 
     int64_t index_to_offset(LogIndex index) const;
@@ -147,9 +186,9 @@ class RaftNode {
     std::vector<RaftMessage> pending_messages_;
 
     PersistEngine* persist_;
-    LogIndex snapshot_index_;
-    Term snapshot_term_;
-    std::mutex mutex_;
+    LogIndex snapshot_index_{0};
+    Term snapshot_term_{0};
+    mutable std::mutex mutex_;
 };
 
 }  // namespace adviskv::storage

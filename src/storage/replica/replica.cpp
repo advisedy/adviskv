@@ -6,9 +6,9 @@
 #include "common/log.h"
 #include "common/status.h"
 #include "common/type.h"
-#include "storage/engine/map_engine.h"
 #include "storage/model/param.h"
 #include "storage/persist/persist_engine.h"
+#include "storage/raft/raft_callback.h"
 #include "storage/raft/raft_node.h"
 #include "storage/raft/state_machine/kv_state_machine.h"
 #include "storage/raft/state_machine/state_machine.h"
@@ -22,27 +22,14 @@ Status Replica::init(const ReplicaInitParam& param) {
                  .shard_index = param.replica_id.shard_index};
     replica_id_ = param.replica_id;
 
-    switch (param.engine_type) {
-        case EngineType::MAP: {
-            engine_ = std::make_unique<MapEngine>();
-            break;
-        }
-        case EngineType::ROCKSDB: {
-            // engine_ = std::make_unique<RocksEngine>();
-            break;
-        }
-        default: {
-            return {StatusCode::INVALID_ARGUMENT, "engine type is invalid"};
-        }
-    }
-
     persist_ =
         std::make_unique<PersistEngine>(param.data_dir, param.replica_id);
+    RETURN_IF_INVALID_STATUS(persist_->init())
+
+    state_machine_ = std::make_unique<KvStateMachine>(param.engine_type);
 
     raft_node_ = std::make_unique<RaftNode>(param.replica_id, param.members,
                                             persist_.get());
-
-    state_machine_ = std::make_unique<KvStateMachine>(EngineType::MAP);
 
     // 创建定时器驱动 tick（统一的 tick timer，替代原来的 election + heartbeat
     // 两个 timer）
@@ -81,9 +68,28 @@ Status Replica::put(const PutParam& param) {
     return Status::OK();
 }
 
+Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
+    if (param.kvs.empty()) {
+        return Status{StatusCode::ERROR, "empty snapshot data"};
+    }
+
+    SnapshotPtr snap = std::make_shared<Snapshot>();
+    snap->apply_index = param.snapshot_index;
+    snap->apply_term = param.snapshot_term;
+    snap->kvs = param.kvs;
+
+    RETURN_IF_INVALID_STATUS(state_machine_->restore(snap));
+    raft_node_->install_snapshot(param.snapshot_index, param.snapshot_term,
+                                 param.term);
+
+    RETURN_IF_INVALID_STATUS(persist_->save_snapshot(snap));
+
+    return Status::OK();
+}
+
 void Replica::flush_messages() {
     auto messages = raft_node_->extract_messages();
-    for (const auto& msg : messages) {
+    for (auto& msg : messages) {
         switch (msg.type) {
             case RaftMessageType::REQUEST_VOTE: {
                 RequestVoteResult result;
@@ -105,9 +111,17 @@ void Replica::flush_messages() {
                 if (status.ok()) {
                     raft_node_->handle_append_response(msg.target.replica_id,
                                                        result);
-                } else {
-                    WARN("[flush_messages] send_append_entries failed: {}",
-                         status.msg());
+                }
+                break;
+            }
+            case RaftMessageType::INSTALL_SNAPSHOT: {
+                auto snap = state_machine_->snapshot();
+                msg.snapshot_param.kvs = std::move(snap->kvs);
+                Status status = raft_sender_.send_install_snapshot(
+                    msg.target, msg.snapshot_param);
+                if (status.ok()) {
+                    raft_node_->handle_install_snapshot_response(
+                        msg.target.replica_id, true);
                 }
                 break;
             }
@@ -117,7 +131,7 @@ void Replica::flush_messages() {
 
 void Replica::apply_committed_entries() {
     auto entries = raft_node_->extract_committed_entries();
-    for (const auto& entry : entries) {
+    for (const LogEntry& entry : entries) {
         // Status status = apply_log_entry(entry);
         Status status = state_machine_->apply(entry);
         if (status.fail()) {
@@ -129,22 +143,22 @@ void Replica::apply_committed_entries() {
     }
 }
 
-Status Replica::apply_log_entry(const LogEntry& entry) {
-    // if (!engine_) {
-    //     return {StatusCode::ERROR, "engine is nullptr"};
-    // }
+// Status Replica::apply_log_entry(const LogEntry& entry) {
+// if (!engine_) {
+//     return {StatusCode::ERROR, "engine is nullptr"};
+// }
 
-    // switch (entry.op_type) {
-    //     case WriteOpType::PUT:
-    //         return engine_->put(entry.key, entry.value);
-    //     case WriteOpType::DEL:
-    //         return engine_->del(entry.key);
-    //     case WriteOpType::NONE:
-    //         return Status::OK();
-    //     default:
-    //         return {StatusCode::INVALID_ARGUMENT, "unknown log op type"};
-    // }
-}
+// switch (entry.op_type) {
+//     case WriteOpType::PUT:
+//         return engine_->put(entry.key, entry.value);
+//     case WriteOpType::DEL:
+//         return engine_->del(entry.key);
+//     case WriteOpType::NONE:
+//         return Status::OK();
+//     default:
+//         return {StatusCode::INVALID_ARGUMENT, "unknown log op type"};
+// }
+// }
 
 Status Replica::get(const GetParam& param, Value& value) {
     if (!state_machine_) {
@@ -157,7 +171,7 @@ Status Replica::get(const GetParam& param, Value& value) {
 
     RETURN_IF_INVALID_PARAM(param)
 
-    // TODO: ReadIndex 保证线性一致性（V1 暂不实现）
+    // TODO: ReadIndex 保证线性一致性 以后待定吧
     if (!raft_node_->is_leader()) {
         return Status{StatusCode::NOT_LEADER, "not leader"};
     }

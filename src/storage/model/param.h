@@ -1,7 +1,5 @@
 #pragma once
 
-#include <absl/container/internal/inlined_vector.h>
-
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -45,7 +43,7 @@ struct GetParam {
 struct ReplicaInitParam {
     ReplicaID replica_id;
     EngineType engine_type;
-    Endpoint local_enopoint;
+    Endpoint local_endpoint;
     std::vector<PeerMember> members;
     std::string data_dir; // 存放那些持久化数据的根目录
 };
@@ -78,9 +76,19 @@ struct AppendEntriesResult {
     bool success;
 };
 
+struct InstallSnapshotParam {
+    ReplicaID from_replica_id;
+    ReplicaID to_replica_id;
+    Term term;
+    LogIndex snapshot_index;
+    Term snapshot_term;
+    std::vector<KV> kvs;
+};
+
 enum class RaftMessageType : uint8_t {
     REQUEST_VOTE,
     APPEND_ENTRIES,
+    INSTALL_SNAPSHOT,
 };
 
 // RaftNode 产出的消息，由 Replica 负责，接收到了之后会通过 RaftSender 发送
@@ -89,6 +97,7 @@ struct RaftMessage {
     PeerMember target;
     RequestVoteParam vote_param{};
     AppendEntriesParam append_param{};
+    InstallSnapshotParam snapshot_param{};
 };
 
 }  // namespace adviskv::storage

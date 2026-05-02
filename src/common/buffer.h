@@ -2,7 +2,7 @@
 
 #include <cstdint>
 #include <vector>
-#
+
 namespace adviskv {
 
 class EncodeBuffer {
@@ -73,6 +73,13 @@ class DecodeBuffer {
         if (pos_ + len > data_.size()) return false;
         s.assign(reinterpret_cast<const char*>(data_.data() + pos_), len);
         pos_ += len;
+        return true;
+    }
+
+    bool read_bool(bool& v) {
+        if (pos_ + 1 > data_.size()) return false;
+        v = static_cast<bool>(data_[pos_]);
+        pos_ += 1;
         return true;
     }
 

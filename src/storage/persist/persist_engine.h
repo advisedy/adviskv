@@ -23,6 +23,7 @@ class PersistEngine {
     Status close();
 
     Status append_wal(const LogEntry& entry);
+    Status append_wal_batch(const std::vector<LogEntry>& entries);
     Status read_wal_all(std::vector<LogEntry>& entries);
     Status truncate_wal(const LogIndex& snapshot_index);
 
@@ -34,9 +35,17 @@ class PersistEngine {
 
     Status do_snapshot(const SnapshotPtr& snap);
 
+    struct RecoverResult {
+        SnapshotPtr snapshot;
+        RaftMeta raft_meta;
+        std::vector<LogEntry> wal_entries;
+    };
+    Status recover(RecoverResult& result);
+
    private:
     Status write_wal_to_disk(int fd, const LogEntry& entry);
-    // Status read_wal_from_disk() const;
+    Status read_wal_from_disk(const std::string& path,
+                           std::vector<LogEntry>& entries);
 
     std::string wal_path_;
     std::string raft_meta_path_;

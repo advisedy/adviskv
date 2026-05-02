@@ -8,6 +8,7 @@
 #include <shared_mutex>
 
 #include "common/define.h"
+#include "common/log.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/replica/replica.h"
@@ -72,15 +73,27 @@ std::vector<Replica*> ReplicaManager::get_replicas() const {
     std::shared_lock locker(mutex_);
     std::vector<Replica*> replicas;
     replicas.reserve(replica_map_.size());
-    for(const auto& [_, replica]:replica_map_){
+    for (const auto& [_, replica] : replica_map_) {
         replicas.push_back(replica.get());
     }
     return replicas;
 }
 
-void ReplicaManager::start_tick(){
+void ReplicaManager::start_tick() {
     raft_tick_task_ = std::make_unique<RaftTickTask>(this);
     raft_tick_task_->start(MILLISECONDS(20));
+}
+
+void ReplicaManager::recover() {
+    std::shared_lock locker(mutex_);
+    for (const auto& [_, replica] : replica_map_) {
+        Status status = replica->recover();
+        if (status.fail()) {
+            WARN("replica recover failed, table_id={}, shard_index={}",
+                 replica->shard_id_.table_id, replica->shard_id_.shard_index);
+        }
+    }
+    INFO("all replicas recovered");
 }
 
 }  // namespace adviskv::storage

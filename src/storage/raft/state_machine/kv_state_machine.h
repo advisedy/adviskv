@@ -21,7 +21,8 @@ namespace adviskv::storage {
 
 class KvStateMachine : public StateMachine {
    public:
-    KvStateMachine(EngineType type);
+    explicit KvStateMachine(EngineType engine_type);
+
     Status apply(const LogEntry& entry) override;
     SnapshotPtr snapshot() const override;
     Status restore(const SnapshotPtr& snap) override;
@@ -29,10 +30,12 @@ class KvStateMachine : public StateMachine {
     LogIndex apply_term() const override;
     Status get(const Key& key, Value& value) const override;
 
+    KVEngine* engine() { return engine_.get(); }
+
    private:
     std::unique_ptr<KVEngine> engine_;
-    LogIndex apply_index_;
-    Term apply_term_;
+    LogIndex apply_index_{0};
+    Term apply_term_{0};
 };
 
 }  // namespace adviskv::storage

@@ -10,18 +10,14 @@
 #include "storage/raft/state_machine/state_machine.h"
 
 namespace adviskv::storage {
-KvStateMachine::KvStateMachine(EngineType type) {
-    switch (type) {
-        case EngineType::MAP: {
+
+KvStateMachine::KvStateMachine(EngineType engine_type) {
+    switch (engine_type) {
+        case EngineType::MAP:
             engine_ = std::make_unique<MapEngine>();
             break;
-        }
-        case EngineType::ROCKSDB: {
+        default:
             break;
-        }
-        default: {
-            break;
-        }
     }
 }
 Status KvStateMachine::apply(const LogEntry& entry) {

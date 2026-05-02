@@ -6,7 +6,6 @@
 #include "common/define.h"
 #include "common/status.h"
 #include "common/type.h"
-#include "storage/engine/kv_engine.h"
 #include "storage/model/param.h"
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/raft_callback.h"
@@ -19,21 +18,22 @@ class Replica {
    public:
     TableID get_table_id() const { return shard_id_.table_id; }
     ShardID get_shard_id() const { return shard_id_; }
+    ReplicaID get_replica_id() const { return replica_id_; }
 
-    // 业务接口
     Status put(const PutParam& param);
     Status get(const GetParam& param, Value& value);
 
-    // RPC 入口（handler 调这里，Replica 转发给 RaftNode）
     Status handle_request_vote(const RequestVoteParam& param,
                                RequestVoteResult& result);
     Status handle_append_entries(const AppendEntriesParam& param,
                                  AppendEntriesResult& result);
+    Status handle_install_snapshot(const InstallSnapshotParam& param);
 
    private:
     friend class ReplicaManager;
 
     Status init(const ReplicaInitParam& param);
+    Status recover();
 
     friend class RaftTickTask;
     // tick 回调（Timer 定时调用）
@@ -46,13 +46,13 @@ class Replica {
     void apply_committed_entries();
 
     // 单条 apply
-    Status apply_log_entry(const LogEntry& entry);
+    // Status apply_log_entry(const LogEntry& entry);
 
     void try_take_snapshot();
 
     ShardID shard_id_;
     ReplicaID replica_id_;
-    // std::unique_ptr<KVEngine> engine_;
+
     std::unique_ptr<StateMachine> state_machine_;
     // raft
     // replica算是给raft_node包了一层，会帮忙处理RPC的事情和状态机落实的事情
@@ -61,7 +61,7 @@ class Replica {
 
     std::unique_ptr<PersistEngine> persist_;
 
-    // 通信层
+    // 通信
     RaftSender raft_sender_;
 
     // 定时器（驱动 tick）

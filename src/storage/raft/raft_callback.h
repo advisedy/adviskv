@@ -99,6 +99,44 @@ class RaftSender {
         result.success = response.success();
         return Status::OK();
     }
+
+    Status send_install_snapshot(const PeerMember& member,
+                                 const InstallSnapshotParam& param) const {
+        auto channel = grpc::CreateChannel(
+            member.endpoint.ip + ":" + std::to_string(member.endpoint.port),
+            grpc::InsecureChannelCredentials());
+        auto stub = rpc::StorageService::NewStub(channel);
+
+        rpc::InstallSnapshotRequest request;
+        request.mutable_from()->set_table_id(param.from_replica_id.table_id);
+        request.mutable_from()->set_shard_index(
+            param.from_replica_id.shard_index);
+        request.mutable_from()->set_replica_index(
+            param.from_replica_id.replica_index);
+
+        request.mutable_to()->set_table_id(param.to_replica_id.table_id);
+        request.mutable_to()->set_shard_index(param.to_replica_id.shard_index);
+        request.mutable_to()->set_replica_index(
+            param.to_replica_id.replica_index);
+
+        request.set_term(param.term);
+        request.set_apply_index(param.snapshot_index);
+        request.set_apply_term(param.snapshot_term);
+
+        for (const auto& [k, v] : param.kvs) {
+            auto* kv = request.add_kvs();
+            kv->set_key(k);
+            kv->set_value(v);
+        }
+
+        rpc::InstallSnapshotResponse response;
+        grpc::ClientContext context;
+        grpc::Status grpc_status =
+            stub->InstallSnapshot(&context, request, &response);
+        RETURN_IF_INVALID_CONDITION(grpc_status.ok(),
+                                    grpc_status.error_message())
+        return Status::OK();
+    }
 };
 
 }  // namespace adviskv::storage

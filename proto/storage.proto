@@ -108,6 +108,25 @@ message AppendEntriesResponse{
   bool success = 3;
 }
 
+message SnapshotKV {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+message InstallSnapshotRequest {
+  adviskv.pb.ReplicaID from = 1;
+  adviskv.pb.ReplicaID to = 2;
+  int64 term = 3;
+  int64 apply_index = 4;
+  int64 apply_term = 5;
+  repeated SnapshotKV kvs = 6;
+}
+
+message InstallSnapshotResponse {
+  adviskv.pb.BaseRsp base_rsp = 1;
+  int64 term = 2;
+}
+
 service StorageService {
   rpc Put(PutRequest) returns (PutResponse);
   rpc Get(GetRequest) returns (GetResponse);
@@ -119,4 +138,5 @@ service StorageService {
 
   rpc RequestVote(RequestVoteRequest) returns(RequestVoteResponse);
   rpc AppendEntries(AppendEntriesRequest) returns(AppendEntriesResponse);
+  rpc InstallSnapshot(InstallSnapshotRequest) returns(InstallSnapshotResponse);
 }
