@@ -29,6 +29,10 @@
         return status;                                    \
     }
 
+#define RETURN_IF_INVALID_READ(buf, name)        \
+    if (bool success = buf.read(name); !success) \
+        return Status::ERROR("read is invalid");
+
 #define DEFINE_VECTOR_AND_RESERVE(type, name, size) \
     std::vector<type> name;                         \
     name.reserve(size);

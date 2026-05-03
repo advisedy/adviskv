@@ -1,7 +1,10 @@
 #pragma once
 
+#include <cstddef>
+#include <optional>
 #include <shared_mutex>
 
+#include "common/buffer.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
@@ -24,7 +27,7 @@ class PersistEngine {
 
     Status append_wal(const LogEntry& entry);
     Status append_wal_batch(const std::vector<LogEntry>& entries);
-    Status read_wal_all(std::vector<LogEntry>& entries);
+    Status read_wal_batch(std::vector<LogEntry>& entries);
     Status truncate_wal(const LogIndex& snapshot_index);
 
     Status save_raft_meta(const RaftMeta& meta);
@@ -45,8 +48,10 @@ class PersistEngine {
    private:
     Status write_wal_to_disk(int fd, const LogEntry& entry);
     Status read_wal_from_disk(const std::string& path,
-                           std::vector<LogEntry>& entries);
-
+                              std::vector<LogEntry>& entries);
+    Status write_full(int fd, const void* buf, size_t len);
+    Status read_full(int fd, void* buf, size_t len) const;
+    std::optional<DecodeBuffer> read_full2buffer(int fd, size_t len)const;
     std::string wal_path_;
     std::string raft_meta_path_;
     std::string snapshot_path_;
