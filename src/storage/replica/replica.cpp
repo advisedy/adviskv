@@ -99,7 +99,7 @@ void Replica::flush_messages() {
                     raft_node_->handle_vote_response(msg.target.replica_id,
                                                      result);
                 } else {
-                    WARN("[flush_messages] send_request_vote failed: {}",
+                    LOG_WARN("[flush_messages] send_request_vote failed: {}",
                          status.msg());
                 }
                 break;
@@ -135,7 +135,7 @@ void Replica::apply_committed_entries() {
         // Status status = apply_log_entry(entry);
         Status status = state_machine_->apply(entry);
         if (status.fail()) {
-            WARN("apply_log_entry failed, index={}, msg={}", entry.index,
+            LOG_WARN("apply_log_entry failed, index={}, msg={}", entry.index,
                  status.msg());
             return;
         }
@@ -162,7 +162,7 @@ void Replica::apply_committed_entries() {
 
 Status Replica::get(const GetParam& param, Value& value) {
     if (!state_machine_) {
-        WARN(
+        LOG_WARN(
             "state_machine is nullptr, replica: table_id = {}, shard_index = "
             "{}",
             shard_id_.table_id, shard_id_.shard_index);
@@ -178,7 +178,7 @@ Status Replica::get(const GetParam& param, Value& value) {
 
     Status status = state_machine_->get(param.key, value);
     if (status.fail()) {
-        WARN("engine get is not ok, key = {}, msg = {}", param.key,
+        LOG_WARN("engine get is not ok, key = {}, msg = {}", param.key,
              status.msg());
     }
     return status;
@@ -211,7 +211,7 @@ void Replica::try_take_snapshot() {
         // 持久化成功了，这边得截断wal日志了。
         raft_node_->truncate_log(snap->apply_index);
     } else {
-        WARN("...");
+        LOG_WARN("...");
     }
 }
 

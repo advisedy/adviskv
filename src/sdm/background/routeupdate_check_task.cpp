@@ -20,7 +20,7 @@ void RouteUpdateCheckTask::run() {
     std::vector<TablePtr> table_list;
     status = sdm_store_->list_tables(table_list);
     if (status.fail()) {
-        WARN("11");
+        LOG_WARN("11");
         return;
     }
 
@@ -28,7 +28,7 @@ void RouteUpdateCheckTask::run() {
         for (int i = 0; i < table_ptr->spec.shard_count; i++) {
             status = check_shard_route(*table_ptr, static_cast<ShardIndex>(i));
             if (status.fail()) {
-                WARN("22");
+                LOG_WARN("22");
             }
         }
     }

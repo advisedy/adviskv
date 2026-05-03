@@ -480,7 +480,7 @@ void RaftNode::try_update_commit_index() {
                 it != match_index_.end()) {
                 if (it->second >= idx) success_cnt++;
             } else {
-                WARN("...");
+                LOG_WARN("...");
             }
         }
 
@@ -504,7 +504,7 @@ Term RaftNode::get_term(LogIndex index) const {
     if (index == snapshot_index_) return snapshot_term_;
     if (index < snapshot_index_) {
         //
-        WARN("... get term");
+        LOG_WARN("... get term");
         return 0;
     }
     int64_t offset = index_to_offset(index);

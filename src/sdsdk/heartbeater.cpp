@@ -41,7 +41,7 @@ Status HeartBeater::setup() {
             first_sync_finished_ = true;
             return Status::OK();
         }
-        WARN("sdsdk first heartbeat failed, msg={}", status.to_string());
+        LOG_WARN("sdsdk first heartbeat failed, msg={}", status.to_string());
         std::this_thread::sleep_for(
             std::chrono::milliseconds(conf_.first_sync_retry_ms));
     }
@@ -57,7 +57,7 @@ Status HeartBeater::stop_and_wait() {
 void HeartBeater::run() {
     Status status = heartbeat_once();
     if (!status.ok()) {
-        WARN("sdsdk heartbeat failed, msg={}", status.to_string());
+        LOG_WARN("sdsdk heartbeat failed, msg={}", status.to_string());
     }
 }
 

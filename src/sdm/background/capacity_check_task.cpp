@@ -15,14 +15,14 @@ void CapacityCheckTask::run() {
     std::vector<TablePtr> table_list;
     Status status = sdm_store_.list_tables(table_list);
     if (status.fail()) {
-        WARN("1");
+        LOG_WARN("1");
         return;
     }
     for (TablePtr table : table_list) {
         for (int i = 0; i < table->spec.shard_count; i++) {
             status = check_replica_list(*table, static_cast<ShardIndex>(i));
             if (status.fail()) {
-                WARN("3");
+                LOG_WARN("3");
                 return;
             }
         }

@@ -68,18 +68,16 @@ struct ReplicaIDHash {
     }
 };
 
-enum class EngineType {
+enum class EngineType : int8 {
     MAP = 0,
     ROCKSDB = 1,
 };
 
-enum class ReplicaRole { FOLLOWER = 0, LEADER = 1, CANDIDATE = 2 };
+enum class ReplicaRole : int8 { FOLLOWER = 0, LEADER = 1, CANDIDATE = 2 };
 
 struct Endpoint {
     std::string ip;
     int32_t port;
 };
-
-
 
 }  // namespace adviskv

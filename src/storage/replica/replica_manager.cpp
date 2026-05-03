@@ -89,11 +89,11 @@ void ReplicaManager::recover() {
     for (const auto& [_, replica] : replica_map_) {
         Status status = replica->recover();
         if (status.fail()) {
-            WARN("replica recover failed, table_id={}, shard_index={}",
+            LOG_WARN("replica recover failed, table_id={}, shard_index={}",
                  replica->shard_id_.table_id, replica->shard_id_.shard_index);
         }
     }
-    INFO("all replicas recovered");
+    LOG_INFO("all replicas recovered");
 }
 
 }  // namespace adviskv::storage

@@ -18,7 +18,7 @@ Status MapEngine::put(const Key& key, const Value& value) {
 
     map_[key] = value;
 
-    DEBUG("map put ok, key = {}, value = {}", key, value);
+    LOG_DEBUG("map put ok, key = {}, value = {}", key, value);
 
     return Status::OK();
 }
@@ -26,7 +26,7 @@ Status MapEngine::put(const Key& key, const Value& value) {
 Status MapEngine::get(const Key& key, Value& value) {
     std::shared_lock lock(map_mutex_);
     if (!map_.count(key)) {
-        DEBUG("key = {}, not found", key);
+        LOG_DEBUG("key = {}, not found", key);
         return Status{StatusCode::KEY_NOT_FOUND,
                       fmt::format("key = {} not found", key)};
     }

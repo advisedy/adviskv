@@ -37,9 +37,9 @@ private:
     bool init_flag_{false};
 };
 
-#define DEBUG(...)  adviskv::common::Logger::get_instance().get_logger()->debug(__VA_ARGS__)
-#define INFO(...)  adviskv::common::Logger::get_instance().get_logger()->info(__VA_ARGS__)
-#define WARN(...)  adviskv::common::Logger::get_instance().get_logger()->warn(__VA_ARGS__)
+#define LOG_DEBUG(...)  adviskv::common::Logger::get_instance().get_logger()->debug(__VA_ARGS__)
+#define LOG_INFO(...)  adviskv::common::Logger::get_instance().get_logger()->info(__VA_ARGS__)
+#define LOG_WARN(...)  adviskv::common::Logger::get_instance().get_logger()->warn(__VA_ARGS__)
 #define LOG_ERROR(...) adviskv::common::Logger::get_instance().get_logger()->error(__VA_ARGS__)
 
 

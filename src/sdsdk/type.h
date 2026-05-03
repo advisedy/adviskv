@@ -18,7 +18,7 @@ using ReplicaKeyHash = ReplicaIDHash;
 
 struct NodeAgentConf {
     NodeID node_id;
-    std::string ip; // 这个是实际pod的ip和port，不一定是代表开放的ip和port
+    std::string ip;  // 这个是实际pod的ip和port，不一定是代表开放的ip和port
     int32_t port{-1};
 
     std::string resource_pool{"default"};
@@ -71,7 +71,7 @@ struct ReplicaReport {
 struct DesiredReplicaSpec {
     ReplicaKey key;
     pb::ReplicaRole role{pb::ReplicaRole::FOLLOWER};
-    pb::EngineType engine_type{pb::EngineType::ENGINE_MAP};
+    int8 engine_type{};
     bool is_dropped{false};
 };
 
@@ -80,7 +80,8 @@ struct DesiredReplicaSpec {
 struct CreateReplicaArgs {
     ReplicaKey key;
     pb::ReplicaRole role{pb::ReplicaRole::FOLLOWER};
-    pb::EngineType engine_type{pb::EngineType::ENGINE_MAP};
+    int8 engine_type{};
+    
 };
 
 struct CreateReplicaResult {

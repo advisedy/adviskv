@@ -17,18 +17,18 @@ constexpr int64_t OFFLINE_TIMEOUT_MS = 30 * 1000;
 
 void HeartBeatCheckTask::run() {
     if (sdm_store_ == nullptr) {
-        ERROR("[heartbeat] sdm_store is nullptr");
+        LOG_ERROR("[heartbeat] sdm_store is nullptr");
         return;
     }
     std::vector<ResourcePoolPtr> pools;
     Status status = sdm_store_->list_resource_pools(pools);
     if (status.fail()) {
-        WARN("[heartbeat] get resource pools eror");
+        LOG_WARN("[heartbeat] get resource pools eror");
         return;
     }
 
     if (pools.empty()) {
-        WARN("[heartbeat] the pool list is empty");
+        LOG_WARN("[heartbeat] the pool list is empty");
         return;
     }
 
@@ -37,14 +37,14 @@ void HeartBeatCheckTask::run() {
         std::vector<NodePtr> node_list;
         status = sdm_store_->list_nodes_by_resource_pool(one->name, node_list);
         if (status.fail()) {
-            WARN("");
+            LOG_WARN("");
             continue;
         }
         for (const NodePtr& node : node_list) {
             // 接下来是检测node的状态
             status = check_and_modify_node(*node);
             if (status.fail()) {
-                WARN("...");
+                LOG_WARN("...");
             }
         }
     }

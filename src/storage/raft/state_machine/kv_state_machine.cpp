@@ -57,7 +57,7 @@ Status KvStateMachine::restore(const SnapshotPtr& snap) {
     for (const KV& kv : snap->kvs) {
         Status status = engine_->put(kv.first, kv.second);
         if (status.fail()) {
-            WARN("restore warn");
+            LOG_WARN("restore warn");
         }
     }
     return Status::OK();

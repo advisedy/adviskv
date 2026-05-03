@@ -30,7 +30,7 @@ PersistEngine::PersistEngine(const std::string& data_dir,
 PersistEngine::~PersistEngine() {
     Status status = close();
     if (status.fail()) {
-        WARN("...");
+        LOG_WARN("...");
     }
 }
 
@@ -117,7 +117,7 @@ Status PersistEngine::truncate_wal(const LogIndex& snapshot_index) {
     ::fsync(fd);
     ::close(fd);
     ::close(wal_fd_);
-    
+
     ::rename(tmp_path.c_str(), wal_path_.c_str());
 
     wal_fd_ = ::open(wal_path_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
@@ -171,14 +171,19 @@ Status PersistEngine::save_snapshot(const SnapshotPtr& snapshot) {
 Status PersistEngine::load_snapshot(SnapshotPtr& snapshot) {
     // TODO
 
-    int fd = ::open(snapshot_path_.c_str(), O_RDONLY);
+    int fd = ::open(snapshot_path_.c_str(), O_RDONLY | O_CREAT);
     if (fd < 0) {
         return Status::ERROR("fd < 0");
     }
 
     int64 total_len{0};
-    RETURN_IF_INVALID_STATUS(read_full(fd, &total_len, sizeof(int64)))
-
+    {
+        Status status = (read_full(fd, &total_len, sizeof(int64)));
+        if (status.code() == StatusCode::GET_EOF) {
+            return Status::OK();
+        }
+        RETURN_IF_INVALID_STATUS(status)
+    }
     {
         std::optional<DecodeBuffer> res = read_full2buffer(fd, total_len);
         if (!res.has_value()) return Status::ERROR();
@@ -241,15 +246,21 @@ Status PersistEngine::save_raft_meta(const RaftMeta& meta) {
 Status PersistEngine::load_raft_meta(RaftMeta& meta) const {
     // TODO
 
-    int fd = ::open(raft_meta_path_.c_str(), O_RDONLY);
+    int fd = ::open(raft_meta_path_.c_str(), O_RDONLY | O_CREAT);
 
     if (fd < 0) {
         return Status{StatusCode::ERROR, "fd < 0"};
     }
 
-    int64 total_len = 0;
-    RETURN_IF_INVALID_STATUS(read_full(fd, &total_len, sizeof(int64)))
     meta = {};
+    int64 total_len = 0;
+    {
+        Status status = (read_full(fd, &total_len, sizeof(int64)));
+        if (status.code() == StatusCode::GET_EOF) {
+            return Status::OK();
+        }
+        RETURN_IF_INVALID_STATUS(status)
+    }
     {
         std::optional<DecodeBuffer> res = read_full2buffer(fd, total_len);
         if (!res.has_value()) return Status::ERROR();
@@ -318,11 +329,12 @@ Status PersistEngine::recover(RecoverResult& result) {
 
 Status PersistEngine::read_wal_from_disk(const std::string& path,
                                          std::vector<LogEntry>& entries) {
-    int fd = ::open(path.c_str(), O_RDONLY);
+    int fd = ::open(path.c_str(), O_RDONLY | O_CREAT);
     if (fd < 0) {
         return Status::ERROR("");
     }
 
+    entries.clear();
     while (true) {
         int32 data_len;
         Status status = read_full(fd, &data_len, sizeof(int32));
