@@ -59,6 +59,9 @@ struct NodeReport {
     // 这里有一个endpoint，因为接触到的场景里面，node的IP和port不代表是他开放给外界去连接的ip和port
     // 所以conf那边的ip和port代表的是node本身的，然后在node_report这边是记录的开放给外界的
     // 这边还留了点，以后可以上传一些资源信息，方便sdm那边调度
+
+
+    
 };
 
 struct ReplicaReport {
