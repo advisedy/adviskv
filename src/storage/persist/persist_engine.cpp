@@ -116,7 +116,8 @@ Status PersistEngine::truncate_wal(const LogIndex& snapshot_index) {
 
     ::fsync(fd);
     ::close(fd);
-
+    ::close(wal_fd_);
+    
     ::rename(tmp_path.c_str(), wal_path_.c_str());
 
     wal_fd_ = ::open(wal_path_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
@@ -178,7 +179,6 @@ Status PersistEngine::load_snapshot(SnapshotPtr& snapshot) {
     int64 total_len{0};
     RETURN_IF_INVALID_STATUS(read_full(fd, &total_len, sizeof(int64)))
 
-    snapshot = {};
     {
         std::optional<DecodeBuffer> res = read_full2buffer(fd, total_len);
         if (!res.has_value()) return Status::ERROR();
@@ -236,6 +236,7 @@ Status PersistEngine::save_raft_meta(const RaftMeta& meta) {
     ::close(fd);
 
     ::rename(tmp_path.c_str(), raft_meta_path_.c_str());
+    return Status::OK();
 }
 Status PersistEngine::load_raft_meta(RaftMeta& meta) const {
     // TODO
@@ -302,14 +303,14 @@ Status PersistEngine::write_wal_to_disk(int fd, const LogEntry& entry) {
 }
 
 Status PersistEngine::recover(RecoverResult& result) {
-    /*
-    SnapshotPtr snapshot;
-    RaftMeta raft_meta;
-    std::vector<LogEntry> wal_entries;
-    */
     result = {};
-    result.snapshot = std::make_shared<Snapshot>();
-    RETURN_IF_INVALID_STATUS(load_snapshot(result.snapshot))
+
+    auto&& snap = std::make_shared<Snapshot>();
+    Status snap_status = load_snapshot(snap);
+    if (snap_status.ok()) {
+        result.snapshot = snap;
+    }
+
     RETURN_IF_INVALID_STATUS(load_raft_meta(result.raft_meta))
     RETURN_IF_INVALID_STATUS(read_wal_batch(result.wal_entries))
     return Status::OK();

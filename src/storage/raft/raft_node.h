@@ -135,6 +135,10 @@ class RaftNode {
     // InstallSnapshot 回调
     void handle_install_snapshot_response(const ReplicaID& from, bool success);
 
+    //revocer 的时候更新用的
+    void update_raft_meta(const RaftMeta& meta);
+
+    void update_log_entries(const std::vector<LogEntry>& entries);
    private:
     LogIndex last_log_index_unlocked() const;
     Term last_log_term_unlocked() const;

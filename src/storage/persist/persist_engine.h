@@ -11,11 +11,6 @@
 #include "storage/raft/state_machine/state_machine.h"
 namespace adviskv::storage {
 
-struct RaftMeta {
-    Term current_term;
-    LogIndex commit_index{0};
-    std::optional<ReplicaID> voted_for;
-};
 
 class PersistEngine {
    public:

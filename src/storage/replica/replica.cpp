@@ -232,4 +232,19 @@ void Replica::on_tick() {
     try_take_snapshot();
 }
 
+Status Replica::recover() {
+    PersistEngine::RecoverResult result;
+    RETURN_IF_INVALID_STATUS(persist_->recover(result))
+
+    if (result.snapshot) {
+        RETURN_IF_INVALID_STATUS(state_machine_->restore(result.snapshot))
+        raft_node_->install_snapshot(result.snapshot->apply_index,
+                                     result.snapshot->apply_term, 0);
+    }
+
+    raft_node_->update_raft_meta(result.raft_meta);
+    raft_node_->update_log_entries(result.wal_entries);
+    return Status::OK();
+}
+
 }  // namespace adviskv::storage

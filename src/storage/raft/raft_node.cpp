@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <mutex>
 #include <random>
 #include <utility>
 
@@ -329,7 +330,8 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
 
     // 不管是否有entry，也就是不管是日志追加还是心跳，都会需要更新commit_idx
     if (param.leader_commit > commit_index_) {
-        commit_index_ = std::min(param.leader_commit, last_log_index_unlocked());
+        commit_index_ =
+            std::min(param.leader_commit, last_log_index_unlocked());
         save_raft_meta();
     }
 
@@ -372,8 +374,7 @@ void RaftNode::handle_append_response(const ReplicaID& from,
 
     if (result.success) {
         // 复制成功，更新 match_index 和 next_index
-        match_index_[from] =
-            last_log_index_unlocked();
+        match_index_[from] = last_log_index_unlocked();
         next_index_[from] = last_log_index_unlocked() + 1;
         try_update_commit_index();
     } else {
@@ -456,7 +457,8 @@ void RaftNode::become_leader() {
 // raftnode 作为leader，需要更新自己的commit_idx
 // 当收到了follower们关于日志复制的回应时，就调用一下这个函数，去更新自己的commit_idx
 void RaftNode::try_update_commit_index() {
-    for (LogIndex idx = commit_index_ + 1; idx <= last_log_index_unlocked(); ++idx) {
+    for (LogIndex idx = commit_index_ + 1; idx <= last_log_index_unlocked();
+         ++idx) {
         // TODO 这里将来需要check一下这个term是否需要和当前的term一样吗？
         // 但是好像leader是可以提交上一个leader没有提交的内容吧，所以好像不用
 
@@ -545,8 +547,7 @@ Status RaftNode::truncate_log(LogIndex new_snapshot_index) {
 }
 
 void RaftNode::install_snapshot(LogIndex new_snapshot_index,
-                                Term new_snapshot_term,
-                                Term leader_term) {
+                                Term new_snapshot_term, Term leader_term) {
     std::lock_guard lock(mutex_);
 
     if (leader_term > current_term_) {
@@ -569,13 +570,25 @@ void RaftNode::install_snapshot(LogIndex new_snapshot_index,
 }
 
 void RaftNode::handle_install_snapshot_response(const ReplicaID& from,
-                                                 bool success) {
+                                                bool success) {
     std::lock_guard lock(mutex_);
     if (!success) return;
     if (role_ != ReplicaRole::LEADER) return;
 
     next_index_[from] = snapshot_index_ + 1;
     match_index_[from] = snapshot_index_;
+}
+
+void RaftNode::update_raft_meta(const RaftMeta& meta) {
+    std::lock_guard lock(mutex_);
+    commit_index_ = meta.commit_index;
+    current_term_ = meta.current_term;
+    voted_for_ = meta.voted_for;
+}
+
+void RaftNode::update_log_entries(const std::vector<LogEntry>& entries) {
+    std::lock_guard lock(mutex_);
+    log_entries_ = entries;
 }
 
 #undef ELECTION_TIMEOUT

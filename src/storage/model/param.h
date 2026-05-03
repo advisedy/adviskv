@@ -14,6 +14,12 @@ using LogIndex = int64_t;
 
 enum class WriteOpType : int32_t { PUT = 0, DEL = 1, NONE = 2 };
 
+struct RaftMeta {
+    Term current_term;
+    LogIndex commit_index{0};
+    std::optional<ReplicaID> voted_for;
+};
+
 struct PeerMember {
     NodeID node_id;
     ReplicaID replica_id;
