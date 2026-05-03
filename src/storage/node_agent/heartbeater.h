@@ -5,7 +5,6 @@
 #include <grpcpp/grpcpp.h>
 
 #include "common/background_task.h"
-#include "sdsdk/istorage_callback.h"
 #include "sdsdk/replica_controller.h"
 #include "sdsdk/type.h"
 #include "sdm.grpc.pb.h"
@@ -14,7 +13,7 @@ namespace adviskv::sdsdk {
 
 class HeartBeater : public BackgroundTask {
    public:
-    HeartBeater(const NodeAgentConf& conf, StorageCallbackPtr callback);
+    HeartBeater(const NodeAgentConf& conf);
 
     Status init();
     Status stop_and_wait();
