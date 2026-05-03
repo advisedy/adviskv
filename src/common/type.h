@@ -82,4 +82,11 @@ struct Endpoint {
     int32_t port;
 };
 
+struct PeerMember {
+    NodeID node_id;
+    ReplicaID replica_id;
+    Endpoint endpoint;
+};
+
+
 }  // namespace adviskv

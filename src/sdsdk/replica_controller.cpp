@@ -6,11 +6,12 @@
 
 namespace adviskv::sdsdk {
 
-Status ReplicaController::init(StorageCallbackPtr callback, int32_t worker_count,
-                               Endpoint node_endpoint) {
+Status ReplicaController::init(StorageCallbackPtr callback,
+                               int32_t worker_count, Endpoint node_endpoint) {
     RETURN_IF_INVALID_CONDITION(callback != nullptr, "callback is nullptr")
     RETURN_IF_INVALID_CONDITION(worker_count > 0, "worker_count should > 0")
-    RETURN_IF_INVALID_CONDITION(!initialized_, "replica controller already initialized")
+    RETURN_IF_INVALID_CONDITION(!initialized_,
+                                "replica controller already initialized")
 
     callback_ = std::move(callback);
     node_endpoint_ = std::move(node_endpoint);
@@ -21,7 +22,8 @@ Status ReplicaController::init(StorageCallbackPtr callback, int32_t worker_count
 
 Status ReplicaController::apply_desired_set(
     const std::vector<DesiredReplicaSpec>& desired_set) {
-    RETURN_IF_INVALID_CONDITION(initialized_, "replica controller not initialized")
+    RETURN_IF_INVALID_CONDITION(initialized_,
+                                "replica controller not initialized")
 
     std::unordered_set<ReplicaKey, ReplicaKeyHash> desired_keys;
     desired_keys.reserve(desired_set.size());
@@ -64,8 +66,7 @@ Status ReplicaController::apply_desired_set(
 
             if (local.role != spec.role) {
                 local.is_updating = true;
-                role_changes.push_back(
-                    {spec.key, {local.role, spec.role}});
+                role_changes.push_back({spec.key, {local.role, spec.role}});
             }
         }
 
@@ -124,8 +125,7 @@ bool ReplicaController::all_ready() const {
 bool ReplicaController::has_non_follower_replica() const {
     std::lock_guard<std::mutex> lock(mutex_);
     for (const auto& [_, local] : replicas_) {
-        if (local.exists_locally &&
-            local.role != ReplicaRole::FOLLOWER) {
+        if (local.exists_locally && local.role != ReplicaRole::FOLLOWER) {
             return true;
         }
     }
@@ -145,9 +145,10 @@ void ReplicaController::schedule_create(const DesiredReplicaSpec& spec) {
         args.key = spec.key;
         args.role = spec.role;
         args.engine_type = spec.engine_type;
+        args.local_endpoint = node_endpoint_;
+        args.members = spec.members;
 
-        CreateReplicaResult result;
-        Status status = callback_->create_replica(args, result);
+        Status status = callback_->create_replica(args);
 
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = replicas_.find(spec.key);
@@ -197,8 +198,7 @@ void ReplicaController::schedule_change_role(const ReplicaKey& key,
         args.old_role = old_role;
         args.new_role = new_role;
 
-        ChangeReplicaRoleResult result;
-        Status status = callback_->change_replica_role(args, result);
+        Status status = callback_->change_replica_role(args);
 
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = replicas_.find(key);

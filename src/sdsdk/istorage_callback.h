@@ -13,13 +13,11 @@ class IStorageCallback {
     virtual ~IStorageCallback() = default;
 
    public:
-    virtual Status create_replica(const CreateReplicaArgs& args,
-                                  CreateReplicaResult& out) = 0;
+    virtual Status create_replica(const CreateReplicaArgs& args) = 0;
 
     virtual Status delete_replica(const DeleteReplicaArgs& args) = 0;
 
-    virtual Status change_replica_role(const ChangeReplicaRoleArgs& args,
-                                       ChangeReplicaRoleResult& out) = 0;
+    virtual Status change_replica_role(const ChangeReplicaRoleArgs& args) = 0;
 
     // virtual Status collect_node_report(NodeReport& out) {
     //     return Status::OK();

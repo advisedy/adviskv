@@ -9,6 +9,7 @@
 #include "common/define.h"
 #include "common/status.h"
 #include "common/type.h"
+#include "storage/model/param.h"
 
 namespace adviskv::sdsdk {
 
@@ -67,10 +68,12 @@ struct ReplicaReport {
     Endpoint endpoint;
 };
 
+// 把RPC那边的message转换一下
 struct DesiredReplicaSpec {
     ReplicaKey key;
     ReplicaRole role{ReplicaRole::FOLLOWER};
     EngineType engine_type{EngineType::MAP};
+    std::vector<PeerMember> members;
     bool is_dropped{false};
 };
 
@@ -80,11 +83,13 @@ struct CreateReplicaArgs {
     ReplicaKey key;
     ReplicaRole role{ReplicaRole::FOLLOWER};
     EngineType engine_type{EngineType::MAP};
+    std::vector<PeerMember> members;
+    Endpoint local_endpoint;
 };
 
-struct CreateReplicaResult {
-    Endpoint endpoint;
-};
+// struct CreateReplicaResult {
+//     Endpoint endpoint;
+// };
 
 struct DeleteReplicaArgs {
     ReplicaKey key;
@@ -96,8 +101,8 @@ struct ChangeReplicaRoleArgs {
     ReplicaRole new_role{ReplicaRole::FOLLOWER};
 };
 
-struct ChangeReplicaRoleResult {
-    Endpoint endpoint;
-};
+// struct ChangeReplicaRoleResult {
+//     Endpoint endpoint;
+// };
 
 }  // namespace adviskv::sdsdk

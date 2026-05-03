@@ -1,29 +1,26 @@
 #pragma once
 
+#include "common/status.h"
+#include "common/type.h"
 #include "sdsdk/istorage_callback.h"
+#include "sdsdk/type.h"
+#include "storage/replica/replica_manager.h"
+
 namespace adviskv::storage {
 
 class StorageCallback : public sdsdk::IStorageCallback {
-    /*
-
-        virtual Status create_replica(const CreateReplicaArgs& args,
-                                      CreateReplicaResult& out) = 0;
-
-        virtual Status delete_replica(const DeleteReplicaArgs& args) = 0;
-
-        virtual Status change_replica_role(const ChangeReplicaRoleArgs& args,
-                                           ChangeReplicaRoleResult& out) = 0;
-
-    */
-
    public:
-    Status create_replica(const sdsdk::CreateReplicaArgs& args,
-                          sdsdk::CreateReplicaResult& out) override;
+    explicit StorageCallback(ReplicaManager* replica_manager)
+        : replica_manager_(replica_manager) {}
+
+    Status create_replica(const sdsdk::CreateReplicaArgs& args) override;
 
     Status delete_replica(const sdsdk::DeleteReplicaArgs& args) override;
 
-    Status change_replica_role(const sdsdk::ChangeReplicaRoleArgs& args,
-                               sdsdk::ChangeReplicaRoleResult& out) override;
+    Status change_replica_role(const sdsdk::ChangeReplicaRoleArgs& args) override;
+
+   private:
+    ReplicaManager* replica_manager_;
 };
 
 }  // namespace adviskv::storage

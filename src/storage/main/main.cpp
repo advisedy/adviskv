@@ -12,7 +12,7 @@
 #include "storage/engine/map_engine.h"
 #include "storage/handler/storage_service.h"
 #include "storage/replica/replica_manager.h"
-#include "storage/sdsdk_bridge/storage_callback.h"
+#include "storage/callback/storage_callback.h"
 
 namespace {
 

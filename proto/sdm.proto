@@ -80,6 +80,7 @@ message HeartBeatReplicaExpect{
     int32 replica_index = 3;
     adviskv.pb.ReplicaRole role = 4;
     int32 engine_type = 5;
+    repeated adviskv.pb.PeerMember members = 6;
 }
 
 message HeartBeatResponse{

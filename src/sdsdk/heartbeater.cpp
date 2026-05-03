@@ -5,6 +5,7 @@
 
 #include "common/define.h"
 #include "common/log.h"
+#include "common/type.h"
 
 namespace adviskv::sdsdk {
 
@@ -22,8 +23,8 @@ Status HeartBeater::init() {
     stub_ = rpc::ShardingManagerService::NewStub(channel_);
 
     Endpoint node_endpoint{.ip = conf_.ip, .port = conf_.port};
-    Status status =
-        replica_controller_.init(callback_, conf_.action_worker_count, node_endpoint);
+    Status status = replica_controller_.init(
+        callback_, conf_.action_worker_count, node_endpoint);
     RETURN_IF_INVALID_STATUS(status)
 
     initialized_ = true;
@@ -128,6 +129,7 @@ rpc::HeartBeatRequest HeartBeater::make_request(
     return request;
 }
 
+// 这里是把RPC层的东西转化过来内部的东西
 std::vector<DesiredReplicaSpec> HeartBeater::parse_desired_set(
     const rpc::HeartBeatResponse& response) const {
     std::vector<DesiredReplicaSpec> desired_set;
@@ -141,6 +143,21 @@ std::vector<DesiredReplicaSpec> HeartBeater::parse_desired_set(
             .role = static_cast<ReplicaRole>(replica.role()),
             .engine_type = static_cast<EngineType>(replica.engine_type()),
         };
+        for (const auto& member : replica.members()) {
+            PeerMember one{
+                .replica_id{
+                    .table_id = member.replica_id().table_id(),
+                    .shard_index = member.replica_id().shard_index(),
+                    .replica_index = member.replica_id().replica_index(),
+                },
+                .endpoint{
+                    .ip = member.endpoint().ip(),
+                    .port = member.endpoint().port(),
+                },
+                .node_id = member.node_id(),
+            };
+            spec.members.push_back(std::move(one));
+        }
         desired_set.push_back(std::move(spec));
     }
     return desired_set;

@@ -20,11 +20,6 @@ struct RaftMeta {
     std::optional<ReplicaID> voted_for;
 };
 
-struct PeerMember {
-    NodeID node_id;
-    ReplicaID replica_id;
-    Endpoint endpoint;
-};
 
 struct LogEntry {
     Term term{0};
