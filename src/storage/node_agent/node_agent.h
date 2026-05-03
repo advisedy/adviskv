@@ -2,12 +2,9 @@
 
 #include <grpcpp/channel.h>
 
-#include <memory>
-
 #include "common/background_task.h"
 #include "common/define.h"
 #include "common/status.h"
-#include "common/type.h"
 #include "sdm.grpc.pb.h"
 #include "storage/replica/replica_manager.h"
 
@@ -27,7 +24,6 @@ struct NodeAgentConf {
 
     int32_t heartbeat_interval_ms{3000};
     int32_t first_sync_retry_ms{1000};
-    int32_t action_worker_count{4};
 
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(!node_id.empty(),
@@ -44,8 +40,6 @@ struct NodeAgentConf {
                                     "heartbeat_interval_ms should > 0")
         RETURN_IF_INVALID_CONDITION(first_sync_retry_ms > 0,
                                     "first_sync_retry_ms should > 0")
-        RETURN_IF_INVALID_CONDITION(action_worker_count > 0,
-                                    "action_worker_count should > 0")
         return Status::OK();
     }
 };
@@ -53,7 +47,7 @@ struct NodeAgentConf {
 class NodeAgent : public BackgroundTask {
    public:
     NodeAgent() = default;
-    Status init(const NodeAgentConf& conf);
+    Status init(const NodeAgentConf& conf, ReplicaManager* replica_manager);
     Status start();
     Status stop();
 
@@ -65,14 +59,13 @@ class NodeAgent : public BackgroundTask {
    private:
     Status heartbeat_once();
     Status register_node();
+    rpc::HeartBeatRequest make_heartbeat_request() const;
 
     NodeAgentConf conf_;
 
     std::shared_ptr<grpc::Channel> channel_;
     std::unique_ptr<rpc::ShardingManagerService::Stub> stub_;
-    std::shared_ptr<ReplicaManager> replica_manager_;
-
-    Endpoint node_endpoint_;
+    ReplicaManager* replica_manager_{nullptr};
     bool initialized_{false};
 };
 

@@ -19,6 +19,13 @@ class Replica {
     TableID get_table_id() const { return shard_id_.table_id; }
     ShardID get_shard_id() const { return shard_id_; }
     ReplicaID get_replica_id() const { return replica_id_; }
+    ReplicaRole get_role() const {
+        return raft_node_ ? raft_node_->role() : ReplicaRole::FOLLOWER;
+    }
+    ReplicaStatus get_status() const {
+        return (raft_node_ && state_machine_ && persist_) ? ReplicaStatus::READY
+                                                          : ReplicaStatus::ADDING;
+    }
 
     Status put(const PutParam& param);
     Status get(const GetParam& param, Value& value);

@@ -79,19 +79,10 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
     HeartBeatResult hb_res;
     Status status = heartbeat_service_->heartbeat(param, hb_res);
 
-    //返回给storage侧期望的replica_list
-    for(const auto& entry:hb_res.entry_list){
-      rpc::HeartBeatReplicaExpect* expect =response->add_replica_list();
-      rpc::HeartBeatReplicaExpect& one = *expect;
-      one.set_table_id(entry.replica_id.table_id);
-      one.set_shard_id(entry.replica_id.shard_index);
-      one.set_replica_index(entry.replica_id.replica_index);
-
-      pb::ReplicaRole role;
-      CONVERT_REPLICA_ROLE_TO_PB(entry.replica_role, role)
-      one.set_role(role);
-    }
-    fill_base_rsp(response, Status::OK());
+    // V1 storage node-agent only reports observed state, so the response keeps
+    // replica_list empty and only returns base_rsp.
+    (void)hb_res;
+    fill_base_rsp(response, status);
     return grpc::Status::OK;
 }
 

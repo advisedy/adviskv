@@ -74,31 +74,10 @@ Status HeartBeatService::build_desired_replicas(const NodeID& node_id,
         return Status::OK();
     }
 
-    std::vector<ReplicaPtr> replicas;
-    Status status = sdm_store_->list_replicas_by_node(node_id, replicas);
-    RETURN_IF_INVALID_STATUS(status)
-
+    (void)node_id;
     result->entry_list.clear();
-    for (const auto& replica : replicas) {
-        if (!replica) {
-            continue;
-        }
-        if (replica->spec.assign_node_id != node_id) {
-            continue;
-        }
-        if (replica->spec.status ==
-            ReplicaStatus::LOST) {  // TODO 这里以后应该把ERROR也加进去？
-            continue;
-        }
-
-        HeartBeatResultEntry one;
-        one.replica_id.table_id = replica->replica_id.table_id;
-        one.replica_id.shard_index = replica->replica_id.shard_index;
-        one.replica_id.replica_index = replica->replica_id.replica_index;
-        one.replica_role = replica->spec.role;
-        result->entry_list.push_back(std::move(one));
-    }
-
+    // V1 storage node-agent is observation-only. Keep the response field for
+    // protocol compatibility but return an empty desired-set by default.
     return Status::OK();
 }
 

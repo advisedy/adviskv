@@ -8,11 +8,10 @@
 #include "common/confmgr.h"
 #include "common/log.h"
 #include "common/type.h"
-#include "sdsdk/node_agent.h"
 #include "storage/engine/map_engine.h"
 #include "storage/handler/storage_service.h"
+#include "storage/node_agent/node_agent.h"
 #include "storage/replica/replica_manager.h"
-#include "storage/callback/storage_callback.h"
 
 namespace {
 
@@ -50,19 +49,16 @@ int main() {
 
     {
         using namespace adviskv::storage;
-        using namespace adviskv::sdsdk;
 
         std::string data_dir = CONF_GET_STR("data_dir");
         int32_t listen_port = CONF_GET_INT("port");
 
         auto replica_manager =
             std::make_unique<ReplicaManager>(std::move(data_dir));
+        ReplicaManager* replica_manager_ptr = replica_manager.get();
 
         replica_manager->recover();
         replica_manager->start_tick();
-
-        auto callback =
-            std::make_shared<StorageCallback>(replica_manager.get());
 
         NodeAgentConf agent_conf;
         agent_conf.node_id = CONF_GET_STR("node_id");
@@ -75,21 +71,20 @@ int main() {
         agent_conf.heartbeat_interval_ms =
             CONF_GET_INT("heartbeat_interval_ms");
 
-        NodeAgent node_agent;
-        adviskv::Status agent_status = node_agent.init(agent_conf, callback);
-        if (agent_status.ok()) {
-            agent_status = node_agent.start();
-            if (agent_status.ok()) {
-                LOG_INFO("node agent started, node_id={}", agent_conf.node_id);
-            } else {
-                LOG_WARN("node agent start failed: {}", agent_status.msg());
-            }
-        } else {
-            LOG_WARN("node agent init failed: {}", agent_status.msg());
-        }
-
         auto service =
             std::make_unique<StorageServiceImpl>(std::move(replica_manager));
+
+        NodeAgent node_agent;
+        adviskv::Status agent_status =
+            node_agent.init(agent_conf, replica_manager_ptr);
+        if (agent_status.ok()) {
+            agent_status = node_agent.start();
+        }
+        if (agent_status.ok()) {
+            LOG_INFO("node agent started, node_id={}", agent_conf.node_id);
+        } else {
+            LOG_WARN("node agent setup failed: {}", agent_status.msg());
+        }
 
         grpc::ServerBuilder builder;
         builder.AddListeningPort(
@@ -102,6 +97,7 @@ int main() {
         LOG_INFO("Server listening on 0.0.0.0:{}", listen_port);
 
         server->Wait();
+        node_agent.stop();
     }
 
     return 0;
