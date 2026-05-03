@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -297,6 +298,20 @@ Status PersistEngine::write_wal_to_disk(int fd, const LogEntry& entry) {
     write_full(fd, &crc_val, sizeof(uint32));
     write_full(fd, buf.data(), buf.size());
 
+    return Status::OK();
+}
+
+Status PersistEngine::recover(RecoverResult& result) {
+    /*
+    SnapshotPtr snapshot;
+    RaftMeta raft_meta;
+    std::vector<LogEntry> wal_entries;
+    */
+    result = {};
+    result.snapshot = std::make_shared<Snapshot>();
+    RETURN_IF_INVALID_STATUS(load_snapshot(result.snapshot))
+    RETURN_IF_INVALID_STATUS(load_raft_meta(result.raft_meta))
+    RETURN_IF_INVALID_STATUS(read_wal_batch(result.wal_entries))
     return Status::OK();
 }
 
