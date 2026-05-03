@@ -85,10 +85,8 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
         .last_heartbeat_ts = adviskv::get_current_ts_ms(),
     };
 
-    HeartBeatResult hb_res;
-    Status status = heartbeat_service_->heartbeat(param, hb_res);
-
-    (void)hb_res;
+    Status status = heartbeat_service_->heartbeat(param);
+    
     fill_base_rsp(response, status);
     return grpc::Status::OK;
 }
