@@ -1,6 +1,16 @@
-
-# node 信息
+node_id: "storage-1"
 ip: "0.0.0.0"
-port: "50050"
-
+port: 50050
+resource_pool: "default"
+dc: "dc1"
 data_dir: "build/storage-1-data"
+manager_host: "0.0.0.0"
+manager_port: 50051
+heartbeat_interval_ms: 3000
+
+logger_name: "storage-1_log"
+log_dir: "./build/logs/storage-1"
+log_filename: "storage-1.log"
+log_level: "debug"
+log_to_console: true
+log_to_file: true

@@ -1,0 +1,10 @@
+port: 50052
+sdm_host: "0.0.0.0"
+sdm_port: 50051
+
+logger_name: "meta_log"
+log_dir: "./build/logs/meta"
+log_filename: "meta.log"
+log_level: "debug"
+log_to_console: true
+log_to_file: true

@@ -28,10 +28,15 @@ set(SDM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/background/replica_schedule_task.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/background/routeupdate_check_task.cpp
 
+    ${CMAKE_CURRENT_SOURCE_DIR}/client/storage_client.cpp
+    
     # binary dir
     ${PROJECT_BINARY_DIR}/generated/common.pb.cc
     ${PROJECT_BINARY_DIR}/generated/sdm.pb.cc
     ${PROJECT_BINARY_DIR}/generated/sdm.grpc.pb.cc
+    ${PROJECT_BINARY_DIR}/generated/storage.pb.cc
+    ${PROJECT_BINARY_DIR}/generated/storage.grpc.pb.cc
+    
 )
 
 add_executable(sdm

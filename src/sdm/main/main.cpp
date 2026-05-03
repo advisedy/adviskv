@@ -1,47 +1,90 @@
-#include <algorithm>
+#include <grpcpp/create_channel.h>
+#include <grpcpp/server.h>
+#include <grpcpp/server_builder.h>
+
+#include <cstdint>
 #include <iostream>
 #include <memory>
 
-#include "sdm/manager/meta_cache_manager.h"
-#include "sdm/manager/node_manager.h"
-#include "sdm/manager/route_manager.h"
-#include "sdm/model/i_sdm_metastore.h"
+#include "common/confmgr.h"
+#include "common/log.h"
+#include "common/type.h"
+#include "sdm/background/routeupdate_check_task.h"
+#include "sdm/client/storage_client.h"
+#include "sdm/handler/sdm_service_impl.h"
 #include "sdm/model/sdm_store.h"
-#include "sdm/operation/operation_factory.h"
-#include "sdm/selector/leader_selector/leader_selector.h"
 #include "sdm/selector/node_selector/node_selector.h"
+#include "sdm/service/heartbeat_service.h"
 #include "sdm/service/node_service.h"
-#include "sdm/service/placement_service.h"
 #include "sdm/service/route_service.h"
+#include "sdm/service/table_service.h"
+
+namespace {
+
+void init_logger() {
+    adviskv::common::LogConfig config;
+    config.logger_name = CONF_GET_STR("logger_name");
+    config.log_dir = CONF_GET_STR("log_dir");
+    config.log_filename = CONF_GET_STR("log_filename");
+    config.log_level = CONF_GET_STR("log_level");
+    config.log_to_console = CONF_GET_BOOL("log_to_console");
+    config.log_to_file = CONF_GET_BOOL("log_to_file");
+    adviskv::common::Logger::get_instance().init(config);
+    LOG_DEBUG(
+        "logger config: logger_name={}, log_dir={}, log_filename={}, "
+        "log_level={}, log_to_console={}, log_to_file={}",
+        config.logger_name, config.log_dir, config.log_filename,
+        config.log_level, config.log_to_console, config.log_to_file);
+}
+
+void init_conf() {
+    auto& conf_mgr = adviskv::common::ConfMgr::get_instance();
+    conf_mgr.LoadFromFile("./conf/sdm.yaml");
+}
+
+}  // namespace
 
 int main() {
-    using namespace adviskv::sdm;
+    try {
+        init_conf();
+        init_logger();
+        LOG_INFO("init phase finish");
+    } catch (const std::exception& e) {
+        fmt::print(stderr, "Exception caught in main: {}\n", e.what());
+    }
 
-    // auto meta_cache_manager = std::make_unique<MetaCacheManager>();
-    // auto node_manager = std::make_unique<NodeManager>();
-    // auto route_manager = std::make_unique<RouteManager>();
+    {
+        using namespace adviskv::sdm;
 
-    auto node_selector = std::make_unique<DefaultNodeSelector>();
-    auto leader_selector = std::make_unique<DefaultLeaderSelector>();
+        int32_t listen_port = CONF_GET_INT("port");
 
-    auto sdm_store = std::make_unique<SdmStore>(SdmMetaStoreType::MEMORY);
+        auto sdm_store = std::make_unique<SdmStore>(SdmMetaStoreType::MEMORY);
+        auto storage_client = std::make_unique<StorageClient>();
+        auto node_selector = std::make_unique<DefaultNodeSelector>();
 
-    // OperationFactoryDeps operation_factory_deps{
-    //     meta_cache_manager.get(),
-    //     node_manager.get(),
-    //     route_manager.get(),
-    //     node_selector.get(),
-    //     leader_selector.get(),
-    // };
-    // auto operation_factory =
-    // std::make_unique<OperationFactory>(operation_factory_deps);
+        auto table_service = std::make_unique<TableService>(sdm_store.get(), storage_client.get(), node_selector.get());
+        auto node_service = std::make_unique<NodeService>(sdm_store.get());
+        auto heartbeat_service = std::make_unique<HeartBeatService>(sdm_store.get());
+        auto route_service = std::make_unique<RouteService>(sdm_store.get());
 
-    auto route_service = std::make_unique<RouteService>(sdm_store.get());
-    auto node_service = std::make_unique<NodeService>(sdm_store.get());
-    // auto placement_service =
-    // std::make_unique<PlacementService>(operation_factory.get(),
-    // meta_cache_manager.get());
+        auto sdm_service = std::make_unique<SdmServiceImpl>(
+            table_service.get(), node_service.get(), heartbeat_service.get(), route_service.get());
 
-    std::cout << "Hello, AdvisKV!" << std::endl;
+        auto route_update_task = std::make_unique<RouteUpdateCheckTask>(sdm_store.get());
+        route_update_task->start(std::chrono::milliseconds(3000));
+
+        grpc::ServerBuilder builder;
+        builder.AddListeningPort(
+            fmt::format("0.0.0.0:{}", listen_port),
+            grpc::InsecureServerCredentials());
+        builder.RegisterService(sdm_service.get());
+
+        std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
+        LOG_INFO("SDM server listening on 0.0.0.0:{}", listen_port);
+
+        server->Wait();
+        route_update_task->stop();
+    }
+
     return 0;
 }
