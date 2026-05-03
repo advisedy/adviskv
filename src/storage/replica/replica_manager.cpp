@@ -69,6 +69,18 @@ Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
     return Status::OK();
 }
 
+Status ReplicaManager::delete_replica(const ReplicaID& replica_id) {
+    std::scoped_lock locker(mutex_);
+    auto it = replica_map_.find(replica_id);
+    if (it == replica_map_.end()) {
+        return Status::OK();
+    }
+    ShardID shard_id = it->second->get_shard_id();
+    shard_primary_index_.erase(shard_id);
+    replica_map_.erase(it);
+    return Status::OK();
+}
+
 std::vector<Replica*> ReplicaManager::get_replicas() const {
     std::shared_lock locker(mutex_);
     std::vector<Replica*> replicas;
@@ -90,10 +102,13 @@ void ReplicaManager::recover() {
         Status status = replica->recover();
         if (status.fail()) {
             LOG_WARN("replica recover failed, table_id={}, shard_index={}",
-                 replica->shard_id_.table_id, replica->shard_id_.shard_index);
+                     replica->shard_id_.table_id,
+                     replica->shard_id_.shard_index);
         }
     }
     LOG_INFO("all replicas recovered");
 }
+
+const std::string& ReplicaManager::get_data_dir() const { return data_dir_; }
 
 }  // namespace adviskv::storage

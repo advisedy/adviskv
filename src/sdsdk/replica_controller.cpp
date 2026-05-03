@@ -6,12 +6,14 @@
 
 namespace adviskv::sdsdk {
 
-Status ReplicaController::init(StorageCallbackPtr callback, int32_t worker_count) {
+Status ReplicaController::init(StorageCallbackPtr callback, int32_t worker_count,
+                               Endpoint node_endpoint) {
     RETURN_IF_INVALID_CONDITION(callback != nullptr, "callback is nullptr")
     RETURN_IF_INVALID_CONDITION(worker_count > 0, "worker_count should > 0")
     RETURN_IF_INVALID_CONDITION(!initialized_, "replica controller already initialized")
 
     callback_ = std::move(callback);
+    node_endpoint_ = std::move(node_endpoint);
     thread_pool_.start(static_cast<size_t>(worker_count));
     initialized_ = true;
     return Status::OK();
@@ -25,7 +27,7 @@ Status ReplicaController::apply_desired_set(
     desired_keys.reserve(desired_set.size());
 
     std::vector<DesiredReplicaSpec> create_specs;
-    std::vector<std::pair<ReplicaKey, std::pair<pb::ReplicaRole, pb::ReplicaRole>>>
+    std::vector<std::pair<ReplicaKey, std::pair<ReplicaRole, ReplicaRole>>>
         role_changes;
     std::vector<ReplicaKey> delete_keys;
 
@@ -39,7 +41,7 @@ Status ReplicaController::apply_desired_set(
             if (inserted) {
                 local.key = spec.key;
                 local.role = spec.role;
-                local.status = pb::ReplicaStatus::ADDING;
+                local.status = ReplicaStatus::ADDING;
             }
 
             if (local.is_updating) {
@@ -48,14 +50,14 @@ Status ReplicaController::apply_desired_set(
 
             if (spec.is_dropped) {
                 local.is_updating = true;
-                local.status = pb::ReplicaStatus::LOST;
+                local.status = ReplicaStatus::LOST;
                 delete_keys.push_back(spec.key);
                 continue;
             }
 
             if (!local.exists_locally) {
                 local.is_updating = true;
-                local.status = pb::ReplicaStatus::ADDING;
+                local.status = ReplicaStatus::ADDING;
                 create_specs.push_back(spec);
                 continue;
             }
@@ -73,7 +75,7 @@ Status ReplicaController::apply_desired_set(
             }
             if (!desired_keys.count(key)) {
                 local.is_updating = true;
-                local.status = pb::ReplicaStatus::LOST;
+                local.status = ReplicaStatus::LOST;
                 delete_keys.push_back(key);
             }
         }
@@ -112,7 +114,7 @@ bool ReplicaController::all_ready() const {
     std::lock_guard<std::mutex> lock(mutex_);
     for (const auto& [_, local] : replicas_) {
         if (!local.exists_locally || local.is_updating ||
-            local.status != pb::ReplicaStatus::READY) {
+            local.status != ReplicaStatus::READY) {
             return false;
         }
     }
@@ -123,7 +125,7 @@ bool ReplicaController::has_non_follower_replica() const {
     std::lock_guard<std::mutex> lock(mutex_);
     for (const auto& [_, local] : replicas_) {
         if (local.exists_locally &&
-            local.role != pb::ReplicaRole::FOLLOWER) {
+            local.role != ReplicaRole::FOLLOWER) {
             return true;
         }
     }
@@ -157,11 +159,11 @@ void ReplicaController::schedule_create(const DesiredReplicaSpec& spec) {
         if (status.ok()) {
             local.exists_locally = true;
             local.role = spec.role;
-            local.status = pb::ReplicaStatus::READY;
-            local.endpoint = result.endpoint;
+            local.status = ReplicaStatus::READY;
+            local.endpoint = node_endpoint_;
         } else {
             local.exists_locally = false;
-            local.status = pb::ReplicaStatus::ERROR;
+            local.status = ReplicaStatus::ERROR;
         }
     });
 }
@@ -181,14 +183,14 @@ void ReplicaController::schedule_delete(const ReplicaKey& key) {
             replicas_.erase(it);
         } else {
             it->second.is_updating = false;
-            it->second.status = pb::ReplicaStatus::ERROR;
+            it->second.status = ReplicaStatus::ERROR;
         }
     });
 }
 
 void ReplicaController::schedule_change_role(const ReplicaKey& key,
-                                             pb::ReplicaRole old_role,
-                                             pb::ReplicaRole new_role) {
+                                             ReplicaRole old_role,
+                                             ReplicaRole new_role) {
     thread_pool_.submit([this, key, old_role, new_role]() {
         ChangeReplicaRoleArgs args;
         args.key = key;
@@ -207,11 +209,9 @@ void ReplicaController::schedule_change_role(const ReplicaKey& key,
         local.is_updating = false;
         if (status.ok()) {
             local.role = new_role;
-            if (!result.endpoint.ip.empty()) {
-                local.endpoint = result.endpoint;
-            }
+            local.endpoint = node_endpoint_;
         } else {
-            local.status = pb::ReplicaStatus::ERROR;
+            local.status = ReplicaStatus::ERROR;
         }
     });
 }

@@ -21,8 +21,9 @@ Status HeartBeater::init() {
     channel_ = grpc::CreateChannel(target, grpc::InsecureChannelCredentials());
     stub_ = rpc::ShardingManagerService::NewStub(channel_);
 
+    Endpoint node_endpoint{.ip = conf_.ip, .port = conf_.port};
     Status status =
-        replica_controller_.init(callback_, conf_.action_worker_count);
+        replica_controller_.init(callback_, conf_.action_worker_count, node_endpoint);
     RETURN_IF_INVALID_STATUS(status)
 
     initialized_ = true;
@@ -62,21 +63,21 @@ void HeartBeater::run() {
 }
 
 Status HeartBeater::heartbeat_once() {
-    NodeReport node_report;
-    Status status = callback_->collect_node_report(node_report);
-    RETURN_IF_INVALID_STATUS(status)
+    // NodeReport node_report;
+    // Status status = callback_->collect_node_report(node_report);
+    // RETURN_IF_INVALID_STATUS(status)
 
-    if (node_report.endpoint.ip.empty()) {
-        node_report.endpoint.ip = conf_.ip;
-        node_report.endpoint.port = conf_.port;
-    }
+    // if (node_report.endpoint.ip.empty()) {
+    //     node_report.endpoint.ip = conf_.ip;
+    //     node_report.endpoint.port = conf_.port;
+    // }
 
     std::vector<ReplicaReport> replica_reports;
-    status =
+    Status status =
         replica_controller_.collect_cached_replica_reports(replica_reports);
     RETURN_IF_INVALID_STATUS(status)
 
-    rpc::HeartBeatRequest request = make_request(node_report, replica_reports);
+    rpc::HeartBeatRequest request = make_request(replica_reports);
     rpc::HeartBeatResponse response;
     grpc::ClientContext context;
     grpc::Status grpc_status = stub_->HeartBeat(&context, request, &response);
@@ -108,12 +109,11 @@ Status HeartBeater::register_node() {
 }
 
 rpc::HeartBeatRequest HeartBeater::make_request(
-    const NodeReport& node_report,
     const std::vector<ReplicaReport>& replicas) const {
     rpc::HeartBeatRequest request;
     request.set_node_id(conf_.node_id);
-    request.set_ip(node_report.endpoint.ip);
-    request.set_port(node_report.endpoint.port);
+    request.set_ip(conf_.ip);
+    request.set_port(conf_.port);
     request.set_resource_pool(conf_.resource_pool);
     request.set_dc(conf_.dc);
 
@@ -122,8 +122,8 @@ rpc::HeartBeatRequest HeartBeater::make_request(
         info->set_table_id(replica.key.table_id);
         info->set_shard_id(replica.key.shard_index);
         info->set_replica_index(replica.key.replica_index);
-        info->set_role(replica.role);
-        info->set_status(replica.status);
+        info->set_role(static_cast<pb::ReplicaRole>(replica.role));
+        info->set_status(static_cast<pb::ReplicaStatus>(replica.status));
     }
     return request;
 }
@@ -138,7 +138,8 @@ std::vector<DesiredReplicaSpec> HeartBeater::parse_desired_set(
             .key.table_id = replica.table_id(),
             .key.shard_index = replica.shard_id(),
             .key.replica_index = replica.replica_index(),
-            .role = replica.role(),
+            .role = static_cast<ReplicaRole>(replica.role()),
+            .engine_type = static_cast<EngineType>(replica.engine_type()),
         };
         desired_set.push_back(std::move(spec));
     }

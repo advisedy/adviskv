@@ -21,9 +21,9 @@ class IStorageCallback {
     virtual Status change_replica_role(const ChangeReplicaRoleArgs& args,
                                        ChangeReplicaRoleResult& out) = 0;
 
-    virtual Status collect_node_report(NodeReport& out) {
-        return Status::OK();
-    }
+    // virtual Status collect_node_report(NodeReport& out) {
+    //     return Status::OK();
+    // }
 
 };
 

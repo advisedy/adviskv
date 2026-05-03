@@ -75,6 +75,8 @@ enum class EngineType : int8 {
 
 enum class ReplicaRole : int8 { FOLLOWER = 0, LEADER = 1, CANDIDATE = 2 };
 
+enum class ReplicaStatus : int8 { ADDING = 0, READY = 1, LOST = 2, ERROR = 3 };
+
 struct Endpoint {
     std::string ip;
     int32_t port;

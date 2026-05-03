@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 
-#include "common.pb.h"
 #include "common/define.h"
 #include "common/status.h"
 #include "common/type.h"
@@ -63,15 +62,15 @@ struct NodeReport {
 
 struct ReplicaReport {
     ReplicaKey key;
-    pb::ReplicaRole role{pb::ReplicaRole::FOLLOWER};
-    pb::ReplicaStatus status{pb::ReplicaStatus::ADDING};
+    ReplicaRole role{ReplicaRole::FOLLOWER};
+    ReplicaStatus status{ReplicaStatus::ADDING};
     Endpoint endpoint;
 };
 
 struct DesiredReplicaSpec {
     ReplicaKey key;
-    pb::ReplicaRole role{pb::ReplicaRole::FOLLOWER};
-    int8 engine_type{};
+    ReplicaRole role{ReplicaRole::FOLLOWER};
+    EngineType engine_type{EngineType::MAP};
     bool is_dropped{false};
 };
 
@@ -79,9 +78,8 @@ struct DesiredReplicaSpec {
 
 struct CreateReplicaArgs {
     ReplicaKey key;
-    pb::ReplicaRole role{pb::ReplicaRole::FOLLOWER};
-    int8 engine_type{};
-    
+    ReplicaRole role{ReplicaRole::FOLLOWER};
+    EngineType engine_type{EngineType::MAP};
 };
 
 struct CreateReplicaResult {
@@ -94,8 +92,8 @@ struct DeleteReplicaArgs {
 
 struct ChangeReplicaRoleArgs {
     ReplicaKey key;
-    pb::ReplicaRole old_role{pb::ReplicaRole::FOLLOWER};
-    pb::ReplicaRole new_role{pb::ReplicaRole::FOLLOWER};
+    ReplicaRole old_role{ReplicaRole::FOLLOWER};
+    ReplicaRole new_role{ReplicaRole::FOLLOWER};
 };
 
 struct ChangeReplicaRoleResult {

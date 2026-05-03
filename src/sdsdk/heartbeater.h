@@ -29,7 +29,6 @@ class HeartBeater : public BackgroundTask {
     Status register_node();
 
     rpc::HeartBeatRequest make_request(
-        const NodeReport& node_report,
         const std::vector<ReplicaReport>& replicas) const;
 
     std::vector<DesiredReplicaSpec> parse_desired_set(

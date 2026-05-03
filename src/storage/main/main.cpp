@@ -8,9 +8,11 @@
 #include "common/confmgr.h"
 #include "common/log.h"
 #include "common/type.h"
+#include "sdsdk/node_agent.h"
 #include "storage/engine/map_engine.h"
 #include "storage/handler/storage_service.h"
 #include "storage/replica/replica_manager.h"
+#include "storage/sdsdk_bridge/storage_callback.h"
 
 namespace {
 
@@ -37,12 +39,6 @@ void init_conf() {
 
 }  // namespace
 
-namespace adviskv::storage {
-
-auto replica_manager = std::make_unique<ReplicaManager>();
-
-}
-
 int main() {
     try {
         init_conf();
@@ -54,26 +50,57 @@ int main() {
 
     {
         using namespace adviskv::storage;
+        using namespace adviskv::sdsdk;
+
+        std::string data_dir = CONF_GET_STR("data_dir");
+        int32_t listen_port = CONF_GET_INT("port");
+
+        auto replica_manager =
+            std::make_unique<ReplicaManager>(std::move(data_dir));
+
         replica_manager->recover();
         replica_manager->start_tick();
 
+        auto callback =
+            std::make_shared<StorageCallback>(replica_manager.get());
+
+        NodeAgentConf agent_conf;
+        agent_conf.node_id = CONF_GET_STR("node_id");
+        agent_conf.ip = CONF_GET_STR("ip");
+        agent_conf.port = CONF_GET_INT("port");
+        agent_conf.resource_pool = CONF_GET_STR("resource_pool");
+        agent_conf.dc = CONF_GET_STR("dc");
+        agent_conf.manager_host = CONF_GET_STR("manager_host");
+        agent_conf.manager_port = CONF_GET_INT("manager_port");
+        agent_conf.heartbeat_interval_ms =
+            CONF_GET_INT("heartbeat_interval_ms");
+
+        NodeAgent node_agent;
+        adviskv::Status agent_status = node_agent.init(agent_conf, callback);
+        if (agent_status.ok()) {
+            agent_status = node_agent.start();
+            if (agent_status.ok()) {
+                LOG_INFO("node agent started, node_id={}", agent_conf.node_id);
+            } else {
+                LOG_WARN("node agent start failed: {}", agent_status.msg());
+            }
+        } else {
+            LOG_WARN("node agent init failed: {}", agent_status.msg());
+        }
 
         auto service =
             std::make_unique<StorageServiceImpl>(std::move(replica_manager));
 
-
         grpc::ServerBuilder builder;
-        builder.AddListeningPort("0.0.0.0:50051",
-                                 grpc::InsecureServerCredentials());
-
+        builder.AddListeningPort(
+            fmt::format("0.0.0.0:{}", listen_port),
+            grpc::InsecureServerCredentials());
 
         builder.RegisterService(service.get());
 
-        // 4. 启动
         std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
-        LOG_INFO("Server listening on 0.0.0.0:50051");
+        LOG_INFO("Server listening on 0.0.0.0:{}", listen_port);
 
-        // 5. 阻塞等待（不然 main 就退出了）
         server->Wait();
     }
 
