@@ -10,12 +10,12 @@ class HeartBeatService {
 public:
     explicit HeartBeatService(SdmStore* sdm_store);
 
-    Status heartbeat(const HeartBeatParam& param, HeartBeatResult& result);
+    Status heartbeat(const HeartBeatParam& param);
 
 private:
     Status update_node_state(const HeartBeatParam& param);
     Status apply_reported_replicas(const HeartBeatParam& param);
-    Status build_desired_replicas(const NodeID& node_id, HeartBeatResult* result);
+    // Status build_desired_replicas(const NodeID& node_id, HeartBeatResult* result);
 
 private:
     SdmStore* sdm_store_{nullptr};

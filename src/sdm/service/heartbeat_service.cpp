@@ -8,8 +8,7 @@ namespace adviskv::sdm {
 HeartBeatService::HeartBeatService(SdmStore* sdm_store)
     : sdm_store_(sdm_store) {}
 
-Status HeartBeatService::heartbeat(const HeartBeatParam& param,
-                                   HeartBeatResult& result) {
+Status HeartBeatService::heartbeat(const HeartBeatParam& param) {
     RETURN_IF_INVALID_PARAM(param)
     RETURN_IF_INVALID_CONDITION(sdm_store_ != nullptr, "sdm_store is nullptr")
 
@@ -19,8 +18,8 @@ Status HeartBeatService::heartbeat(const HeartBeatParam& param,
     status = apply_reported_replicas(param);
     RETURN_IF_INVALID_STATUS(status)
 
-    status = build_desired_replicas(param.node_id, &result);
-    RETURN_IF_INVALID_STATUS(status)
+    // status = build_desired_replicas(param.node_id, &result);
+    // RETURN_IF_INVALID_STATUS(status)
 
     return Status::OK();
 }
@@ -68,17 +67,5 @@ Status HeartBeatService::apply_reported_replicas(const HeartBeatParam& param) {
     return Status::OK();
 }
 
-Status HeartBeatService::build_desired_replicas(const NodeID& node_id,
-                                                HeartBeatResult* result) {
-    if (result == nullptr) {
-        return Status::OK();
-    }
-
-    (void)node_id;
-    result->entry_list.clear();
-    // V1 storage node-agent is observation-only. Keep the response field for
-    // protocol compatibility but return an empty desired-set by default.
-    return Status::OK();
-}
 
 }  // namespace adviskv::sdm

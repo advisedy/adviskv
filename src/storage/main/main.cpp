@@ -33,7 +33,7 @@ void init_logger() {
 
 void init_conf() {
     auto& conf_mgr = adviskv::common::ConfMgr::get_instance();
-    conf_mgr.LoadFromFile("./conf/test.yaml");
+    conf_mgr.LoadFromFile("./conf/storage-1.yaml");
 }
 
 }  // namespace

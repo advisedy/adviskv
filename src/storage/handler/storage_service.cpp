@@ -118,42 +118,50 @@ grpc::Status StorageServiceImpl::Delete(grpc::ServerContext* context,
 grpc::Status StorageServiceImpl::CreateReplica(
     grpc::ServerContext* context, const rpc::CreateReplicaRequest* request,
     rpc::CreateReplicaResponse* response) {
-    // const ShardID shard_id{
-    //     .table_id = request->table_id(),
-    //     .shard_index = request->shard_index(),
-    // };
-    // Replica* replica = replica_manager_->get_replica_by_shard(shard_id);
+    if (!replica_manager_) {
+        LOG_WARN("replica manager is nullptr");
+        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
+                                       "replica manager not found"});
+        return grpc::Status::OK;
+    }
 
-    // if (replica) {
-    //     LOG_WARN("replica have exists, table_id = {}, shard_index = {}",
-    //              request->table_id(), request->shard_index());
-    //     fill_base_rsp(response, Status::ALREADY_EXIST("replica not found"));
-    //     return grpc::Status::OK;
-    // }
+    const ShardID shard_id{
+        .table_id = request->table_id(),
+        .shard_index = request->shard_index(),
+    };
+    Replica* replica = replica_manager_->get_replica_by_shard(shard_id);
 
-    // ReplicaInitParam param{
-    //     .replica_id{.table_id = request->table_id(),
-    //                 .shard_index = request->shard_index(),
-    //                 .replica_index = request->replica_index()},
-    //     .engine_type = (EngineType)request->engine_type(),
-    // };
-    // param.members.clear();
-    // for (const auto& member : request->members()) {
-    //     PeerMember one{
-    //         .node_id = member.node_id(),
-    //         .replica_id{.table_id = member.replica_id().table_id(),
-    //                     .shard_index = member.replica_id().shard_index(),
-    //                     .replica_index = member.replica_id().replica_index()},
-    //         .endpoint{.ip = member.endpoint().ip(),
-    //                   .port = member.endpoint().port()},
-    //     };
-    //     param.members.push_back(std::move(one));
-    // }
-    // param.local_endpoint = {.ip = CONF_GET_STR("ip"),
-    //                         .port = CONF_GET_INT("port")};
-    // param.data_dir = CONF_GET_STR("data_dir");
+    if (replica) {
+        LOG_WARN("replica have exists, table_id = {}, shard_index = {}",
+                 request->table_id(), request->shard_index());
+        fill_base_rsp(response, Status::ALREADY_EXIST("replica not found"));
+        return grpc::Status::OK;
+    }
 
-    // Status status = replica_manager_->add_replica(param);
+    ReplicaInitParam param{
+        .replica_id{.table_id = request->table_id(),
+                    .shard_index = request->shard_index(),
+                    .replica_index = request->replica_index()},
+        .engine_type = (EngineType)request->engine_type(),
+    };
+    param.members.clear();
+    for (const auto& member : request->members()) {
+        PeerMember one{
+            .node_id = member.node_id(),
+            .replica_id{.table_id = member.replica_id().table_id(),
+                        .shard_index = member.replica_id().shard_index(),
+                        .replica_index = member.replica_id().replica_index()},
+            .endpoint{.ip = member.endpoint().ip(),
+                      .port = member.endpoint().port()},
+        };
+        param.members.push_back(std::move(one));
+    }
+    param.local_endpoint = {.ip = CONF_GET_STR("ip"),
+                            .port = CONF_GET_INT("port")};
+    param.data_dir = CONF_GET_STR("data_dir");
+
+    Status status = replica_manager_->add_replica(param);
+    fill_base_rsp(response, status);
     return grpc::Status::OK;
 }
 

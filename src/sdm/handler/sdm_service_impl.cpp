@@ -6,15 +6,23 @@
 #include <cstddef>
 
 #include "common.pb.h"
+#include "common/func.h"
 #include "common/status.h"
 #include "sdm.pb.h"
 #include "sdm/model/service_param.h"
 #include "sdm/model/store.h"
 #include "sdm/utility/pb_convert.h"
-#include "common/func.h"
 
 namespace adviskv::sdm {
 
+SdmServiceImpl::SdmServiceImpl(TableService* table_service,
+                               NodeService* node_service,
+                               HeartBeatService* heartbeat_service,
+                               RouteService* route_service)
+    : table_service_(table_service),
+      node_service_(node_service),
+      heartbeat_service_(heartbeat_service),
+      route_service_(route_service) {}
 
 grpc::Status SdmServiceImpl::PlaceTable(grpc::ServerContext* context,
                                         const rpc::PlaceTableRequest* request,
@@ -56,10 +64,11 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
         ReplicaStatus status;
         CONVERT_PB_TO_REPLICA_STATUS(replica_info.status(), status)
 
-        HeartBeatReplicaInfo one{.shard_id = ShardID{
-                                     .table_id = replica_info.table_id(),
-                                     .shard_index = replica_info.shard_id(),
-                                 },
+        HeartBeatReplicaInfo one{.shard_id =
+                                     ShardID{
+                                         .table_id = replica_info.table_id(),
+                                         .shard_index = replica_info.shard_id(),
+                                     },
                                  .replica_index = replica_info.replica_index(),
                                  .role = role,
                                  .status = status};
@@ -79,10 +88,48 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
     HeartBeatResult hb_res;
     Status status = heartbeat_service_->heartbeat(param, hb_res);
 
-    // V1 storage node-agent only reports observed state, so the response keeps
-    // replica_list empty and only returns base_rsp.
     (void)hb_res;
     fill_base_rsp(response, status);
+    return grpc::Status::OK;
+}
+
+grpc::Status SdmServiceImpl::RegisterNode(
+    grpc::ServerContext* context, const rpc::RegisterNodeRequest* request,
+    rpc::RegisterNodeResponse* response) {
+    RegisterNodeParam param{
+        .node_id = request->node_id(),
+        .ip = request->ip(),
+        .port = request->port(),
+        .resource_pool = request->resource_pool(),
+        .dc = request->dc(),
+    };
+    Status status = node_service_->register_node(param);
+    fill_base_rsp(response, status);
+    return grpc::Status::OK;
+}
+
+grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context,
+                                      const rpc::GetRouteRequest* request,
+                                      rpc::GetRouteResponse* response) {
+    GetRouteParam param{
+        .db_name = request->db_name(),
+        .table_name = request->table_name(),
+        .key = request->key(),
+    };
+    ShardRoute route;
+    Status status = route_service_->get_route(param, &route);
+    fill_base_rsp(response, status);
+    if (status.fail()) {
+        return grpc::Status::OK;
+    }
+    if (!route.replicas.empty()) {
+        response->set_table_id(route.shard_id.table_id);
+        response->set_shard_id(route.shard_id.shard_index);
+        // TODO 这里先暂时找一个pos:0的
+        // 感觉实际上我们应该直接把路由表返回了？ 而不是只返回一个ip和port？
+        response->set_ip(route.replicas[0].sp);
+        response->set_port(route.replicas[0].port);
+    }
     return grpc::Status::OK;
 }
 
