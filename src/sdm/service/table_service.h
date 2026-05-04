@@ -1,24 +1,21 @@
 #pragma once
 
 #include "common/status.h"
-#include "sdm/client/storage_client.h"
 #include "sdm/model/sdm_store.h"
 #include "sdm/model/service_param.h"
 #include "sdm/model/store.h"
-#include "sdm/selector/node_selector/node_selector.h"
+#include "sdm/workflow/placetable_workflow.h"
 
 namespace adviskv::sdm {
 
 class TableService {
    public:
-    TableService(SdmStore* sdm_store, StorageClient* storage_client, NodeSelector* node_selector);
+    explicit TableService(PlaceTableWorkflow* workflow);
 
     Status place_table(const PlaceTableParam& param);
 
    private:
-    SdmStore* sdm_store_;
-    StorageClient* storage_client_;
-    NodeSelector* node_selector_;
+    PlaceTableWorkflow* workflow_;
 };
 
 }  // namespace adviskv::sdm

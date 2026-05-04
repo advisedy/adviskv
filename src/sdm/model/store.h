@@ -16,8 +16,6 @@ namespace adviskv::sdm {
 
 // using PlaceTableParam = rpc::PlaceTableRequest;
 
-
-
 //////////////////////////////
 // resource_pool
 
@@ -31,6 +29,8 @@ using ResourcePoolPtr = std::shared_ptr<ResourcePool>;
 //////////////////////////////
 // replica
 
+// 这边这个pending 就是sdm这边先创建了，ADDING就是storage 已经确认接单，正在创建
+// / 启动中
 enum class ReplicaStatus {
     PENDING = 1,
     ADDING = 2,
@@ -106,7 +106,7 @@ enum class TableLifecycle {
     PLACING = 2,
     CREATING_REPLICAS = 3,
     WAITING_READY = 4,
-    ROUTE_READY = 5,
+    WAITING_ROUTE_READY = 5,
     ROLLING_BACK = 6,
     READY = 7,
     FAILED = 99,
@@ -130,8 +130,8 @@ struct TableSpec {
 struct TableState {
     TableStatus status{TableStatus::CREATEING};
     TableLifecycle lifecycle{TableLifecycle::CREATING};
-    std::string last_error_msg; //TODO
-    int64_t last_transition_ts{0}; //TODO
+    std::string last_error_msg;     // TODO
+    int64_t last_transition_ts{0};  // TODO
 };
 
 struct Table {

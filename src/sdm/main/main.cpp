@@ -18,6 +18,8 @@
 #include "sdm/service/node_service.h"
 #include "sdm/service/route_service.h"
 #include "sdm/service/table_service.h"
+#include "sdm/workflow/placetable_workflow.h"
+#include "sdm/workflow/placetable_workflow_runner.h"
 
 namespace {
 
@@ -62,28 +64,37 @@ int main() {
         auto storage_client = std::make_unique<StorageClient>();
         auto node_selector = std::make_unique<DefaultNodeSelector>();
 
-        auto table_service = std::make_unique<TableService>(sdm_store.get(), storage_client.get(), node_selector.get());
+        auto workflow = std::make_unique<PlaceTableWorkflow>(
+            sdm_store.get(), storage_client.get(), node_selector.get());
+
+        auto table_service = std::make_unique<TableService>(workflow.get());
         auto node_service = std::make_unique<NodeService>(sdm_store.get());
-        auto heartbeat_service = std::make_unique<HeartBeatService>(sdm_store.get());
+        auto heartbeat_service =
+            std::make_unique<HeartBeatService>(sdm_store.get());
         auto route_service = std::make_unique<RouteService>(sdm_store.get());
 
         auto sdm_service = std::make_unique<SdmServiceImpl>(
-            table_service.get(), node_service.get(), heartbeat_service.get(), route_service.get());
+            table_service.get(), node_service.get(), heartbeat_service.get(),
+            route_service.get());
 
-        auto route_update_task = std::make_unique<RouteUpdateCheckTask>(sdm_store.get());
-        route_update_task->start(std::chrono::milliseconds(3000));
+        auto runner = std::make_unique<PlaceTableWorkflowRunner>(
+            sdm_store.get(), storage_client.get(), node_selector.get());
+        auto route_task =
+            std::make_unique<RouteUpdateCheckTask>(sdm_store.get());
+        runner->start(Milliseconds(3000));
+        route_task->start(Milliseconds(3000));
 
         grpc::ServerBuilder builder;
-        builder.AddListeningPort(
-            fmt::format("0.0.0.0:{}", listen_port),
-            grpc::InsecureServerCredentials());
+        builder.AddListeningPort(fmt::format("0.0.0.0:{}", listen_port),
+                                 grpc::InsecureServerCredentials());
         builder.RegisterService(sdm_service.get());
 
         std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
         LOG_INFO("SDM server listening on 0.0.0.0:{}", listen_port);
 
         server->Wait();
-        route_update_task->stop();
+        runner->stop();
+        route_task->stop();
     }
 
     return 0;

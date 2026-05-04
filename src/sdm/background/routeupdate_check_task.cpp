@@ -25,10 +25,19 @@ void RouteUpdateCheckTask::run() {
     }
 
     for (TablePtr& table_ptr : table_list) {
+        if (!table_ptr) {
+            continue;
+        }
+        if (table_ptr->state.lifecycle != TableLifecycle::WAITING_ROUTE_READY &&
+            table_ptr->state.lifecycle != TableLifecycle::READY) {
+            continue;
+        }
         for (int i = 0; i < table_ptr->spec.shard_count; i++) {
             status = check_shard_route(*table_ptr, static_cast<ShardIndex>(i));
             if (status.fail()) {
-                LOG_WARN("22");
+                LOG_WARN(
+                    "route task update shard route failed, table={}, shard={}, msg={}",
+                    table_ptr->table_id, i, status.msg());
             }
         }
     }

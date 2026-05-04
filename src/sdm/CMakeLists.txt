@@ -29,6 +29,8 @@ set(SDM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/background/routeupdate_check_task.cpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/client/storage_client.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/workflow/placetable_workflow.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/workflow/placetable_workflow_runner.cpp
     
     # binary dir
     ${PROJECT_BINARY_DIR}/generated/common.pb.cc
