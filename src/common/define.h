@@ -47,15 +47,15 @@
 ///////////// function
 namespace adviskv {
 
-template <typename T, typename U>
-inline void ad_erase_if(std::vector<T>& a, U f) {
-    for (auto it = a.begin(); it != a.end();) {
-        if (f(*it)) {
-            it = a.erase(it);
-        } else {
-            it++;
-        }
-    }
-}
+// template <typename T, typename U>
+// inline void ad_erase_if(std::vector<T>& a, U f) {
+//     for (auto it = a.begin(); it != a.end();) {
+//         if (f(*it)) {
+//             it = a.erase(it);
+//         } else {
+//             it++;
+//         }
+//     }
+// }
 
 }  // namespace adviskv

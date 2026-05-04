@@ -18,6 +18,8 @@ class ISdmMetaStore {
     virtual Status upsert_table(const Table& table) = 0; // update or insert
     virtual Status get_table(TableID table_id, TablePtr& out) const = 0;
     virtual Status list_tables(std::vector<TablePtr>& out) const = 0;
+    virtual Status list_tables_by_lifecycle(TableLifecycle lifecycle,
+                                            std::vector<TablePtr>& out) const = 0;
 
     virtual Status upsert_node(const Node& node) = 0;
     virtual Status get_node(const NodeID& node_id, NodePtr& out) const = 0;
@@ -41,6 +43,8 @@ class MemoryMetaStore : public ISdmMetaStore {
     Status upsert_table(const Table& table) override;
     Status get_table(TableID table_id, TablePtr& out) const override;
     Status list_tables(std::vector<TablePtr>& out) const override;
+    Status list_tables_by_lifecycle(TableLifecycle lifecycle,
+                                    std::vector<TablePtr>& out) const override;
 
     Status upsert_node(const Node& node) override;
     Status get_node(const NodeID& node_id, NodePtr& out) const override;

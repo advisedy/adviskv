@@ -101,8 +101,20 @@ using NodePtr = std::shared_ptr<Node>;
 //////////////////////////////
 // table
 
+enum class TableLifecycle {
+    CREATING = 1,
+    PLACING = 2,
+    CREATING_REPLICAS = 3,
+    WAITING_READY = 4,
+    ROUTE_READY = 5,
+    READY = 6,
+    FAILED = 99,
+};
+
 enum class TableStatus {
     CREATEING = 1,
+    READY = 2,
+    FAILED = 3,
 };
 
 struct TableSpec {
@@ -115,7 +127,10 @@ struct TableSpec {
 };
 
 struct TableState {
-    TableStatus status;
+    TableStatus status{TableStatus::CREATEING};
+    TableLifecycle lifecycle{TableLifecycle::CREATING};
+    std::string last_error_msg; //TODO
+    int64_t last_transition_ts{0}; //TODO
 };
 
 struct Table {

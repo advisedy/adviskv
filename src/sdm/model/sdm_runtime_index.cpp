@@ -1,8 +1,9 @@
 #include "sdm/model/sdm_runtime_index.h"
 
 #include <algorithm>
-#include "common/define.h"
 
+#include "common/define.h"
+#include "common/func.h"
 namespace adviskv::sdm {
 
 namespace {
@@ -22,8 +23,8 @@ ShardKey make_shard_key(const ReplicaKey& key) {
 }
 
 void cleanup_empty_node_set(
-    std::unordered_map<NodeID,
-                       std::unordered_set<ReplicaKey, ReplicaKeyHash>>& index,
+    std::unordered_map<NodeID, std::unordered_set<ReplicaKey, ReplicaKeyHash>>&
+        index,
     const NodeID& node_id) {
     auto it = index.find(node_id);
     if (it != index.end() && it->second.empty()) {
@@ -32,8 +33,7 @@ void cleanup_empty_node_set(
 }
 
 void cleanup_empty_shard_set(
-    std::unordered_map<ShardKey,
-                       std::unordered_set<ReplicaKey, ReplicaKeyHash>,
+    std::unordered_map<ShardKey, std::unordered_set<ReplicaKey, ReplicaKeyHash>,
                        ShardKeyHash>& index,
     const ShardKey& shard_key) {
     auto it = index.find(shard_key);
@@ -57,8 +57,13 @@ Status SdmRuntimeIndex::on_table_upsert(const Table* old_table,
                                         const Table& new_table) {
     if (old_table != nullptr) {
         table_name_index_.erase(make_table_name_key(*old_table));
+        auto old_lc_it = lifecycle_index_.find(old_table->state.lifecycle);
+        if (old_lc_it != lifecycle_index_.end()) {
+            old_lc_it->second.erase(new_table.table_id);
+        }
     }
     table_name_index_[make_table_name_key(new_table)] = new_table.table_id;
+    lifecycle_index_[new_table.state.lifecycle].insert(new_table.table_id);
     return Status::OK();
 }
 
@@ -112,6 +117,10 @@ Status SdmRuntimeIndex::on_replica_upsert(const Replica* old_replica,
 
 Status SdmRuntimeIndex::on_table_delete(const Table& table) {
     table_name_index_.erase(make_table_name_key(table));
+    auto lifecycle_it = lifecycle_index_.find(table.state.lifecycle);
+    if (lifecycle_it != lifecycle_index_.end()) {
+        lifecycle_it->second.erase(table.table_id);
+    }
     return Status::OK();
 }
 
@@ -171,6 +180,18 @@ Status SdmRuntimeIndex::list_nodes_by_resource_pool(
     return Status::OK();
 }
 
+Status SdmRuntimeIndex::list_tables_by_lifecycle(
+    TableLifecycle lifecycle, std::vector<TableID>& out) const {
+    out.clear();
+    if (auto it = lifecycle_index_.find(lifecycle);
+        it != lifecycle_index_.end()) {
+        for (const TableID& id : it->second) {
+            out.push_back(id);
+        }
+    }
+    return Status::OK();
+}
+
 Status SdmRuntimeIndex::list_replicas_by_shard(
     const ShardID& shard_id, std::vector<ReplicaKey>& out) const {
     out.clear();
@@ -218,12 +239,9 @@ Status SdmRuntimeIndex::del_shard_route_entry(const ShardID& shard_id,
 
     auto& replicas = it->second->replicas;
     ad_erase_if(replicas, [&replica_id](const RouteEntry& entry) {
-        return entry.replica_id.table_id ==
-                   replica_id.table_id &&
-               entry.replica_id.shard_index ==
-                   replica_id.shard_index &&
-               entry.replica_id.replica_index ==
-                   replica_id.replica_index;
+        return entry.replica_id.table_id == replica_id.table_id &&
+               entry.replica_id.shard_index == replica_id.shard_index &&
+               entry.replica_id.replica_index == replica_id.replica_index;
     });
     return Status::OK();
 }

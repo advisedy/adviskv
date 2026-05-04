@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "common/define.h"
+#include "common/func.h"
 #include "common/log.h"
 #include "common/status.h"
 #include "common/type.h"

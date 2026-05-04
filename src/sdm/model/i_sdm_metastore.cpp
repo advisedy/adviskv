@@ -26,6 +26,17 @@ Status MemoryMetaStore::list_tables(std::vector<TablePtr>& out) const {
     return Status::OK();
 }
 
+Status MemoryMetaStore::list_tables_by_lifecycle(TableLifecycle lifecycle,
+                                                  std::vector<TablePtr>& out) const {
+    out.clear();
+    for (const auto& [_, table] : tables_) {
+        if (table && table->state.lifecycle == lifecycle) {
+            out.push_back(table);
+        }
+    }
+    return Status::OK();
+}
+
 Status MemoryMetaStore::upsert_node(const Node& node) {
     nodes_[node.id] = std::make_shared<Node>(node);
     return Status::OK();

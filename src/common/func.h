@@ -18,4 +18,15 @@ inline int32_t get_random_int32(int32_t down, int32_t up){
     return dist(gen);
 }
 
+template <typename T, typename U>
+inline void ad_erase_if(std::vector<T>& a, U f) {
+    for (auto it = a.begin(); it != a.end();) {
+        if (f(*it)) {
+            it = a.erase(it);
+        } else {
+            it++;
+        }
+    }
+}
+
 }
