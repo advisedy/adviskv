@@ -130,14 +130,14 @@ struct HeartBeatParam {
     }
 };
 
-struct HeartBeatResultEntry{
-    ReplicaID replica_id;
-    ReplicaRole replica_role;
-};
+// struct HeartBeatResultEntry{
+//     ReplicaID replica_id;
+//     ReplicaRole replica_role;
+// };
 
-struct HeartBeatResult{
-  std::vector<HeartBeatResultEntry> entry_list;
-};
+// struct HeartBeatResult{
+//   std::vector<HeartBeatResultEntry> entry_list;
+// };
 
 
 }  // namespace adviskv::sdm

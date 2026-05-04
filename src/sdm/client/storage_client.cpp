@@ -11,8 +11,9 @@
 
 namespace adviskv::sdm {
 
-rpc::StorageService::Stub* StorageClient::get_or_create_stub(
-    const std::string& ip, int32_t port) {
+// 这个里面如果没有的话，就去create，然后放到cache里面
+rpc::StorageService::Stub* StorageClient::make_stub(const std::string& ip,
+                                                    int32_t port) {
     std::string key = fmt::format("{}:{}", ip, port);
     auto it = stub_cache_.find(key);
     if (it != stub_cache_.end()) {
@@ -28,7 +29,7 @@ rpc::StorageService::Stub* StorageClient::get_or_create_stub(
 Status StorageClient::create_replica(const std::string& ip, int32_t port,
                                      const rpc::CreateReplicaRequest& request,
                                      rpc::CreateReplicaResponse& response) {
-    rpc::StorageService::Stub* stub = get_or_create_stub(ip, port);
+    rpc::StorageService::Stub* stub = make_stub(ip, port);
     if (!stub) {
         return Status::ERROR(
             fmt::format("failed to create stub for {}:{}", ip, port));
