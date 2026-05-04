@@ -26,21 +26,43 @@ rpc::StorageService::Stub* StorageClient::make_stub(const std::string& ip,
     return raw;
 }
 
-Status StorageClient::create_replica(const std::string& ip, int32_t port,
-                                     const rpc::CreateReplicaRequest& request,
-                                     rpc::CreateReplicaResponse& response) {
-    rpc::StorageService::Stub* stub = make_stub(ip, port);
+Status StorageClient::create_replica(const CreateReplicaParam& param) {
+    RETURN_IF_INVALID_PARAM(param)
+
+    rpc::StorageService::Stub* stub =
+        make_stub(param.endpoint.ip, param.endpoint.port);
     if (!stub) {
-        return Status::ERROR(
-            fmt::format("failed to create stub for {}:{}", ip, port));
+        return Status::ERROR(fmt::format("failed to create stub for {}:{}",
+                                         param.endpoint.ip,
+                                         param.endpoint.port));
     }
+
+    rpc::CreateReplicaRequest request;
+    request.set_table_id(param.replica_id.table_id);
+    request.set_shard_index(param.replica_id.shard_index);
+    request.set_replica_index(param.replica_id.replica_index);
+    request.set_engine_type(static_cast<int32_t>(param.engine_type));
+    for (const PeerMember& member : param.members) {
+        auto* pb_member = request.add_members();
+        pb_member->set_node_id(member.node_id);
+        auto* rid = pb_member->mutable_replica_id();
+        rid->set_table_id(member.replica_id.table_id);
+        rid->set_shard_index(member.replica_id.shard_index);
+        rid->set_replica_index(member.replica_id.replica_index);
+        auto* ep = pb_member->mutable_endpoint();
+        ep->set_ip(member.endpoint.ip);
+        ep->set_port(member.endpoint.port);
+    }
+
+    rpc::CreateReplicaResponse response;
     grpc::ClientContext context;
     grpc::Status grpc_status =
         stub->CreateReplica(&context, request, &response);
     if (!grpc_status.ok()) {
         return Status::ERROR(
             fmt::format("CreateReplica RPC failed for {}:{}, grpc error: {}",
-                        ip, port, grpc_status.error_message()));
+                        param.endpoint.ip, param.endpoint.port,
+                        grpc_status.error_message()));
     }
     if (response.base_rsp().code() != 0) {
         return Status{static_cast<StatusCode>(response.base_rsp().code()),

@@ -44,6 +44,30 @@ struct PlaceDBParam {
     }
 };
 
+// storage client
+struct CreateReplicaParam {
+    ReplicaID replica_id;
+    EngineType engine_type{EngineType::MAP};
+    std::vector<PeerMember> members;
+    Endpoint endpoint; // 对端的endpoint
+
+    Status validate() const {
+        RETURN_IF_INVALID_CONDITION(replica_id.table_id >= 0,
+                                    "table_id should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(replica_id.shard_index >= 0,
+                                    "shard_index should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(replica_id.replica_index >= 0,
+                                    "replica_index should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(!members.empty(),
+                                    "members should not empty")
+        RETURN_IF_INVALID_CONDITION(!endpoint.ip.empty(),
+                                    "endpoint ip should not empty")
+        RETURN_IF_INVALID_CONDITION(endpoint.port > 0,
+                                    "endpoint port should greater than 0")
+        return Status::OK();
+    }
+};
+
 // node service
 
 struct RegisterNodeParam {

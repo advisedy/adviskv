@@ -8,6 +8,7 @@
 
 #include "common/status.h"
 #include "common/type.h"
+#include "sdm/model/service_param.h"
 #include "storage.grpc.pb.h"
 
 namespace adviskv::sdm {
@@ -16,9 +17,7 @@ class StorageClient {
    public:
     StorageClient() = default;
 
-    Status create_replica(const std::string& ip, int32_t port,
-                          const rpc::CreateReplicaRequest& request,
-                          rpc::CreateReplicaResponse& response);
+    Status create_replica(const CreateReplicaParam& param);
 
    private:
     rpc::StorageService::Stub* make_stub(const std::string& ip, int32_t port);
