@@ -30,7 +30,6 @@ class PlaceTableWorkflow {
 
     Status transition(Table& table, TableLifecycle next,
                       const std::string& error_msg = "");
-    bool is_retriable(const Status& status) const;
 
     SdmStore* store_;
     StorageClient* client_;

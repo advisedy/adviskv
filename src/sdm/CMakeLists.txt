@@ -25,7 +25,6 @@ set(SDM_SOURCES
 
     ${CMAKE_CURRENT_SOURCE_DIR}/background/capacity_check_task.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/background/heartbeat_check_task.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/background/replica_schedule_task.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/background/routeupdate_check_task.cpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/client/storage_client.cpp

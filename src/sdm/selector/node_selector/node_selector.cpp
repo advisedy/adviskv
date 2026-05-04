@@ -3,75 +3,93 @@
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <string>
 
 #include "common/define.h"
+#include "common/func.h"
 #include "common/status.h"
+#include "common/type.h"
 #include "sdm/manager/node_manager.h"
 #include "sdm/model/store.h"
 
 namespace adviskv::sdm {
 
-// class DefaultNodeSelector : public NodeSelector{
-//     Status select_nodes(NodeSelectorParam param,
-//     std::vector<std::vector<NodeID>>* res) const override;
-// };
+Status DefaultNodeSelector::select_table_nodes(
+    const PlaceNodesParam& param, TablePlacementResult& res) const {
+    RETURN_IF_INVALID_PARAM(param)
+    RETURN_IF_INVALID_CONDITION(store_ != nullptr, "store should not nullptr")
 
-// Status DefaultNodeSelector::select_nodes(std::vector<NodePtr> param,
-// std::vector<std::vector<NodePtr>>& res) const{
-//     // 先简单实现一下，直接谁放的replica少谁就优先
-// //     int32_t shard_count = param.shard_count;
-// //     int32_t replica_count = param.replica_count;
+    std::vector<NodePtr> candidate_nodes;
+    Status status = store_->list_nodes_by_resource_pool(param.resource_pool,
+                                                        candidate_nodes);
+    RETURN_IF_INVALID_STATUS(status)
 
-// //     std::vector<NodeStats>& nodes = param.nodes;
+    // std::vector<NodePtr> candidate_nodes;
+    // candidate_nodes.reserve(pool_nodes.size());
+    // for (const NodePtr& node : pool_nodes) {
+    //     if (!node) {
+    //         continue;
+    //     }
+    //     if (node->spec.status != NodeStatus::ONLINE) {
+    //         continue;
+    //     }
+    //     if (node->state.endpoint.ip.empty() || node->state.endpoint.port <=
+    //     0) {
+    //         continue;
+    //     }
+    //     candidate_nodes.emplace_back(node);
+    // }
 
-// //   RETURN_IF_INVALID_CONDITION(
-// //       nodes.size() >= replica_count,
-// //       "node count should be greater than or equal to replica count")
-// //   RETURN_IF_INVALID_CONDITION(res != nullptr,
-// //                               "res should not be nullptr")
+    ad_erase_if(candidate_nodes, [](const NodePtr& node) {
+        if (!node) return true;
+        if (node->state.endpoint.ip.empty() or node->state.endpoint.port <= 0)
+            return true;
+        if (node->spec.status != NodeStatus::ONLINE) return true;
+        return false;
+    });
 
-// //   for (int i = 0; i < shard_count; i++) {
-
-// //     std::sort(nodes.begin(), nodes.end(),
-// //               [](const NodeStats &a, const NodeStats &b) {
-// //                 return a.owned_replica_count < b.owned_replica_count;
-// //               });
-
-// //     std::vector<NodeID> replica_nodes;
-// //     replica_nodes.reserve(replica_count);
-// //     for (int j = 0; j < replica_count; j++) {
-// //       replica_nodes.emplace_back(nodes[j].node_id);
-// //       nodes[j].owned_replica_count++;
-// //     }
-// //     res->emplace_back(std::move(replica_nodes));
-// //   }
-
-//   return Status::OK();
-
-// }
-
-Status DefaultNodeSelector::select_nodes(const std::vector<NodePtr>& nodes,
-                                         int32_t limit_count,
-                                         std::vector<NodePtr>& res) const {
     RETURN_IF_INVALID_CONDITION(
-        nodes.size() >= limit_count,
-        fmt::format("node size:{} should >= limit_count:{}", nodes.size(),
-        limit_count));
+        (int32)(candidate_nodes.size()) >= param.replica_count,
+        fmt::format(
+            "not enough nodes in resource_pool '{}', need {} but have {}",
+            param.resource_pool, param.replica_count, candidate_nodes.size()))
 
-    std::vector<NodePtr> candi_nodes = nodes;
+    struct NodeView {
+        NodePtr node;
+        int32 owned_replica_count{0};
+        std::string dc;
+    };
 
-    // TODO 这里要提前晒一下，传进来的nodes是否有空指针
+    std::vector<NodeView> views;
+    views.reserve(candidate_nodes.size());
+    for (const NodePtr& node : candidate_nodes) {
+        views.push_back(
+            NodeView{.node = node,
+                     .owned_replica_count = node->derived.owned_replica_count,
+                     .dc = node->spec.dc});
+    }
 
-    std::sort(candi_nodes.begin(), candi_nodes.end(),
-              [](const NodePtr& q1, const NodePtr& q2) {
-                  return q1->derived.owned_replica_count <
-                         q2->derived.owned_replica_count;
-              });
+    res.shards.clear();
+    res.shards.reserve(param.shard_count);
+    for (int32_t shard_idx = 0; shard_idx < param.shard_count; ++shard_idx) {
+        std::sort(views.begin(), views.end(),
+                  [](const NodeView& lhs, const NodeView& rhs) {
+                      if (lhs.owned_replica_count != rhs.owned_replica_count) {
+                          return lhs.owned_replica_count <
+                                 rhs.owned_replica_count;
+                      }
+                      return lhs.node->id < rhs.node->id;
+                  });
 
-    res.clear();
-    res.reserve(limit_count);
-    for (int i = 0; i < limit_count; i++) {
-        res.emplace_back(candi_nodes[i]);
+        ShardPlacement shard{
+            .shard_index = shard_idx,
+        };
+        shard.nodes.reserve(param.replica_count);
+        for (int32_t i = 0; i < param.replica_count; ++i) {
+            shard.nodes.emplace_back(views[i].node);
+            ++views[i].owned_replica_count;
+        }
+        res.shards.emplace_back(std::move(shard));
     }
 
     return Status::OK();

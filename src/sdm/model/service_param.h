@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "common/define.h"
 #include "common/status.h"
@@ -30,6 +31,31 @@ struct PlaceTableParam {
                                     "shard_count should be greater than 0")
         return Status::OK();
     }
+};
+
+struct PlaceNodesParam {
+    std::string resource_pool;
+    int32_t shard_count{0};
+    int32_t replica_count{0};
+
+    Status validate() const {
+        RETURN_IF_INVALID_CONDITION(!resource_pool.empty(),
+                                    "resource_pool should not empty")
+        RETURN_IF_INVALID_CONDITION(shard_count > 0,
+                                    "shard_count should be greater than 0")
+        RETURN_IF_INVALID_CONDITION(replica_count > 0,
+                                    "replica_count should be greater than 0")
+        return Status::OK();
+    }
+};
+
+struct ShardPlacement {
+    ShardIndex shard_index{0};
+    std::vector<NodePtr> nodes;
+};
+
+struct TablePlacementResult {
+    std::vector<ShardPlacement> shards;
 };
 
 struct PlaceDBParam {

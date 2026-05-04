@@ -62,7 +62,8 @@ int main() {
 
         auto sdm_store = std::make_unique<SdmStore>(SdmMetaStoreType::MEMORY);
         auto storage_client = std::make_unique<StorageClient>();
-        auto node_selector = std::make_unique<DefaultNodeSelector>();
+        auto node_selector =
+            std::make_unique<DefaultNodeSelector>(sdm_store.get());
 
         auto workflow = std::make_unique<PlaceTableWorkflow>(
             sdm_store.get(), storage_client.get(), node_selector.get());

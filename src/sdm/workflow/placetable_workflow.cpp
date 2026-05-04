@@ -71,38 +71,25 @@ Status PlaceTableWorkflow::step_creating(Table& table) {
 }
 
 Status PlaceTableWorkflow::step_placing(Table& table) {
-    std::vector<NodePtr> pool_nodes;
-    Status status = store_->list_nodes_by_resource_pool(
-        table.spec.resource_pool, pool_nodes);
+    PlaceNodesParam param{
+        .resource_pool = table.spec.resource_pool,
+        .shard_count = table.spec.shard_count,
+        .replica_count = table.spec.replica_count,
+    };
+    TablePlacementResult result;
+    Status status = selector_->select_table_nodes(param, result);
     if (status.fail()) {
         return transition(table, TableLifecycle::ROLLING_BACK, status.msg());
     }
 
-    if ((int32)pool_nodes.size() < table.spec.replica_count) {
-        return transition(
-            table, TableLifecycle::ROLLING_BACK,
-            fmt::format(
-                "not enough nodes in resource_pool '{}', need {} but have {}",
-                table.spec.resource_pool, table.spec.replica_count,
-                pool_nodes.size()));
-    }
-
-    for (int32_t shard_idx = 0; shard_idx < table.spec.shard_count;
-         ++shard_idx) {
-        std::vector<NodePtr> selected_nodes;
-        status = selector_->select_nodes(pool_nodes, table.spec.replica_count,
-                                         selected_nodes);
-        if (status.fail()) {
-            return transition(table, TableLifecycle::ROLLING_BACK,
-                              status.msg());
-        }
-
-        for (int32 rep_idx = 0, selected_nodes_size = selected_nodes.size();
+    for (const ShardPlacement& shard : result.shards) {
+        for (int32_t rep_idx = 0,
+                   selected_nodes_size = static_cast<int32_t>(shard.nodes.size());
              rep_idx < selected_nodes_size; ++rep_idx) {
-            const NodePtr& node = selected_nodes[rep_idx];
+            const NodePtr& node = shard.nodes[rep_idx];
             Replica replica{
                 .replica_id{.table_id = table.table_id,
-                            .shard_index = shard_idx,
+                            .shard_index = shard.shard_index,
                             .replica_index = rep_idx},
                 .spec{
                     .dc = node->spec.dc,
@@ -161,14 +148,11 @@ Status PlaceTableWorkflow::step_creating_replicas(Table& table) {
 
             NodePtr node;
             status = store_->get_node(rep->spec.assign_node_id, node);
-            if (status.fail() || !node) {
-                if (is_retriable(status)) {
-                    LOG_WARN(
-                        "get_node retriable error for node={}, table={}, "
-                        "msg={}",
-                        rep->spec.assign_node_id, table.table_id, status.msg());
-                    continue;
-                }
+            if (status.fail()) {
+                return transition(table, TableLifecycle::ROLLING_BACK,
+                                  status.msg());
+            }
+            if (!node) {
                 return transition(
                     table, TableLifecycle::ROLLING_BACK,
                     fmt::format("node {} not found", rep->spec.assign_node_id));
@@ -182,14 +166,6 @@ Status PlaceTableWorkflow::step_creating_replicas(Table& table) {
             };
             status = client_->create_replica(param);
             if (status.fail()) {
-                if (is_retriable(status)) {
-                    LOG_WARN(
-                        "CreateReplica retriable for node={}, table={}, "
-                        "shard={}, rep={}, msg={}",
-                        rep->spec.assign_node_id, table.table_id, shard_idx,
-                        rep->replica_id.replica_index, status.msg());
-                    continue;
-                }
                 return transition(
                     table, TableLifecycle::ROLLING_BACK,
                     fmt::format("CreateReplica fatal for table={}, msg={}",
@@ -297,10 +273,6 @@ Status PlaceTableWorkflow::transition(Table& table, TableLifecycle next,
         table.state.status = TableStatus::CREATEING;
     }
     return store_->put_table(table);
-}
-
-bool PlaceTableWorkflow::is_retriable(const Status& status) const {
-    return status.code() == StatusCode::ERROR;
 }
 
 }  // namespace adviskv::sdm
