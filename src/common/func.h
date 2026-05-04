@@ -2,11 +2,12 @@
 #include <cstdint>
 #include <chrono>
 #include <random>
+#include "common/define.h"
 namespace adviskv{
 
 
 inline int64_t get_current_ts_ms() {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
+    return std::chrono::duration_cast<Milliseconds>(
                std::chrono::system_clock::now().time_since_epoch())
         .count();
 }

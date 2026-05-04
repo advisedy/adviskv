@@ -107,6 +107,11 @@ Status SdmStore::put_shard_route(const ShardRoute& route) {
     return runtime_index_.put_shard_route(route);
 }
 
+Status SdmStore::delete_shard_route(const ShardID& shard_id) {
+    std::unique_lock locker{mutex_};
+    return runtime_index_.delete_shard_route(shard_id);
+}
+
 Status SdmStore::del_shard_route_entry(const ShardID& shard_id,
                                        const ReplicaKey& replica_key) {
     std::unique_lock locker{mutex_};
@@ -218,6 +223,22 @@ Status SdmStore::list_replicas_by_node(NodeID node_id,
         }
     }
     return Status::OK();
+}
+
+Status SdmStore::delete_table(TableID table_id) {
+    std::unique_lock locker{mutex_};
+
+    TablePtr old_ptr;
+    Status status = meta_store_->get_table(table_id, old_ptr);
+    RETURN_IF_INVALID_STATUS(status)
+    if (old_ptr == nullptr) {
+        return Status::OK();
+    }
+
+    status = meta_store_->delete_table(table_id);
+    RETURN_IF_INVALID_STATUS(status)
+
+    return runtime_index_.on_table_delete(*old_ptr);
 }
 
 }  // namespace adviskv::sdm

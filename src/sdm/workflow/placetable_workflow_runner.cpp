@@ -14,7 +14,8 @@ PlaceTableWorkflowRunner::PlaceTableWorkflowRunner(SdmStore* store,
       need_run_lifecycles_({TableLifecycle::CREATING, TableLifecycle::PLACING,
                             TableLifecycle::CREATING_REPLICAS,
                             TableLifecycle::WAITING_READY,
-                            TableLifecycle::ROUTE_READY}) {}
+                            TableLifecycle::ROUTE_READY,
+                            TableLifecycle::ROLLING_BACK}) {}
 
 void PlaceTableWorkflowRunner::run() {
     for (auto lc : need_run_lifecycles_) {

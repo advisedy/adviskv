@@ -86,6 +86,7 @@ class SdmRuntimeIndex {
 
     Status get_shard_route(const ShardID& shard_id, ShardRoutePtr& out) const;
     Status put_shard_route(const ShardRoute& route);
+    Status delete_shard_route(const ShardID& shard_id);
     Status del_shard_route_entry(const ShardID& shard_id,
                                  const ReplicaKey& replica_key);
 

@@ -117,6 +117,7 @@ Status SdmRuntimeIndex::on_replica_upsert(const Replica* old_replica,
 
 Status SdmRuntimeIndex::on_table_delete(const Table& table) {
     table_name_index_.erase(make_table_name_key(table));
+    //TODO shard route
     auto lifecycle_it = lifecycle_index_.find(table.state.lifecycle);
     if (lifecycle_it != lifecycle_index_.end()) {
         lifecycle_it->second.erase(table.table_id);
@@ -227,6 +228,11 @@ Status SdmRuntimeIndex::get_shard_route(const ShardID& shard_id,
 
 Status SdmRuntimeIndex::put_shard_route(const ShardRoute& route) {
     shard_route_cache_[route.shard_id] = std::make_shared<ShardRoute>(route);
+    return Status::OK();
+}
+
+Status SdmRuntimeIndex::delete_shard_route(const ShardID& shard_id) {
+    shard_route_cache_.erase(shard_id);
     return Status::OK();
 }
 

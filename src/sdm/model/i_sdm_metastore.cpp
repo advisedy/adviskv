@@ -17,6 +17,11 @@ Status MemoryMetaStore::get_table(TableID table_id, TablePtr& out) const {
     return Status::OK();
 }
 
+Status MemoryMetaStore::delete_table(TableID table_id) {
+    tables_.erase(table_id);
+    return Status::OK();
+}
+
 Status MemoryMetaStore::list_tables(std::vector<TablePtr>& out) const {
     out.clear();
     out.reserve(tables_.size());

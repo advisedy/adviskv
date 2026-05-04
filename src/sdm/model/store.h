@@ -107,7 +107,8 @@ enum class TableLifecycle {
     CREATING_REPLICAS = 3,
     WAITING_READY = 4,
     ROUTE_READY = 5,
-    READY = 6,
+    ROLLING_BACK = 6,
+    READY = 7,
     FAILED = 99,
 };
 
