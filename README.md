@@ -295,22 +295,6 @@ mkdir -p build/generated
 - `delete_table`、`retry_failed_table`、`list_tables` 这类 table 领域接口还没补齐。
 - 当前本地配置只提供了一个 `storage-1` 节点，更多副本 / 多机位演示还需要继续补配置。
 
-## 对应重规划文档的关系
-
-这份 README 参考了：
-
-- [5.4-adviskv-architecture-replan.md](file:///Users/bytedance/Desktop/adviskv/docs/tmp/5.4-adviskv-architecture-replan.md)
-
-但它不是纯规划文档，而是按“当前代码真实状态”重新整理后的项目首页。你可以这样理解两者关系：
-
-- 重规划文档：偏设计和演进方向。
-- 当前 README：偏仓库入口、当前架构、已落地能力、运行方式。
-
-目前项目节奏大致处于：
-
-- Week 1：主链路打通
-- Week 2：PlaceTable workflow 收敛
-- 下一阶段：持久化 metastore、恢复验证、更多 table 操作
 
 ## 接下来最值得做的事
 
