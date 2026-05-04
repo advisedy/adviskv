@@ -37,11 +37,8 @@
     std::vector<type> name;                         \
     name.reserve(size);
 
-#define MILLISECONDS(x) (std::chrono::milliseconds(x))
-
-// inline std::chrono::milliseconds convert_ms(int x) {
-//     return std::chrono::milliseconds(x);
-// }
+using Milliseconds = std::chrono::milliseconds;
+using Seconds = std::chrono::seconds;
 
 #include <vector>
 ///////////// function

@@ -8,6 +8,7 @@
 #include <string>
 #include <thread>
 
+#include "common/define.h"
 #include "common/status.h"
 
 namespace adviskv {
@@ -24,7 +25,7 @@ class BackgroundTask {
 
    public:
     Status prepare(); // 如果setup是空的，可以不调用这个
-    void start(std::chrono::milliseconds interval);
+    void start(Milliseconds interval);
     void notify();
     void stop();
 
@@ -34,7 +35,7 @@ class BackgroundTask {
     virtual void teardown() {};
 
    private:
-    void loop(std::chrono::milliseconds interval);
+    void loop(Milliseconds interval);
 
    private:
     std::atomic<bool> running_ = false;

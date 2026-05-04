@@ -64,7 +64,7 @@ Status NodeAgent::start() {
     RETURN_IF_INVALID_STATUS(status)
 
     BackgroundTask::start(
-        std::chrono::milliseconds(conf_.heartbeat_interval_ms));
+        Milliseconds(conf_.heartbeat_interval_ms));
 
     return Status::OK();
 }
@@ -90,7 +90,7 @@ Status NodeAgent::setup() {
         }
         LOG_WARN("node agent first heartbeat failed, msg={}", status.msg());
         std::this_thread::sleep_for(
-            std::chrono::milliseconds(conf_.first_sync_retry_ms));
+            Milliseconds(conf_.first_sync_retry_ms));
     }
     return Status::OK();
 }

@@ -15,7 +15,7 @@ Status BackgroundTask::prepare() {
     return Status::OK();
 }
 
-void BackgroundTask::start(std::chrono::milliseconds interval) {
+void BackgroundTask::start(Milliseconds interval) {
     if (interval.count() <= 0) {
         return;
     }
@@ -40,7 +40,7 @@ void BackgroundTask::stop() {
     teardown();
 }
 
-void BackgroundTask::loop(std::chrono::milliseconds interval) {
+void BackgroundTask::loop(Milliseconds interval) {
     while (running_) {
         {
             std::unique_lock<std::mutex> lock(mutex_);

@@ -93,7 +93,7 @@ std::vector<Replica*> ReplicaManager::get_replicas() const {
 
 void ReplicaManager::start_tick() {
     raft_tick_task_ = std::make_unique<RaftTickTask>(this);
-    raft_tick_task_->start(MILLISECONDS(20));
+    raft_tick_task_->start(Milliseconds(20));
 }
 
 void ReplicaManager::recover() {
