@@ -1,5 +1,6 @@
 #include "storage/persist/persist_engine.h"
 
+#include <cerrno>
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -15,6 +16,7 @@
 
 #include "common/buffer.h"
 #include "common/crc.h"
+#include "common/defer.h"
 #include "common/define.h"
 #include "common/log.h"
 #include "common/status.h"
@@ -172,10 +174,14 @@ Status PersistEngine::save_snapshot(const SnapshotPtr& snapshot) {
 Status PersistEngine::load_snapshot(SnapshotPtr& snapshot) {
     // TODO
 
-    int fd = ::open(snapshot_path_.c_str(), O_RDONLY | O_CREAT);
+    int fd = ::open(snapshot_path_.c_str(), O_RDONLY);
     if (fd < 0) {
+        if (errno == ENOENT) {
+            return Status::OK();
+        }
         return Status::ERROR("fd < 0");
     }
+    auto fd_guard = common::Defer([fd]() { ::close(fd); });
 
     int64 total_len{0};
     {
@@ -247,11 +253,16 @@ Status PersistEngine::save_raft_meta(const RaftMeta& meta) {
 Status PersistEngine::load_raft_meta(RaftMeta& meta) const {
     // TODO
 
-    int fd = ::open(raft_meta_path_.c_str(), O_RDONLY | O_CREAT);
+    int fd = ::open(raft_meta_path_.c_str(), O_RDONLY);
 
     if (fd < 0) {
+        if (errno == ENOENT) {
+            meta = {};
+            return Status::OK();
+        }
         return Status{StatusCode::ERROR, "fd < 0"};
     }
+    auto fd_guard = common::Defer([fd]() { ::close(fd); });
 
     meta = {};
     int64 total_len = 0;
@@ -330,10 +341,15 @@ Status PersistEngine::recover(RecoverResult& result) {
 
 Status PersistEngine::read_wal_from_disk(const std::string& path,
                                          std::vector<LogEntry>& entries) {
-    int fd = ::open(path.c_str(), O_RDONLY | O_CREAT);
+    int fd = ::open(path.c_str(), O_RDONLY);
     if (fd < 0) {
-        return Status::ERROR("");
+        if (errno == ENOENT) {
+            entries.clear();
+            return Status::OK();
+        }
+        return Status::ERROR("fd < 0");
     }
+    auto fd_guard = common::Defer([fd]() { ::close(fd); });
 
     entries.clear();
     while (true) {
