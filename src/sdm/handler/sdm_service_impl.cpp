@@ -123,10 +123,20 @@ grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context,
     if (!route.replicas.empty()) {
         response->set_table_id(route.shard_id.table_id);
         response->set_shard_id(route.shard_id.shard_index);
-        // TODO 这里先暂时找一个pos:0的
-        // 感觉实际上我们应该直接把路由表返回了？ 而不是只返回一个ip和port？
-        response->set_ip(route.replicas[0].sp);
-        response->set_port(route.replicas[0].port);
+        for (const auto& replica : route.replicas) {
+            auto* route_replica = response->add_replicas();
+            auto* endpoint = route_replica->mutable_endpoint();
+            endpoint->set_ip(replica.ip);
+            endpoint->set_port(replica.port);
+            switch (replica.role) {
+                case ReplicaRole::LEADER:
+                    route_replica->set_role(pb::ReplicaRole::LEADER);
+                    break;
+                case ReplicaRole::FOLLOWER:
+                    route_replica->set_role(pb::ReplicaRole::FOLLOWER);
+                    break;
+            }
+        }
     }
     return grpc::Status::OK;
 }

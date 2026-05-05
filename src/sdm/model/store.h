@@ -148,8 +148,9 @@ using TablePtr = std::shared_ptr<Table>;
 struct RouteEntry {
     ReplicaID replica_id;
     NodeID node_id;
-    std::string sp;
+    std::string ip;
     int32_t port{0};
+    ReplicaRole role{ReplicaRole::FOLLOWER};
 };
 
 struct ShardRoute {

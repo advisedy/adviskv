@@ -118,8 +118,9 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
         route.replicas.push_back(RouteEntry{
             .replica_id = replica_ptr->replica_id,
             .node_id = replica_ptr->spec.assign_node_id,
-            .sp = replica_ptr->state.endpoint.ip,
+            .ip = replica_ptr->state.endpoint.ip,
             .port = replica_ptr->state.endpoint.port,
+            .role = replica_ptr->state.role,
         });
     }
 

@@ -13,12 +13,16 @@ message GetRouteRequest{
     bytes key = 3;
 }
 
+message RouteReplica {
+    adviskv.pb.Endpoint endpoint = 1;
+    adviskv.pb.ReplicaRole role = 2;
+}
+
 message GetRouteResponse{
     adviskv.pb.BaseRsp base_rsp = 1;
     int32 table_id = 2;
     int32 shard_id = 3;
-    string ip = 4;
-    int32 port = 5;
+    repeated RouteReplica replicas = 4;
 }
 
 message RegisterNodeRequest{
