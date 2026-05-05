@@ -1,11 +1,11 @@
 #include "storage/persist/persist_engine.h"
 
-#include <cerrno>
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <cerrno>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -152,14 +152,14 @@ Status PersistEngine::save_snapshot(const SnapshotPtr& snapshot) {
     }
 
     EncodeBuffer buf;
-    buf.write<int64>(total_len);
-    buf.write<int64>(snapshot->apply_index);
-    buf.write<int64>(snapshot->apply_term);
-    buf.write<int32>((int32_t)snapshot->kvs.size());
+    buf.write(total_len);
+    buf.write(snapshot->apply_index);
+    buf.write(snapshot->apply_term);
+    buf.write((int32)snapshot->kvs.size());
     // TODO  感觉这里一直往buf写有点危险。
     for (const auto& [key, value] : snapshot->kvs) {
-        buf.write<std::string>(key);
-        buf.write<std::string>(value);
+        buf.write(key);
+        buf.write(value);
     }
 
     write_full(fd, buf.data(), buf.size());
@@ -202,10 +202,10 @@ Status PersistEngine::load_snapshot(SnapshotPtr& snapshot) {
         RETURN_IF_INVALID_READ(buf, kv_count)
         for (int i = 0; i < kv_count; i++) {
             Key key;
-            if (bool success = buf.read<std::string>(key); !success)
+            if (bool success = buf.read(key); !success)
                 return Status::ERROR();
             Value value;
-            if (bool success = buf.read<std::string>(value); !success)
+            if (bool success = buf.read(value); !success)
                 return Status::ERROR();
             snapshot->kvs.emplace_back(std::move(key), std::move(value));
         }
@@ -309,11 +309,11 @@ Status PersistEngine::write_wal_to_disk(int fd, const LogEntry& entry) {
         Key key;
         Value value;
     */
-    buf.write<int64>(entry.term);
-    buf.write<int64>(entry.index);
-    buf.write<int32>((int32_t)entry.op_type);
-    buf.write<std::string>(entry.key);
-    buf.write<std::string>(entry.value);
+    buf.write(entry.term);
+    buf.write(entry.index);
+    buf.write((int32)entry.op_type);
+    buf.write(entry.key);
+    buf.write(entry.value);
     int32_t len = buf.size();
 
     write_full(fd, &len, sizeof(int32_t));
@@ -375,9 +375,14 @@ Status PersistEngine::read_wal_from_disk(const std::string& path,
         LogEntry entry;
         RETURN_IF_INVALID_READ(buf, entry.term)
         RETURN_IF_INVALID_READ(buf, entry.index)
-        RETURN_IF_INVALID_READ(buf, entry.op_type)
+        int32 op_type;
+        RETURN_IF_INVALID_READ(buf, op_type)
+        entry.op_type = (WriteOpType)op_type;
+        LOG_DEBUG("entry term:{}, index:{}, op_type:{} ", entry.term,
+                  entry.index, op_type)
         RETURN_IF_INVALID_READ(buf, entry.key)
         RETURN_IF_INVALID_READ(buf, entry.value)
+        LOG_DEBUG("enry key:{}, value:{}", entry.key, entry.value)
         entries.push_back(std::move(entry));
     }
     return Status::OK();

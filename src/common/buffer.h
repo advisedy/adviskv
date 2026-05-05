@@ -10,15 +10,16 @@ namespace adviskv {
 class EncodeBuffer {
    public:
     template <typename T>
-    void write(T v) {
-        auto* p = reinterpret_cast<uint8_t*>(&v);
+    void write(const T& v) {
+        auto* p = reinterpret_cast<const uint8_t*>(&v);
         buf_.insert(buf_.end(), p, p + sizeof(T));
     }
 
-    template <>
     void write(const std::string& s) {
         write<int32_t>(static_cast<int32_t>(s.size()));
-        buf_.insert(buf_.end(), s.begin(), s.end());
+        if (!s.empty()) {
+            buf_.insert(buf_.end(), s.begin(), s.end());
+        }
     }
 
     std::vector<uint8_t> take() { return std::move(buf_); }
@@ -42,11 +43,15 @@ class DecodeBuffer {
         return true;
     }
 
-    template <>
     bool read(std::string& s) {
         int32_t len;
-        if (!read<int32_t>(len)) return false;
-        if (pos_ + len > data_.size()) return false;
+        if (!read(len)) return false;
+        if (len < 0) return false;
+        if (pos_ + static_cast<size_t>(len) > data_.size()) return false;
+        if (len == 0) {
+            s.clear();
+            return true;
+        }
         s.assign(reinterpret_cast<const char*>(data_.data() + pos_), len);
         pos_ += len;
         return true;

@@ -11,7 +11,11 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(Protobuf CONFIG REQUIRED)
 find_package(yaml-cpp CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
+find_package(GTest CONFIG REQUIRED)
+
+enable_testing()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 add_subdirectory(src)
+add_subdirectory(test)

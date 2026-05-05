@@ -9,6 +9,7 @@
 // 这里cond要填写应该合法的情况，如果cond与预期不符合，就会return，跟assert的语义有点像
 
 #include <chrono>
+#include <fmt/core.h>
 #define RETURN_IF_INVALID_CONDITION(cond, msg)            \
     if (!(cond)) {                                        \
         return Status{StatusCode::INVALID_ARGUMENT, msg}; \
@@ -29,9 +30,20 @@
         return status;                                    \
     }
 
-#define RETURN_IF_INVALID_READ(buf, name)        \
-    if (bool success = buf.read(name); !success) \
-        return Status::ERROR("read is invalid");
+#define RETURN_IF_INVALID_READ(buf, name)                                    \
+    do {                                                                     \
+        if (bool success = (buf).read(name); !success) {                     \
+            return Status::ERROR(fmt::format("read {} is invalid", #name));  \
+        }                                                                    \
+    } while (false);
+
+#define RETURN_IF_INVALID_READ_TYPE(buf, type, name)                           \
+    do {                                                                       \
+        if (bool success = (buf).read<type>(name); !success) {                 \
+            return Status::ERROR(                                              \
+                fmt::format("read {} is invalid, type: {}", #name, #type));    \
+        }                                                                      \
+    } while (false);
 
 #define DEFINE_VECTOR_AND_RESERVE(type, name, size) \
     std::vector<type> name;                         \
