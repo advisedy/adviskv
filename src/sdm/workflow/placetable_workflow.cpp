@@ -2,6 +2,8 @@
 
 #include <fmt/format.h>
 
+#include <algorithm>
+
 #include "common/define.h"
 #include "common/func.h"
 #include "common/log.h"
@@ -83,8 +85,8 @@ Status PlaceTableWorkflow::step_placing(Table& table) {
     }
 
     for (const ShardPlacement& shard : result.shards) {
-        for (int32_t rep_idx = 0,
-                   selected_nodes_size = static_cast<int32_t>(shard.nodes.size());
+        for (int32_t rep_idx = 0, selected_nodes_size =
+                                      static_cast<int32_t>(shard.nodes.size());
              rep_idx < selected_nodes_size; ++rep_idx) {
             const NodePtr& node = shard.nodes[rep_idx];
             Replica replica{
@@ -220,8 +222,20 @@ Status PlaceTableWorkflow::step_waiting_route_ready(Table& table) {
         ShardRoutePtr route;
         Status status = store_->get_shard_route(shard_id, route);
         RETURN_IF_INVALID_STATUS(status)
-        if (route == nullptr || route->replicas.empty()) {
+        if (route == nullptr or route->replicas.empty()) {
             return Status::OK();
+        }
+        int leader_count = 0;
+        std::vector<RouteEntry>& replicas = route->replicas;
+        std::for_each(replicas.begin(), replicas.end(),
+                      [&leader_count](const RouteEntry& entry) {
+                          leader_count += (entry.role == ReplicaRole::LEADER);
+                      });
+        if (leader_count == 0) {
+            return Status::OK();
+        } else if (leader_count > 1) {
+            LOG_WARN("the leader count is grater than 1");
+            return Status::ERROR();
         }
     }
 
