@@ -15,6 +15,10 @@ target_include_directories(adviskv_common PUBLIC
     ${PROJECT_BINARY_DIR}/build/generated
 )
 
+target_compile_definitions(adviskv_common PUBLIC
+    ADVISKV_PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
+)
+
 
 target_link_libraries(adviskv_common PUBLIC
     fmt::fmt

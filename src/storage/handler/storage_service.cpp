@@ -5,6 +5,7 @@
 
 #include "common/confmgr.h"
 #include "common/log.h"
+#include "common/path_util.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage.pb.h"
@@ -158,7 +159,9 @@ grpc::Status StorageServiceImpl::CreateReplica(
     }
     param.local_endpoint = {.ip = CONF_GET_STR("ip"),
                             .port = CONF_GET_INT("port")};
-    param.data_dir = CONF_GET_STR("data_dir");
+    param.data_dir =
+        adviskv::common::path_from_config("data_dir")
+            .string();
 
     Status status = replica_manager_->add_replica(param);
     fill_base_rsp(response, status);

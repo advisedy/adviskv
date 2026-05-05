@@ -8,6 +8,7 @@
 
 #include "common/confmgr.h"
 #include "common/log.h"
+#include "common/path_util.h"
 #include "common/type.h"
 #include "sdm/background/routeupdate_check_task.h"
 #include "sdm/client/storage_client.h"
@@ -22,11 +23,16 @@
 #include "sdm/workflow/placetable_workflow_runner.h"
 
 namespace {
+void init_conf() {
+    auto& conf_mgr = adviskv::common::ConfMgr::get_instance();
+    conf_mgr.LoadFromFile(
+        adviskv::common::path_from_project_root("conf/sdm.yaml").string());
+}
 
 void init_logger() {
     adviskv::common::LogConfig config;
     config.logger_name = CONF_GET_STR("logger_name");
-    config.log_dir = CONF_GET_STR("log_dir");
+    config.log_dir = adviskv::common::path_from_config("log_dir").string();
     config.log_filename = CONF_GET_STR("log_filename");
     config.log_level = CONF_GET_STR("log_level");
     config.log_to_console = CONF_GET_BOOL("log_to_console");
@@ -37,11 +43,6 @@ void init_logger() {
         "log_level={}, log_to_console={}, log_to_file={}",
         config.logger_name, config.log_dir, config.log_filename,
         config.log_level, config.log_to_console, config.log_to_file);
-}
-
-void init_conf() {
-    auto& conf_mgr = adviskv::common::ConfMgr::get_instance();
-    conf_mgr.LoadFromFile("./conf/sdm.yaml");
 }
 
 }  // namespace
