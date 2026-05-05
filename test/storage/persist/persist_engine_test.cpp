@@ -132,6 +132,70 @@ TEST_F(PersistEngineTest, SaveAndLoadSnapshot) {
     EXPECT_EQ(actual->kvs, expected->kvs);
 }
 
+TEST_F(PersistEngineTest, TruncateWalKeepsEntriesAfterSnapshotIndex) {
+    PersistEngine engine = make_engine();
+    Status status = engine.init();
+    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+
+    const std::vector<LogEntry> entries = {
+        make_entry(1, 1, WriteOpType::PUT, "k1", "v1"),
+        make_entry(1, 2, WriteOpType::PUT, "k2", "v2"),
+        make_entry(2, 3, WriteOpType::DEL, "k1", ""),
+        make_entry(2, 4, WriteOpType::PUT, "k3", "v3"),
+    };
+
+    status = engine.append_wal_batch(entries);
+    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+
+    status = engine.truncate_wal(2);
+    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+
+    std::vector<LogEntry> actual;
+    status = engine.read_wal_batch(actual);
+    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_EQ(actual.size(), 2U);
+    EXPECT_EQ(actual[0].index, 3);
+    EXPECT_EQ(actual[0].key, "k1");
+    EXPECT_EQ(actual[1].index, 4);
+    EXPECT_EQ(actual[1].key, "k3");
+}
+
+TEST_F(PersistEngineTest, DoSnapshotPersistsSnapshotAndTruncatesWal) {
+    PersistEngine engine = make_engine();
+    Status status = engine.init();
+    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+
+    const std::vector<LogEntry> entries = {
+        make_entry(3, 11, WriteOpType::PUT, "a", "1"),
+        make_entry(3, 12, WriteOpType::PUT, "b", "2"),
+        make_entry(4, 13, WriteOpType::PUT, "c", "3"),
+    };
+    status = engine.append_wal_batch(entries);
+    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+
+    SnapshotPtr snapshot = std::make_shared<Snapshot>();
+    snapshot->apply_index = 12;
+    snapshot->apply_term = 3;
+    snapshot->kvs = {{"a", "1"}, {"b", "2"}};
+
+    status = engine.do_snapshot(snapshot);
+    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+
+    SnapshotPtr loaded_snapshot = std::make_shared<Snapshot>();
+    status = engine.load_snapshot(loaded_snapshot);
+    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    EXPECT_EQ(loaded_snapshot->apply_index, snapshot->apply_index);
+    EXPECT_EQ(loaded_snapshot->apply_term, snapshot->apply_term);
+    EXPECT_EQ(loaded_snapshot->kvs, snapshot->kvs);
+
+    std::vector<LogEntry> actual;
+    status = engine.read_wal_batch(actual);
+    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_EQ(actual.size(), 1U);
+    EXPECT_EQ(actual[0].index, 13);
+    EXPECT_EQ(actual[0].key, "c");
+}
+
 TEST_F(PersistEngineTest, RecoverLoadsSnapshotMetaAndWalTogether) {
     PersistEngine engine = make_engine();
     Status status = engine.init();

@@ -20,6 +20,7 @@ KvStateMachine::KvStateMachine(EngineType engine_type) {
             break;
     }
 }
+
 Status KvStateMachine::apply(const LogEntry& entry) {
     Status status{Status::OK()};
     switch (entry.op_type) {
