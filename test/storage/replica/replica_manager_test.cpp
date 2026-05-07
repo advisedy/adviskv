@@ -1,12 +1,13 @@
+#include "storage/replica/replica_manager.h"
+
 #include <gtest/gtest.h>
 
 #include <filesystem>
 #include <string>
 #include <vector>
 
-#include "test/test_env.h"
 #include "storage/model/param.h"
-#include "storage/replica/replica_manager.h"
+#include "test/test_env.h"
 
 namespace fs = std::filesystem;
 
@@ -31,13 +32,14 @@ class ReplicaManagerTest : public ::testing::Test {
             .replica_id = replica_id,
             .engine_type = EngineType::MAP,
             .local_endpoint = Endpoint{"127.0.0.1", 18080},
-            .members = {
-                PeerMember{
-                    .node_id = "node-1",
-                    .replica_id = replica_id,
-                    .endpoint = Endpoint{"127.0.0.1", 18080},
+            .members =
+                {
+                    PeerMember{
+                        .node_id = "node-1",
+                        .replica_id = replica_id,
+                        .endpoint = Endpoint{"127.0.0.1", 18080},
+                    },
                 },
-            },
             .data_dir = base_dir_.string(),
         };
     }
@@ -61,14 +63,15 @@ TEST_F(ReplicaManagerTest, AddReplicaIndexesByIdAndShard) {
     ReplicaID replica_id{.table_id = 7, .shard_index = 3, .replica_index = 0};
 
     Status status = manager.add_replica(make_param(replica_id));
-    ASSERT_TRUE(status.ok()) << static_cast<int>(status.code()) << " " << status.msg();
+    ASSERT_TRUE(status.ok())
+        << static_cast<int>(status.code()) << " " << status.msg();
 
     Replica* by_id = manager.get_replica_by_id(replica_id);
     ASSERT_NE(by_id, nullptr);
     EXPECT_EQ(by_id->get_replica_id(), replica_id);
 
-    Replica* by_shard =
-        manager.get_replica_by_shard({replica_id.table_id, replica_id.shard_index});
+    Replica* by_shard = manager.get_replica_by_shard(
+        {replica_id.table_id, replica_id.shard_index});
     ASSERT_NE(by_shard, nullptr);
     EXPECT_EQ(by_shard->get_replica_id(), replica_id);
 
@@ -104,7 +107,8 @@ TEST_F(ReplicaManagerTest, DeleteReplicaRemovesIndexes) {
     ASSERT_TRUE(manager.delete_replica(replica_id).ok());
 
     EXPECT_EQ(manager.get_replica_by_id(replica_id), nullptr);
-    EXPECT_EQ(manager.get_replica_by_shard({replica_id.table_id, replica_id.shard_index}),
+    EXPECT_EQ(manager.get_replica_by_shard(
+                  {replica_id.table_id, replica_id.shard_index}),
               nullptr);
     EXPECT_TRUE(manager.get_replicas().empty());
 }
