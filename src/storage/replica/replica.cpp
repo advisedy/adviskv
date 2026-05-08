@@ -69,6 +69,8 @@ Status Replica::put(const PutParam& param) {
 }
 
 Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
+    RETURN_IF_INVALID_STATUS(
+        raft_node_->prepare_install_snapshot(param.term, param.snapshot_index))
     RETURN_IF_INVALID_STATUS(persist_->append_snapshot_chunk(param))
     if (!param.done) return Status::OK();
 
@@ -115,11 +117,12 @@ void Replica::flush_messages() {
                 break;
             }
             case RaftMessageType::INSTALL_SNAPSHOT: {
+                InstallSnapshotResult result;
                 Status status = raft_sender_.send_install_snapshot(
-                    msg.target, msg.snapshot_param, *persist_);
+                    msg.target, msg.snapshot_param, *persist_, result);
                 if (status.ok()) {
                     raft_node_->handle_install_snapshot_response(
-                        msg.target.replica_id, true);
+                        msg.target.replica_id, result);
                 }
                 break;
             }
@@ -200,9 +203,11 @@ Status Replica::handle_append_entries(const AppendEntriesParam& param,
 }
 
 void Replica::try_take_snapshot() {
-    LogIndex last_index = raft_node_->last_log_index();
-    LogIndex apply_index = state_machine_->apply_index();
-    if (last_index - apply_index < SNAPSHOT_LIMIT) return;
+    // LogIndex last_index = raft_node_->last_log_index();
+    // LogIndex apply_index = state_machine_->apply_index();
+    LogIndex last_apply_index = raft_node_->last_applied(),
+             snapshot_index = state_machine_->apply_index();
+    if (last_apply_index - snapshot_index < SNAPSHOT_LIMIT) return;
     Status status = persist_->do_snapshot(*state_machine_);
     if (status.ok()) {
         // 持久化成功了，这边得截断wal日志了。

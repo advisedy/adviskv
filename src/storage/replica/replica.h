@@ -22,6 +22,9 @@ class Replica {
     ReplicaRole get_role() const {
         return raft_node_ ? raft_node_->role() : ReplicaRole::FOLLOWER;
     }
+    Term current_term() const {
+        return raft_node_ ? raft_node_->current_term() : 0;
+    }
     ReplicaStatus get_status() const {
         return (raft_node_ && state_machine_ && persist_) ? ReplicaStatus::READY
                                                           : ReplicaStatus::ADDING;

@@ -569,14 +569,39 @@ void RaftNode::install_snapshot(LogIndex new_snapshot_index,
     save_raft_meta();
 }
 
-void RaftNode::handle_install_snapshot_response(const ReplicaID& from,
-                                                bool success) {
+void RaftNode::handle_install_snapshot_response(
+    const ReplicaID& from, const InstallSnapshotResult& result) {
     std::lock_guard lock(mutex_);
-    if (!success) return;
     if (role_ != ReplicaRole::LEADER) return;
+
+    if (result.term > current_term_) {
+        become_follower(result.term);
+        return;
+    }
+
+    if (!result.success) return;
 
     next_index_[from] = snapshot_index_ + 1;
     match_index_[from] = snapshot_index_;
+}
+
+Status RaftNode::prepare_install_snapshot(Term leader_term,
+                                          LogIndex new_snapshot_index) {
+    std::lock_guard lock(mutex_);
+
+    if (leader_term < current_term_) {  // 发送过来的leader的term低
+        return Status::ERROR("stale install snapshot term");
+    }
+
+    if (leader_term > current_term_ || role_ != ReplicaRole::FOLLOWER) {
+        become_follower(leader_term);
+    }
+
+    if (new_snapshot_index <= snapshot_index_) {
+        return Status::ERROR("stale install snapshot index");
+    }
+
+    return Status::OK();
 }
 
 void RaftNode::update_raft_meta(const RaftMeta& meta) {

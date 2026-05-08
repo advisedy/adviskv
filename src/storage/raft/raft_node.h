@@ -133,7 +133,11 @@ class RaftNode {
                           Term leader_term);
 
     // InstallSnapshot 回调
-    void handle_install_snapshot_response(const ReplicaID& from, bool success);
+    void handle_install_snapshot_response(const ReplicaID& from,
+                                          const InstallSnapshotResult& result);
+
+    Status prepare_install_snapshot(Term leader_term,
+                                    LogIndex snapshot_index);
 
     //revocer 的时候更新用的
     void update_raft_meta(const RaftMeta& meta);

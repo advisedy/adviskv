@@ -103,7 +103,8 @@ class RaftSender {
 
     Status send_install_snapshot(const PeerMember& member,
                                  const InstallSnapshotParam& param,
-                                 const PersistEngine& persist) const {
+                                 const PersistEngine& persist,
+                                 InstallSnapshotResult& result) const {
         auto channel = grpc::CreateChannel(
             member.endpoint.ip + ":" + std::to_string(member.endpoint.port),
             grpc::InsecureChannelCredentials());
@@ -111,6 +112,8 @@ class RaftSender {
 
         constexpr size_t kChunkSize = 1 << 20;
         uint64 offset = 0;
+        result.term = param.term;
+        result.success = false;
         while (true) {
             std::string data;
             bool eof = false;
@@ -144,7 +147,15 @@ class RaftSender {
             RETURN_IF_INVALID_CONDITION(grpc_status.ok(),
                                         grpc_status.error_message())
 
+            result.term = response.term();
+            if (response.base_rsp().code() !=
+                static_cast<int32_t>(StatusCode::OK)) {
+                result.success = false;
+                return Status::OK();
+            }
+
             if (eof) {
+                result.success = true;
                 break;
             }
             offset += data.size();

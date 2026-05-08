@@ -324,9 +324,7 @@ grpc::Status StorageServiceImpl::InstallSnapshot(
     Status status = replica->handle_install_snapshot(param);
 
     fill_base_rsp(response, status);
-    if (status.ok()) {
-        response->set_term(request->term());
-    }
+    response->set_term(replica->current_term());
     return grpc::Status::OK;
 }
 

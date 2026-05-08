@@ -88,6 +88,11 @@ struct InstallSnapshotParam {
     bool done{false};
 };
 
+struct InstallSnapshotResult {
+    Term term{0};
+    bool success{false};
+};
+
 enum class RaftMessageType : uint8_t {
     REQUEST_VOTE,
     APPEND_ENTRIES,
