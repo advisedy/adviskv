@@ -7,6 +7,8 @@
 
 #include "test/test_env.h"
 #include "storage/model/param.h"
+#include "storage/persist/persist_engine.h"
+#include "storage/raft/state_machine/kv_state_machine.h"
 #include "storage/replica/replica_manager.h"
 
 namespace fs = std::filesystem;
@@ -81,18 +83,59 @@ TEST_F(ReplicaTest, HandleInstallSnapshotUpdatesReadableState) {
     Replica* replica = add_single_replica(manager);
     ASSERT_NE(replica, nullptr);
 
-    InstallSnapshotParam param{
-        .from_replica_id =
-            ReplicaID{.table_id = 201, .shard_index = 3, .replica_index = 1},
-        .to_replica_id = replica_id_,
-        .term = 8,
-        .snapshot_index = 5,
-        .snapshot_term = 7,
-        .kvs = {{"hello", "world"}, {"foo", "bar"}},
+    auto source_dir = base_dir_ / "source";
+    ASSERT_TRUE(fs::create_directories(source_dir)) << source_dir.string();
+    ReplicaID source_id{
+        .table_id = 201,
+        .shard_index = 3,
+        .replica_index = 1,
     };
+    PersistEngine source_persist(source_dir.string(), source_id);
+    ASSERT_TRUE(source_persist.init().ok());
 
-    Status status = replica->handle_install_snapshot(param);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    KvStateMachine source_state(EngineType::MAP);
+    ASSERT_TRUE(
+        source_state
+            .apply(LogEntry{.term = 7,
+                            .index = 5,
+                            .op_type = WriteOpType::PUT,
+                            .key = "hello",
+                            .value = "world"})
+            .ok());
+    ASSERT_TRUE(
+        source_state
+            .apply(LogEntry{.term = 7,
+                            .index = 6,
+                            .op_type = WriteOpType::PUT,
+                            .key = "foo",
+                            .value = "bar"})
+            .ok());
+    ASSERT_TRUE(source_persist.do_snapshot(source_state).ok());
+
+    uint64 offset = 0;
+    Status status = Status::OK();
+    while (true) {
+        std::string data;
+        bool eof = false;
+        status = source_persist.read_snapshot_chunk(offset, 8, data, eof);
+        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+
+        InstallSnapshotParam param{
+            .from_replica_id = source_id,
+            .to_replica_id = replica_id_,
+            .term = 8,
+            .snapshot_index = source_state.apply_index(),
+            .snapshot_term = source_state.apply_term(),
+            .offset = offset,
+            .data = data,
+            .done = eof,
+        };
+
+        status = replica->handle_install_snapshot(param);
+        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        if (eof) break;
+        offset += data.size();
+    }
 
     manager.start_tick();
     replica = wait_until_leader(manager);

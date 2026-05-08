@@ -60,4 +60,16 @@ Status MapEngine::clear() {
     return Status::OK();
 }
 
+Status MapEngine::for_each_kv(
+    const std::function<Status(const Key&, const Value&)>& fn) const {
+    std::shared_lock lock(map_mutex_);
+    for (const auto& [k, v] : map_) {
+        Status st = fn(k, v);
+        if (st.fail()) {
+            return st;
+        }
+    }
+    return Status::OK();
+}
+
 }  // namespace adviskv::storage

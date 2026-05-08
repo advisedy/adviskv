@@ -1,13 +1,19 @@
 #include <gtest/gtest.h>
 
+#include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "storage/persist/persist_engine.h"
 #include "storage/model/param.h"
 #include "storage/raft/state_machine/kv_state_machine.h"
+#include "test/test_env.h"
 
 namespace adviskv::storage {
 namespace {
+
+namespace fs = std::filesystem;
 
 std::string status_debug_string(const Status& status) {
     return "code=" + std::to_string(static_cast<int>(status.code())) +
@@ -61,14 +67,25 @@ TEST(KvStateMachineTest, SnapshotAndRestoreRoundTrip) {
     ASSERT_TRUE(source.apply(make_entry(4, 11, WriteOpType::PUT, "b", "2"))
                     .ok());
 
-    SnapshotPtr snapshot = source.snapshot();
+    static int sequence = 0;
+    auto base_dir = adviskv::test::make_unique_test_dir("kv_state_machine", sequence++);
+    ASSERT_TRUE(fs::create_directories(base_dir)) << base_dir.string();
+    PersistEngine persist(base_dir.string(),
+                          ReplicaID{.table_id = 1, .shard_index = 1, .replica_index = 0});
+    ASSERT_TRUE(persist.init().ok());
+    ASSERT_TRUE(persist.do_snapshot(source).ok());
+
+    SnapshotPtr snapshot = std::make_shared<Snapshot>();
+    ASSERT_TRUE(persist.load_snapshot_meta(snapshot).ok());
     ASSERT_NE(snapshot, nullptr);
     EXPECT_EQ(snapshot->apply_index, 11);
     EXPECT_EQ(snapshot->apply_term, 4);
-    ASSERT_EQ(snapshot->kvs.size(), 2U);
 
     KvStateMachine restored(EngineType::MAP);
-    Status status = restored.restore(snapshot);
+    Status status = restored.restore(
+        snapshot, [&persist](const KvVisitor& consume) -> Status {
+            return persist.for_each_snapshot_kv(consume);
+        });
     ASSERT_TRUE(status.ok()) << status_debug_string(status);
     EXPECT_EQ(restored.apply_index(), 11);
     EXPECT_EQ(restored.apply_term(), 4);
@@ -92,9 +109,18 @@ TEST(KvStateMachineTest, RestoreReplacesExistingData) {
     SnapshotPtr snapshot = std::make_shared<Snapshot>();
     snapshot->apply_index = 20;
     snapshot->apply_term = 5;
-    snapshot->kvs = {{"new", "y"}};
+    std::vector<KV> kvs = {{"new", "y"}};
 
-    Status status = state_machine.restore(snapshot);
+    Status status = state_machine.restore(
+        snapshot, [&kvs](const KvVisitor& consume) -> Status {
+            for (const auto& [key, value] : kvs) {
+                Status status = consume(key, value);
+                if (status.fail()) {
+                    return status;
+                }
+            }
+            return Status::OK();
+        });
     ASSERT_TRUE(status.ok()) << status_debug_string(status);
     EXPECT_EQ(state_machine.apply_index(), 20);
     EXPECT_EQ(state_machine.apply_term(), 5);

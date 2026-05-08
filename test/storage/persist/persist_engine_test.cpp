@@ -8,6 +8,7 @@
 #include "test/test_env.h"
 #include "storage/model/param.h"
 #include "storage/persist/persist_engine.h"
+#include "storage/raft/state_machine/kv_state_machine.h"
 #include "storage/raft/state_machine/state_machine.h"
 
 namespace fs = std::filesystem;
@@ -45,17 +46,6 @@ class PersistEngineTest : public ::testing::Test {
             .key = std::move(key),
             .value = std::move(value),
         };
-    }
-
-    static SnapshotPtr make_snapshot() {
-        auto snapshot = std::make_shared<Snapshot>();
-        snapshot->apply_index = 12;
-        snapshot->apply_term = 4;
-        snapshot->kvs = {
-            {"alpha", "1"},
-            {"beta", "2"},
-        };
-        return snapshot;
     }
 
     static inline int sequence_{0};
@@ -115,21 +105,33 @@ TEST_F(PersistEngineTest, SaveAndLoadRaftMeta) {
     EXPECT_EQ(actual.voted_for.value(), expected.voted_for.value());
 }
 
-TEST_F(PersistEngineTest, SaveAndLoadSnapshot) {
+TEST_F(PersistEngineTest, LoadSnapshotMetaWithoutLoadingKvs) {
     PersistEngine engine = make_engine();
     Status status = engine.init();
     ASSERT_TRUE(status.ok()) << status_debug_string(status);
 
-    SnapshotPtr expected = make_snapshot();
-    status = engine.save_snapshot(expected);
+    KvStateMachine state_machine(EngineType::MAP);
+    ASSERT_TRUE(
+        state_machine.apply(make_entry(4, 12, WriteOpType::NONE, "", ""))
+            .ok());
+    status = engine.do_snapshot(state_machine);
     ASSERT_TRUE(status.ok()) << status_debug_string(status);
 
     SnapshotPtr actual = std::make_shared<Snapshot>();
-    status = engine.load_snapshot(actual);
+    status = engine.load_snapshot_meta(actual);
     ASSERT_TRUE(status.ok()) << status_debug_string(status);
-    EXPECT_EQ(actual->apply_index, expected->apply_index);
-    EXPECT_EQ(actual->apply_term, expected->apply_term);
-    EXPECT_EQ(actual->kvs, expected->kvs);
+    EXPECT_EQ(actual->apply_index, 12);
+    EXPECT_EQ(actual->apply_term, 4);
+    EXPECT_FALSE(actual->path.empty());
+
+    size_t kv_count = 0;
+    status = engine.for_each_snapshot_kv(
+        [&kv_count](const Key&, const Value&) -> Status {
+            ++kv_count;
+            return Status::OK();
+        });
+    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    EXPECT_EQ(kv_count, 0U);
 }
 
 TEST_F(PersistEngineTest, TruncateWalKeepsEntriesAfterSnapshotIndex) {
@@ -173,20 +175,27 @@ TEST_F(PersistEngineTest, DoSnapshotPersistsSnapshotAndTruncatesWal) {
     status = engine.append_wal_batch(entries);
     ASSERT_TRUE(status.ok()) << status_debug_string(status);
 
-    SnapshotPtr snapshot = std::make_shared<Snapshot>();
-    snapshot->apply_index = 12;
-    snapshot->apply_term = 3;
-    snapshot->kvs = {{"a", "1"}, {"b", "2"}};
+    // Build a state machine that represents the snapshot state at index=12.
+    KvStateMachine state_machine(EngineType::MAP);
+    ASSERT_TRUE(state_machine.apply(make_entry(3, 11, WriteOpType::PUT, "a", "1")).ok());
+    ASSERT_TRUE(state_machine.apply(make_entry(3, 12, WriteOpType::PUT, "b", "2")).ok());
 
-    status = engine.do_snapshot(snapshot);
+    status = engine.do_snapshot(state_machine);
     ASSERT_TRUE(status.ok()) << status_debug_string(status);
 
     SnapshotPtr loaded_snapshot = std::make_shared<Snapshot>();
-    status = engine.load_snapshot(loaded_snapshot);
+    status = engine.load_snapshot_meta(loaded_snapshot);
     ASSERT_TRUE(status.ok()) << status_debug_string(status);
-    EXPECT_EQ(loaded_snapshot->apply_index, snapshot->apply_index);
-    EXPECT_EQ(loaded_snapshot->apply_term, snapshot->apply_term);
-    EXPECT_EQ(loaded_snapshot->kvs, snapshot->kvs);
+    EXPECT_EQ(loaded_snapshot->apply_index, 12);
+    EXPECT_EQ(loaded_snapshot->apply_term, 3);
+    std::vector<KV> loaded_kvs;
+    status = engine.for_each_snapshot_kv(
+        [&loaded_kvs](const Key& key, const Value& value) -> Status {
+            loaded_kvs.emplace_back(key, value);
+            return Status::OK();
+        });
+    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    EXPECT_EQ(loaded_kvs, (std::vector<KV>{{"a", "1"}, {"b", "2"}}));
 
     std::vector<LogEntry> actual;
     status = engine.read_wal_batch(actual);
@@ -205,7 +214,13 @@ TEST_F(PersistEngineTest, RecoverLoadsSnapshotMetaAndWalTogether) {
         make_entry(3, 21, WriteOpType::PUT, "hot", "cold"),
         make_entry(3, 22, WriteOpType::DEL, "trash", ""),
     };
-    const SnapshotPtr snapshot = make_snapshot();
+    KvStateMachine state_machine(EngineType::MAP);
+    ASSERT_TRUE(state_machine
+                    .apply(make_entry(4, 12, WriteOpType::PUT, "alpha", "1"))
+                    .ok());
+    ASSERT_TRUE(state_machine
+                    .apply(make_entry(4, 13, WriteOpType::PUT, "beta", "2"))
+                    .ok());
     const RaftMeta meta{
         .current_term = 11,
         .commit_index = 22,
@@ -214,7 +229,7 @@ TEST_F(PersistEngineTest, RecoverLoadsSnapshotMetaAndWalTogether) {
 
     status = engine.append_wal_batch(wal_entries);
     ASSERT_TRUE(status.ok()) << status_debug_string(status);
-    status = engine.save_snapshot(snapshot);
+    status = engine.do_snapshot(state_machine);
     ASSERT_TRUE(status.ok()) << status_debug_string(status);
     status = engine.save_raft_meta(meta);
     ASSERT_TRUE(status.ok()) << status_debug_string(status);
@@ -227,9 +242,16 @@ TEST_F(PersistEngineTest, RecoverLoadsSnapshotMetaAndWalTogether) {
     status = recovered_engine.recover(result);
     ASSERT_TRUE(status.ok()) << status_debug_string(status);
     ASSERT_NE(result.snapshot, nullptr);
-    EXPECT_EQ(result.snapshot->apply_index, snapshot->apply_index);
-    EXPECT_EQ(result.snapshot->apply_term, snapshot->apply_term);
-    EXPECT_EQ(result.snapshot->kvs, snapshot->kvs);
+    EXPECT_EQ(result.snapshot->apply_index, 13);
+    EXPECT_EQ(result.snapshot->apply_term, 4);
+    std::vector<KV> loaded_kvs;
+    status = recovered_engine.for_each_snapshot_kv(
+        [&loaded_kvs](const Key& key, const Value& value) -> Status {
+            loaded_kvs.emplace_back(key, value);
+            return Status::OK();
+        });
+    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    EXPECT_EQ(loaded_kvs, (std::vector<KV>{{"alpha", "1"}, {"beta", "2"}}));
     EXPECT_EQ(result.raft_meta.current_term, meta.current_term);
     EXPECT_EQ(result.raft_meta.commit_index, meta.commit_index);
     ASSERT_TRUE(result.raft_meta.voted_for.has_value());

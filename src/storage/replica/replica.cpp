@@ -69,20 +69,20 @@ Status Replica::put(const PutParam& param) {
 }
 
 Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
-    if (param.kvs.empty()) {
-        return Status{StatusCode::ERROR, "empty snapshot data"};
-    }
+    RETURN_IF_INVALID_STATUS(persist_->append_snapshot_chunk(param))
+    if (!param.done) return Status::OK();
 
     SnapshotPtr snap = std::make_shared<Snapshot>();
     snap->apply_index = param.snapshot_index;
     snap->apply_term = param.snapshot_term;
-    snap->kvs = param.kvs;
 
-    RETURN_IF_INVALID_STATUS(state_machine_->restore(snap));
+    RETURN_IF_INVALID_STATUS(persist_->finish_snapshot_receive(snap))
+    RETURN_IF_INVALID_STATUS(state_machine_->restore(
+        snap, [this](const KvVisitor& visitor) -> Status {
+            return persist_->for_each_snapshot_kv(visitor);
+        }))
     raft_node_->install_snapshot(param.snapshot_index, param.snapshot_term,
                                  param.term);
-
-    RETURN_IF_INVALID_STATUS(persist_->save_snapshot(snap));
 
     return Status::OK();
 }
@@ -100,7 +100,7 @@ void Replica::flush_messages() {
                                                      result);
                 } else {
                     LOG_WARN("[flush_messages] send_request_vote failed: {}",
-                         status.msg());
+                             status.msg());
                 }
                 break;
             }
@@ -115,10 +115,8 @@ void Replica::flush_messages() {
                 break;
             }
             case RaftMessageType::INSTALL_SNAPSHOT: {
-                auto snap = state_machine_->snapshot();
-                msg.snapshot_param.kvs = std::move(snap->kvs);
                 Status status = raft_sender_.send_install_snapshot(
-                    msg.target, msg.snapshot_param);
+                    msg.target, msg.snapshot_param, *persist_);
                 if (status.ok()) {
                     raft_node_->handle_install_snapshot_response(
                         msg.target.replica_id, true);
@@ -136,7 +134,7 @@ void Replica::apply_committed_entries() {
         Status status = state_machine_->apply(entry);
         if (status.fail()) {
             LOG_WARN("apply_log_entry failed, index={}, msg={}", entry.index,
-                 status.msg());
+                     status.msg());
             return;
         }
         raft_node_->advance_last_applied(entry.index);
@@ -179,7 +177,7 @@ Status Replica::get(const GetParam& param, Value& value) {
     Status status = state_machine_->get(param.key, value);
     if (status.fail()) {
         LOG_WARN("engine get is not ok, key = {}, msg = {}", param.key,
-             status.msg());
+                 status.msg());
     }
     return status;
 }
@@ -205,11 +203,10 @@ void Replica::try_take_snapshot() {
     LogIndex last_index = raft_node_->last_log_index();
     LogIndex apply_index = state_machine_->apply_index();
     if (last_index - apply_index < SNAPSHOT_LIMIT) return;
-    SnapshotPtr snap = state_machine_->snapshot();
-    Status status = persist_->do_snapshot(snap);
+    Status status = persist_->do_snapshot(*state_machine_);
     if (status.ok()) {
         // 持久化成功了，这边得截断wal日志了。
-        raft_node_->truncate_log(snap->apply_index);
+        raft_node_->truncate_log(state_machine_->apply_index());
     } else {
         LOG_WARN("...");
     }
@@ -237,7 +234,10 @@ Status Replica::recover() {
     RETURN_IF_INVALID_STATUS(persist_->recover(result))
 
     if (result.snapshot) {
-        RETURN_IF_INVALID_STATUS(state_machine_->restore(result.snapshot))
+        RETURN_IF_INVALID_STATUS(state_machine_->restore(
+            result.snapshot, [this](const KvVisitor& visitor) -> Status {
+                return persist_->for_each_snapshot_kv(visitor);
+            }))
         raft_node_->install_snapshot(result.snapshot->apply_index,
                                      result.snapshot->apply_term, 0);
     }

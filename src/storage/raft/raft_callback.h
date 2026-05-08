@@ -7,6 +7,7 @@
 #include "storage.grpc.pb.h"
 #include "storage.pb.h"
 #include "storage/model/param.h"
+#include "storage/persist/persist_engine.h"
 
 namespace adviskv::storage {
 
@@ -101,40 +102,53 @@ class RaftSender {
     }
 
     Status send_install_snapshot(const PeerMember& member,
-                                 const InstallSnapshotParam& param) const {
+                                 const InstallSnapshotParam& param,
+                                 const PersistEngine& persist) const {
         auto channel = grpc::CreateChannel(
             member.endpoint.ip + ":" + std::to_string(member.endpoint.port),
             grpc::InsecureChannelCredentials());
         auto stub = rpc::StorageService::NewStub(channel);
 
-        rpc::InstallSnapshotRequest request;
-        request.mutable_from()->set_table_id(param.from_replica_id.table_id);
-        request.mutable_from()->set_shard_index(
-            param.from_replica_id.shard_index);
-        request.mutable_from()->set_replica_index(
-            param.from_replica_id.replica_index);
+        constexpr size_t kChunkSize = 1 << 20;
+        uint64 offset = 0;
+        while (true) {
+            std::string data;
+            bool eof = false;
+            RETURN_IF_INVALID_STATUS(
+                persist.read_snapshot_chunk(offset, kChunkSize, data, eof))
 
-        request.mutable_to()->set_table_id(param.to_replica_id.table_id);
-        request.mutable_to()->set_shard_index(param.to_replica_id.shard_index);
-        request.mutable_to()->set_replica_index(
-            param.to_replica_id.replica_index);
+            rpc::InstallSnapshotRequest request;
+            request.mutable_from()->set_table_id(param.from_replica_id.table_id);
+            request.mutable_from()->set_shard_index(
+                param.from_replica_id.shard_index);
+            request.mutable_from()->set_replica_index(
+                param.from_replica_id.replica_index);
 
-        request.set_term(param.term);
-        request.set_apply_index(param.snapshot_index);
-        request.set_apply_term(param.snapshot_term);
+            request.mutable_to()->set_table_id(param.to_replica_id.table_id);
+            request.mutable_to()->set_shard_index(
+                param.to_replica_id.shard_index);
+            request.mutable_to()->set_replica_index(
+                param.to_replica_id.replica_index);
 
-        for (const auto& [k, v] : param.kvs) {
-            auto* kv = request.add_kvs();
-            kv->set_key(k);
-            kv->set_value(v);
+            request.set_term(param.term);
+            request.set_apply_index(param.snapshot_index);
+            request.set_apply_term(param.snapshot_term);
+            request.set_offset(offset);
+            request.set_data(data);
+            request.set_done(eof);
+
+            rpc::InstallSnapshotResponse response;
+            grpc::ClientContext context;
+            grpc::Status grpc_status =
+                stub->InstallSnapshot(&context, request, &response);
+            RETURN_IF_INVALID_CONDITION(grpc_status.ok(),
+                                        grpc_status.error_message())
+
+            if (eof) {
+                break;
+            }
+            offset += data.size();
         }
-
-        rpc::InstallSnapshotResponse response;
-        grpc::ClientContext context;
-        grpc::Status grpc_status =
-            stub->InstallSnapshot(&context, request, &response);
-        RETURN_IF_INVALID_CONDITION(grpc_status.ok(),
-                                    grpc_status.error_message())
         return Status::OK();
     }
 };

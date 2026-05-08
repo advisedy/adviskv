@@ -28,12 +28,15 @@ add_adviskv_gtest(map_engine_test
 add_adviskv_gtest(persist_engine_test
     ${CMAKE_SOURCE_DIR}/test/storage/persist/persist_engine_test.cpp
     ${CMAKE_SOURCE_DIR}/src/storage/persist/persist_engine.cpp
+    ${CMAKE_SOURCE_DIR}/src/storage/raft/state_machine/kv_state_machine.cpp
+    ${CMAKE_SOURCE_DIR}/src/storage/engine/map_engine.cpp
 )
 
 add_adviskv_gtest(kv_state_machine_test
     ${CMAKE_SOURCE_DIR}/test/storage/state_machine/kv_state_machine_test.cpp
     ${CMAKE_SOURCE_DIR}/src/storage/raft/state_machine/kv_state_machine.cpp
     ${CMAKE_SOURCE_DIR}/src/storage/engine/map_engine.cpp
+    ${CMAKE_SOURCE_DIR}/src/storage/persist/persist_engine.cpp
 )
 
 add_adviskv_gtest(replica_test

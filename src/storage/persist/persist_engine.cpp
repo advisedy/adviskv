@@ -5,6 +5,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <cassert>
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
@@ -42,6 +44,7 @@ Status PersistEngine::init() {
     wal_path_ = dir_path_ + "/wal.log";
     raft_meta_path_ = dir_path_ + "/raft_meta";
     snapshot_path_ = dir_path_ + "/snapshot";
+    snapshot_tmp_path_ = snapshot_path_ + ".tmp";
 
     mkdir(dir_path_.c_str(), 0755);
 
@@ -63,32 +66,11 @@ Status PersistEngine::close() {
 Status PersistEngine::append_wal(const LogEntry& entry) {
     std::unique_lock lock{mutex_};
     return write_wal_to_disk(wal_fd_, entry);
-    // EncodeBuffer buf;
-    // /*
-    //     Term term{0};
-    //     LogIndex index{0};
-    //     WriteOpType op_type;
-    //     Key key;
-    //     Value value;
-    // */
-    // buf.write_int64(entry.term);
-    // buf.write_int64(entry.index);
-    // buf.write_int32((int32_t)entry.op_type);
-    // buf.write_str(entry.key);
-    // buf.write_str(entry.value);
-    // int32_t len = buf.size();
-
-    // ::write(wal_fd_, &len, sizeof(int32_t));
-    // // TODO crc，这里以后补上
-    // ::write(wal_fd_, buf.data(), buf.size());
-
-    // return Status::OK();
 }
 
 Status PersistEngine::append_wal_batch(const std::vector<LogEntry>& entries) {
     std::unique_lock lock{mutex_};
     for (const LogEntry& entry : entries) {
-        // RETURN_IF_INVALID_STATUS(append_wal(entry))
         RETURN_IF_INVALID_STATUS(write_wal_to_disk(wal_fd_, entry))
     }
     ::fsync(wal_fd_);
@@ -131,49 +113,58 @@ Status PersistEngine::truncate_wal(const LogIndex& snapshot_index) {
     return Status::OK();
 }
 
-// private:
-// std::string PersistEngine::make_snapshot_path(LogIndex snap_index) const {
-//     return dir_path_ + "/snapshot_" + std::to_string(snap_index);
-// }
-
-Status PersistEngine::save_snapshot(const SnapshotPtr& snapshot) {
-    std::string tmp_path = snapshot_path_ + ".tmp";
-
-    int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-
-    if (fd < 0) {
-        return Status{StatusCode::ERROR, "fd < 0"};
+Status PersistEngine::read_snapshot_header(int fd, Snapshot* snapshot,
+                                           int32& kv_count) const {
+    int64 payload_len{0};
+    Status status = read_value(fd, payload_len);
+    if (status.code() == StatusCode::GET_EOF) {
+        kv_count = 0;
+        return Status::OK();
     }
+    RETURN_IF_INVALID_STATUS(status)
 
-    int64 total_len = sizeof(int64) + sizeof(int64) + sizeof(int32);
-    for (const auto& [key, value] : snapshot->kvs) {
-        total_len += sizeof(int32) + key.size();
-        total_len += sizeof(int32) + value.size();
+    LogIndex apply_index{0};
+    Term apply_term{0};
+    RETURN_IF_INVALID_STATUS(read_value(fd, apply_index))
+    RETURN_IF_INVALID_STATUS(read_value(fd, apply_term))
+    RETURN_IF_INVALID_STATUS(read_value(fd, kv_count))
+    if (kv_count < 0) {
+        return Status{StatusCode::ERROR, "invalid kv_count"};
     }
-
-    EncodeBuffer buf;
-    buf.write(total_len);
-    buf.write(snapshot->apply_index);
-    buf.write(snapshot->apply_term);
-    buf.write((int32)snapshot->kvs.size());
-    // TODO  感觉这里一直往buf写有点危险。
-    for (const auto& [key, value] : snapshot->kvs) {
-        buf.write(key);
-        buf.write(value);
+    if (snapshot) {
+        snapshot->apply_index = apply_index;
+        snapshot->apply_term = apply_term;
     }
-
-    write_full(fd, buf.data(), buf.size());
-
-    ::fsync(fd);
-    ::close(fd);
-
-    ::rename(tmp_path.c_str(), snapshot_path_.c_str());
     return Status::OK();
 }
 
-Status PersistEngine::load_snapshot(SnapshotPtr& snapshot) {
-    // TODO
+Status PersistEngine::load_snapshot_meta(SnapshotPtr& snapshot) const {
+    int fd = ::open(snapshot_path_.c_str(), O_RDONLY);
+    if (fd < 0) {
+        if (errno == ENOENT) {
+            snapshot.reset();
+            return Status::OK();
+        }
+        return Status::ERROR("fd < 0");
+    }
+    auto fd_guard = common::Defer([&fd]() {
+        if (fd != -1) {
+            ::close(fd);
+            fd = -1;
+        }
+    });
 
+    if (!snapshot) {
+        snapshot = std::make_shared<Snapshot>();
+    }
+    int32 kv_count{0};
+    RETURN_IF_INVALID_STATUS(read_snapshot_header(fd, snapshot.get(), kv_count))
+    snapshot->path = snapshot_path_;
+
+    return Status::OK();
+}
+
+Status PersistEngine::for_each_snapshot_kv(const KvVisitor& fn) const {
     int fd = ::open(snapshot_path_.c_str(), O_RDONLY);
     if (fd < 0) {
         if (errno == ENOENT) {
@@ -181,37 +172,185 @@ Status PersistEngine::load_snapshot(SnapshotPtr& snapshot) {
         }
         return Status::ERROR("fd < 0");
     }
-    auto fd_guard = common::Defer([fd]() { ::close(fd); });
-
-    int64 total_len{0};
-    {
-        Status status = (read_full(fd, &total_len, sizeof(int64)));
-        if (status.code() == StatusCode::GET_EOF) {
-            return Status::OK();
+    auto fd_guard = common::Defer([&fd]() {
+        if (fd != -1) {
+            ::close(fd);
+            fd = -1;
         }
-        RETURN_IF_INVALID_STATUS(status)
-    }
-    {
-        std::optional<DecodeBuffer> res = read_full2buffer(fd, total_len);
-        if (!res.has_value()) return Status::ERROR();
-        DecodeBuffer& buf = res.value();
-        RETURN_IF_INVALID_READ(buf, snapshot->apply_index)
-        RETURN_IF_INVALID_READ(buf, snapshot->apply_term)
+    });
 
-        int32 kv_count;
-        RETURN_IF_INVALID_READ(buf, kv_count)
-        for (int i = 0; i < kv_count; i++) {
-            Key key;
-            if (bool success = buf.read(key); !success)
-                return Status::ERROR();
-            Value value;
-            if (bool success = buf.read(value); !success)
-                return Status::ERROR();
-            snapshot->kvs.emplace_back(std::move(key), std::move(value));
-        }
+    int32 kv_count{0};
+    RETURN_IF_INVALID_STATUS(read_snapshot_header(fd, nullptr, kv_count))
+
+    for (int i = 0; i < kv_count; i++) {
+        Key key;
+        Value value;
+        RETURN_IF_INVALID_STATUS(read_string(fd, key))
+        RETURN_IF_INVALID_STATUS(read_string(fd, value))
+        RETURN_IF_INVALID_STATUS(fn(key, value))
     }
 
     return Status::OK();
+}
+
+Status PersistEngine::read_snapshot_chunk(uint64 offset, size_t max_bytes,
+                                          std::string& data, bool& eof) const {
+    data.clear();
+    eof = false;
+    int fd = ::open(snapshot_path_.c_str(), O_RDONLY);
+    if (fd < 0) {
+        return Status::ERROR("fd < 0");
+    }
+    auto fd_guard = common::Defer([&fd]() {
+        if (fd != -1) {
+            ::close(fd);
+            fd = -1;
+        }
+    });
+
+    struct stat st{};
+    if (::fstat(fd, &st) != 0) {
+        return Status::ERROR("failed to stat snapshot file");
+    }
+    if (offset > static_cast<uint64>(st.st_size)) {
+        return Status::ERROR("snapshot chunk offset out of range");
+    }
+
+    if (::lseek(fd, static_cast<off_t>(offset), SEEK_SET) < 0) {
+        return Status::ERROR("failed to seek snapshot file");
+    }
+
+    size_t read_len =
+        std::min(max_bytes, static_cast<size_t>(st.st_size - offset));
+    data.resize(read_len);
+    if (read_len > 0) {
+        RETURN_IF_INVALID_STATUS(read_full(fd, data.data(), read_len))
+    }
+    eof = offset + read_len >= static_cast<uint64>(st.st_size);
+    return Status::OK();
+}
+
+Status PersistEngine::append_snapshot_chunk(const InstallSnapshotParam& param) {
+    int flags = O_WRONLY | O_CREAT;
+    flags |= (param.offset == 0) ? O_TRUNC : O_APPEND;
+    int fd = ::open(snapshot_tmp_path_.c_str(), flags, 0644);
+    if (fd < 0) {
+        return Status::ERROR("failed to open snapshot tmp file");
+    }
+    auto fd_guard = common::Defer([&fd]() {
+        if (fd != -1) {
+            ::close(fd);
+            fd = -1;
+        }
+    });
+
+    struct stat st{};
+    if (::fstat(fd, &st) != 0) {
+        return Status::ERROR("failed to stat snapshot tmp file");
+    }
+    if (static_cast<uint64>(st.st_size) != param.offset) {
+        return Status::ERROR("snapshot chunk offset mismatch");
+    }
+    if (!param.data.empty()) {
+        RETURN_IF_INVALID_STATUS(
+            write_full(fd, param.data.data(), param.data.size()))
+    }
+    ::fsync(fd);
+    return Status::OK();
+}
+
+// 在快照的chunk都发送完了之后会调用这个
+Status PersistEngine::finish_snapshot_receive(const SnapshotPtr& snap) {
+    if (!snap) {
+        return Status::ERROR("snapshot is nullptr");
+    }
+    if (::rename(snapshot_tmp_path_.c_str(), snapshot_path_.c_str()) != 0) {
+        return Status::ERROR("failed to publish received snapshot");
+    }
+    snap->path = snapshot_path_;
+    return Status::OK();
+}
+
+Status PersistEngine::do_snapshot(const StateMachine& state_machine) {
+    // Stream snapshot without materializing all KVs.
+    int fd =
+        open(snapshot_tmp_path_.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) {
+        return Status{StatusCode::ERROR, "failed to open snapshot tmp file"};
+    }
+    auto fd_guard = common::Defer([&fd]() {
+        if (fd != -1) {
+            ::close(fd);
+            fd = -1;
+        }
+    });
+
+    LogIndex apply_index = state_machine.apply_index();
+    Term apply_term = state_machine.apply_term();
+
+    // Header placeholders.
+    RETURN_IF_INVALID_STATUS(write_value<int64>(fd, 0))
+    RETURN_IF_INVALID_STATUS(write_value(fd, apply_index))
+    RETURN_IF_INVALID_STATUS(write_value(fd, apply_term))
+    RETURN_IF_INVALID_STATUS(write_value<int32>(fd, 0))
+
+    int32 kv_count = 0;
+    Status it_status =
+        state_machine.for_each_kv([&](const Key& k, const Value& v) -> Status {
+            RETURN_IF_INVALID_STATUS(write_string(fd, k))
+            RETURN_IF_INVALID_STATUS(write_string(fd, v))
+            ++kv_count;
+            return Status::OK();
+        });
+    RETURN_IF_INVALID_STATUS(it_status)
+
+    off_t end_pos = ::lseek(fd, 0, SEEK_END);
+    if (end_pos < 0) {
+        return Status{StatusCode::ERROR, "lseek end failed"};
+    }
+    int64 payload_len = static_cast<int64>(end_pos) - sizeof(int64);
+
+    if (::lseek(fd, 0, SEEK_SET) < 0) {
+        return Status{StatusCode::ERROR, "lseek set failed"};
+    }
+    RETURN_IF_INVALID_STATUS(write_value(fd, payload_len))
+    if (::lseek(fd, sizeof(int64) + sizeof(int64) + sizeof(int64), SEEK_SET) <
+        0) {
+        return Status{StatusCode::ERROR, "lseek kv_count failed"};
+    }
+    RETURN_IF_INVALID_STATUS(write_value(fd, kv_count))
+
+    ::fsync(fd);
+    // Close before rename.
+    ::close(fd);
+    fd = -1;
+
+    // 1) Publish snapshot (atomic rename)
+    ::rename(snapshot_tmp_path_.c_str(), snapshot_path_.c_str());
+    // 2) Then truncate WAL up to snapshot index
+    RETURN_IF_INVALID_STATUS(truncate_wal(apply_index))
+    return Status::OK();
+}
+
+Status PersistEngine::write_string(int fd, const std::string& s) {
+    int32 len = static_cast<int32>(s.size());
+    RETURN_IF_INVALID_STATUS(write_value(fd, len))
+    assert(len > 0);
+    if (len == 0) return Status::OK();
+    return write_full(fd, s.data(), static_cast<size_t>(len));
+}
+
+Status PersistEngine::read_string(int fd, std::string& s) const {
+    int32 len{0};
+    RETURN_IF_INVALID_STATUS(read_value(fd, len))
+    if (len < 0) {
+        return Status{StatusCode::ERROR, "invalid string len"};
+    } else if (len == 0) {
+        s.clear();
+        return Status::OK();
+    }
+    s.resize(len);
+    return read_full(fd, s.data(), static_cast<size_t>(len));
 }
 
 Status PersistEngine::save_raft_meta(const RaftMeta& meta) {
@@ -293,12 +432,6 @@ Status PersistEngine::load_raft_meta(RaftMeta& meta) const {
     return Status::OK();
 }
 
-Status PersistEngine::do_snapshot(const SnapshotPtr& snap) {
-    RETURN_IF_INVALID_STATUS(save_snapshot(snap))
-    RETURN_IF_INVALID_STATUS(truncate_wal(snap->apply_index))
-    return Status::OK();
-}
-
 // buf.len + crc + buf [term + index + op_type + key + value]
 Status PersistEngine::write_wal_to_disk(int fd, const LogEntry& entry) {
     EncodeBuffer buf;
@@ -328,9 +461,9 @@ Status PersistEngine::write_wal_to_disk(int fd, const LogEntry& entry) {
 Status PersistEngine::recover(RecoverResult& result) {
     result = {};
 
-    auto&& snap = std::make_shared<Snapshot>();
-    Status snap_status = load_snapshot(snap);
-    if (snap_status.ok()) {
+    SnapshotPtr snap = std::make_shared<Snapshot>();
+    Status snap_status = load_snapshot_meta(snap);
+    if (snap_status.ok() && snap) {
         result.snapshot = snap;
     }
 

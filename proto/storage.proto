@@ -110,18 +110,15 @@ message AppendEntriesResponse{
   bool success = 3;
 }
 
-message SnapshotKV {
-  bytes key = 1;
-  bytes value = 2;
-}
-
 message InstallSnapshotRequest {
   adviskv.pb.ReplicaID from = 1;
   adviskv.pb.ReplicaID to = 2;
   int64 term = 3;
   int64 apply_index = 4;
   int64 apply_term = 5;
-  repeated SnapshotKV kvs = 6;
+  uint64 offset = 6;
+  bytes data = 7;
+  bool done = 8;
 }
 
 message InstallSnapshotResponse {

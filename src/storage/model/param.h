@@ -83,7 +83,9 @@ struct InstallSnapshotParam {
     Term term;
     LogIndex snapshot_index;
     Term snapshot_term;
-    std::vector<KV> kvs;
+    uint64 offset{0};
+    std::string data;
+    bool done{false};
 };
 
 enum class RaftMessageType : uint8_t {

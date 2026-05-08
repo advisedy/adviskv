@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <functional>
 
 #include "common/type.h"
 #include "storage/engine/kv_engine.h"
@@ -24,11 +25,14 @@ class KvStateMachine : public StateMachine {
     explicit KvStateMachine(EngineType engine_type);
 
     Status apply(const LogEntry& entry) override;
-    SnapshotPtr snapshot() const override;
-    Status restore(const SnapshotPtr& snap) override;
+    Status restore(const SnapshotPtr& snap,
+                   const KvForEach& for_each_kv) override;
     LogIndex apply_index() const override;
     LogIndex apply_term() const override;
     Status get(const Key& key, Value& value) const override;
+
+    Status for_each_kv(
+        const std::function<Status(const Key&, const Value&)>& fn) const override;
 
     KVEngine* engine() { return engine_.get(); }
 

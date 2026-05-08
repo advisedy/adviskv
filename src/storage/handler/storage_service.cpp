@@ -316,11 +316,10 @@ grpc::Status StorageServiceImpl::InstallSnapshot(
         .term = request->term(),
         .snapshot_index = request->apply_index(),
         .snapshot_term = request->apply_term(),
+        .offset = request->offset(),
+        .data = request->data(),
+        .done = request->done(),
     };
-
-    for (const auto& kv : request->kvs()) {
-        param.kvs.emplace_back(kv.key(), kv.value());
-    }
 
     Status status = replica->handle_install_snapshot(param);
 

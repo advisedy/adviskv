@@ -43,24 +43,30 @@ Status KvStateMachine::apply(const LogEntry& entry) {
     apply_index_ = entry.index;
     return Status::OK();
 }
-SnapshotPtr KvStateMachine::snapshot() const {
-    auto snap = std::make_shared<Snapshot>();
-    snap->apply_index = apply_index_;
-    snap->apply_term = apply_term_;
-    std::vector<KV> kvs = engine_->dump_all();
-    snap->kvs = std::move(kvs);
-    return snap;
-}
-Status KvStateMachine::restore(const SnapshotPtr& snap) {
+Status KvStateMachine::restore(const SnapshotPtr& snap,
+                               const KvForEach& for_each_kv) {
+    if (!snap) {
+        return Status{StatusCode::ERROR, "snapshot is nullptr"};
+    }
+    if (!engine_) {
+        return Status{StatusCode::ERROR, "engine is nullptr"};
+    }
+
+    engine_->clear();
+    RETURN_IF_INVALID_STATUS(for_each_kv([this](const Key& key,
+                                                const Value& value) -> Status {
+        return engine_->put(key, value);
+    }))
+
     apply_index_ = snap->apply_index;
     apply_term_ = snap->apply_term;
-    engine_->clear();
-    for (const KV& kv : snap->kvs) {
-        Status status = engine_->put(kv.first, kv.second);
-        if (status.fail()) {
-            LOG_WARN("restore warn");
-        }
-    }
+    // engine_->clear();
+    // for (const KV& kv : snap->kvs) {
+    //     Status status = engine_->put(kv.first, kv.second);
+    //     if (status.fail()) {
+    //         LOG_WARN("restore warn");
+    //     }
+    // }
     return Status::OK();
 }
 LogIndex KvStateMachine::apply_index() const { return apply_index_; }
@@ -68,6 +74,14 @@ LogIndex KvStateMachine::apply_term() const { return apply_term_; }
 
 Status KvStateMachine::get(const Key& key, Value& value) const {
     return engine_->get(key, value);
+}
+
+Status KvStateMachine::for_each_kv(
+    const std::function<Status(const Key&, const Value&)>& fn) const {
+    if (!engine_) {
+        return Status{StatusCode::ERROR, "engine is nullptr"};
+    }
+    return engine_->for_each_kv(fn);
 }
 
 }  // namespace adviskv::storage
