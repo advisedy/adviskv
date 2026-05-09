@@ -441,8 +441,8 @@ void RaftNode::become_leader() {
         .term = current_term_,
         .index = last_log_index_unlocked() + 1,
         .op_type = WriteOpType::NONE,
-        .key = {},
-        .value = {},
+        .key = {"for debug: this is a no-op entry key"},
+        .value = {"for debug: this is a no-op entry value"},
     };
     log_entries_.push_back(none_entry);
     persist_->append_wal(none_entry);

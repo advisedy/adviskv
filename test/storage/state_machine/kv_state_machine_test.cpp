@@ -31,7 +31,31 @@ LogEntry make_entry(Term term, LogIndex index, WriteOpType op_type,
     };
 }
 
-TEST(KvStateMachineTest, ApplyPutDeleteAndNoneUpdateState) {
+class KvStateMachineTest : public ::testing::Test {
+   protected:
+    void SetUp() override {
+        base_dir_ =
+            adviskv::test::make_unique_test_dir("kv_state_machine", sequence_++);
+        ASSERT_TRUE(fs::create_directories(base_dir_)) << base_dir_.string();
+    }
+
+    void TearDown() override {
+        std::error_code ec;
+        fs::remove_all(base_dir_, ec);
+    }
+
+    PersistEngine make_engine() const {
+        return PersistEngine(
+            base_dir_.string(),
+            ReplicaID{.table_id = 1, .shard_index = 1, .replica_index = 0});
+    }
+
+   private:
+    static inline int sequence_{0};
+    fs::path base_dir_;
+};
+
+TEST_F(KvStateMachineTest, ApplyPutDeleteAndNoneUpdateState) {
     KvStateMachine state_machine(EngineType::MAP);
 
     Status status =
@@ -60,18 +84,14 @@ TEST(KvStateMachineTest, ApplyPutDeleteAndNoneUpdateState) {
     EXPECT_EQ(state_machine.apply_term(), 3);
 }
 
-TEST(KvStateMachineTest, SnapshotAndRestoreRoundTrip) {
+TEST_F(KvStateMachineTest, SnapshotAndRestoreRoundTrip) {
     KvStateMachine source(EngineType::MAP);
     ASSERT_TRUE(source.apply(make_entry(4, 10, WriteOpType::PUT, "a", "1"))
                     .ok());
     ASSERT_TRUE(source.apply(make_entry(4, 11, WriteOpType::PUT, "b", "2"))
                     .ok());
 
-    static int sequence = 0;
-    auto base_dir = adviskv::test::make_unique_test_dir("kv_state_machine", sequence++);
-    ASSERT_TRUE(fs::create_directories(base_dir)) << base_dir.string();
-    PersistEngine persist(base_dir.string(),
-                          ReplicaID{.table_id = 1, .shard_index = 1, .replica_index = 0});
+    PersistEngine persist = make_engine();
     ASSERT_TRUE(persist.init().ok());
     ASSERT_TRUE(persist.do_snapshot(source).ok());
 
@@ -100,7 +120,7 @@ TEST(KvStateMachineTest, SnapshotAndRestoreRoundTrip) {
     EXPECT_EQ(value, "2");
 }
 
-TEST(KvStateMachineTest, RestoreReplacesExistingData) {
+TEST_F(KvStateMachineTest, RestoreReplacesExistingData) {
     KvStateMachine state_machine(EngineType::MAP);
     ASSERT_TRUE(
         state_machine.apply(make_entry(1, 1, WriteOpType::PUT, "old", "x"))

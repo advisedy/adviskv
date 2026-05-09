@@ -28,3 +28,17 @@ target_include_directories(storage PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/build/generated
 )
+
+
+add_library(adviskv_storage_lib
+    ${STORAGE_SOURCES}
+)
+
+target_link_libraries(adviskv_storage_lib PUBLIC
+    adviskv_common
+)
+
+target_include_directories(adviskv_storage_lib PUBLIC
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/build/generated
+)

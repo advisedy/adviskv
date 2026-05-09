@@ -18,8 +18,15 @@ struct RaftMeta {
     Term current_term;
     LogIndex commit_index{0};
     std::optional<ReplicaID> voted_for;
+    bool operator==(const RaftMeta& other) const {
+        if (voted_for.has_value() != other.voted_for.has_value()) return false;
+        return current_term == other.current_term and
+               commit_index == other.commit_index and
+               (voted_for.has_value()
+                    ? (voted_for.value() == other.voted_for.value())
+                    : true);
+    }
 };
-
 
 struct LogEntry {
     Term term{0};
@@ -27,6 +34,12 @@ struct LogEntry {
     WriteOpType op_type;
     Key key;
     Value value;
+
+    bool operator==(const LogEntry& other) const {
+        return term == other.term and index == other.index and
+               op_type == other.op_type and key == other.key and
+               value == other.value;
+    }
 };
 
 struct PutParam {
@@ -46,7 +59,7 @@ struct ReplicaInitParam {
     EngineType engine_type;
     Endpoint local_endpoint;
     std::vector<PeerMember> members;
-    std::string data_dir; // 存放那些持久化数据的根目录
+    std::string data_dir;  // 存放那些持久化数据的根目录
 };
 
 struct RequestVoteParam {

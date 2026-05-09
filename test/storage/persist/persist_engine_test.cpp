@@ -1,3 +1,5 @@
+#include "storage/persist/persist_engine.h"
+
 #include <gtest/gtest.h>
 
 #include <filesystem>
@@ -5,11 +7,10 @@
 #include <utility>
 #include <vector>
 
-#include "test/test_env.h"
 #include "storage/model/param.h"
-#include "storage/persist/persist_engine.h"
 #include "storage/raft/state_machine/kv_state_machine.h"
 #include "storage/raft/state_machine/state_machine.h"
+#include "test/test_env.h"
 
 namespace fs = std::filesystem;
 
@@ -20,7 +21,26 @@ std::string status_debug_string(const Status& status) {
     return "code=" + std::to_string(static_cast<int>(status.code())) +
            ", msg=" + status.msg();
 }
+/*
+测试内容列表:
 
+//1.
+//测试一下append_wal_batch和read_wal_batch是否可以正常运行
+
+//2.
+// 测试一下save_raft_meta和load_raft_meta是否可以正常运行
+
+//3.
+// 走正常流程，综合检测一下: 
+// 放entry。然后状态机应用跑快照，
+// 读取快照是否没有问题;
+// 跑快照后会截取wal，这个是否没有问题
+// persist在截取wal之后剩下的wal，是否没有问题
+
+4.
+
+
+*/
 class PersistEngineTest : public ::testing::Test {
    protected:
     void SetUp() override {
@@ -51,9 +71,11 @@ class PersistEngineTest : public ::testing::Test {
     static inline int sequence_{0};
 
     fs::path base_dir_;
-    ReplicaID replica_id_{.table_id = 101, .shard_index = 7, .replica_index = 2};
+    ReplicaID replica_id_{
+        .table_id = 101, .shard_index = 7, .replica_index = 2};
 };
 
+// 测试一下append_wal_batch和read_wal_batch是否可以正常运行
 TEST_F(PersistEngineTest, AppendWalBatchAndReadBackEntries) {
     PersistEngine engine = make_engine();
     Status status = engine.init();
@@ -82,6 +104,7 @@ TEST_F(PersistEngineTest, AppendWalBatchAndReadBackEntries) {
     }
 }
 
+// 测试一下save_raft_meta和load_raft_meta是否可以正常运行
 TEST_F(PersistEngineTest, SaveAndLoadRaftMeta) {
     PersistEngine engine = make_engine();
     Status status = engine.init();
@@ -90,7 +113,8 @@ TEST_F(PersistEngineTest, SaveAndLoadRaftMeta) {
     RaftMeta expected{
         .current_term = 9,
         .commit_index = 17,
-        .voted_for = ReplicaID{.table_id = 9, .shard_index = 2, .replica_index = 1},
+        .voted_for =
+            ReplicaID{.table_id = 9, .shard_index = 2, .replica_index = 1},
     };
 
     status = engine.save_raft_meta(expected);
@@ -105,6 +129,7 @@ TEST_F(PersistEngineTest, SaveAndLoadRaftMeta) {
     EXPECT_EQ(actual.voted_for.value(), expected.voted_for.value());
 }
 
+// MapEngine的状态机应用no-op entry，然后走快照，检测快照内容是否正确
 TEST_F(PersistEngineTest, LoadSnapshotMetaWithoutLoadingKvs) {
     PersistEngine engine = make_engine();
     Status status = engine.init();
@@ -112,8 +137,7 @@ TEST_F(PersistEngineTest, LoadSnapshotMetaWithoutLoadingKvs) {
 
     KvStateMachine state_machine(EngineType::MAP);
     ASSERT_TRUE(
-        state_machine.apply(make_entry(4, 12, WriteOpType::NONE, "", ""))
-            .ok());
+        state_machine.apply(make_entry(4, 12, WriteOpType::NONE, "", "")).ok());
     status = engine.do_snapshot(state_machine);
     ASSERT_TRUE(status.ok()) << status_debug_string(status);
 
@@ -134,6 +158,7 @@ TEST_F(PersistEngineTest, LoadSnapshotMetaWithoutLoadingKvs) {
     EXPECT_EQ(kv_count, 0U);
 }
 
+// 搞4个entry，然后截取前两个，检测截取wal之后，剩余的进行read_wal_batch是否正确
 TEST_F(PersistEngineTest, TruncateWalKeepsEntriesAfterSnapshotIndex) {
     PersistEngine engine = make_engine();
     Status status = engine.init();
@@ -162,6 +187,11 @@ TEST_F(PersistEngineTest, TruncateWalKeepsEntriesAfterSnapshotIndex) {
     EXPECT_EQ(actual[1].key, "k3");
 }
 
+//走正常流程，综合检测一下: 
+// 放entry。然后状态机应用跑快照，
+// 读取快照是否没有问题;
+// 跑快照后会截取wal，这个是否没有问题
+// persist在截取wal之后剩下的wal，是否没有问题
 TEST_F(PersistEngineTest, DoSnapshotPersistsSnapshotAndTruncatesWal) {
     PersistEngine engine = make_engine();
     Status status = engine.init();
@@ -177,8 +207,12 @@ TEST_F(PersistEngineTest, DoSnapshotPersistsSnapshotAndTruncatesWal) {
 
     // Build a state machine that represents the snapshot state at index=12.
     KvStateMachine state_machine(EngineType::MAP);
-    ASSERT_TRUE(state_machine.apply(make_entry(3, 11, WriteOpType::PUT, "a", "1")).ok());
-    ASSERT_TRUE(state_machine.apply(make_entry(3, 12, WriteOpType::PUT, "b", "2")).ok());
+    ASSERT_TRUE(
+        state_machine.apply(make_entry(3, 11, WriteOpType::PUT, "a", "1"))
+            .ok());
+    ASSERT_TRUE(
+        state_machine.apply(make_entry(3, 12, WriteOpType::PUT, "b", "2"))
+            .ok());
 
     status = engine.do_snapshot(state_machine);
     ASSERT_TRUE(status.ok()) << status_debug_string(status);
@@ -215,16 +249,17 @@ TEST_F(PersistEngineTest, RecoverLoadsSnapshotMetaAndWalTogether) {
         make_entry(3, 22, WriteOpType::DEL, "trash", ""),
     };
     KvStateMachine state_machine(EngineType::MAP);
-    ASSERT_TRUE(state_machine
-                    .apply(make_entry(4, 12, WriteOpType::PUT, "alpha", "1"))
-                    .ok());
-    ASSERT_TRUE(state_machine
-                    .apply(make_entry(4, 13, WriteOpType::PUT, "beta", "2"))
-                    .ok());
+    ASSERT_TRUE(
+        state_machine.apply(make_entry(4, 12, WriteOpType::PUT, "alpha", "1"))
+            .ok());
+    ASSERT_TRUE(
+        state_machine.apply(make_entry(4, 13, WriteOpType::PUT, "beta", "2"))
+            .ok());
     const RaftMeta meta{
         .current_term = 11,
         .commit_index = 22,
-        .voted_for = ReplicaID{.table_id = 101, .shard_index = 7, .replica_index = 0},
+        .voted_for =
+            ReplicaID{.table_id = 101, .shard_index = 7, .replica_index = 0},
     };
 
     status = engine.append_wal_batch(wal_entries);

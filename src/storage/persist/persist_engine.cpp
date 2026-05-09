@@ -65,7 +65,9 @@ Status PersistEngine::close() {
 
 Status PersistEngine::append_wal(const LogEntry& entry) {
     std::unique_lock lock{mutex_};
-    return write_wal_to_disk(wal_fd_, entry);
+    RETURN_IF_INVALID_STATUS(write_wal_to_disk(wal_fd_, entry))
+    ::fsync(wal_fd_);
+    return Status::OK();
 }
 
 Status PersistEngine::append_wal_batch(const std::vector<LogEntry>& entries) {
@@ -270,7 +272,7 @@ Status PersistEngine::finish_snapshot_receive(const SnapshotPtr& snap) {
     snap->path = snapshot_path_;
     return Status::OK();
 }
-
+// 拿到了状态机去做快照，快照落盘了之后再截取wal
 Status PersistEngine::do_snapshot(const StateMachine& state_machine) {
     // Stream snapshot without materializing all KVs.
     int fd =
@@ -477,6 +479,7 @@ Status PersistEngine::read_wal_from_disk(const std::string& path,
     int fd = ::open(path.c_str(), O_RDONLY);
     if (fd < 0) {
         if (errno == ENOENT) {
+            LOG_DEBUG("errno == ENOENT");
             entries.clear();
             return Status::OK();
         }
@@ -488,7 +491,11 @@ Status PersistEngine::read_wal_from_disk(const std::string& path,
     while (true) {
         int32 data_len;
         Status status = read_full(fd, &data_len, sizeof(int32));
-        if (status.code() == StatusCode::GET_EOF) break;
+        LOG_DEBUG("raed_full data_len = {}", data_len);
+        if (status.code() == StatusCode::GET_EOF) {
+            LOG_DEBUG("status code = GET_EOF");
+            break;
+        }
         if (status.fail()) return status;
 
         uint32 get_crc_val;
@@ -501,6 +508,8 @@ Status PersistEngine::read_wal_from_disk(const std::string& path,
 
         if (real_crc_val != get_crc_val) {
             return Status::ERROR("1");
+        } else {
+            LOG_DEBUG("crc value is right");
         }
 
         // buf.len + crc + buf [term + index + op_type + key + value]
