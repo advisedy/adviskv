@@ -239,6 +239,7 @@ TEST_F(PersistEngineTest, DoSnapshotPersistsSnapshotAndTruncatesWal) {
     EXPECT_EQ(actual[0].key, "c");
 }
 
+// 走快照之后，搞一个新的enginie去进行recover，检测recover的内容是否可以
 TEST_F(PersistEngineTest, RecoverLoadsSnapshotMetaAndWalTogether) {
     PersistEngine engine = make_engine();
     Status status = engine.init();
