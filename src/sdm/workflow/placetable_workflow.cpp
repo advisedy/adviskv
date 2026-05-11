@@ -14,7 +14,7 @@
 
 namespace adviskv::sdm {
 
-PlaceTableWorkflow::PlaceTableWorkflow(SdmStore* store, StorageClient* client,
+PlaceTableWorkflow::PlaceTableWorkflow(SdmStore* store, IStorageClient* client,
                                        NodeSelector* selector)
     : store_(store), client_(client), selector_(selector) {}
 

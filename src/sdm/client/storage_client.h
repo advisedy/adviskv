@@ -13,11 +13,18 @@
 
 namespace adviskv::sdm {
 
-class StorageClient {
+class IStorageClient {
+   public:
+    virtual ~IStorageClient() = default;
+
+    virtual Status create_replica(const CreateReplicaParam& param) = 0;
+};
+
+class StorageClient : public IStorageClient {
    public:
     StorageClient() = default;
 
-    Status create_replica(const CreateReplicaParam& param);
+    Status create_replica(const CreateReplicaParam& param) override;
 
    private:
     rpc::StorageService::Stub* make_stub(const std::string& ip, int32_t port);

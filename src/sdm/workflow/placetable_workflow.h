@@ -12,7 +12,7 @@ namespace adviskv::sdm {
 
 class PlaceTableWorkflow {
    public:
-    PlaceTableWorkflow(SdmStore* store, StorageClient* client,
+    PlaceTableWorkflow(SdmStore* store, IStorageClient* client,
                        NodeSelector* selector);
 
     Status step(Table& table);
@@ -32,7 +32,7 @@ class PlaceTableWorkflow {
                       const std::string& error_msg = "");
 
     SdmStore* store_;
-    StorageClient* client_;
+    IStorageClient* client_;
     NodeSelector* selector_;
 };
 

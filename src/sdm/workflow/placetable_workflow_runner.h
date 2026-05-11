@@ -13,7 +13,8 @@ namespace adviskv::sdm {
 
 class PlaceTableWorkflowRunner : public BackgroundTask {
    public:
-    PlaceTableWorkflowRunner(SdmStore* store, StorageClient* client, NodeSelector* selector);
+    PlaceTableWorkflowRunner(SdmStore* store, IStorageClient* client,
+                             NodeSelector* selector);
 
    protected:
     void run() override;
