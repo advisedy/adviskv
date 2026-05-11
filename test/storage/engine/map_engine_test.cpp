@@ -9,6 +9,7 @@
 namespace adviskv::storage {
 namespace {
 
+// put写入后get应能读回对应值
 TEST(MapEngineTest, PutAndGetExistingKey) {
     MapEngine engine;
 
@@ -20,6 +21,7 @@ TEST(MapEngineTest, PutAndGetExistingKey) {
     EXPECT_EQ(value, "v1");
 }
 
+// get不存在的key应返回KEY_NOT_FOUND
 TEST(MapEngineTest, GetMissingKeyReturnsKeyNotFound) {
     MapEngine engine;
 
@@ -28,6 +30,7 @@ TEST(MapEngineTest, GetMissingKeyReturnsKeyNotFound) {
     EXPECT_EQ(status.code(), StatusCode::KEY_NOT_FOUND);
 }
 
+// del删除已存在的key后，get应返回KEY_NOT_FOUND
 TEST(MapEngineTest, DeleteRemovesExistingKey) {
     MapEngine engine;
 
@@ -39,6 +42,7 @@ TEST(MapEngineTest, DeleteRemovesExistingKey) {
     EXPECT_EQ(status.code(), StatusCode::KEY_NOT_FOUND);
 }
 
+// dump_all应返回所有kv，clear应清空所有数据
 TEST(MapEngineTest, DumpAllAndClearReflectCurrentState) {
     MapEngine engine;
 

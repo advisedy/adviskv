@@ -49,6 +49,7 @@ class ReplicaManagerTest : public ::testing::Test {
     fs::path base_dir_;
 };
 
+// 空ReplicaManager按ID/shard查询应返回nullptr，replicas列表应为空
 TEST_F(ReplicaManagerTest, EmptyManagerReturnsNullForMissingReplica) {
     ReplicaManager manager(base_dir_.string());
 
@@ -58,6 +59,7 @@ TEST_F(ReplicaManagerTest, EmptyManagerReturnsNullForMissingReplica) {
     EXPECT_EQ(manager.get_data_dir(), base_dir_.string());
 }
 
+// add_replica后应能按ID和shard索引查到对应replica
 TEST_F(ReplicaManagerTest, AddReplicaIndexesByIdAndShard) {
     ReplicaManager manager(base_dir_.string());
     ReplicaID replica_id{.table_id = 7, .shard_index = 3, .replica_index = 0};
@@ -80,6 +82,7 @@ TEST_F(ReplicaManagerTest, AddReplicaIndexesByIdAndShard) {
     EXPECT_EQ(replicas[0]->get_replica_id(), replica_id);
 }
 
+// 重复添加相同replica_id或相同shard的replica应返回INVALID_ARGUMENT
 TEST_F(ReplicaManagerTest, RejectsDuplicateReplicaAndDuplicateShard) {
     ReplicaManager manager(base_dir_.string());
     ReplicaID replica_id{.table_id = 9, .shard_index = 1, .replica_index = 0};
@@ -99,6 +102,7 @@ TEST_F(ReplicaManagerTest, RejectsDuplicateReplicaAndDuplicateShard) {
     EXPECT_EQ(duplicate_shard_status.code(), StatusCode::INVALID_ARGUMENT);
 }
 
+// delete_replica后应无法再按ID或shard查到该replica
 TEST_F(ReplicaManagerTest, DeleteReplicaRemovesIndexes) {
     ReplicaManager manager(base_dir_.string());
     ReplicaID replica_id{.table_id = 5, .shard_index = 2, .replica_index = 0};

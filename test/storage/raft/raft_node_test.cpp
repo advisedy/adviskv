@@ -14,7 +14,8 @@ namespace fs = std::filesystem;
 class RaftNodeTest : public ::testing::Test {
    protected:
     void SetUp() override {
-        base_dir_ = adviskv::test::make_unique_test_dir("raft_node", sequence_++);
+        base_dir_ =
+            adviskv::test::make_unique_test_dir("raft_node", sequence_++);
         ASSERT_TRUE(fs::create_directories(base_dir_)) << base_dir_.string();
     }
 
@@ -98,6 +99,66 @@ TEST_F(RaftNodeTest, test_2) {
     }
 }
 
-// 测试一下
+// 进入recovering后，tick不应触发选举，RequestVote不应授票，propose应失败；
+// 收到AppendEntries补齐entries后应退出recovering
+TEST_F(RaftNodeTest, RecoveringBlocksElectionVoteAndProposeUntilCatchUp) {
+    ReplicaID leader_id{.table_id = 101, .shard_index = 7, .replica_index = 1};
+    std::vector<PeerMember> members{
+        PeerMember{"leader", leader_id, {}},
+        PeerMember{"self", replica_id_, {}},
+    };
+    RaftNode node{replica_id_, members, nullptr};
+
+    node.enter_recovering(2);
+    ASSERT_TRUE(node.is_recovering());
+
+    for (int i = 1; i <= 30; i++) {
+        node.tick();
+    }
+    ASSERT_EQ(node.role(), ReplicaRole::FOLLOWER);
+
+    RequestVoteResult vote_result;
+    node.handle_request_vote(RequestVoteParam{.from_replica_id = leader_id,
+                                              .to_replica_id = replica_id_,
+                                              .term = 1,
+                                              .last_log_index = 0,
+                                              .last_log_term = 0},
+                             vote_result);
+    ASSERT_FALSE(vote_result.vote_granted);
+
+    auto [status, new_index] = node.propose(WriteOpType::PUT, "k", "v");
+    ASSERT_TRUE(status.fail());
+    ASSERT_EQ(new_index, -1);
+
+    AppendEntriesResult append_result;
+    AppendEntriesParam append_param{
+        .from_replica_id = leader_id,
+        .to_replica_id = replica_id_,
+        .term = 1,
+        .entries = {make_entry(1, 1, WriteOpType::PUT, "k1", "v1"),
+                    make_entry(1, 2, WriteOpType::PUT, "k2", "v2")},
+        .prev_log_index = 0,
+        .prev_log_term = 0,
+        .leader_commit = 2};
+    node.handle_append_entries(append_param, append_result);
+
+    ASSERT_TRUE(append_result.success);
+    ASSERT_EQ(node.commit_index(), 2);
+    ASSERT_FALSE(node.is_recovering());
+}
+
+// 进入recovering后，install_snapshot覆盖recovery_target_commit_index时应退出recovering
+TEST_F(RaftNodeTest, RecoveringFinishesWhenSnapshotCoversTarget) {
+    RaftNode node{replica_id_, members_, nullptr};
+
+    node.enter_recovering(5);
+    ASSERT_TRUE(node.is_recovering());
+
+    node.install_snapshot(5, 2, 2);
+
+    ASSERT_EQ(node.snapshot_index(), 5);
+    ASSERT_EQ(node.commit_index(), 5);
+    ASSERT_FALSE(node.is_recovering());
+}
 
 }  // namespace adviskv::storage

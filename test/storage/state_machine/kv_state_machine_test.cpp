@@ -55,6 +55,7 @@ class KvStateMachineTest : public ::testing::Test {
     fs::path base_dir_;
 };
 
+// 测试PUT/DEL/NONE三种操作对状态机的更新是否正确
 TEST_F(KvStateMachineTest, ApplyPutDeleteAndNoneUpdateState) {
     KvStateMachine state_machine(EngineType::MAP);
 
@@ -84,6 +85,7 @@ TEST_F(KvStateMachineTest, ApplyPutDeleteAndNoneUpdateState) {
     EXPECT_EQ(state_machine.apply_term(), 3);
 }
 
+// 状态机做快照后，新创建的状态机通过restore应能恢复快照中的数据
 TEST_F(KvStateMachineTest, SnapshotAndRestoreRoundTrip) {
     KvStateMachine source(EngineType::MAP);
     ASSERT_TRUE(source.apply(make_entry(4, 10, WriteOpType::PUT, "a", "1"))
@@ -120,6 +122,7 @@ TEST_F(KvStateMachineTest, SnapshotAndRestoreRoundTrip) {
     EXPECT_EQ(value, "2");
 }
 
+// restore应替换状态机中的全部数据，旧key应被清除，新key应可读
 TEST_F(KvStateMachineTest, RestoreReplacesExistingData) {
     KvStateMachine state_machine(EngineType::MAP);
     ASSERT_TRUE(

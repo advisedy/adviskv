@@ -518,11 +518,6 @@ Status PersistEngine::recover(RecoverResult& result) {
     const LogIndex local_last_good_index =
         std::max(snapshot_index, wal_read_result.last_good_index);
 
-    if (!wal_read_result.error and
-        local_last_good_index >= original_commit_index) {
-        result.wal_recovery.action = WalRecoveryAction::NONE;
-        return Status::OK();
-    }
 
     result.wal_recovery.last_good_index = local_last_good_index;
     result.wal_recovery.last_good_offset = wal_read_result.last_good_offset;
@@ -538,7 +533,8 @@ Status PersistEngine::recover(RecoverResult& result) {
             result.wal_recovery.action = WalRecoveryAction::NEED_RAFT_CATCHUP;
             result.raft_meta.commit_index = local_last_good_index;
         } else {
-            assert(false);
+            // 这里是正常路线，没有问题
+            result.wal_recovery.action = WalRecoveryAction::NONE;
         }
         return Status::OK();
     }
