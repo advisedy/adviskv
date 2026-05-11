@@ -4,7 +4,7 @@
 #include "common/status.h"
 #include "sdm/manager/node_manager.h"
 #include "sdm/model/store.h"
-
+#include "common/func.h"
 namespace adviskv::sdm {
 
 NodeService::NodeService(SdmStore* sdm_store) : sdm_store_(sdm_store) {}
@@ -21,8 +21,9 @@ Status NodeService::register_node(const RegisterNodeParam& param) {
         .id = param.node_id,
         .spec.dc = param.dc,
         .spec.resource_pool = param.resource_pool,
+        .spec.status = NodeStatus::ONLINE,
         .state.endpoint = {param.ip, param.port},
-        .state.last_heartbeat_ts = 0,  // 这里待定先, //TODO
+        .state.last_heartbeat_ts = param.last_heartbeat_ts,
     };
     Status status = sdm_store_->put_node(node);
 

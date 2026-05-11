@@ -100,6 +100,7 @@ grpc::Status SdmServiceImpl::RegisterNode(
         .port = request->port(),
         .resource_pool = request->resource_pool(),
         .dc = request->dc(),
+        .last_heartbeat_ts = adviskv::get_current_ts_ms(),
     };
     Status status = node_service_->register_node(param);
     fill_base_rsp(response, status);

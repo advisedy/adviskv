@@ -35,7 +35,8 @@ Status DdlService::create_table(const CreateTableParam& param, TableMeta* table_
         .table_name = param.table_name,
         .db_name = param.db_name,
         .replica_count = param.replica_count,
-        .shard_count = param.shard_count
+        .shard_count = param.shard_count,
+        .resource_pool = param.resource_pool,
     };
 
     Status status = catalog_manager_->create_table(meta_param, table_meta);
@@ -110,6 +111,7 @@ Status SdmClient::call_place_table(const TableMeta& table_meta){
     request.set_table_name(table_meta.table_name);
     request.set_shard_count(table_meta.shard_count);
     request.set_replica_count(table_meta.replica_count);
+    request.set_resource_pool(table_meta.resource_pool);
     rpc::PlaceTableResponse response;
     grpc::ClientContext context;
     grpc::Status status = sdm_client->PlaceTable(&context, request, &response);

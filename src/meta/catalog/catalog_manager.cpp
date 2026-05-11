@@ -76,7 +76,8 @@ Status CatalogManager::create_table(const CreateTableMetaParam &param,
   new_table_meta.shard_count = param.shard_count;
   new_table_meta.replica_count = param.replica_count;
   new_table_meta.db_id = db_meta.db_id;
-
+  new_table_meta.resource_pool = param.resource_pool;
+  
   table_id2table_meta_[new_table_meta.table_id] = new_table_meta;
 
   db_table_name2table_id_[db_name][table_name] = new_table_meta.table_id;

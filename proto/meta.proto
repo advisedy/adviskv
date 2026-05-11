@@ -19,6 +19,7 @@ message CreateTableRequest {
   string table_name = 2;
   int32 shard_count = 3;
   int32 replica_count = 4;
+  string resource_pool = 5;
 }
 
 message CreateTableResponse {

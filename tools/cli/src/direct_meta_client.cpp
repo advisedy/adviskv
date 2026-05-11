@@ -53,7 +53,8 @@ Status DirectMetaClient::create_table(const std::string& db_name,
                                       const std::string& table_name,
                                       int32_t shard_count,
                                       int32_t replica_count,
-                                      TableID* table_id) const {
+                                      TableID* table_id,
+                                    std::string resource) const {
     RETURN_IF_INVALID_PARAM(target_)
     RETURN_IF_INVALID_CONDITION(table_id != nullptr,
                                 "table_id should not be nullptr")
@@ -63,7 +64,8 @@ Status DirectMetaClient::create_table(const std::string& db_name,
     request.set_table_name(table_name);
     request.set_shard_count(shard_count);
     request.set_replica_count(replica_count);
-
+    request.set_resource_pool(resource);
+    
     rpc::CreateTableResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +

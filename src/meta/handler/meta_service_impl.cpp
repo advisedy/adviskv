@@ -40,7 +40,9 @@ MetaServiceImpl::CreateTable(grpc::ServerContext *context,
       .table_name = request->table_name(),
       .shard_count = request->shard_count(),
       .replica_count = request->replica_count(),
+      .resource_pool = request->resource_pool(),
   };
+
   TableMeta table_meta;
   Status status = ddl_service_->create_table(param, &table_meta);
   fill_base_rsp(response, status);

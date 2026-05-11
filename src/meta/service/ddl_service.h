@@ -30,6 +30,7 @@ struct CreateTableParam {
     const std::string& table_name;
     int32_t shard_count;
     int32_t replica_count;
+    const std::string& resource_pool;
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
         RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")

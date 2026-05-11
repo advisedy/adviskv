@@ -77,6 +77,9 @@ int main(int argc, char* argv[]) {
         agent_conf.manager_port = CONF_GET_INT("manager_port");
         agent_conf.heartbeat_interval_ms =
             CONF_GET_INT("heartbeat_interval_ms");
+        std::string listen_host = adviskv::common::ConfMgr::get_instance()
+                                      .Get<std::string>("listen_host",
+                                                        agent_conf.ip);
 
         auto service =
             std::make_unique<StorageServiceImpl>(std::move(replica_manager));
@@ -94,13 +97,13 @@ int main(int argc, char* argv[]) {
         }
 
         grpc::ServerBuilder builder;
-        builder.AddListeningPort(fmt::format("0.0.0.0:{}", listen_port),
+        builder.AddListeningPort(fmt::format("{}:{}", listen_host, listen_port),
                                  grpc::InsecureServerCredentials());
 
         builder.RegisterService(service.get());
 
         std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
-        LOG_INFO("Server listening on 0.0.0.0:{}", listen_port);
+        LOG_INFO("Server listening on {}:{}", listen_host, listen_port);
 
         server->Wait();
         node_agent.stop();

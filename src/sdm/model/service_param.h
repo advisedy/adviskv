@@ -102,6 +102,7 @@ struct RegisterNodeParam {
     int32_t port;
     std::string resource_pool;
     std::string dc;
+    int64_t last_heartbeat_ts{0};
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(!node_id.empty(),
                                     "node_id should not empty")

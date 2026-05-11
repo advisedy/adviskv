@@ -1,5 +1,6 @@
 node_id: "storage-2"
 ip: "127.0.0.1"
+listen_host: "127.0.0.1"
 port: 50052
 resource_pool: "default"
 dc: "dc1"

@@ -1,3 +1,4 @@
+listen_host: "127.0.0.1"
 port: 50049
 
 logger_name: "sdm_log"

@@ -54,6 +54,9 @@ int main() {
         using namespace adviskv::meta;
 
         int32_t listen_port = CONF_GET_INT("port");
+        std::string listen_host = adviskv::common::ConfMgr::get_instance()
+                                      .Get<std::string>("listen_host",
+                                                        "127.0.0.1");
         std::string sdm_host = CONF_GET_STR("sdm_host");
         int32_t sdm_port = CONF_GET_INT("sdm_port");
 
@@ -71,12 +74,12 @@ int main() {
             ddl_service.get(), catalog_manager.get());
 
         grpc::ServerBuilder builder;
-        builder.AddListeningPort(fmt::format("0.0.0.0:{}", listen_port),
+        builder.AddListeningPort(fmt::format("{}:{}", listen_host, listen_port),
                                  grpc::InsecureServerCredentials());
         builder.RegisterService(meta_service.get());
 
         std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
-        LOG_INFO("Meta server listening on 0.0.0.0:{}", listen_port);
+        LOG_INFO("Meta server listening on {}:{}", listen_host, listen_port);
 
         server->Wait();
     }

@@ -148,9 +148,9 @@ int main(int argc, char* argv[]) {
             continue;
         }
         if (command == "create_table") {
-            if (tokens.size() != 5) {
+            if (tokens.size() != 6) {
                 fmt::print("usage: create_table <db_name> <table_name> "
-                           "<shard_count> <replica_count>\n");
+                           "<shard_count> <replica_count> <resource_pool>\n");
                 continue;
             }
             int32_t shard_count = 0;
@@ -162,7 +162,7 @@ int main(int argc, char* argv[]) {
             }
             TableID table_id = -1;
             const Status status = client.create_table(
-                tokens[1], tokens[2], shard_count, replica_count, &table_id);
+                tokens[1], tokens[2], shard_count, replica_count, &table_id, tokens[5]);
             if (status.ok()) {
                 fmt::print("OK table_id={}\n", table_id);
             } else {

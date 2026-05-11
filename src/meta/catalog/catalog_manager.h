@@ -26,6 +26,7 @@ struct TableMeta{
     DatabaseID db_id;
     std::string db_name;
     std::string table_name;
+    std::string resource_pool;
 };
 
 struct DBMeta{
@@ -49,7 +50,7 @@ struct CreateTableMetaParam {
     std::string table_name;
     int32_t shard_count;
     int32_t replica_count;
-
+    std::string resource_pool;
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
         RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")

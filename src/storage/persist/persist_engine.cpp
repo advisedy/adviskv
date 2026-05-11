@@ -47,7 +47,8 @@ Status PersistEngine::init() {
     raft_meta_path_ = dir_path_ + "/raft_meta";
     snapshot_path_ = dir_path_ + "/snapshot";
     snapshot_tmp_path_ = snapshot_path_ + ".tmp";
-
+    LOG_DEBUG("dir_path_={}, wal_path_={}, raft_meta_path_={}, snapshot_path_={}, snapshot_tmp_path_={}",
+              dir_path_, wal_path_, raft_meta_path_, snapshot_path_, snapshot_tmp_path_);
     mkdir(dir_path_.c_str(), 0755);
 
     wal_fd_ = ::open(wal_path_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);

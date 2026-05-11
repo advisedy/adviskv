@@ -39,7 +39,7 @@ class DirectMetaClient {
                      DatabaseID* db_id) const;
     Status create_table(const std::string& db_name, const std::string& table_name,
                         int32_t shard_count, int32_t replica_count,
-                        TableID* table_id) const;
+                        TableID* table_id, std::string resource_pool) const;
     Status get_table(const std::string& db_name, const std::string& table_name,
                      TableInfo* table_info) const;
 

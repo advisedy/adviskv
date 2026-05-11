@@ -1,11 +1,8 @@
-set(SDM_SOURCES
-    # current dir
-    ${CMAKE_CURRENT_SOURCE_DIR}/main/main.cpp
-    
+set(SDM_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/manager/node_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/manager/route_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/manager/meta_cache_manager.cpp
-    
+
     ${CMAKE_CURRENT_SOURCE_DIR}/handler/sdm_service_impl.cpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/service/route_service.cpp
@@ -30,9 +27,8 @@ set(SDM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/client/storage_client.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/workflow/placetable_workflow.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/workflow/placetable_workflow_runner.cpp
-    
+
     # binary dir
-    ${PROJECT_BINARY_DIR}/generated/common.pb.cc
     ${PROJECT_BINARY_DIR}/generated/sdm.pb.cc
     ${PROJECT_BINARY_DIR}/generated/sdm.grpc.pb.cc
     ${PROJECT_BINARY_DIR}/generated/storage.pb.cc
@@ -40,15 +36,23 @@ set(SDM_SOURCES
     
 )
 
-add_executable(sdm
-    ${SDM_SOURCES}
+add_library(adviskv_sdm_lib
+    ${SDM_LIB_SOURCES}
 )
 
-target_link_libraries(sdm PRIVATE
+target_link_libraries(adviskv_sdm_lib PUBLIC
     adviskv_common
 )
 
-target_include_directories(sdm PRIVATE
+target_include_directories(adviskv_sdm_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/build/generated
+)
+
+add_executable(sdm
+    ${CMAKE_CURRENT_SOURCE_DIR}/main/main.cpp
+)
+
+target_link_libraries(sdm PRIVATE
+    adviskv_sdm_lib
 )
