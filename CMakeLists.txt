@@ -18,4 +18,5 @@ enable_testing()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 add_subdirectory(src)
+add_subdirectory(tools/cli)
 add_subdirectory(test)
