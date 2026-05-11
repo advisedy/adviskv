@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -26,9 +27,11 @@ class Replica {
         return raft_node_ ? raft_node_->current_term() : 0;
     }
     ReplicaStatus get_status() const {
-        return (raft_node_ && state_machine_ && persist_) ? ReplicaStatus::READY
-                                                          : ReplicaStatus::ADDING;
+        return (raft_node_ && state_machine_ && persist_ && !is_recovering())
+                   ? ReplicaStatus::READY
+                   : ReplicaStatus::ADDING;
     }
+    bool is_recovering() const { return recovering_.load(); }
 
     Status put(const PutParam& param);
     Status get(const GetParam& param, Value& value);
@@ -58,6 +61,8 @@ class Replica {
     // 单条 apply
     // Status apply_log_entry(const LogEntry& entry);
 
+    void refresh_recovering_state();
+
     void try_take_snapshot();
 
     ShardID shard_id_;
@@ -73,6 +78,8 @@ class Replica {
 
     // 通信
     RaftSender raft_sender_;
+
+    std::atomic<bool> recovering_{false};
 
     // 定时器（驱动 tick）
     // TimerPtr tick_timer_;

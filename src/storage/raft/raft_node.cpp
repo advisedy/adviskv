@@ -58,6 +58,8 @@ bool RaftNode::later_than_other(Term other_term, LogIndex other_index) const {
 
 void RaftNode::tick() {
     std::lock_guard lock(mutex_);
+    if (recovering_) return;
+
     if (role_ == ReplicaRole::LEADER) {
         heartbeat_tick_trigger_.tick();
     } else {
@@ -82,6 +84,8 @@ void RaftNode::tick() {
 }
 
 void RaftNode::become_candidate() {
+    if (recovering_) return;
+
     election_generation_++;
     current_term_++;
     voted_for_ = self_id_;
@@ -133,6 +137,10 @@ void RaftNode::send_request_vote_to(const PeerMember& member) {
 std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
                                               const Value& value) {
     std::lock_guard lock(mutex_);  // ← 加锁
+
+    if (recovering_) {
+        return {Status::ERROR("raft node is recovering"), -1};
+    }
 
     if (role_ != ReplicaRole::LEADER) {
         return {Status{StatusCode::NOT_LEADER, "not leader"}, -1};
@@ -249,6 +257,11 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
         result.term = current_term_;
     }
 
+    if (recovering_) {
+        result.term = current_term_;
+        return;
+    }
+
     // 如果比人家的新 （是一定会新，不包括相等）
     if (later_than_other(param.last_log_term, param.last_log_index)) {
         return;
@@ -334,6 +347,7 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
             std::min(param.leader_commit, last_log_index_unlocked());
         save_raft_meta();
     }
+    maybe_finish_recovering_unlocked();
 
     result.success = true;
     result.term = current_term_;
@@ -424,6 +438,8 @@ void RaftNode::become_follower(Term later_term) {
 }
 
 void RaftNode::become_leader() {
+    if (recovering_) return;
+
     role_ = ReplicaRole::LEADER;
     // heartbeat_ticks_ = election_ticks_ = 0;
     election_tick_trigger_.reset(ELECTION_TIMEOUT);
@@ -452,6 +468,7 @@ void RaftNode::become_leader() {
     if (members_.size() == 1) {
         try_update_commit_index();
     }
+    maybe_finish_recovering_unlocked();
 }
 
 // raftnode 作为leader，需要更新自己的commit_idx
@@ -567,6 +584,7 @@ void RaftNode::install_snapshot(LogIndex new_snapshot_index,
     }
 
     save_raft_meta();
+    maybe_finish_recovering_unlocked();
 }
 
 void RaftNode::handle_install_snapshot_response(
@@ -583,6 +601,7 @@ void RaftNode::handle_install_snapshot_response(
 
     next_index_[from] = snapshot_index_ + 1;
     match_index_[from] = snapshot_index_;
+    maybe_finish_recovering_unlocked();
 }
 
 Status RaftNode::prepare_install_snapshot(Term leader_term,
@@ -614,6 +633,34 @@ void RaftNode::update_raft_meta(const RaftMeta& meta) {
 void RaftNode::update_log_entries(const std::vector<LogEntry>& entries) {
     std::lock_guard lock(mutex_);
     log_entries_ = entries;
+}
+
+void RaftNode::enter_recovering(LogIndex target_commit_index) {
+    std::lock_guard lock(mutex_);
+    recovering_ = true;
+    recovery_target_commit_index_ = target_commit_index;
+    role_ = ReplicaRole::FOLLOWER;
+    election_tick_trigger_.clear();
+    heartbeat_tick_trigger_.clear();
+    maybe_finish_recovering_unlocked();
+}
+
+void RaftNode::maybe_finish_recovering() {
+    std::lock_guard lock(mutex_);
+    maybe_finish_recovering_unlocked();
+}
+
+void RaftNode::maybe_finish_recovering_unlocked() {
+    if (!recovering_) return;
+
+    bool snapshot_covers_target = snapshot_index_ >= recovery_target_commit_index_;
+    bool log_covers_target = last_log_index_unlocked() >= recovery_target_commit_index_;
+    if (commit_index_ >= recovery_target_commit_index_ &&
+        (snapshot_covers_target || log_covers_target)) {
+        recovering_ = false;
+        recovery_target_commit_index_ = 0;
+        election_tick_trigger_.reset(ELECTION_TIMEOUT);
+    }
 }
 
 #undef ELECTION_TIMEOUT

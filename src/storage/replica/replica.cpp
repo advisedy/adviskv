@@ -44,6 +44,9 @@ Status Replica::init(const ReplicaInitParam& param) {
 
 Status Replica::put(const PutParam& param) {
     RETURN_IF_INVALID_PARAM(param)
+    if (is_recovering()) {
+        return Status::ERROR("replica is recovering");
+    }
 
     // 提交给 RaftNode
     auto [status, new_commit_idx] =
@@ -85,6 +88,7 @@ Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
         }))
     raft_node_->install_snapshot(param.snapshot_index, param.snapshot_term,
                                  param.term);
+    refresh_recovering_state();
 
     return Status::OK();
 }
@@ -142,6 +146,7 @@ void Replica::apply_committed_entries() {
         }
         raft_node_->advance_last_applied(entry.index);
     }
+    refresh_recovering_state();
 }
 
 // Status Replica::apply_log_entry(const LogEntry& entry) {
@@ -171,6 +176,9 @@ Status Replica::get(const GetParam& param, Value& value) {
     }
 
     RETURN_IF_INVALID_PARAM(param)
+    if (is_recovering()) {
+        return Status::ERROR("replica is recovering");
+    }
 
     // TODO: ReadIndex 保证线性一致性 以后待定吧
     if (!raft_node_->is_leader()) {
@@ -183,6 +191,12 @@ Status Replica::get(const GetParam& param, Value& value) {
                  status.msg());
     }
     return status;
+}
+
+void Replica::refresh_recovering_state() {
+    if (!raft_node_) return;
+    raft_node_->maybe_finish_recovering();
+    recovering_.store(raft_node_->is_recovering());
 }
 
 Status Replica::handle_request_vote(const RequestVoteParam& param,
@@ -249,6 +263,12 @@ Status Replica::recover() {
 
     raft_node_->update_raft_meta(result.raft_meta);
     raft_node_->update_log_entries(result.wal_entries);
+    if (result.wal_recovery.action == WalRecoveryAction::NEED_RAFT_CATCHUP) {
+        recovering_.store(true);
+        raft_node_->enter_recovering(
+            result.wal_recovery.recovery_target_commit_index);
+    }
+    refresh_recovering_state();
     return Status::OK();
 }
 

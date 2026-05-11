@@ -27,6 +27,8 @@
 #include "storage/raft/state_machine/state_machine.h"
 namespace adviskv::storage {
 
+static constexpr int32 MAX_WAL_ENTRY_PAYLOAD_BYTES = 64 * 1024 * 1024;
+
 PersistEngine::PersistEngine(const std::string& data_dir,
                              const ReplicaID& replica_id)
     : data_dir_(data_dir), replica_id_(replica_id) {}
@@ -81,7 +83,13 @@ Status PersistEngine::append_wal_batch(const std::vector<LogEntry>& entries) {
 
 Status PersistEngine::read_wal_batch(std::vector<LogEntry>& entries) {
     std::unique_lock lock{mutex_};
-    return read_wal_from_disk(wal_path_, entries);
+    WalReadResult result;
+    RETURN_IF_INVALID_STATUS(read_wal_from_disk(wal_path_, result))
+    entries = std::move(result.entries);
+    if (result.error) {
+        return Status::ERROR(result.error_msg);
+    }
+    return Status::OK();
 }
 
 Status PersistEngine::truncate_wal(const LogIndex& snapshot_index) {
@@ -110,6 +118,34 @@ Status PersistEngine::truncate_wal(const LogIndex& snapshot_index) {
     wal_fd_ = ::open(wal_path_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (wal_fd_ < 0) {
         return Status::ERROR("truncate wal error");
+    }
+
+    return Status::OK();
+}
+
+Status PersistEngine::truncate_wal_to_offset(int64_t offset) {
+    if (offset < 0) {
+        return Status::ERROR("wal truncate offset is negative");
+    }
+
+    if (wal_fd_ < 0) {
+        wal_fd_ =
+            ::open(wal_path_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+        if (wal_fd_ < 0) {
+            return Status::ERROR("failed to open wal for truncate");
+        }
+    }
+
+    if (::fsync(wal_fd_) != 0) {
+        return Status::ERROR("failed to fsync wal before truncate");
+    }
+
+    if (::ftruncate(wal_fd_, static_cast<off_t>(offset)) != 0) {
+        return Status::ERROR("failed to truncate wal to offset");
+    }
+
+    if (::fsync(wal_fd_) != 0) {
+        return Status::ERROR("failed to fsync truncated wal");
     }
 
     return Status::OK();
@@ -461,53 +497,142 @@ Status PersistEngine::write_wal_to_disk(int fd, const LogEntry& entry) {
 }
 
 Status PersistEngine::recover(RecoverResult& result) {
+    std::unique_lock lock{mutex_};
     result = {};
 
-    SnapshotPtr snap = std::make_shared<Snapshot>();
-    Status snap_status = load_snapshot_meta(snap);
-    if (snap_status.ok() && snap) {
-        result.snapshot = snap;
+    {
+        result.snapshot = std::make_shared<Snapshot>();
+        Status status = load_snapshot_meta(result.snapshot);
+        RETURN_IF_INVALID_STATUS(status)
     }
 
     RETURN_IF_INVALID_STATUS(load_raft_meta(result.raft_meta))
-    RETURN_IF_INVALID_STATUS(read_wal_batch(result.wal_entries))
+
+    const LogIndex original_commit_index = result.raft_meta.commit_index;
+    WalReadResult wal_read_result;
+    RETURN_IF_INVALID_STATUS(read_wal_from_disk(wal_path_, wal_read_result))
+    result.wal_entries = std::move(wal_read_result.entries);
+
+    const LogIndex snapshot_index =
+        result.snapshot ? result.snapshot->apply_index : 0;
+    const LogIndex local_last_good_index =
+        std::max(snapshot_index, wal_read_result.last_good_index);
+
+    if (!wal_read_result.error and
+        local_last_good_index >= original_commit_index) {
+        result.wal_recovery.action = WalRecoveryAction::NONE;
+        return Status::OK();
+    }
+
+    result.wal_recovery.last_good_index = local_last_good_index;
+    result.wal_recovery.last_good_offset = wal_read_result.last_good_offset;
+    result.wal_recovery.original_commit_index = original_commit_index;
+    result.wal_recovery.recovery_target_commit_index = original_commit_index;
+
+    if (!wal_read_result.error) {
+        if (local_last_good_index < original_commit_index) {
+            LOG_WARN(
+                "wal is complete but behind committed index during recover, "
+                "last_good_index={}, commit_index={}",
+                local_last_good_index, original_commit_index);
+            result.wal_recovery.action = WalRecoveryAction::NEED_RAFT_CATCHUP;
+            result.raft_meta.commit_index = local_last_good_index;
+        } else {
+            assert(false);
+        }
+        return Status::OK();
+    }
+
+    LOG_WARN(
+        "wal corrupted during recover, reason={}, last_good_index={}, "
+        "last_good_offset={}, commit_index={}",
+        wal_read_result.error_msg, local_last_good_index,
+        wal_read_result.last_good_offset, original_commit_index);
+
+    RETURN_IF_INVALID_STATUS(
+        truncate_wal_to_offset(wal_read_result.last_good_offset))
+
+    if (local_last_good_index >= original_commit_index) {
+        result.wal_recovery.action = WalRecoveryAction::TRUNCATED_UNCOMMITTED;
+    } else {
+        result.wal_recovery.action = WalRecoveryAction::NEED_RAFT_CATCHUP;
+        result.raft_meta.commit_index = local_last_good_index;
+    }
     return Status::OK();
 }
 
 Status PersistEngine::read_wal_from_disk(const std::string& path,
-                                         std::vector<LogEntry>& entries) {
+                                         WalReadResult& result) const {
     int fd = ::open(path.c_str(), O_RDONLY);
     if (fd < 0) {
         if (errno == ENOENT) {
             LOG_DEBUG("errno == ENOENT");
-            entries.clear();
+            result = {};
             return Status::OK();
         }
         return Status::ERROR("fd < 0");
     }
     auto fd_guard = common::Defer([fd]() { ::close(fd); });
 
-    entries.clear();
+    result = {};
+    LogIndex prev_index{0};
+    bool has_prev_index{false};
+
+    auto is_valid_wal_op_type = [](int32 op_type) {
+        return op_type == static_cast<int32>(WriteOpType::PUT) ||
+               op_type == static_cast<int32>(WriteOpType::DEL) ||
+               op_type == static_cast<int32>(WriteOpType::NONE);
+    };
+
     while (true) {
-        int32 data_len;
-        Status status = read_full(fd, &data_len, sizeof(int32));
-        LOG_DEBUG("raed_full data_len = {}", data_len);
-        if (status.code() == StatusCode::GET_EOF) {
-            LOG_DEBUG("status code = GET_EOF");
+        const int64 record_start_offset = result.last_good_offset;
+
+        int32 data_len{0};
+        Status read_len_status = read_full(fd, &data_len, sizeof(int32));
+        if (read_len_status.code() == StatusCode::GET_EOF) {
             break;
         }
-        if (status.fail()) return status;
+        if (read_len_status.code() == StatusCode::PARTIAL_READ) {
+            result.error = true;
+            result.error_msg = "partial wal data_len";
+            break;
+        }
+        RETURN_IF_INVALID_STATUS(read_len_status)
+        LOG_DEBUG("read_full data_len = {}", data_len);
 
-        uint32 get_crc_val;
-        RETURN_IF_INVALID_STATUS(read_full(fd, &get_crc_val, sizeof(uint32)))
+        if (data_len <= 0 or data_len > MAX_WAL_ENTRY_PAYLOAD_BYTES) {
+            result.error = true;
+            result.error_msg =
+                fmt::format("invalid wal data_len: {}", data_len);
+            break;
+        }
+
+        uint32 get_crc_val{0};
+        Status read_crc_status = read_full(fd, &get_crc_val, sizeof(uint32));
+        if (read_crc_status.code() == StatusCode::GET_EOF or
+            read_crc_status.code() == StatusCode::PARTIAL_READ) {
+            result.error = true;
+            result.error_msg = "partial wal crc";
+            break;
+        }
+        RETURN_IF_INVALID_STATUS(read_crc_status)
 
         std::vector<uint8_t> data(data_len);
-        RETURN_IF_INVALID_STATUS(read_full(fd, data.data(), data_len))
+        Status read_payload_status = read_full(fd, data.data(), data.size());
+        if (read_payload_status.code() == StatusCode::GET_EOF ||
+            read_payload_status.code() == StatusCode::PARTIAL_READ) {
+            result.error = true;
+            result.error_msg = "partial wal payload";
+            break;
+        }
+        RETURN_IF_INVALID_STATUS(read_payload_status)
 
         uint32 real_crc_val = compute_crc32(data.data(), data.size());
 
         if (real_crc_val != get_crc_val) {
-            return Status::ERROR("1");
+            result.error = true;
+            result.error_msg = "wal crc mismatch";
+            break;
         } else {
             LOG_DEBUG("crc value is right");
         }
@@ -515,17 +640,36 @@ Status PersistEngine::read_wal_from_disk(const std::string& path,
         // buf.len + crc + buf [term + index + op_type + key + value]
         DecodeBuffer buf(data);
         LogEntry entry;
-        RETURN_IF_INVALID_READ(buf, entry.term)
-        RETURN_IF_INVALID_READ(buf, entry.index)
-        int32 op_type;
-        RETURN_IF_INVALID_READ(buf, op_type)
+        int32 op_type{0};
+        if (!buf.read(entry.term) || !buf.read(entry.index) ||
+            !buf.read(op_type) || !buf.read(entry.key) ||
+            !buf.read(entry.value) || !buf.is_end()) {
+            result.error = true;
+            result.error_msg = "wal payload decode failure";
+            break;
+        }
+        if (!is_valid_wal_op_type(op_type)) {
+            result.error = true;
+            result.error_msg = fmt::format("invalid wal op_type: {}", op_type);
+            break;
+        }
         entry.op_type = (WriteOpType)op_type;
         LOG_DEBUG("entry term:{}, index:{}, op_type:{} ", entry.term,
                   entry.index, op_type)
-        RETURN_IF_INVALID_READ(buf, entry.key)
-        RETURN_IF_INVALID_READ(buf, entry.value)
+        if (has_prev_index && entry.index != prev_index + 1) {
+            result.error = true;
+            result.error_msg =
+                fmt::format("wal index is not continuous, prev={}, current={}",
+                            prev_index, entry.index);
+            break;
+        }
         LOG_DEBUG("enry key:{}, value:{}", entry.key, entry.value)
-        entries.push_back(std::move(entry));
+        result.entries.push_back(std::move(entry));
+        prev_index = result.entries.back().index;
+        has_prev_index = true;
+        result.last_good_index = prev_index;
+        result.last_good_offset =
+            record_start_offset + sizeof(int32) + sizeof(uint32) + data_len;
     }
     return Status::OK();
 }
@@ -550,9 +694,16 @@ Status PersistEngine::read_full(int fd, void* buf, size_t len) const {
     while (have_read_len < len) {
         ssize_t cur_read_len =
             ::read(fd, b + have_read_len, len - have_read_len);
-        if (cur_read_len == 0 and have_read_len == 0)
+        if (cur_read_len == 0 and have_read_len == 0) {
             return StatusCode::GET_EOF;
-        if (cur_read_len <= 0) {
+        }
+        if (cur_read_len == 0) {
+            return StatusCode::PARTIAL_READ;
+        }
+        if (cur_read_len < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
             return StatusCode::ERROR;
         }
         have_read_len += cur_read_len;

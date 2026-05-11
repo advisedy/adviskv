@@ -143,6 +143,14 @@ class RaftNode {
     void update_raft_meta(const RaftMeta& meta);
 
     void update_log_entries(const std::vector<LogEntry>& entries);
+
+    void enter_recovering(LogIndex target_commit_index);
+    bool is_recovering() const {
+        std::lock_guard lock(mutex_);
+        return recovering_;
+    }
+    void maybe_finish_recovering();
+
    private:
     LogIndex last_log_index_unlocked() const;
     Term last_log_term_unlocked() const;
@@ -160,6 +168,7 @@ class RaftNode {
 
     void try_update_commit_index();
     bool later_than_other(Term other_term, LogIndex other_index) const;
+    void maybe_finish_recovering_unlocked();
 
     // 对于raftNOde来说，发送RPC的申请交给了外包的replica，自己只需要负责放到vector里面就好了
     // replica那边会自动拿取队列里面的内容的
@@ -196,6 +205,8 @@ class RaftNode {
     PersistEngine* persist_;
     LogIndex snapshot_index_{0};
     Term snapshot_term_{0};
+    bool recovering_{false};
+    LogIndex recovery_target_commit_index_{0};
     mutable std::mutex mutex_;
 };
 
