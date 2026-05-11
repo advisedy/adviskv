@@ -1,4 +1,4 @@
-port: 50051
+port: 50049
 
 logger_name: "sdm_log"
 log_dir: "./build/logs/sdm"

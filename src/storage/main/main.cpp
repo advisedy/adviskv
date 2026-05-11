@@ -16,10 +16,10 @@
 
 namespace {
 
-void init_conf() {
+void init_conf(char* conf_file) {
     auto& conf_mgr = adviskv::common::ConfMgr::get_instance();
     conf_mgr.LoadFromFile(
-        adviskv::common::path_from_project_root("conf/storage-1.yaml")
+        adviskv::common::path_from_project_root(conf_file)
             .string());
 }
 void init_logger() {
@@ -40,9 +40,13 @@ void init_logger() {
 
 }  // namespace
 
-int main() {
+int main(int argc, char* argv[]) {
+    if (argc != 2) {
+        fmt::print(stderr, "need: <conf_file>\n");
+        return 1;
+    }
     try {
-        init_conf();
+        init_conf(argv[1]);
         init_logger();
         LOG_INFO("init phase finish");
     } catch (const std::exception& e) {

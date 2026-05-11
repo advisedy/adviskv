@@ -1,16 +1,16 @@
-node_id: "storage-1"
+node_id: "storage-2"
 ip: "127.0.0.1"
-port: 50051
+port: 50052
 resource_pool: "default"
 dc: "dc1"
-data_dir: "build/storage-1-data"
+data_dir: "build/storage-2-data"
 manager_host: "127.0.0.1"
 manager_port: 50049
 heartbeat_interval_ms: 3000
 
-logger_name: "storage-1_log"
-log_dir: "./build/logs/storage-1"
-log_filename: "storage-1.log"
+logger_name: "storage-2_log"
+log_dir: "./build/logs/storage-2"
+log_filename: "storage-2.log"
 log_level: "debug"
 log_to_console: true
 log_to_file: true

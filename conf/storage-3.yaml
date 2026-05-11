@@ -1,0 +1,20 @@
+node_id: "storage-3"
+ip: "127.0.0.1"
+port: 50053
+resource_pool: "default"
+dc: "dc1"
+data_dir: "build/storage-3-data"
+heartbeat_interval_ms: 3000
+
+
+#log
+logger_name: "storage-3_log"
+log_dir: "./build/logs/storage-3"
+log_filename: "storage-3.log"
+log_level: "debug"
+log_to_console: true
+log_to_file: true
+
+#sdm
+manager_host: "127.0.0.1"
+manager_port: 50049

@@ -1,6 +1,6 @@
-port: 50052
-sdm_host: "0.0.0.0"
-sdm_port: 50051
+port: 50048
+sdm_host: "127.0.0.1"
+sdm_port: 50049
 
 logger_name: "meta_log"
 log_dir: "./build/logs/meta"
