@@ -51,7 +51,7 @@ void HeartBeatCheckTask::run() {
 }
 
 Status HeartBeatCheckTask::check_and_modify_node(Node& node) {
-    int64_t delta_time = get_current_ts_ms() - node.state.last_heartbeat_ts;
+    int64_t delta_time = func::get_current_ts_ms() - node.state.last_heartbeat_ts;
     Status status = Status::OK();
     switch (node.spec.status) {
         case NodeStatus::ONLINE: {

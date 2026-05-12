@@ -3,7 +3,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace adviskv::common {
+namespace adviskv {
 
 template <typename F>
 class ScopeExit {
@@ -36,4 +36,4 @@ auto Defer(F&& fn) {
     return ScopeExit<std::decay_t<F>>(std::forward<F>(fn));
 }
 
-}  // namespace adviskv::common
+}  // namespace adviskv

@@ -1,6 +1,6 @@
 #include "common/thread_pool.h"
 
-namespace adviskv::common {
+namespace adviskv {
 
 ThreadPool::ThreadPool(size_t worker_count) {
     start(worker_count);
@@ -89,4 +89,4 @@ void ThreadPool::worker_loop() {
     }
 }
 
-}  // namespace adviskv::common
+}  // namespace adviskv

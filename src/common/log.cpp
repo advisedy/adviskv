@@ -11,7 +11,7 @@
 #include <spdlog/spdlog.h>
 
 
-namespace adviskv::common {
+namespace adviskv {
 
 namespace{
 

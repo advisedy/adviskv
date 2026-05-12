@@ -7,15 +7,15 @@
 namespace adviskv::sdm {
 
 PlaceTableWorkflowRunner::PlaceTableWorkflowRunner(SdmStore* store,
-                                                   StorageClient* client,
+                                                   IStorageClient* client,
                                                    NodeSelector* selector)
     : store_(store),
       workflow_(std::make_unique<PlaceTableWorkflow>(store, client, selector)),
-      need_run_lifecycles_({TableLifecycle::CREATING, TableLifecycle::PLACING,
-                            TableLifecycle::CREATING_REPLICAS,
-                            TableLifecycle::WAITING_READY,
-                            TableLifecycle::WAITING_ROUTE_READY,
-                            TableLifecycle::ROLLING_BACK}) {}
+      need_run_lifecycles_(
+          {TableLifecycle::CREATING, TableLifecycle::PLACING,
+           TableLifecycle::CREATING_REPLICAS, TableLifecycle::WAITING_READY,
+           TableLifecycle::WAITING_ROUTE_READY, TableLifecycle::ROLLING_BACK}) {
+}
 
 void PlaceTableWorkflowRunner::run() {
     for (auto lc : need_run_lifecycles_) {

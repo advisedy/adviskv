@@ -5,7 +5,7 @@
 #include <yaml-cpp/yaml.h>
 #include "common/log.h"
 
-namespace adviskv::common {
+namespace adviskv {
 
 class ConfMgr{
 
@@ -62,9 +62,9 @@ private:
     YAML::Node root_node_;
 };
 
-#define CONF_GET_INT(...) adviskv::common::ConfMgr::get_instance().Get<int>(__VA_ARGS__)
-#define CONF_GET_DOUBLE(...) adviskv::common::ConfMgr::get_instance().Get<double>(__VA_ARGS__)
-#define CONF_GET_STR(...) adviskv::common::ConfMgr::get_instance().Get<std::string>(__VA_ARGS__)
-#define CONF_GET_BOOL(...) adviskv::common::ConfMgr::get_instance().Get<bool>(__VA_ARGS__)
+#define CONF_GET_INT(...) adviskv::ConfMgr::get_instance().Get<int>(__VA_ARGS__)
+#define CONF_GET_DOUBLE(...) adviskv::ConfMgr::get_instance().Get<double>(__VA_ARGS__)
+#define CONF_GET_STR(...) adviskv::ConfMgr::get_instance().Get<std::string>(__VA_ARGS__)
+#define CONF_GET_BOOL(...) adviskv::ConfMgr::get_instance().Get<bool>(__VA_ARGS__)
 
 }

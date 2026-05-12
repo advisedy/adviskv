@@ -8,7 +8,7 @@
 #include <thread>
 #include <vector>
 
-namespace adviskv::common {
+namespace adviskv {
 
 class ThreadPool {
    public:
@@ -40,4 +40,4 @@ class ThreadPool {
     bool started_{false};
 };
 
-}  // namespace adviskv::common
+}  // namespace adviskv

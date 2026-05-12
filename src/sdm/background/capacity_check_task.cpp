@@ -57,7 +57,7 @@ Status CapacityCheckTask::check_replica_list(const Table& table,
         RETURN_IF_INVALID_STATUS(status)
     }
 
-    ad_erase_if(replicas, [](const ReplicaPtr& replica) {
+    func::ad_erase_if(replicas, [](const ReplicaPtr& replica) {
         return replica->spec.status == ReplicaStatus::LOST;
     });
 
