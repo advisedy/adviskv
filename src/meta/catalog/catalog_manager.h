@@ -41,6 +41,8 @@ public:
 
     Status create_db(const CreateDBMetaParam& param, DBMeta* db_meta);
     Status create_table(const CreateTableMetaParam& param, TableMeta* table_meta);
+    Status delete_db(DatabaseID db_id);
+    Status delete_table(TableID table_id);
     Status get_db(const std::string& db_name, DBMeta* db_meta);
     Status get_table_by_id(TableID table_id, TableMeta* table_meta);
     Status get_table_by_name(const std::string& db_name, const std::string& table_name, TableMeta* table_meta);

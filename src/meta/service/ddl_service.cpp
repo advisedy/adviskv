@@ -39,20 +39,37 @@ Status DdlService::create_table(const CreateTableParam& param, TableMeta* table_
         .resource_pool = param.resource_pool,
     };
 
-    Status status = catalog_manager_->create_table(meta_param, table_meta);
+    TableMeta created_table_meta;
+    Status status =
+        catalog_manager_->create_table(meta_param, &created_table_meta);
 
     RETURN_IF_INVALID_STATUS(status)
 
     if(!sdm_client_){
+        Status rollback_status =
+            catalog_manager_->delete_table(created_table_meta.table_id);
+        RETURN_IF_INVALID_STATUS(rollback_status)
         return Status{StatusCode::ERROR, "sdm_client is nullptr"};
     }
 
-    status = sdm_client_->call_place_table(*table_meta);
+    status = sdm_client_->call_place_table(created_table_meta);
+    if (status.fail()) {
+        Status rollback_status =
+            catalog_manager_->delete_table(created_table_meta.table_id);
+        if (rollback_status.fail()) {
+            return Status{
+                StatusCode::ERROR,
+                fmt::format("call sdm place_table failed: {}; rollback table "
+                            "failed: {}",
+                            status.to_string(), rollback_status.to_string())};
+        }
+        return status;
+    }
 
-    //TODO
-    // 记得check下失败的情况，后续补上
-
-    return status;
+    if (table_meta != nullptr) {
+        *table_meta = created_table_meta;
+    }
+    return Status::OK();
 
 }
 
@@ -72,18 +89,36 @@ Status DdlService::create_db(const CreateDBParam& param, DBMeta* db_meta){
         .zone = param.zone
     };
 
-    Status status = catalog_manager_->create_db(meta_param, db_meta);
+    DBMeta created_db_meta;
+    Status status = catalog_manager_->create_db(meta_param, &created_db_meta);
 
     RETURN_IF_INVALID_STATUS(status)
 
     if(!sdm_client_){
+        Status rollback_status =
+            catalog_manager_->delete_db(created_db_meta.db_id);
+        RETURN_IF_INVALID_STATUS(rollback_status)
         return Status{StatusCode::ERROR, "sdm_client is nullptr"};
     }
 
-    status = sdm_client_->call_place_db(*db_meta);
+    status = sdm_client_->call_place_db(created_db_meta);
+    if (status.fail()) {
+        Status rollback_status =
+            catalog_manager_->delete_db(created_db_meta.db_id);
+        if (rollback_status.fail()) {
+            return Status{
+                StatusCode::ERROR,
+                fmt::format("call sdm place_db failed: {}; rollback db "
+                            "failed: {}",
+                            status.to_string(), rollback_status.to_string())};
+        }
+        return status;
+    }
 
-    //TODO 如果失败了
-    return status;
+    if (db_meta != nullptr) {
+        *db_meta = created_db_meta;
+    }
+    return Status::OK();
 }
 
 Status DdlService::get_table(const GetTableParam& param, TableMeta* table_meta){

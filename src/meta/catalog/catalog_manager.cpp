@@ -163,6 +163,74 @@ Status CatalogManager::create_table(const CreateTableMetaParam &param,
     return Status::OK();
 }
 
+Status CatalogManager::delete_db(DatabaseID db_id) {
+    std::unique_lock lock(mutex_);
+
+    auto db_it = db_meta_map_.find(db_id);
+    if (db_it == db_meta_map_.end()) {
+        return Status{StatusCode::DB_NOT_FOUND,
+                      fmt::format("db_id:{} does not exist", db_id)};
+    }
+
+    auto table_set_it = db_id2table_ids_.find(db_id);
+    if (table_set_it != db_id2table_ids_.end() &&
+        !table_set_it->second.empty()) {
+        return Status{
+            StatusCode::INVALID_ARGUMENT,
+            fmt::format("db_id:{} still has tables, cannot delete", db_id)};
+    }
+
+    DBMeta old_db_meta = db_it->second;
+    db_meta_map_.erase(db_it);
+    db_name2db_id_.erase(old_db_meta.db_name);
+    db_id2table_ids_.erase(db_id);
+
+    Status status = persist_meta();
+    if (status.fail()) {
+        db_meta_map_[old_db_meta.db_id] = old_db_meta;
+        db_name2db_id_[old_db_meta.db_name] = old_db_meta.db_id;
+        return status;
+    }
+    return Status::OK();
+}
+
+Status CatalogManager::delete_table(TableID table_id) {
+    std::unique_lock lock(mutex_);
+
+    auto table_it = table_id2table_meta_.find(table_id);
+    if (table_it == table_id2table_meta_.end()) {
+        return Status{StatusCode::TABLE_NOT_FOUND,
+                      fmt::format("table_id:{} does not exist", table_id)};
+    }
+
+    TableMeta old_table_meta = table_it->second;
+    table_id2table_meta_.erase(table_it);
+
+    auto db_table_it = db_table_name2table_id_.find(old_table_meta.db_name);
+    if (db_table_it != db_table_name2table_id_.end()) {
+        db_table_it->second.erase(old_table_meta.table_name);
+        if (db_table_it->second.empty()) {
+            db_table_name2table_id_.erase(db_table_it);
+        }
+    }
+
+    auto db_table_ids_it = db_id2table_ids_.find(old_table_meta.db_id);
+    if (db_table_ids_it != db_id2table_ids_.end()) {
+        db_table_ids_it->second.erase(old_table_meta.table_id);
+    }
+
+    Status status = persist_meta();
+    if (status.fail()) {
+        table_id2table_meta_[old_table_meta.table_id] = old_table_meta;
+        db_table_name2table_id_[old_table_meta.db_name]
+                               [old_table_meta.table_name] =
+                                   old_table_meta.table_id;
+        db_id2table_ids_[old_table_meta.db_id].insert(old_table_meta.table_id);
+        return status;
+    }
+    return Status::OK();
+}
+
 Status CatalogManager::get_db(const std::string &db_name, DBMeta *db_meta) {
     std::shared_lock lock(mutex_);
     return lookup_db_by_name(db_name, db_meta);

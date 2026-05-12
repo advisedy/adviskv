@@ -405,7 +405,7 @@ Status PersistEngine::do_snapshot(const StateMachine& state_machine) {
     LogIndex apply_index = state_machine.apply_index();
     Term apply_term = state_machine.apply_term();
 
-    // Header placeholders.
+    // 这里先占位置
     RETURN_IF_INVALID_STATUS(func::write_value<int64>(fd, 0))
     RETURN_IF_INVALID_STATUS(func::write_value(fd, apply_index))
     RETURN_IF_INVALID_STATUS(func::write_value(fd, apply_term))
