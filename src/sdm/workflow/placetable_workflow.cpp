@@ -272,7 +272,7 @@ Status PlaceTableWorkflow::step_rolling_back(Table& table) {
 Status PlaceTableWorkflow::transition(Table& table, TableLifecycle next,
                                       const std::string& error_msg) {
     table.state.lifecycle = next;
-    table.state.last_transition_ts = get_current_ts_ms();
+    table.state.last_transition_ts = func::get_current_ts_ms();
     if ((next == TableLifecycle::ROLLING_BACK ||
          next == TableLifecycle::FAILED) &&
         !error_msg.empty()) {

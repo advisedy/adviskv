@@ -2,10 +2,9 @@
 
 #include <cstddef>
 #include <functional>
-#include <optional>
 #include <shared_mutex>
 
-#include "common/buffer.h"
+#include "common/func.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
@@ -64,17 +63,15 @@ class PersistEngine {
     Status truncate_wal_to_offset(int64_t offset);
     Status read_snapshot_header(int fd, Snapshot* snapshot,
                                 int32& kv_count) const;
-    Status write_full(int fd, const void* buf, size_t len);
-    Status read_full(int fd, void* buf, size_t len) const;
-    std::optional<DecodeBuffer> read_full2buffer(int fd, size_t len)const;
+
 
     template <typename T>
     Status write_value(int fd, const T& v) {
-        return write_full(fd, &v, sizeof(T));
+        return func::write_full(fd, &v, sizeof(T));
     }
     template <typename T>
     Status read_value(int fd, T& v) const {
-        return read_full(fd, &v, sizeof(T));
+        return func::read_full(fd, &v, sizeof(T));
     }
     Status write_string(int fd, const std::string& s);
     Status read_string(int fd, std::string& s) const;
