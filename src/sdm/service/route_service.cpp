@@ -29,6 +29,9 @@ Status RouteService::get_route(const GetRouteParam& param,
     std::shared_ptr<ShardRoute> route;
     status = sdm_store_->get_shard_route(shard_id, route);
     RETURN_IF_INVALID_STATUS(status)
+    if (route == nullptr) {
+        return Status::ROUTE_NOT_FOUND("route not found");
+    }
     if (res) {
         *res = *route;
     }
@@ -40,8 +43,8 @@ ShardID RouteService::calc_shard_id(const Table& table, Key key) const {
     // TODO 将来得搞range
     return ShardID{
         .table_id = table.table_id,
-        .shard_index = static_cast<ShardIndex>(
-            std::hash<Key>{}(key) % table.spec.shard_count),
+        .shard_index = static_cast<ShardIndex>(std::hash<Key>{}(key) %
+                                               table.spec.shard_count),
     };
 }
 

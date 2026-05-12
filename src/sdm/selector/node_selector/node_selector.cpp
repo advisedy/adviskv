@@ -40,7 +40,7 @@ Status DefaultNodeSelector::select_table_nodes(
     //     candidate_nodes.emplace_back(node);
     // }
 
-    ad_erase_if(candidate_nodes, [](const NodePtr& node) {
+    func::ad_erase_if(candidate_nodes, [](const NodePtr& node) {
         if (!node) return true;
         if (node->state.endpoint.ip.empty() or node->state.endpoint.port <= 0)
             return true;

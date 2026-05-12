@@ -2,9 +2,12 @@
 #include <grpcpp/server.h>
 #include <grpcpp/server_builder.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <string>
 
 #include "common/confmgr.h"
 #include "common/log.h"
@@ -24,25 +27,48 @@
 
 namespace {
 void init_conf() {
-    auto& conf_mgr = adviskv::common::ConfMgr::get_instance();
+    auto& conf_mgr = adviskv::ConfMgr::get_instance();
     conf_mgr.LoadFromFile(
-        adviskv::common::path_from_project_root("conf/sdm.yaml").string());
+        adviskv::path_from_project_root("conf/sdm.yaml").string());
 }
 
 void init_logger() {
-    adviskv::common::LogConfig config;
+    adviskv::LogConfig config;
     config.logger_name = CONF_GET_STR("logger_name");
-    config.log_dir = adviskv::common::path_from_config("log_dir").string();
+    config.log_dir = adviskv::path_from_config("log_dir").string();
     config.log_filename = CONF_GET_STR("log_filename");
     config.log_level = CONF_GET_STR("log_level");
     config.log_to_console = CONF_GET_BOOL("log_to_console");
     config.log_to_file = CONF_GET_BOOL("log_to_file");
-    adviskv::common::Logger::get_instance().init(config);
+    adviskv::Logger::get_instance().init(config);
     LOG_DEBUG(
         "logger config: logger_name={}, log_dir={}, log_filename={}, "
         "log_level={}, log_to_console={}, log_to_file={}",
         config.logger_name, config.log_dir, config.log_filename,
         config.log_level, config.log_to_console, config.log_to_file);
+}
+
+adviskv::sdm::SdmMetaStoreType get_metastore_type() {
+    std::string type =
+        CONF_GET_STR("metastore.type", std::string("memory"));
+    std::transform(type.begin(), type.end(), type.begin(),
+                   [](unsigned char ch) { return std::tolower(ch); });
+
+    if (type == "persistent") {
+        return adviskv::sdm::SdmMetaStoreType::PERSISTENT;
+    }
+    if (type != "memory") {
+        LOG_WARN("unknown sdm metastore type '{}', fallback to memory", type);
+    }
+    return adviskv::sdm::SdmMetaStoreType::MEMORY;
+}
+
+std::string get_metastore_data_dir() {
+    return adviskv::path_from_project_root(CONF_GET_STR(
+                                                       "metastore.data_dir",
+                                                       std::string("./build/"
+                                                                   "sdm_metastore")))
+        .string();
 }
 
 }  // namespace
@@ -61,7 +87,14 @@ int main() {
 
         int32_t listen_port = CONF_GET_INT("port");
 
-        auto sdm_store = std::make_unique<SdmStore>(SdmMetaStoreType::MEMORY);
+        const SdmMetaStoreType metastore_type = get_metastore_type();
+        const std::string metastore_data_dir = get_metastore_data_dir();
+        auto sdm_store =
+            std::make_unique<SdmStore>(metastore_type, metastore_data_dir);
+        LOG_INFO("SDM metastore initialized: type={}, data_dir={}",
+                 metastore_type == SdmMetaStoreType::PERSISTENT ? "persistent"
+                                                                : "memory",
+                 metastore_data_dir);
         auto storage_client = std::make_unique<StorageClient>();
         auto node_selector =
             std::make_unique<DefaultNodeSelector>(sdm_store.get());

@@ -6,7 +6,6 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <cassert>
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
@@ -17,9 +16,9 @@
 #include <vector>
 
 #include "common/buffer.h"
-#include "common/crc.h"
 #include "common/defer.h"
 #include "common/define.h"
+#include "common/framed_record_codec.h"
 #include "common/log.h"
 #include "common/status.h"
 #include "common/type.h"
@@ -28,6 +27,80 @@
 namespace adviskv::storage {
 
 static constexpr int32 MAX_WAL_ENTRY_PAYLOAD_BYTES = 64 * 1024 * 1024;
+static constexpr int64 MAX_RAFT_META_PAYLOAD_BYTES = 1024 * 1024;
+
+namespace {
+
+class WalEntryCodec {
+   public:
+    using ObjectType = LogEntry;
+    using LenType = int32;
+
+    LenType max_payload_len() const { return MAX_WAL_ENTRY_PAYLOAD_BYTES; }
+
+    void encode_payload(const ObjectType& entry, EncodeBuffer& buf) const {
+        buf.write(entry.term);
+        buf.write(entry.index);
+        buf.write(static_cast<int32>(entry.op_type));
+        buf.write(entry.key);
+        buf.write(entry.value);
+    }
+
+    Status decode_payload(DecodeBuffer& buf, ObjectType& entry) const {
+        int32 op_type{0};
+        RETURN_IF_INVALID_READ(buf, entry.term)
+        RETURN_IF_INVALID_READ(buf, entry.index)
+        RETURN_IF_INVALID_READ(buf, op_type)
+        RETURN_IF_INVALID_READ(buf, entry.key)
+        RETURN_IF_INVALID_READ(buf, entry.value)
+
+        if (op_type != static_cast<int32>(WriteOpType::PUT) &&
+            op_type != static_cast<int32>(WriteOpType::DEL) &&
+            op_type != static_cast<int32>(WriteOpType::NONE)) {
+            return Status::ERROR(fmt::format("invalid wal op_type: {}", op_type));
+        }
+        entry.op_type = static_cast<WriteOpType>(op_type);
+        return Status::OK();
+    }
+};
+
+class RaftMetaCodec {
+   public:
+    using ObjectType = RaftMeta;
+    using LenType = int64;
+
+    LenType max_payload_len() const { return MAX_RAFT_META_PAYLOAD_BYTES; }
+
+    void encode_payload(const ObjectType& meta, EncodeBuffer& buf) const {
+        buf.write(meta.current_term);
+        buf.write(meta.commit_index);
+        buf.write<bool>(meta.voted_for.has_value());
+        if (meta.voted_for.has_value()) {
+            const ReplicaID& replica_id = meta.voted_for.value();
+            buf.write(replica_id.table_id);
+            buf.write(replica_id.shard_index);
+            buf.write(replica_id.replica_index);
+        }
+    }
+
+    Status decode_payload(DecodeBuffer& buf, ObjectType& meta) const {
+        meta = {};
+        RETURN_IF_INVALID_READ(buf, meta.current_term)
+        RETURN_IF_INVALID_READ(buf, meta.commit_index)
+        bool has_voted_for{false};
+        RETURN_IF_INVALID_READ(buf, has_voted_for)
+        if (has_voted_for) {
+            ReplicaID replica_id;
+            RETURN_IF_INVALID_READ(buf, replica_id.table_id)
+            RETURN_IF_INVALID_READ(buf, replica_id.shard_index)
+            RETURN_IF_INVALID_READ(buf, replica_id.replica_index)
+            meta.voted_for = replica_id;
+        }
+        return Status::OK();
+    }
+};
+
+}  // namespace
 
 PersistEngine::PersistEngine(const std::string& data_dir,
                              const ReplicaID& replica_id)
@@ -186,7 +259,7 @@ Status PersistEngine::load_snapshot_meta(SnapshotPtr& snapshot) const {
         }
         return Status::ERROR("fd < 0");
     }
-    auto fd_guard = common::Defer([&fd]() {
+    auto fd_guard = Defer([&fd]() {
         if (fd != -1) {
             ::close(fd);
             fd = -1;
@@ -211,7 +284,7 @@ Status PersistEngine::for_each_snapshot_kv(const KvVisitor& fn) const {
         }
         return Status::ERROR("fd < 0");
     }
-    auto fd_guard = common::Defer([&fd]() {
+    auto fd_guard = Defer([&fd]() {
         if (fd != -1) {
             ::close(fd);
             fd = -1;
@@ -240,7 +313,7 @@ Status PersistEngine::read_snapshot_chunk(uint64 offset, size_t max_bytes,
     if (fd < 0) {
         return Status::ERROR("fd < 0");
     }
-    auto fd_guard = common::Defer([&fd]() {
+    auto fd_guard = Defer([&fd]() {
         if (fd != -1) {
             ::close(fd);
             fd = -1;
@@ -263,7 +336,7 @@ Status PersistEngine::read_snapshot_chunk(uint64 offset, size_t max_bytes,
         std::min(max_bytes, static_cast<size_t>(st.st_size - offset));
     data.resize(read_len);
     if (read_len > 0) {
-        RETURN_IF_INVALID_STATUS(read_full(fd, data.data(), read_len))
+        RETURN_IF_INVALID_STATUS(func::read_full(fd, data.data(), read_len))
     }
     eof = offset + read_len >= static_cast<uint64>(st.st_size);
     return Status::OK();
@@ -276,7 +349,7 @@ Status PersistEngine::append_snapshot_chunk(const InstallSnapshotParam& param) {
     if (fd < 0) {
         return Status::ERROR("failed to open snapshot tmp file");
     }
-    auto fd_guard = common::Defer([&fd]() {
+    auto fd_guard = Defer([&fd]() {
         if (fd != -1) {
             ::close(fd);
             fd = -1;
@@ -292,7 +365,7 @@ Status PersistEngine::append_snapshot_chunk(const InstallSnapshotParam& param) {
     }
     if (!param.data.empty()) {
         RETURN_IF_INVALID_STATUS(
-            write_full(fd, param.data.data(), param.data.size()))
+            func::write_full(fd, param.data.data(), param.data.size()))
     }
     ::fsync(fd);
     return Status::OK();
@@ -317,7 +390,7 @@ Status PersistEngine::do_snapshot(const StateMachine& state_machine) {
     if (fd < 0) {
         return Status{StatusCode::ERROR, "failed to open snapshot tmp file"};
     }
-    auto fd_guard = common::Defer([&fd]() {
+    auto fd_guard = Defer([&fd]() {
         if (fd != -1) {
             ::close(fd);
             fd = -1;
@@ -372,24 +445,11 @@ Status PersistEngine::do_snapshot(const StateMachine& state_machine) {
 }
 
 Status PersistEngine::write_string(int fd, const std::string& s) {
-    int32 len = static_cast<int32>(s.size());
-    RETURN_IF_INVALID_STATUS(write_value(fd, len))
-    assert(len > 0);
-    if (len == 0) return Status::OK();
-    return write_full(fd, s.data(), static_cast<size_t>(len));
+    return func::write_string(fd, s);
 }
 
 Status PersistEngine::read_string(int fd, std::string& s) const {
-    int32 len{0};
-    RETURN_IF_INVALID_STATUS(read_value(fd, len))
-    if (len < 0) {
-        return Status{StatusCode::ERROR, "invalid string len"};
-    } else if (len == 0) {
-        s.clear();
-        return Status::OK();
-    }
-    s.resize(len);
-    return read_full(fd, s.data(), static_cast<size_t>(len));
+    return func::read_string(fd, s);
 }
 
 Status PersistEngine::save_raft_meta(const RaftMeta& meta) {
@@ -400,37 +460,23 @@ Status PersistEngine::save_raft_meta(const RaftMeta& meta) {
     if (fd < 0) {
         return Status{StatusCode::ERROR, "fd < 0"};
     }
+    auto fd_guard = Defer([&fd]() {
+        if (fd != -1) {
+            ::close(fd);
+            fd = -1;
+        }
+    });
 
-    /*
-        Term current_term;
-        LogIndex commit_index{0};
-        std::optional<ReplicaID> voted_for;
-        // term + index + table_id + shard_id + replica_id
-    */
-    int64 total_len = sizeof(int64) + sizeof(int64) + sizeof(bool) +
-                      (meta.voted_for.has_value() ? (sizeof(int32) * 3) : 0);
-    EncodeBuffer buf;
-    buf.write<int64>(total_len);
-    buf.write<int64>(meta.current_term);
-    buf.write<int64>(meta.commit_index);
-    buf.write<bool>(meta.voted_for.has_value());
-    if (meta.voted_for.has_value()) {
-        ReplicaID replica_id = meta.voted_for.value();
-        buf.write<int32>(replica_id.table_id);
-        buf.write<int32>(replica_id.shard_index);
-        buf.write<int32>(replica_id.replica_index);
-    }
-    write_full(fd, buf.data(), buf.size());
+    RETURN_IF_INVALID_STATUS(FramedRecord<RaftMetaCodec>::encode_to_fd(fd, meta))
 
     ::fsync(fd);
     ::close(fd);
+    fd = -1;
 
     ::rename(tmp_path.c_str(), raft_meta_path_.c_str());
     return Status::OK();
 }
 Status PersistEngine::load_raft_meta(RaftMeta& meta) const {
-    // TODO
-
     int fd = ::open(raft_meta_path_.c_str(), O_RDONLY);
 
     if (fd < 0) {
@@ -440,61 +486,19 @@ Status PersistEngine::load_raft_meta(RaftMeta& meta) const {
         }
         return Status{StatusCode::ERROR, "fd < 0"};
     }
-    auto fd_guard = common::Defer([fd]() { ::close(fd); });
+    auto fd_guard = Defer([fd]() { ::close(fd); });
 
-    meta = {};
-    int64 total_len = 0;
-    {
-        Status status = (read_full(fd, &total_len, sizeof(int64)));
-        if (status.code() == StatusCode::GET_EOF) {
-            return Status::OK();
-        }
-        RETURN_IF_INVALID_STATUS(status)
+    Status status = FramedRecord<RaftMetaCodec>::decode_from_fd(fd, meta);
+    if (status.code() == StatusCode::GET_EOF) {
+        meta = {};
+        return Status::OK();
     }
-    {
-        std::optional<DecodeBuffer> res = read_full2buffer(fd, total_len);
-        if (!res.has_value()) return Status::ERROR();
-        DecodeBuffer& buf = res.value();
-
-        RETURN_IF_INVALID_READ(buf, meta.current_term)
-        RETURN_IF_INVALID_READ(buf, meta.commit_index)
-        bool vote_for{false};
-        RETURN_IF_INVALID_READ(buf, vote_for)
-        if (vote_for) {
-            ReplicaID replica_id;
-            RETURN_IF_INVALID_READ(buf, replica_id.table_id)
-            RETURN_IF_INVALID_READ(buf, replica_id.shard_index)
-            RETURN_IF_INVALID_READ(buf, replica_id.replica_index)
-            meta.voted_for = replica_id;
-        }
-    }
-    return Status::OK();
+    return status;
 }
 
 // buf.len + crc + buf [term + index + op_type + key + value]
 Status PersistEngine::write_wal_to_disk(int fd, const LogEntry& entry) {
-    EncodeBuffer buf;
-    /*
-        Term term{0};
-        LogIndex index{0};
-        WriteOpType op_type;
-        Key key;
-        Value value;
-    */
-    buf.write(entry.term);
-    buf.write(entry.index);
-    buf.write((int32)entry.op_type);
-    buf.write(entry.key);
-    buf.write(entry.value);
-    int32_t len = buf.size();
-
-    write_full(fd, &len, sizeof(int32_t));
-    // crc，这里以后补上 // 补上了
-    uint32 crc_val = compute_crc32(buf.data(), buf.size());
-    write_full(fd, &crc_val, sizeof(uint32));
-    write_full(fd, buf.data(), buf.size());
-
-    return Status::OK();
+    return FramedRecord<WalEntryCodec>::encode_to_fd(fd, entry);
 }
 
 Status PersistEngine::recover(RecoverResult& result) {
@@ -569,90 +573,42 @@ Status PersistEngine::read_wal_from_disk(const std::string& path,
         }
         return Status::ERROR("fd < 0");
     }
-    auto fd_guard = common::Defer([fd]() { ::close(fd); });
+    auto fd_guard = Defer([fd]() { ::close(fd); });
 
     result = {};
     LogIndex prev_index{0};
     bool has_prev_index{false};
 
-    auto is_valid_wal_op_type = [](int32 op_type) {
-        return op_type == static_cast<int32>(WriteOpType::PUT) ||
-               op_type == static_cast<int32>(WriteOpType::DEL) ||
-               op_type == static_cast<int32>(WriteOpType::NONE);
-    };
-
     while (true) {
         const int64 record_start_offset = result.last_good_offset;
 
-        int32 data_len{0};
-        Status read_len_status = read_full(fd, &data_len, sizeof(int32));
-        if (read_len_status.code() == StatusCode::GET_EOF) {
-            break;
-        }
-        if (read_len_status.code() == StatusCode::PARTIAL_READ) {
-            result.error = true;
-            result.error_msg = "partial wal data_len";
-            break;
-        }
-        RETURN_IF_INVALID_STATUS(read_len_status)
-        LOG_DEBUG("read_full data_len = {}", data_len);
-
-        if (data_len <= 0 or data_len > MAX_WAL_ENTRY_PAYLOAD_BYTES) {
-            result.error = true;
-            result.error_msg =
-                fmt::format("invalid wal data_len: {}", data_len);
-            break;
-        }
-
-        uint32 get_crc_val{0};
-        Status read_crc_status = read_full(fd, &get_crc_val, sizeof(uint32));
-        if (read_crc_status.code() == StatusCode::GET_EOF or
-            read_crc_status.code() == StatusCode::PARTIAL_READ) {
-            result.error = true;
-            result.error_msg = "partial wal crc";
-            break;
-        }
-        RETURN_IF_INVALID_STATUS(read_crc_status)
-
-        std::vector<uint8_t> data(data_len);
-        Status read_payload_status = read_full(fd, data.data(), data.size());
-        if (read_payload_status.code() == StatusCode::GET_EOF ||
-            read_payload_status.code() == StatusCode::PARTIAL_READ) {
-            result.error = true;
-            result.error_msg = "partial wal payload";
-            break;
-        }
-        RETURN_IF_INVALID_STATUS(read_payload_status)
-
-        uint32 real_crc_val = compute_crc32(data.data(), data.size());
-
-        if (real_crc_val != get_crc_val) {
-            result.error = true;
-            result.error_msg = "wal crc mismatch";
-            break;
-        } else {
-            LOG_DEBUG("crc value is right");
-        }
-
-        // buf.len + crc + buf [term + index + op_type + key + value]
-        DecodeBuffer buf(data);
         LogEntry entry;
-        int32 op_type{0};
-        if (!buf.read(entry.term) || !buf.read(entry.index) ||
-            !buf.read(op_type) || !buf.read(entry.key) ||
-            !buf.read(entry.value) || !buf.is_end()) {
-            result.error = true;
-            result.error_msg = "wal payload decode failure";
+        size_t consumed_bytes{0};
+        Status read_status = FramedRecord<WalEntryCodec>::decode_from_fd(
+            fd, entry, consumed_bytes);
+        if (read_status.code() == StatusCode::GET_EOF) {
+            struct stat st {};
+            if (::fstat(fd, &st) == 0 &&
+                static_cast<int64>(st.st_size) > result.last_good_offset) {
+                result.error = true;
+                result.error_msg = "partial wal record";
+            }
             break;
         }
-        if (!is_valid_wal_op_type(op_type)) {
+        if (read_status.code() == StatusCode::PARTIAL_READ) {
             result.error = true;
-            result.error_msg = fmt::format("invalid wal op_type: {}", op_type);
+            result.error_msg = "partial wal record";
             break;
         }
-        entry.op_type = (WriteOpType)op_type;
-        LOG_DEBUG("entry term:{}, index:{}, op_type:{} ", entry.term,
-                  entry.index, op_type)
+        if (read_status.fail()) {
+            result.error = true;
+            result.error_msg = read_status.msg().empty()
+                                   ? "wal record decode failure"
+                                   : read_status.msg();
+            break;
+        }
+        LOG_DEBUG("entry term:{}, index:{}, op_type:{} ", entry.term, entry.index,
+                  static_cast<int32>(entry.op_type))
         if (has_prev_index && entry.index != prev_index + 1) {
             result.error = true;
             result.error_msg =
@@ -665,57 +621,9 @@ Status PersistEngine::read_wal_from_disk(const std::string& path,
         prev_index = result.entries.back().index;
         has_prev_index = true;
         result.last_good_index = prev_index;
-        result.last_good_offset =
-            record_start_offset + sizeof(int32) + sizeof(uint32) + data_len;
+        result.last_good_offset = record_start_offset + consumed_bytes;
     }
     return Status::OK();
-}
-
-Status PersistEngine::write_full(int fd, const void* buf, size_t len) {
-    const char* b = static_cast<const char*>(buf);
-    size_t have_write_len = 0;
-    while (have_write_len < len) {
-        ssize_t cur_write_len =
-            ::write(fd, b + have_write_len, len - have_write_len);
-        if (cur_write_len <= 0) {
-            return StatusCode::ERROR;
-        }
-        have_write_len += (size_t)cur_write_len;
-    }
-    return Status::OK();
-}
-
-Status PersistEngine::read_full(int fd, void* buf, size_t len) const {
-    char* b = static_cast<char*>(buf);
-    size_t have_read_len = 0;
-    while (have_read_len < len) {
-        ssize_t cur_read_len =
-            ::read(fd, b + have_read_len, len - have_read_len);
-        if (cur_read_len == 0 and have_read_len == 0) {
-            return StatusCode::GET_EOF;
-        }
-        if (cur_read_len == 0) {
-            return StatusCode::PARTIAL_READ;
-        }
-        if (cur_read_len < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            return StatusCode::ERROR;
-        }
-        have_read_len += cur_read_len;
-    }
-    return Status::OK();
-}
-
-std::optional<DecodeBuffer> PersistEngine::read_full2buffer(int fd,
-                                                            size_t len) const {
-    std::vector<uint8> data(len);
-    Status status = read_full(fd, data.data(), data.size());
-    if (status.fail() and status.code() != StatusCode::GET_EOF)
-        return std::nullopt;
-    DecodeBuffer buffer{data};
-    return buffer;
 }
 
 }  // namespace adviskv::storage

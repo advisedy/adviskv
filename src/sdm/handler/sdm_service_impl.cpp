@@ -82,7 +82,7 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
         .resoure_pool_name = request->resource_pool(),
         // .status = node_status,
         .replica_list = std::move(replica_info_list),
-        .last_heartbeat_ts = adviskv::get_current_ts_ms(),
+        .last_heartbeat_ts = func::get_current_ts_ms(),
     };
 
     Status status = heartbeat_service_->heartbeat(param);
@@ -100,7 +100,7 @@ grpc::Status SdmServiceImpl::RegisterNode(
         .port = request->port(),
         .resource_pool = request->resource_pool(),
         .dc = request->dc(),
-        .last_heartbeat_ts = adviskv::get_current_ts_ms(),
+        .last_heartbeat_ts = func::get_current_ts_ms(),
     };
     Status status = node_service_->register_node(param);
     fill_base_rsp(response, status);

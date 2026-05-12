@@ -16,7 +16,7 @@
 namespace adviskv::storage {
 
 static constexpr int32_t HEARTBEAT_INTERVAL = 3;
-#define ELECTION_TIMEOUT (get_random_int32(15, 30))
+#define ELECTION_TIMEOUT (func::get_random_int32(15, 30))
 
 RaftNode::RaftNode(const ReplicaID& self_id,
                    const std::vector<PeerMember>& members,
