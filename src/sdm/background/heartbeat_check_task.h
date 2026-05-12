@@ -6,11 +6,13 @@
 namespace adviskv::sdm {
 
 class HeartBeatCheckTask : public BackgroundTask {
+   public:
+    explicit HeartBeatCheckTask(SdmStore* sdm_store);
+
    protected:
     void run() override;
 
    private:
-    Status check_resource_pool(const ResourcePool& pool);
     Status check_and_modify_node(Node& node);
 
     Status mark_node_offline(Node& node);

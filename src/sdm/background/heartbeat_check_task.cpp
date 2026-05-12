@@ -15,37 +15,34 @@ namespace adviskv::sdm {
 constexpr int64_t SUSPECT_TIMEOUT_MS = 10 * 1000;
 constexpr int64_t OFFLINE_TIMEOUT_MS = 30 * 1000;
 
+HeartBeatCheckTask::HeartBeatCheckTask(SdmStore* sdm_store)
+    : sdm_store_(sdm_store) {}
+
 void HeartBeatCheckTask::run() {
     if (sdm_store_ == nullptr) {
         LOG_ERROR("[heartbeat] sdm_store is nullptr");
         return;
     }
-    std::vector<ResourcePoolPtr> pools;
-    Status status = sdm_store_->list_resource_pools(pools);
+    std::vector<NodePtr> node_list;
+    Status status = sdm_store_->list_nodes(node_list);
     if (status.fail()) {
-        LOG_WARN("[heartbeat] get resource pools eror");
+        LOG_WARN("[heartbeat] list nodes failed, msg={}", status.msg());
         return;
     }
 
-    if (pools.empty()) {
-        LOG_WARN("[heartbeat] the pool list is empty");
+    if (node_list.empty()) {
+        LOG_DEBUG("[heartbeat] the node list is empty");
         return;
     }
 
-    // 枚举资源池里面的每一个node，然后开始检测node的状态
-    for (ResourcePoolPtr& one : pools) {
-        std::vector<NodePtr> node_list;
-        status = sdm_store_->list_nodes_by_resource_pool(one->name, node_list);
-        if (status.fail()) {
-            LOG_WARN("");
+    for (const NodePtr& node : node_list) {
+        if (!node) {
             continue;
         }
-        for (const NodePtr& node : node_list) {
-            // 接下来是检测node的状态
-            status = check_and_modify_node(*node);
-            if (status.fail()) {
-                LOG_WARN("...");
-            }
+        status = check_and_modify_node(*node);
+        if (status.fail()) {
+            LOG_WARN("[heartbeat] check node failed, node_id={}, msg={}",
+                     node->id, status.msg());
         }
     }
 }
@@ -88,8 +85,8 @@ Status HeartBeatCheckTask::check_and_modify_node(Node& node) {
             return Status{StatusCode::ERROR, "node status is none"};
         }
     }
+    RETURN_IF_INVALID_STATUS(status)
     return sdm_store_->put_node(node);
-    return status;
 }
 
 Status HeartBeatCheckTask::mark_node_offline(Node& node) {
@@ -110,6 +107,17 @@ Status HeartBeatCheckTask::mark_node_offline(Node& node) {
     //     // replica_ptr->state.endpoint = {};
     // }
     // node.replicas.clear();
+    std::vector<ReplicaPtr> replicas;
+    status = sdm_store_->list_replicas_by_node(node.id, replicas);
+    RETURN_IF_INVALID_STATUS(status)
+    for (const ReplicaPtr& replica : replicas) {
+        if (!replica) {
+            continue;
+        }
+        replica->spec.status = ReplicaStatus::LOST;
+        status = sdm_store_->put_replica(*replica);
+        RETURN_IF_INVALID_STATUS(status)
+    }
     return status;
 }
 

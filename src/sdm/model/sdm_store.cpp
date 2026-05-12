@@ -112,6 +112,11 @@ Status SdmStore::list_nodes_by_resource_pool(const std::string& pool_name,
     return Status::OK();
 }
 
+Status SdmStore::list_nodes(std::vector<NodePtr>& out) const {
+    std::shared_lock locker{mutex_};
+    return meta_store_->list_nodes(out);
+}
+
 Status SdmStore::get_shard_route(const ShardID& shard_id,
                                  std::shared_ptr<ShardRoute>& out) const {
     std::shared_lock locker{mutex_};

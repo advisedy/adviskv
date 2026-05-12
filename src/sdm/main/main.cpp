@@ -13,6 +13,7 @@
 #include "common/log.h"
 #include "common/path_util.h"
 #include "common/type.h"
+#include "sdm/background/heartbeat_check_task.h"
 #include "sdm/background/routeupdate_check_task.h"
 #include "sdm/client/storage_client.h"
 #include "sdm/handler/sdm_service_impl.h"
@@ -75,6 +76,8 @@ int main() {
         using namespace adviskv::sdm;
 
         int32_t listen_port = CONF_GET_INT("port");
+        std::string listen_host =
+            CONF_GET_STR("listen_host", std::string("127.0.0.1"));
 
         const SdmMetaStoreType metastore_type = get_metastore_type();
         const std::string metastore_data_dir = get_metastore_data_dir();
@@ -105,18 +108,22 @@ int main() {
             sdm_store.get(), storage_client.get(), node_selector.get());
         auto route_task =
             std::make_unique<RouteUpdateCheckTask>(sdm_store.get());
+        auto heartbeat_check_task =
+            std::make_unique<HeartBeatCheckTask>(sdm_store.get());
         runner->start(Milliseconds(3000));
         route_task->start(Milliseconds(3000));
+        heartbeat_check_task->start(Milliseconds(3000));
 
         grpc::ServerBuilder builder;
-        builder.AddListeningPort(fmt::format("0.0.0.0:{}", listen_port),
+        builder.AddListeningPort(fmt::format("{}:{}", listen_host, listen_port),
                                  grpc::InsecureServerCredentials());
         builder.RegisterService(sdm_service.get());
 
         std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
-        LOG_INFO("SDM server listening on 0.0.0.0:{}", listen_port);
+        LOG_INFO("SDM server listening on {}:{}", listen_host, listen_port);
 
         server->Wait();
+        heartbeat_check_task->stop();
         runner->stop();
         route_task->stop();
     }

@@ -1,5 +1,8 @@
 #include "sdm/service/route_service.h"
 
+#include <fmt/format.h>
+
+#include <algorithm>
 #include <functional>
 #include <memory>
 
@@ -32,8 +35,21 @@ Status RouteService::get_route(const GetRouteParam& param,
     if (route == nullptr) {
         return Status::ROUTE_NOT_FOUND("route not found");
     }
+    int leader_count =
+        std::count_if(route->replicas.begin(), route->replicas.end(),
+                      [](const RouteEntry& entry) {
+                          return entry.role == ReplicaRole::LEADER &&
+                                 !entry.ip.empty() && entry.port > 0;
+                      });
+    if (leader_count != 1) {
+        return Status::ROUTE_NOT_FOUND(
+            fmt::format("writable leader route is not ready。 leader_count={}",
+                        leader_count));
+    }
     if (res) {
         *res = *route;
+        // 这边第一个就是leader的，
+        // 这个是在route_updater那边就保证了的。
     }
 
     return status;

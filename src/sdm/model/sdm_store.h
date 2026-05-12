@@ -31,6 +31,7 @@ class SdmStore {
 
     Status list_nodes_by_resource_pool(const std::string& pool_name,
                                        std::vector<NodePtr>& out) const;
+    Status list_nodes(std::vector<NodePtr>& out) const;
 
     Status get_shard_route(const ShardID& shard_id,
                            std::shared_ptr<ShardRoute>& out) const;
