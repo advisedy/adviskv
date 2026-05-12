@@ -19,6 +19,7 @@ set(SDM_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/model/i_sdm_metastore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/model/sdm_store.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/model/sdm_runtime_index.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/persist/sdm_persist_engine.cpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/background/capacity_check_task.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/background/heartbeat_check_task.cpp

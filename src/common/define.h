@@ -49,7 +49,8 @@
     std::vector<type> name;                         \
     name.reserve(size);
 
-#define UNUSED(x) ((void)(x))
+#define UNUSED(x) ((void)(x));
+#define IGNORE_RESULT(expr) ((void)(expr));
 
 using Milliseconds = std::chrono::milliseconds;
 using Seconds = std::chrono::seconds;

@@ -49,23 +49,12 @@ void init_logger() {
 }
 
 adviskv::sdm::SdmMetaStoreType get_metastore_type() {
-    std::string type =
-        CONF_GET_STR("metastore.type", std::string("memory"));
-    std::transform(type.begin(), type.end(), type.begin(),
-                   [](unsigned char ch) { return std::tolower(ch); });
-
-    if (type == "persistent") {
-        return adviskv::sdm::SdmMetaStoreType::PERSISTENT;
-    }
-    if (type != "memory") {
-        LOG_WARN("unknown sdm metastore type '{}', fallback to memory", type);
-    }
-    return adviskv::sdm::SdmMetaStoreType::MEMORY;
+    return adviskv::sdm::SdmMetaStoreType::PERSISTENT;
 }
 
 std::string get_metastore_data_dir() {
     return adviskv::path_from_project_root(CONF_GET_STR(
-                                                       "metastore.data_dir",
+                                                       "data_dir",
                                                        std::string("./build/"
                                                                    "sdm_metastore")))
         .string();

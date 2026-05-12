@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <shared_mutex>
+#include <string>
 
 #include "common/status.h"
 #include "common/type.h"
@@ -16,7 +17,8 @@ namespace adviskv::sdm {
 */
 class SdmStore {
    public:
-    explicit SdmStore(SdmMetaStoreType type);
+    explicit SdmStore(SdmMetaStoreType type,
+                      const std::string& persistent_data_dir = "");
 
     Status put_table(const Table& table);
     Status get_table(TableID table_id, std::shared_ptr<Table>& out) const;
@@ -59,6 +61,8 @@ class SdmStore {
     Status delete_table(TableID table_id);
 
    private:
+    Status rebuild_runtime_index();
+
     mutable std::shared_mutex mutex_;
     std::unique_ptr<ISdmMetaStore> meta_store_;
     SdmRuntimeIndex runtime_index_;

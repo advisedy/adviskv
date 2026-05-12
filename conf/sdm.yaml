@@ -1,6 +1,8 @@
 listen_host: "127.0.0.1"
 port: 50049
 
+data_dir: "./build/sdm_metastore"
+
 logger_name: "sdm_log"
 log_dir: "./build/logs/sdm"
 log_filename: "sdm.log"

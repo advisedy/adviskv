@@ -2,6 +2,7 @@ listen_host: "127.0.0.1"
 port: 50048
 sdm_host: "127.0.0.1"
 sdm_port: 50049
+data_dir: "./build/data/meta"
 
 logger_name: "meta_log"
 log_dir: "./build/logs/meta"
