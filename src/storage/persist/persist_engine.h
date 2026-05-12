@@ -4,7 +4,6 @@
 #include <functional>
 #include <shared_mutex>
 
-#include "common/func.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
@@ -64,17 +63,6 @@ class PersistEngine {
     Status read_snapshot_header(int fd, Snapshot* snapshot,
                                 int32& kv_count) const;
 
-
-    template <typename T>
-    Status write_value(int fd, const T& v) {
-        return func::write_full(fd, &v, sizeof(T));
-    }
-    template <typename T>
-    Status read_value(int fd, T& v) const {
-        return func::read_full(fd, &v, sizeof(T));
-    }
-    Status write_string(int fd, const std::string& s);
-    Status read_string(int fd, std::string& s) const;
 
     std::string wal_path_;
     std::string raft_meta_path_;

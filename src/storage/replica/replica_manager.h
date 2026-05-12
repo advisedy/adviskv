@@ -9,13 +9,15 @@
 #include <unordered_map>
 
 #include "common/status.h"
+#include "storage/persist/replica_meta_persist_engine.h"
 #include "storage/raft/raft_background_task.h"
 #include "storage/replica/replica.h"
 namespace adviskv::storage {
 
 class ReplicaManager {
    public:
-    ReplicaManager(std::string data_dir) : data_dir_(std::move(data_dir)) {}
+    ReplicaManager(std::string data_dir)
+        : data_dir_(std::move(data_dir)), meta_persist_(data_dir_) {}
     Replica* get_replica_by_id(const ReplicaID& replica_id) const;
     Replica* get_replica_by_shard(const ShardID& shard_id) const;
     Status add_replica(const ReplicaInitParam& param);
@@ -35,6 +37,7 @@ class ReplicaManager {
         raft_tick_task_; // 这个放最后面，到时候先析构他
 
     std::string data_dir_; // 这个是replica存放数据的目录
+    ReplicaMetaPersistEngine meta_persist_;
 };
 
 }  // namespace adviskv::storage

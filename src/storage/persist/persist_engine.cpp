@@ -57,7 +57,8 @@ class WalEntryCodec {
         if (op_type != static_cast<int32>(WriteOpType::PUT) &&
             op_type != static_cast<int32>(WriteOpType::DEL) &&
             op_type != static_cast<int32>(WriteOpType::NONE)) {
-            return Status::ERROR(fmt::format("invalid wal op_type: {}", op_type));
+            return Status::ERROR(
+                fmt::format("invalid wal op_type: {}", op_type));
         }
         entry.op_type = static_cast<WriteOpType>(op_type);
         return Status::OK();
@@ -120,8 +121,11 @@ Status PersistEngine::init() {
     raft_meta_path_ = dir_path_ + "/raft_meta";
     snapshot_path_ = dir_path_ + "/snapshot";
     snapshot_tmp_path_ = snapshot_path_ + ".tmp";
-    LOG_DEBUG("dir_path_={}, wal_path_={}, raft_meta_path_={}, snapshot_path_={}, snapshot_tmp_path_={}",
-              dir_path_, wal_path_, raft_meta_path_, snapshot_path_, snapshot_tmp_path_);
+    LOG_DEBUG(
+        "dir_path_={}, wal_path_={}, raft_meta_path_={}, snapshot_path_={}, "
+        "snapshot_tmp_path_={}",
+        dir_path_, wal_path_, raft_meta_path_, snapshot_path_,
+        snapshot_tmp_path_);
     mkdir(dir_path_.c_str(), 0755);
 
     wal_fd_ = ::open(wal_path_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
@@ -228,7 +232,7 @@ Status PersistEngine::truncate_wal_to_offset(int64_t offset) {
 Status PersistEngine::read_snapshot_header(int fd, Snapshot* snapshot,
                                            int32& kv_count) const {
     int64 payload_len{0};
-    Status status = read_value(fd, payload_len);
+    Status status = func::read_value(fd, payload_len);
     if (status.code() == StatusCode::GET_EOF) {
         kv_count = 0;
         return Status::OK();
@@ -237,9 +241,9 @@ Status PersistEngine::read_snapshot_header(int fd, Snapshot* snapshot,
 
     LogIndex apply_index{0};
     Term apply_term{0};
-    RETURN_IF_INVALID_STATUS(read_value(fd, apply_index))
-    RETURN_IF_INVALID_STATUS(read_value(fd, apply_term))
-    RETURN_IF_INVALID_STATUS(read_value(fd, kv_count))
+    RETURN_IF_INVALID_STATUS(func::read_value(fd, apply_index))
+    RETURN_IF_INVALID_STATUS(func::read_value(fd, apply_term))
+    RETURN_IF_INVALID_STATUS(func::read_value(fd, kv_count))
     if (kv_count < 0) {
         return Status{StatusCode::ERROR, "invalid kv_count"};
     }
@@ -297,8 +301,8 @@ Status PersistEngine::for_each_snapshot_kv(const KvVisitor& fn) const {
     for (int i = 0; i < kv_count; i++) {
         Key key;
         Value value;
-        RETURN_IF_INVALID_STATUS(read_string(fd, key))
-        RETURN_IF_INVALID_STATUS(read_string(fd, value))
+        RETURN_IF_INVALID_STATUS(func::read_string(fd, key))
+        RETURN_IF_INVALID_STATUS(func::read_string(fd, value))
         RETURN_IF_INVALID_STATUS(fn(key, value))
     }
 
@@ -383,6 +387,7 @@ Status PersistEngine::finish_snapshot_receive(const SnapshotPtr& snap) {
     return Status::OK();
 }
 // 拿到了状态机去做快照，快照落盘了之后再截取wal
+// TODO 这里关于lseek的内容是AI写的， 回头一定要记得看一下
 Status PersistEngine::do_snapshot(const StateMachine& state_machine) {
     // Stream snapshot without materializing all KVs.
     int fd =
@@ -401,16 +406,16 @@ Status PersistEngine::do_snapshot(const StateMachine& state_machine) {
     Term apply_term = state_machine.apply_term();
 
     // Header placeholders.
-    RETURN_IF_INVALID_STATUS(write_value<int64>(fd, 0))
-    RETURN_IF_INVALID_STATUS(write_value(fd, apply_index))
-    RETURN_IF_INVALID_STATUS(write_value(fd, apply_term))
-    RETURN_IF_INVALID_STATUS(write_value<int32>(fd, 0))
+    RETURN_IF_INVALID_STATUS(func::write_value<int64>(fd, 0))
+    RETURN_IF_INVALID_STATUS(func::write_value(fd, apply_index))
+    RETURN_IF_INVALID_STATUS(func::write_value(fd, apply_term))
+    RETURN_IF_INVALID_STATUS(func::write_value<int32>(fd, 0))
 
     int32 kv_count = 0;
     Status it_status =
         state_machine.for_each_kv([&](const Key& k, const Value& v) -> Status {
-            RETURN_IF_INVALID_STATUS(write_string(fd, k))
-            RETURN_IF_INVALID_STATUS(write_string(fd, v))
+            RETURN_IF_INVALID_STATUS(func::write_string(fd, k))
+            RETURN_IF_INVALID_STATUS(func::write_string(fd, v))
             ++kv_count;
             return Status::OK();
         });
@@ -425,12 +430,12 @@ Status PersistEngine::do_snapshot(const StateMachine& state_machine) {
     if (::lseek(fd, 0, SEEK_SET) < 0) {
         return Status{StatusCode::ERROR, "lseek set failed"};
     }
-    RETURN_IF_INVALID_STATUS(write_value(fd, payload_len))
+    RETURN_IF_INVALID_STATUS(func::write_value(fd, payload_len))
     if (::lseek(fd, sizeof(int64) + sizeof(int64) + sizeof(int64), SEEK_SET) <
         0) {
         return Status{StatusCode::ERROR, "lseek kv_count failed"};
     }
-    RETURN_IF_INVALID_STATUS(write_value(fd, kv_count))
+    RETURN_IF_INVALID_STATUS(func::write_value(fd, kv_count))
 
     ::fsync(fd);
     // Close before rename.
@@ -442,14 +447,6 @@ Status PersistEngine::do_snapshot(const StateMachine& state_machine) {
     // 2) Then truncate WAL up to snapshot index
     RETURN_IF_INVALID_STATUS(truncate_wal(apply_index))
     return Status::OK();
-}
-
-Status PersistEngine::write_string(int fd, const std::string& s) {
-    return func::write_string(fd, s);
-}
-
-Status PersistEngine::read_string(int fd, std::string& s) const {
-    return func::read_string(fd, s);
 }
 
 Status PersistEngine::save_raft_meta(const RaftMeta& meta) {
@@ -467,7 +464,8 @@ Status PersistEngine::save_raft_meta(const RaftMeta& meta) {
         }
     });
 
-    RETURN_IF_INVALID_STATUS(FramedRecord<RaftMetaCodec>::encode_to_fd(fd, meta))
+    RETURN_IF_INVALID_STATUS(
+        FramedRecord<RaftMetaCodec>::encode_to_fd(fd, meta))
 
     ::fsync(fd);
     ::close(fd);
@@ -522,7 +520,6 @@ Status PersistEngine::recover(RecoverResult& result) {
         result.snapshot ? result.snapshot->apply_index : 0;
     const LogIndex local_last_good_index =
         std::max(snapshot_index, wal_read_result.last_good_index);
-
 
     result.wal_recovery.last_good_index = local_last_good_index;
     result.wal_recovery.last_good_offset = wal_read_result.last_good_offset;
@@ -587,7 +584,7 @@ Status PersistEngine::read_wal_from_disk(const std::string& path,
         Status read_status = FramedRecord<WalEntryCodec>::decode_from_fd(
             fd, entry, consumed_bytes);
         if (read_status.code() == StatusCode::GET_EOF) {
-            struct stat st {};
+            struct stat st{};
             if (::fstat(fd, &st) == 0 &&
                 static_cast<int64>(st.st_size) > result.last_good_offset) {
                 result.error = true;
@@ -607,8 +604,8 @@ Status PersistEngine::read_wal_from_disk(const std::string& path,
                                    : read_status.msg();
             break;
         }
-        LOG_DEBUG("entry term:{}, index:{}, op_type:{} ", entry.term, entry.index,
-                  static_cast<int32>(entry.op_type))
+        LOG_DEBUG("entry term:{}, index:{}, op_type:{} ", entry.term,
+                  entry.index, static_cast<int32>(entry.op_type))
         if (has_prev_index && entry.index != prev_index + 1) {
             result.error = true;
             result.error_msg =

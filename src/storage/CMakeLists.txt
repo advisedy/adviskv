@@ -8,6 +8,7 @@ set(STORAGE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/state_machine/kv_state_machine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/map_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/persist/persist_engine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/persist/replica_meta_persist_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/handler/storage_service.cpp
     ${PROJECT_BINARY_DIR}/generated/common.pb.cc
     ${PROJECT_BINARY_DIR}/generated/storage.pb.cc
