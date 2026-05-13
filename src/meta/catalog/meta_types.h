@@ -20,6 +20,13 @@ struct DBMeta {
     DatabaseID db_id;
     std::string db_name;
     std::string zone;
+
+    bool operator==(const DBMeta& other) const {
+        if (db_id != other.db_id) return false;
+        if (db_name != other.db_name) return false;
+        if (zone != other.zone) return false;
+        return true;
+    }
 };
 
 struct TableMeta {
@@ -30,6 +37,17 @@ struct TableMeta {
     std::string db_name;
     std::string table_name;
     std::string resource_pool;
+
+    bool operator==(const TableMeta& other) const {
+        if (table_id != other.table_id) return false;
+        if (shard_count != other.shard_count) return false;
+        if (replica_count != other.replica_count) return false;
+        if (db_id != other.db_id) return false;
+        if (db_name != other.db_name) return false;
+        if (table_name != other.table_name) return false;
+        if (resource_pool != other.resource_pool) return false;
+        return true;
+    }
 };
 
 struct CreateDBMetaParam {

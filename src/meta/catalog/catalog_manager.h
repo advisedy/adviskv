@@ -10,10 +10,11 @@
 #include "common/type.h"
 #include "common/status.h"
 #include "meta/catalog/meta_types.h"
+// #include "meta/persist/i_meta_persist_engine.h"
 
 namespace adviskv::meta {
 
-class MetaPersistEngine;
+class IMetaPersistEngine;
 
 template<typename T>
 class IDAllocator{
@@ -36,7 +37,7 @@ private:
 class CatalogManager{
 
 public:
-    explicit CatalogManager(MetaPersistEngine* persist_engine);
+    explicit CatalogManager(IMetaPersistEngine* persist_engine);
     Status init();
 
     Status create_db(const CreateDBMetaParam& param, DBMeta* db_meta);
@@ -56,7 +57,7 @@ private:
     Status lookup_table_by_name(const std::string& db_name, const std::string& table_name, TableMeta* table_meta);
     Status lookup_table_by_id(TableID table_id, TableMeta* table_meta);
 
-    MetaPersistEngine* persist_engine_;
+    IMetaPersistEngine* persist_engine_;
 
     IDAllocator<DatabaseID> db_id_allocator_;
     IDAllocator<TableID> table_id_allocator_;

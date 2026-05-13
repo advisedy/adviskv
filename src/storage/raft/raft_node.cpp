@@ -533,11 +533,11 @@ Term RaftNode::get_term(LogIndex index) const {
 
 // persist 去 持久化raft_meta
 void RaftNode::save_raft_meta() const {
-    if (persist_) {
-        persist_->save_raft_meta(RaftMeta{.commit_index = commit_index_,
-                                          .current_term = current_term_,
-                                          .voted_for = voted_for_});
-    }
+    if (!persist_) return;
+
+    persist_->save_raft_meta(RaftMeta{.commit_index = commit_index_,
+                                      .current_term = current_term_,
+                                      .voted_for = voted_for_});
 }
 
 // void try_take_snapshot();
@@ -653,8 +653,10 @@ void RaftNode::maybe_finish_recovering() {
 void RaftNode::maybe_finish_recovering_unlocked() {
     if (!recovering_) return;
 
-    bool snapshot_covers_target = snapshot_index_ >= recovery_target_commit_index_;
-    bool log_covers_target = last_log_index_unlocked() >= recovery_target_commit_index_;
+    bool snapshot_covers_target =
+        snapshot_index_ >= recovery_target_commit_index_;
+    bool log_covers_target =
+        last_log_index_unlocked() >= recovery_target_commit_index_;
     if (commit_index_ >= recovery_target_commit_index_ &&
         (snapshot_covers_target || log_covers_target)) {
         recovering_ = false;

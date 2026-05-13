@@ -9,11 +9,19 @@ AdvisKV 是一个基于 `C++17 + gRPC + Raft` 的分布式 KV 项目。
 
 TODO:
 
-- meta侧的持久化还没有完成
-- storage的发送raft消息等待优化
-- mian函数里面的监听ip 等待之后统一
-- storage里面还没有集成rocksdb
-- 
+[] meta侧的持久化还没有完成
+
+[] storage的发送raft消息等待优化
+
+[] mian函数里面的监听ip 等待之后统一
+
+[] storage里面还没有集成rocksdb
+
+[] meta的本地备份 ：每次写入前保留旧版本备份，防止磁盘静默损坏
+
+[] 
+
+
 
 
 ## 项目定位

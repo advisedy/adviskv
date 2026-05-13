@@ -12,11 +12,11 @@
 #include "common/log.h"
 #include "common/status.h"
 #include "common/type.h"
-#include "meta/persist/meta_persist_engine.h"
+#include "meta/persist/i_meta_persist_engine.h"
 
 namespace adviskv::meta {
 
-CatalogManager::CatalogManager(MetaPersistEngine *persist_engine)
+CatalogManager::CatalogManager(IMetaPersistEngine *persist_engine)
     : persist_engine_(persist_engine) {}
 
 Status CatalogManager::init() {
@@ -25,11 +25,11 @@ Status CatalogManager::init() {
         return Status::OK();
     }
 
+    std::unique_lock lock(mutex_);
+
     PersistedMetaRecord record;
     Status status = persist_engine_->load_meta(record);
     RETURN_IF_INVALID_STATUS(status)
-
-    std::unique_lock lock(mutex_);
 
     db_id_allocator_ = IDAllocator<DatabaseID>(record.next_db_id);
     table_id_allocator_ = IDAllocator<TableID>(record.next_table_id);
@@ -56,7 +56,7 @@ Status CatalogManager::init() {
 
 Status CatalogManager::persist_meta() {
     if (!persist_engine_) {
-        return Status::OK();
+        return Status::ERROR("persist engine is nullptr");
     }
 
     PersistedMetaRecord record{

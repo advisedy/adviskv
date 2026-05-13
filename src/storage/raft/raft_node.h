@@ -104,19 +104,19 @@ class RaftNode {
     }
 
     LogIndex last_log_index() const;
-    
+
     Term last_log_term() const;
-    
+
     LogIndex snapshot_index() const {
         std::lock_guard lock(mutex_);
         return snapshot_index_;
     }
-    
+
     Term snapshot_term() const {
         std::lock_guard lock(mutex_);
         return snapshot_term_;
     }
-    
+
     bool is_leader() const {
         std::lock_guard lock(mutex_);
         return role_ == ReplicaRole::LEADER;
@@ -136,10 +136,9 @@ class RaftNode {
     void handle_install_snapshot_response(const ReplicaID& from,
                                           const InstallSnapshotResult& result);
 
-    Status prepare_install_snapshot(Term leader_term,
-                                    LogIndex snapshot_index);
+    Status prepare_install_snapshot(Term leader_term, LogIndex snapshot_index);
 
-    //revocer 的时候更新用的
+    // revocer 的时候更新用的
     void update_raft_meta(const RaftMeta& meta);
 
     void update_log_entries(const std::vector<LogEntry>& entries);
@@ -149,6 +148,7 @@ class RaftNode {
         std::lock_guard lock(mutex_);
         return recovering_;
     }
+
     void maybe_finish_recovering();
 
    private:
@@ -208,6 +208,8 @@ class RaftNode {
     bool recovering_{false};
     LogIndex recovery_target_commit_index_{0};
     mutable std::mutex mutex_;
+
+    friend class RaftClusterTest;
 };
 
 }  // namespace adviskv::storage
