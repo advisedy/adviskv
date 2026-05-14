@@ -139,7 +139,7 @@ std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
     std::lock_guard lock(mutex_);  // ← 加锁
 
     if (recovering_) {
-        return {Status::ERROR("raft node is recovering"), -1};
+        return {Status::IS_RECOVERING("raft node is recovering"), -1};
     }
 
     if (role_ != ReplicaRole::LEADER) {
@@ -640,8 +640,8 @@ void RaftNode::enter_recovering(LogIndex target_commit_index) {
     recovering_ = true;
     recovery_target_commit_index_ = target_commit_index;
     role_ = ReplicaRole::FOLLOWER;
-    election_tick_trigger_.clear();
-    heartbeat_tick_trigger_.clear();
+    election_tick_trigger_.stop();
+    heartbeat_tick_trigger_.stop();
     maybe_finish_recovering_unlocked();
 }
 

@@ -33,8 +33,9 @@ namespace adviskv {
     X(DB_META_CACHE_NOT_FOUND, 1002)                               \
     X(NOT_LEADER, 2000)                                            \
     X(NOT_YET_COMMIT, 2001) /*目前的写操作成功了，但是还没有提交*/ \
-    X(GET_EOF, 5000)        /*读到了eof*/                          \
-    X(PARTIAL_READ, 5001)   /*读取到一半遇到eof*/
+    X(IS_RECOVERING, 2002)                                         \
+    X(GET_EOF, 5000)      /*读到了eof*/                            \
+    X(PARTIAL_READ, 5001) /*读取到一半遇到eof*/
 
 enum class StatusCode : int32_t {
 

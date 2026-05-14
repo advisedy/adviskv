@@ -518,8 +518,12 @@ Status PersistEngine::recover(RecoverResult& result) {
 
     const LogIndex snapshot_index =
         result.snapshot ? result.snapshot->apply_index : 0;
-    const LogIndex local_last_good_index =
-        std::max(snapshot_index, wal_read_result.last_good_index);
+
+    const LogIndex local_last_good_index = std::max(
+        snapshot_index,
+        wal_read_result
+            .last_good_index);  // 有的时候wal_read_result.last_good_index
+                                // = 0， 但是有快照
 
     result.wal_recovery.last_good_index = local_last_good_index;
     result.wal_recovery.last_good_offset = wal_read_result.last_good_offset;
@@ -527,7 +531,8 @@ Status PersistEngine::recover(RecoverResult& result) {
     result.wal_recovery.recovery_target_commit_index = original_commit_index;
 
     if (!wal_read_result.error) {
-        if (local_last_good_index < original_commit_index) {
+        if (local_last_good_index <
+            original_commit_index) {  // 有可能读完了， 但是后面全少了
             LOG_WARN(
                 "wal is complete but behind committed index during recover, "
                 "last_good_index={}, commit_index={}",

@@ -24,6 +24,7 @@ class TickTrigger {
         : limit_cnt_(limit_cnt), func_(func) {}
 
     void tick() {
+        if (stop_flag_) return;
         cur_cnt_++;
         if (cur_cnt_ >= limit_cnt_) {
             cur_cnt_ = 0;
@@ -32,6 +33,7 @@ class TickTrigger {
     }
 
     void reset(int32_t limit_cnt) {
+        stop_flag_ = false;
         cur_cnt_ = 0;
         limit_cnt_ = limit_cnt;
         if (cur_cnt_ >= limit_cnt_) {
@@ -42,7 +44,10 @@ class TickTrigger {
 
     void clear() { cur_cnt_ = 0; }
 
+    void stop() { stop_flag_ = true; }
+
    private:
+    bool stop_flag_{false};
     int32_t cur_cnt_{0};
     int32_t limit_cnt_;
     TickFunc func_;
