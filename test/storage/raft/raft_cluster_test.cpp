@@ -272,7 +272,7 @@ class RaftClusterTest : public ::testing::Test {
     void create_and_stabilize(int num_nodes) {
         int tid = next_table_id_++;
         cluster_.create(num_nodes, tid);
-        ASSERT_TRUE(cluster_.tick_until_stable(300));
+        ASSERT_TRUE(cluster_.tick_until_stable());
     }
 
     void assert_single_leader() { ASSERT_EQ(cluster_.leader_count(), 1); }
@@ -408,6 +408,14 @@ TEST_F(RaftClusterTest, test002) {
     RaftNode* old_leader = cluster_.leader_ptr();
     int old_leader_idx = cluster_.leader_idx();
     int other_idx = (old_leader_idx == 0 ? 1 : 0);
+
+    ASSERT_TRUE(tick_until_all_committed(1));
+
+    for (int i = 0; i < 5; i++) {
+        ASSERT_EQ(get_node_entries(i).size(), 1U);
+        ASSERT_EQ(get_node_entries(i).back().op_type, WriteOpType::NONE);
+    }
+
     {
         // 首先把三个节点宕机， 然后leader去写数据，然后tick
         for (int i = 0; i < 5; i++) {
@@ -454,6 +462,7 @@ TEST_F(RaftClusterTest, test002) {
     ASSERT_EQ(entries.back().key, "key_10");
     cluster_.restore(other_idx);
     cluster_.restore(old_leader_idx);
+    ASSERT_TRUE(cluster_.tick_until_stable());
 
     ASSERT_TRUE(tick_until_all_committed(7));
 
