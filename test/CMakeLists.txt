@@ -87,6 +87,10 @@ add_adviskv_storage_gtest(replica_manager_test
     ${CMAKE_SOURCE_DIR}/test/storage/replica/replica_manager_test.cpp
 )
 
+add_adviskv_storage_gtest(node_agent_test
+    ${CMAKE_SOURCE_DIR}/test/storage/node_agent/node_agent_test.cpp
+)
+
 add_adviskv_storage_gtest(raft_node_test
     ${CMAKE_SOURCE_DIR}/test/storage/raft/raft_node_test.cpp
 )

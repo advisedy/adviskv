@@ -63,8 +63,7 @@ Status NodeAgent::start() {
     Status status = prepare();
     RETURN_IF_INVALID_STATUS(status)
 
-    BackgroundTask::start(
-        Milliseconds(conf_.heartbeat_interval_ms));
+    BackgroundTask::start(Milliseconds(conf_.heartbeat_interval_ms));
 
     return Status::OK();
 }
@@ -83,15 +82,21 @@ Status NodeAgent::setup() {
     Status status = register_node();
     RETURN_IF_INVALID_STATUS(status)
 
-    while (true) {
+    // 减少这个注册节点和第一次心跳之间的空窗期
+    for (int32 i = 0; i < conf_.first_heart_retry_cnt; i++) {
         status = heartbeat_once();
         if (status.ok()) {
             return Status::OK();
         }
         LOG_WARN("node agent first heartbeat failed, msg={}", status.msg());
-        std::this_thread::sleep_for(
-            Milliseconds(conf_.first_sync_retry_ms));
+        std::this_thread::sleep_for(Milliseconds(conf_.first_sync_retry_ms));
     }
+
+    LOG_WARN(
+        "node agent first heartbeat still failed after {} retries, "
+        "will continue in background, msg={}",
+        conf_.first_heart_retry_cnt, status.msg());
+
     return Status::OK();
 }
 

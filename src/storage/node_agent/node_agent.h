@@ -5,11 +5,11 @@
 #include "common/background_task.h"
 #include "common/define.h"
 #include "common/status.h"
+#include "common/type.h"
 #include "sdm.grpc.pb.h"
 #include "storage/replica/replica_manager.h"
 
 namespace adviskv::storage {
-
 
 struct NodeAgentConf {
     NodeID node_id;
@@ -24,7 +24,7 @@ struct NodeAgentConf {
 
     int32_t heartbeat_interval_ms{3000};
     int32_t first_sync_retry_ms{1000};
-
+    int32 first_heart_retry_cnt{10};
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(!node_id.empty(),
                                     "node_id should not empty")
@@ -40,6 +40,10 @@ struct NodeAgentConf {
                                     "heartbeat_interval_ms should > 0")
         RETURN_IF_INVALID_CONDITION(first_sync_retry_ms > 0,
                                     "first_sync_retry_ms should > 0")
+        RETURN_IF_INVALID_CONDITION(first_heart_retry_cnt >= 0,
+                                    "first_heart_retry_cnt should >= 0")
+        // first_heart_retry_cnt 这个如果等于0就代表注册节点后不尝试进行心跳
+        // // 否则代表注册节点后第一次心跳最多尝试的次数
         return Status::OK();
     }
 };
