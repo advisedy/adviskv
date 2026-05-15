@@ -80,13 +80,23 @@ enum class ReplicaStatus : int8 { ADDING = 0, READY = 1, LOST = 2, ERROR = 3 };
 struct Endpoint {
     std::string ip;
     int32_t port;
+
+    bool operator==(const Endpoint& other) const {
+        return ip == other.ip and port == other.port;
+    }
 };
 
 struct PeerMember {
     NodeID node_id;
     ReplicaID replica_id;
     Endpoint endpoint;
-};
 
+    bool operator==(const PeerMember& other) const {
+        if (node_id != other.node_id) return false;
+        if (!(replica_id == other.replica_id)) return false;
+        if (!(endpoint == other.endpoint)) return false;
+        return true;
+    }
+};
 
 }  // namespace adviskv

@@ -146,6 +146,7 @@ Status ReplicaMetaPersistEngine::load_replica_meta(
     return Status::OK();
 }
 
+// 返回所有的meta的路径，用来调用load_replica_meta
 std::vector<std::filesystem::path>
 ReplicaMetaPersistEngine::scan_replica_meta_files() const {
     std::vector<std::filesystem::path> paths;
@@ -161,7 +162,7 @@ ReplicaMetaPersistEngine::scan_replica_meta_files() const {
             paths.push_back(std::move(path));
         }
     }
-    std::sort(paths.begin(), paths.end());
+    std::sort(paths.begin(), paths.end()); // 这里sort一下，方便测试啥的。
     return paths;
 }
 

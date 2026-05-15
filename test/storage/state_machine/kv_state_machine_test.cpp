@@ -15,10 +15,6 @@ namespace {
 
 namespace fs = std::filesystem;
 
-std::string status_debug_string(const Status& status) {
-    return "code=" + std::to_string(static_cast<int>(status.code())) +
-           ", msg=" + status.msg();
-}
 
 LogEntry make_entry(Term term, LogIndex index, WriteOpType op_type,
                     std::string key, std::string value) {
@@ -61,18 +57,18 @@ TEST_F(KvStateMachineTest, ApplyPutDeleteAndNoneUpdateState) {
 
     Status status =
         state_machine.apply(make_entry(1, 1, WriteOpType::PUT, "k1", "v1"));
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(state_machine.apply_index(), 1);
     EXPECT_EQ(state_machine.apply_term(), 1);
 
     Value value;
     status = state_machine.get("k1", value);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(value, "v1");
 
     status =
         state_machine.apply(make_entry(2, 2, WriteOpType::DEL, "k1", ""));
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(state_machine.apply_index(), 2);
     EXPECT_EQ(state_machine.apply_term(), 2);
     status = state_machine.get("k1", value);
@@ -80,7 +76,7 @@ TEST_F(KvStateMachineTest, ApplyPutDeleteAndNoneUpdateState) {
 
     status =
         state_machine.apply(make_entry(3, 3, WriteOpType::NONE, "", ""));
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(state_machine.apply_index(), 3);
     EXPECT_EQ(state_machine.apply_term(), 3);
 }
@@ -108,17 +104,17 @@ TEST_F(KvStateMachineTest, SnapshotAndRestoreRoundTrip) {
         snapshot, [&persist](const KvVisitor& consume) -> Status {
             return persist.for_each_snapshot_kv(consume);
         });
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(restored.apply_index(), 11);
     EXPECT_EQ(restored.apply_term(), 4);
 
     Value value;
     status = restored.get("a", value);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(value, "1");
 
     status = restored.get("b", value);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(value, "2");
 }
 
@@ -144,7 +140,7 @@ TEST_F(KvStateMachineTest, RestoreReplacesExistingData) {
             }
             return Status::OK();
         });
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(state_machine.apply_index(), 20);
     EXPECT_EQ(state_machine.apply_term(), 5);
 
@@ -153,7 +149,7 @@ TEST_F(KvStateMachineTest, RestoreReplacesExistingData) {
     EXPECT_FALSE(status.ok());
 
     status = state_machine.get("new", value);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(value, "y");
 }
 

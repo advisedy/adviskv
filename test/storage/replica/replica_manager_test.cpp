@@ -117,5 +117,29 @@ TEST_F(ReplicaManagerTest, DeleteReplicaRemovesIndexes) {
     EXPECT_TRUE(manager.get_replicas().empty());
 }
 
+// recover应扫描磁盘上的replica_meta，并重建内存里的replica索引
+TEST_F(ReplicaManagerTest, RecoverScansDiskAndRebuildsReplicaIndexes) {
+    ReplicaID replica_id{.table_id = 12, .shard_index = 4, .replica_index = 0};
+
+    {
+        ReplicaManager manager(base_dir_.string());
+        ASSERT_TRUE(manager.add_replica(make_param(replica_id)).ok());
+    }
+
+    ReplicaManager recovered(base_dir_.string());
+    recovered.recover();
+
+    Replica* by_id = recovered.get_replica_by_id(replica_id);
+    ASSERT_NE(by_id, nullptr);
+    EXPECT_EQ(by_id->get_replica_id(), replica_id);
+
+    Replica* by_shard = recovered.get_replica_by_shard(
+        ShardID{.table_id = replica_id.table_id,
+                .shard_index = replica_id.shard_index});
+    ASSERT_NE(by_shard, nullptr);
+    EXPECT_EQ(by_shard->get_replica_id(), replica_id);
+    EXPECT_EQ(recovered.get_replicas().size(), 1U);
+}
+
 }  // namespace
 }  // namespace adviskv::storage

@@ -71,6 +71,10 @@ add_adviskv_storage_gtest(persist_engine_test
     ${CMAKE_SOURCE_DIR}/test/storage/persist/persist_engine_test.cpp
 )
 
+add_adviskv_storage_gtest(replica_meta_persist_engine_test
+    ${CMAKE_SOURCE_DIR}/test/storage/persist/replica_meta_persist_engine_test.cpp
+)
+
 add_adviskv_storage_gtest(kv_state_machine_test
     ${CMAKE_SOURCE_DIR}/test/storage/state_machine/kv_state_machine_test.cpp
 )

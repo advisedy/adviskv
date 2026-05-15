@@ -813,29 +813,28 @@ TEST_F(RaftClusterTest, Figure8_NoDirectCommitPreviousTerm) {
 // 测试一下这个快照， 截断log是否可行
 // 把一个落下的node给他传快照
 TEST_F(RaftClusterTest, InstallSnapshot_Basic) {
-    create_and_stabilize(3);
-    auto* leader = cluster_.leader_ptr();
-    ASSERT_NE(leader, nullptr);
+    create_and_set_0_leader(3);
+    ASSERT_TRUE(tick_until_all_committed(1));
+    auto* leader = cluster_.node_ptr(0);
+    ASSERT_TRUE(leader->is_leader());
+    drop_all_messages();
 
     cluster_.isolate(2);
 
     // 写 5 条记录
+    LogIndex last_idx = 0;
     for (int i = 0; i < 5; i++) {
         auto kv = "snap_k" + std::to_string(i);
         auto vv = "snap_v" + std::to_string(i);
-        auto [status, idx] =
-            leader->propose(WriteOpType::PUT, Key(kv), Value(vv));
-        ASSERT_TRUE(status.ok());
+        last_idx = propose_and_replicate_once(0, {1}, WriteOpType::PUT, Key(kv),
+                                              Value(vv));
     }
+    ASSERT_EQ(leader->commit_index(), last_idx);
 
-    // tick 到全部提交
-    ASSERT_TRUE(tick_until_all_committed(leader->last_log_index()));
-
-    // 在所有节点上 advance last_applied（模拟 apply 完成）
-    LogIndex applied = leader->last_log_index();
+    // 在所有节点上 advance last_applied
     for (int i = 0; i < cluster_.size(); i++) {
         if (!cluster_.is_active(i) or cluster_.is_isolate(i)) continue;
-        cluster_.node_ptr(i)->advance_last_applied(applied);
+        cluster_.node_ptr(i)->advance_last_applied(last_idx);
     }
 
     // Leader 截断
@@ -1004,6 +1003,5 @@ TEST_F(RaftClusterTest, LaggingFollowerCatchesUpBySnapshotThenEntries) {
     ASSERT_EQ(cluster_.node_ptr(2)->commit_index(), last_idx);
     ASSERT_EQ(get_node_entries(2).back().key, "snap_then_log_4");
 }
-
 
 }  // namespace adviskv::storage

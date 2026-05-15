@@ -17,11 +17,6 @@ namespace fs = std::filesystem;
 namespace adviskv::storage {
 namespace {
 
-std::string status_debug_string(const Status& status) {
-    return "code=" + std::to_string(static_cast<int>(status.code())) +
-           ", msg=" + status.msg();
-}
-
 class ReplicaTest : public ::testing::Test {
    protected:
     void SetUp() override {
@@ -53,7 +48,7 @@ class ReplicaTest : public ::testing::Test {
 
     Replica* add_single_replica(ReplicaManager& manager) const {
         Status status = manager.add_replica(make_param());
-        EXPECT_TRUE(status.ok()) << status_debug_string(status);
+        EXPECT_TRUE(status.ok()) << test::status_debug_string(status);
         if (!status.ok()) {
             return nullptr;
         }
@@ -131,7 +126,7 @@ TEST_F(ReplicaTest, HandleInstallSnapshotUpdatesReadableState) {
         std::string data;
         bool eof = false;
         status = source_persist.read_snapshot_chunk(offset, 8, data, eof);
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
         InstallSnapshotParam param{
             .from_replica_id = source_id,
@@ -145,7 +140,7 @@ TEST_F(ReplicaTest, HandleInstallSnapshotUpdatesReadableState) {
         };
 
         status = replica->handle_install_snapshot(param);
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         if (eof) break;
         offset += data.size();
     }
@@ -157,7 +152,7 @@ TEST_F(ReplicaTest, HandleInstallSnapshotUpdatesReadableState) {
 
     Value value;
     status = replica->get(GetParam{.key = "hello"}, value);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(value, "world");
 }
 
@@ -173,11 +168,11 @@ TEST_F(ReplicaTest, SingleReplicaPutAndGetAfterElection) {
     ASSERT_EQ(replica->get_role(), ReplicaRole::LEADER);
 
     Status status = replica->put(PutParam{.key = "k1", .value = "v1"});
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     Value value;
     status = replica->get(GetParam{.key = "k1"}, value);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(value, "v1");
 }
 
@@ -195,7 +190,7 @@ TEST_F(ReplicaTest, RecoverRestoresDataFromPersistedState) {
 
         Status status =
             replica->put(PutParam{.key = "persisted", .value = "v"});
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     }
 
     ReplicaManager recovered_manager(base_dir_.string());
@@ -210,7 +205,7 @@ TEST_F(ReplicaTest, RecoverRestoresDataFromPersistedState) {
 
     Value value;
     Status status = recovered_replica->get(GetParam{.key = "persisted"}, value);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(value, "v");
 }
 
@@ -220,18 +215,18 @@ TEST_F(ReplicaTest, WalCatchupRecoveryRejectsRequestsUntilEntriesApplied) {
     {
         PersistEngine persist(base_dir_.string(), replica_id_);
         Status status = persist.init();
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
         status = persist.append_wal_batch({
             make_entry(1, 1, WriteOpType::PUT, "k1", "v1"),
             make_entry(1, 2, WriteOpType::PUT, "k2", "v2"),
         });
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = persist.save_raft_meta(RaftMeta{
             .current_term = 1,
             .commit_index = 3,
         });
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         ASSERT_TRUE(persist.close().ok());
     }
 
@@ -271,7 +266,7 @@ TEST_F(ReplicaTest, WalCatchupRecoveryRejectsRequestsUntilEntriesApplied) {
             .leader_commit = 3,
         },
         result);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_TRUE(result.success);
     EXPECT_FALSE(replica->is_recovering());
 
@@ -281,7 +276,7 @@ TEST_F(ReplicaTest, WalCatchupRecoveryRejectsRequestsUntilEntriesApplied) {
     ASSERT_EQ(replica->get_role(), ReplicaRole::LEADER);
 
     status = replica->get(GetParam{.key = "k3"}, value);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(value, "v3");
 }
 
@@ -291,18 +286,18 @@ TEST_F(ReplicaTest, SnapshotCatchupRecoveryFinishesWhenSnapshotCoversTarget) {
     {
         PersistEngine persist(base_dir_.string(), replica_id_);
         Status status = persist.init();
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
         status = persist.append_wal_batch({
             make_entry(1, 1, WriteOpType::PUT, "k1", "v1"),
             make_entry(1, 2, WriteOpType::PUT, "k2", "v2"),
         });
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = persist.save_raft_meta(RaftMeta{
             .current_term = 1,
             .commit_index = 6,
         });
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         ASSERT_TRUE(persist.close().ok());
     }
 
@@ -339,7 +334,7 @@ TEST_F(ReplicaTest, SnapshotCatchupRecoveryFinishesWhenSnapshotCoversTarget) {
         status = source_state.apply(make_entry(
             2, index, WriteOpType::PUT, "snap-" + std::to_string(index),
             "value-" + std::to_string(index)));
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     }
     ASSERT_TRUE(source_persist.do_snapshot(source_state).ok());
 
@@ -348,7 +343,7 @@ TEST_F(ReplicaTest, SnapshotCatchupRecoveryFinishesWhenSnapshotCoversTarget) {
         std::string data;
         bool eof = false;
         status = source_persist.read_snapshot_chunk(offset, 7, data, eof);
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
         status = replica->handle_install_snapshot(
             InstallSnapshotParam{.from_replica_id = source_id,
@@ -359,7 +354,7 @@ TEST_F(ReplicaTest, SnapshotCatchupRecoveryFinishesWhenSnapshotCoversTarget) {
                                  .offset = offset,
                                  .data = data,
                                  .done = eof});
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         if (eof) break;
         offset += data.size();
     }
@@ -374,7 +369,7 @@ TEST_F(ReplicaTest, SnapshotCatchupRecoveryFinishesWhenSnapshotCoversTarget) {
 
     Value value;
     status = replica->get(GetParam{.key = "snap-6"}, value);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(value, "value-6");
 }
 

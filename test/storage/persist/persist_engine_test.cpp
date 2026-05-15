@@ -22,10 +22,6 @@ namespace fs = std::filesystem;
 namespace adviskv::storage {
 namespace {
 
-std::string status_debug_string(const Status& status) {
-    return "code=" + std::to_string(static_cast<int>(status.code())) +
-           ", msg=" + status.msg();
-}
 /*
 测试内容列表:
 
@@ -135,7 +131,7 @@ class PersistEngineTest : public ::testing::Test {
 TEST_F(PersistEngineTest, AppendWalBatchAndReadBackEntries) {
     PersistEngine engine = make_engine();
     Status status = engine.init();
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     const std::vector<LogEntry> expected = {
         make_entry(1, 1, WriteOpType::PUT, "k1", "v1"),
@@ -144,11 +140,11 @@ TEST_F(PersistEngineTest, AppendWalBatchAndReadBackEntries) {
     };
 
     status = engine.append_wal_batch(expected);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     std::vector<LogEntry> actual;
     status = engine.read_wal_batch(actual);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     ASSERT_EQ(actual.size(), expected.size());
 
     for (size_t i = 0; i < expected.size(); ++i) {
@@ -164,7 +160,7 @@ TEST_F(PersistEngineTest, AppendWalBatchAndReadBackEntries) {
 TEST_F(PersistEngineTest, SaveAndLoadRaftMeta) {
     PersistEngine engine = make_engine();
     Status status = engine.init();
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     RaftMeta expected{
         .current_term = 9,
@@ -174,11 +170,11 @@ TEST_F(PersistEngineTest, SaveAndLoadRaftMeta) {
     };
 
     status = engine.save_raft_meta(expected);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     RaftMeta actual{};
     status = engine.load_raft_meta(actual);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(actual.current_term, expected.current_term);
     EXPECT_EQ(actual.commit_index, expected.commit_index);
     ASSERT_TRUE(actual.voted_for.has_value());
@@ -189,17 +185,17 @@ TEST_F(PersistEngineTest, SaveAndLoadRaftMeta) {
 TEST_F(PersistEngineTest, LoadSnapshotMetaWithoutLoadingKvs) {
     PersistEngine engine = make_engine();
     Status status = engine.init();
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     KvStateMachine state_machine(EngineType::MAP);
     ASSERT_TRUE(
         state_machine.apply(make_entry(4, 12, WriteOpType::NONE, "", "")).ok());
     status = engine.do_snapshot(state_machine);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     SnapshotPtr actual = std::make_shared<Snapshot>();
     status = engine.load_snapshot_meta(actual);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(actual->apply_index, 12);
     EXPECT_EQ(actual->apply_term, 4);
     EXPECT_FALSE(actual->path.empty());
@@ -210,7 +206,7 @@ TEST_F(PersistEngineTest, LoadSnapshotMetaWithoutLoadingKvs) {
             ++kv_count;
             return Status::OK();
         });
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(kv_count, 0U);
 }
 
@@ -218,7 +214,7 @@ TEST_F(PersistEngineTest, LoadSnapshotMetaWithoutLoadingKvs) {
 TEST_F(PersistEngineTest, TruncateWalKeepsEntriesAfterSnapshotIndex) {
     PersistEngine engine = make_engine();
     Status status = engine.init();
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     const std::vector<LogEntry> entries = {
         make_entry(1, 1, WriteOpType::PUT, "k1", "v1"),
@@ -228,14 +224,14 @@ TEST_F(PersistEngineTest, TruncateWalKeepsEntriesAfterSnapshotIndex) {
     };
 
     status = engine.append_wal_batch(entries);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     status = engine.truncate_wal(2);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     std::vector<LogEntry> actual;
     status = engine.read_wal_batch(actual);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     ASSERT_EQ(actual.size(), 2U);
     EXPECT_EQ(actual[0].index, 3);
     EXPECT_EQ(actual[0].key, "k1");
@@ -251,7 +247,7 @@ TEST_F(PersistEngineTest, TruncateWalKeepsEntriesAfterSnapshotIndex) {
 TEST_F(PersistEngineTest, DoSnapshotPersistsSnapshotAndTruncatesWal) {
     PersistEngine engine = make_engine();
     Status status = engine.init();
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     const std::vector<LogEntry> entries = {
         make_entry(3, 11, WriteOpType::PUT, "a", "1"),
@@ -259,7 +255,7 @@ TEST_F(PersistEngineTest, DoSnapshotPersistsSnapshotAndTruncatesWal) {
         make_entry(4, 13, WriteOpType::PUT, "c", "3"),
     };
     status = engine.append_wal_batch(entries);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     // Build a state machine that represents the snapshot state at index=12.
     KvStateMachine state_machine(EngineType::MAP);
@@ -271,11 +267,11 @@ TEST_F(PersistEngineTest, DoSnapshotPersistsSnapshotAndTruncatesWal) {
             .ok());
 
     status = engine.do_snapshot(state_machine);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     SnapshotPtr loaded_snapshot = std::make_shared<Snapshot>();
     status = engine.load_snapshot_meta(loaded_snapshot);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(loaded_snapshot->apply_index, 12);
     EXPECT_EQ(loaded_snapshot->apply_term, 3);
     std::vector<KV> loaded_kvs;
@@ -284,12 +280,12 @@ TEST_F(PersistEngineTest, DoSnapshotPersistsSnapshotAndTruncatesWal) {
             loaded_kvs.emplace_back(key, value);
             return Status::OK();
         });
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(loaded_kvs, (std::vector<KV>{{"a", "1"}, {"b", "2"}}));
 
     std::vector<LogEntry> actual;
     status = engine.read_wal_batch(actual);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     ASSERT_EQ(actual.size(), 1U);
     EXPECT_EQ(actual[0].index, 13);
     EXPECT_EQ(actual[0].key, "c");
@@ -299,7 +295,7 @@ TEST_F(PersistEngineTest, DoSnapshotPersistsSnapshotAndTruncatesWal) {
 TEST_F(PersistEngineTest, RecoverLoadsSnapshotMetaAndWalTogether) {
     PersistEngine engine = make_engine();
     Status status = engine.init();
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     const std::vector<LogEntry> wal_entries = {
         make_entry(3, 21, WriteOpType::PUT, "hot", "cold"),
@@ -320,19 +316,19 @@ TEST_F(PersistEngineTest, RecoverLoadsSnapshotMetaAndWalTogether) {
     };
 
     status = engine.append_wal_batch(wal_entries);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     status = engine.do_snapshot(state_machine);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     status = engine.save_raft_meta(meta);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     PersistEngine recovered_engine = make_engine();
     status = recovered_engine.init();
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     PersistEngine::RecoverResult result;
     status = recovered_engine.recover(result);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     ASSERT_NE(result.snapshot, nullptr);
     EXPECT_EQ(result.snapshot->apply_index, 13);
     EXPECT_EQ(result.snapshot->apply_term, 4);
@@ -342,7 +338,7 @@ TEST_F(PersistEngineTest, RecoverLoadsSnapshotMetaAndWalTogether) {
             loaded_kvs.emplace_back(key, value);
             return Status::OK();
         });
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(loaded_kvs, (std::vector<KV>{{"alpha", "1"}, {"beta", "2"}}));
     EXPECT_EQ(result.raft_meta.current_term, meta.current_term);
     EXPECT_EQ(result.raft_meta.commit_index, meta.commit_index);
@@ -362,24 +358,24 @@ TEST_F(PersistEngineTest, RecoverLoadsCompleteWalWithoutRepair) {
     {
         PersistEngine engine = make_engine();
         Status status = engine.init();
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal_batch(entries);
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.save_raft_meta(RaftMeta{
             .current_term = 1, .commit_index = 2, .voted_for = std::nullopt});
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     }
     const uintmax_t wal_size_before = fs::file_size(wal_path());
 
     PersistEngine recovered_engine = make_engine();
     Status status = recovered_engine.init();
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     PersistEngine::RecoverResult result;
     status = recovered_engine.recover(result);
 
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(result.wal_recovery.action, WalRecoveryAction::NONE);
     EXPECT_EQ(result.wal_recovery.last_good_index, 2);
     EXPECT_EQ(result.wal_entries, entries);
@@ -396,14 +392,14 @@ TEST_F(PersistEngineTest, RecoverTruncatesUncommittedPartialWalTail) {
     {
         PersistEngine engine = make_engine();
         Status status = engine.init();
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal_batch(entries);
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.save_raft_meta(RaftMeta{
             .current_term = 1, .commit_index = 2, .voted_for = std::nullopt});
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     }
     const uintmax_t valid_wal_size = fs::file_size(wal_path());
     std::vector<uint8_t> partial =
@@ -414,11 +410,11 @@ TEST_F(PersistEngineTest, RecoverTruncatesUncommittedPartialWalTail) {
 
     PersistEngine recovered_engine = make_engine();
     Status status = recovered_engine.init();
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     PersistEngine::RecoverResult result;
     status = recovered_engine.recover(result);
 
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(result.wal_recovery.action,
               WalRecoveryAction::TRUNCATED_UNCOMMITTED);
     EXPECT_EQ(result.wal_recovery.last_good_index, 2);
@@ -427,7 +423,7 @@ TEST_F(PersistEngineTest, RecoverTruncatesUncommittedPartialWalTail) {
 
     std::vector<LogEntry> reread;
     status = recovered_engine.read_wal_batch(reread);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(reread, entries);
 }
 
@@ -438,14 +434,14 @@ TEST_F(PersistEngineTest, RecoverTruncatesUncommittedCrcMismatch) {
     {
         PersistEngine engine = make_engine();
         Status status = engine.init();
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal(committed);
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.save_raft_meta(RaftMeta{
             .current_term = 1, .commit_index = 1, .voted_for = std::nullopt});
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     }
     const uintmax_t valid_wal_size = fs::file_size(wal_path());
     append_raw_bytes(wal_path(), encode_wal_record_with_bad_crc(make_entry(
@@ -453,11 +449,11 @@ TEST_F(PersistEngineTest, RecoverTruncatesUncommittedCrcMismatch) {
 
     PersistEngine recovered_engine = make_engine();
     Status status = recovered_engine.init();
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     PersistEngine::RecoverResult result;
     status = recovered_engine.recover(result);
 
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(result.wal_recovery.action,
               WalRecoveryAction::TRUNCATED_UNCOMMITTED);
     EXPECT_EQ(result.wal_recovery.last_good_index, 1);
@@ -476,14 +472,14 @@ TEST_F(PersistEngineTest, RecoverTruncatesCommittedCorruptionForRaftCatchUp) {
     {
         PersistEngine engine = make_engine();
         Status status = engine.init();
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal(entry1);
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.save_raft_meta(RaftMeta{
             .current_term = 1, .commit_index = 3, .voted_for = std::nullopt});
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     }
     append_raw_bytes(wal_path(), bad_entry2);
     append_raw_bytes(wal_path(), entry3);
@@ -492,11 +488,11 @@ TEST_F(PersistEngineTest, RecoverTruncatesCommittedCorruptionForRaftCatchUp) {
 
     PersistEngine recovered_engine = make_engine();
     Status status = recovered_engine.init();
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     PersistEngine::RecoverResult result;
     status = recovered_engine.recover(result);
 
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(result.wal_recovery.action, WalRecoveryAction::NEED_RAFT_CATCHUP);
     EXPECT_EQ(result.wal_recovery.last_good_index, 1);
     EXPECT_EQ(result.wal_recovery.original_commit_index, 3);
@@ -507,7 +503,7 @@ TEST_F(PersistEngineTest, RecoverTruncatesCommittedCorruptionForRaftCatchUp) {
 
     std::vector<LogEntry> reread;
     status = recovered_engine.read_wal_batch(reread);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(reread, std::vector<LogEntry>{entry1});
 }
 
@@ -520,14 +516,14 @@ TEST_F(PersistEngineTest, RecoverContinuesCatchUpAfterCrashDuringRecovering) {
     {
         PersistEngine engine = make_engine();
         Status status = engine.init();
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal(entry1);
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.save_raft_meta(RaftMeta{
             .current_term = 1, .commit_index = 2, .voted_for = std::nullopt});
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     }
     append_raw_bytes(wal_path(), bad_entry2);
     const uintmax_t first_record_size =
@@ -536,25 +532,25 @@ TEST_F(PersistEngineTest, RecoverContinuesCatchUpAfterCrashDuringRecovering) {
     {
         PersistEngine first_recover = make_engine();
         Status status = first_recover.init();
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         PersistEngine::RecoverResult result;
         status = first_recover.recover(result);
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         EXPECT_EQ(result.wal_recovery.action,
                   WalRecoveryAction::NEED_RAFT_CATCHUP);
         EXPECT_EQ(result.wal_recovery.recovery_target_commit_index, 2);
         EXPECT_EQ(result.raft_meta.commit_index, 1);
         EXPECT_EQ(fs::file_size(wal_path()), first_record_size);
         status = first_recover.close();
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     }
 
     PersistEngine second_recover = make_engine();
     Status status = second_recover.init();
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     PersistEngine::RecoverResult result;
     status = second_recover.recover(result);
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(result.wal_recovery.action, WalRecoveryAction::NEED_RAFT_CATCHUP);
     EXPECT_EQ(result.wal_recovery.last_good_index, 1);
     EXPECT_EQ(result.wal_recovery.original_commit_index, 2);
@@ -571,14 +567,14 @@ TEST_F(PersistEngineTest, RecoverHandlesInvalidWalDataLenByCommitIndex) {
     {
         PersistEngine engine = make_engine();
         Status status = engine.init();
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal(committed);
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.save_raft_meta(RaftMeta{
             .current_term = 1, .commit_index = 1, .voted_for = std::nullopt});
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
-        ASSERT_TRUE(status.ok()) << status_debug_string(status);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     }
     const uintmax_t valid_wal_size = fs::file_size(wal_path());
     std::vector<uint8_t> invalid_len;
@@ -587,11 +583,11 @@ TEST_F(PersistEngineTest, RecoverHandlesInvalidWalDataLenByCommitIndex) {
 
     PersistEngine recovered_engine = make_engine();
     Status status = recovered_engine.init();
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     PersistEngine::RecoverResult result;
     status = recovered_engine.recover(result);
 
-    ASSERT_TRUE(status.ok()) << status_debug_string(status);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(result.wal_recovery.action,
               WalRecoveryAction::TRUNCATED_UNCOMMITTED);
     EXPECT_EQ(result.wal_recovery.last_good_index, 1);
