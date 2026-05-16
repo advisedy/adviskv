@@ -94,7 +94,8 @@ int main() {
         auto workflow = std::make_unique<PlaceTableWorkflow>(
             sdm_store.get(), storage_client.get(), node_selector.get());
 
-        auto table_service = std::make_unique<TableService>(workflow.get());
+        auto table_service =
+            std::make_unique<TableService>(sdm_store.get(), workflow.get());
         auto node_service = std::make_unique<NodeService>(sdm_store.get());
         auto heartbeat_service =
             std::make_unique<HeartBeatService>(sdm_store.get());

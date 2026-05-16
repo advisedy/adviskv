@@ -125,6 +125,7 @@ struct TableSpec {
     int32_t shard_count;
     int32_t replica_count;
     std::string resource_pool;
+    std::string operation_id;
 };
 
 struct TableState {

@@ -25,6 +25,8 @@ message CreateTableRequest {
 message CreateTableResponse {
   adviskv.pb.BaseRsp base_rsp = 1;
   int32 table_id = 2;
+  int32 table_state = 3;
+  string operation_id = 4;
 }
 
 message GetTableRequest {
@@ -38,6 +40,9 @@ message GetTableResponse {
   int32 table_id = 3;
   int32 shard_count = 4;
   int32 replica_count = 5;
+  int32 table_state = 6;
+  string last_error_msg = 7;
+  string operation_id = 8;
 }
 
 

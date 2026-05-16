@@ -1,6 +1,7 @@
 #pragma once
 #include <atomic>
 #include <cstdint>
+#include <vector>
 #include <string>
 #include <unordered_map>
 #include <shared_mutex>
@@ -44,10 +45,14 @@ public:
     Status create_table(const CreateTableMetaParam& param, TableMeta* table_meta);
     Status delete_db(DatabaseID db_id);
     Status delete_table(TableID table_id);
+    Status update_table_state(TableID table_id, TableState state,
+                              const std::string& last_error_msg = "");
     Status get_db(const std::string& db_name, DBMeta* db_meta);
     Status get_table_by_id(TableID table_id, TableMeta* table_meta);
     Status get_table_by_name(const std::string& db_name, const std::string& table_name, TableMeta* table_meta);
     Status list_tables(const std::string& db_name, std::vector<TableMeta>* table_meta_list);
+    Status list_tables_by_state(TableState state,
+                                std::vector<TableMeta>* table_meta_list);
 
 private:
 

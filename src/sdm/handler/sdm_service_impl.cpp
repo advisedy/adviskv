@@ -35,11 +35,34 @@ grpc::Status SdmServiceImpl::PlaceTable(grpc::ServerContext* context,
         .replica_count = request->replica_count(),
         .shard_count = request->shard_count(),
         .resource_pool = request->resource_pool(),
+        .operation_id = request->operation_id(),
     };
 
     Status status = table_service_->place_table(param);
 
     fill_base_rsp(response, status);
+
+    return grpc::Status::OK;
+}
+
+grpc::Status SdmServiceImpl::GetTableStatus(
+    grpc::ServerContext* context, const rpc::GetTableStatusRequest* request,
+    rpc::GetTableStatusResponse* response) {
+    GetTableStatusParam param{
+        .operation_id = request->operation_id(),
+        .table_id = request->table_id(),
+    };
+
+    Table table;
+    Status status = table_service_->get_table_status(param, &table);
+    fill_base_rsp(response, status);
+    if (status.ok()) {
+        response->set_table_id(table.table_id);
+        response->set_status(static_cast<int32_t>(table.state.status));
+        response->set_lifecycle(static_cast<int32_t>(table.state.lifecycle));
+        response->set_last_error_msg(table.state.last_error_msg);
+        response->set_operation_id(table.spec.operation_id);
+    }
 
     return grpc::Status::OK;
 }

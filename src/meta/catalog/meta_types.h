@@ -12,8 +12,9 @@ namespace adviskv::meta {
 enum class TableState {
     ADDING = 1,
     NORMAL = 2,
-    DROPPING = 3,
-    DELETED = 4
+    FAILED = 3,
+    DROPPING = 4,
+    DELETED = 5
 };
 
 struct DBMeta {
@@ -37,6 +38,11 @@ struct TableMeta {
     std::string db_name;
     std::string table_name;
     std::string resource_pool;
+    TableState state{TableState::ADDING};
+    std::string operation_id;
+    std::string last_error_msg;
+    int64_t create_ts{0};
+    int64_t update_ts{0};
 
     bool operator==(const TableMeta& other) const {
         if (table_id != other.table_id) return false;
@@ -46,6 +52,11 @@ struct TableMeta {
         if (db_name != other.db_name) return false;
         if (table_name != other.table_name) return false;
         if (resource_pool != other.resource_pool) return false;
+        if (state != other.state) return false;
+        if (operation_id != other.operation_id) return false;
+        if (last_error_msg != other.last_error_msg) return false;
+        if (create_ts != other.create_ts) return false;
+        if (update_ts != other.update_ts) return false;
         return true;
     }
 };

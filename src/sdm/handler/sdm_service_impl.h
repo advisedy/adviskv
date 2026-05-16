@@ -26,6 +26,7 @@ class SdmServiceImpl final : public rpc::ShardingManagerService::Service {
                              rpc::method_name##Response* response) override;
 
     DEFINE_METHOD(PlaceTable)
+    DEFINE_METHOD(GetTableStatus)
     DEFINE_METHOD(PlaceDB)
     DEFINE_METHOD(HeartBeat)
     DEFINE_METHOD(RegisterNode)

@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include "common/define.h"
+#include "common/func.h"
 #include "common/log.h"
 #include "common/status.h"
 #include "common/type.h"
@@ -141,6 +142,12 @@ Status CatalogManager::create_table(const CreateTableMetaParam &param,
     new_table_meta.replica_count = param.replica_count;
     new_table_meta.db_id = db_meta.db_id;
     new_table_meta.resource_pool = param.resource_pool;
+    new_table_meta.state = TableState::ADDING;
+    new_table_meta.create_ts = func::get_current_ts_ms();
+    new_table_meta.update_ts = new_table_meta.create_ts;
+    new_table_meta.operation_id =
+        fmt::format("create-table-{}-{}", new_table_meta.table_id,
+                    new_table_meta.create_ts);
 
     table_id2table_meta_[new_table_meta.table_id] = new_table_meta;
 
@@ -231,6 +238,29 @@ Status CatalogManager::delete_table(TableID table_id) {
     return Status::OK();
 }
 
+Status CatalogManager::update_table_state(TableID table_id, TableState state,
+                                          const std::string &last_error_msg) {
+    std::unique_lock lock(mutex_);
+
+    auto table_it = table_id2table_meta_.find(table_id);
+    if (table_it == table_id2table_meta_.end()) {
+        return Status{StatusCode::TABLE_NOT_FOUND,
+                      fmt::format("table_id:{} does not exist", table_id)};
+    }
+
+    TableMeta old_table_meta = table_it->second;
+    table_it->second.state = state;
+    table_it->second.last_error_msg = last_error_msg;
+    table_it->second.update_ts = func::get_current_ts_ms();
+
+    Status status = persist_meta();
+    if (status.fail()) {
+        table_it->second = old_table_meta;
+        return status;
+    }
+    return Status::OK();
+}
+
 Status CatalogManager::get_db(const std::string &db_name, DBMeta *db_meta) {
     std::shared_lock lock(mutex_);
     return lookup_db_by_name(db_name, db_meta);
@@ -280,6 +310,23 @@ Status CatalogManager::list_tables(const std::string &db_name,
                             table_id)};
         }
         table_meta_list->push_back(it->second);
+    }
+    return Status::OK();
+}
+
+Status CatalogManager::list_tables_by_state(
+    TableState state, std::vector<TableMeta> *table_meta_list) {
+    if (!table_meta_list) {
+        return Status{StatusCode::INVALID_ARGUMENT,
+                      "table_meta_list is nullptr"};
+    }
+    table_meta_list->clear();
+    std::shared_lock lock(mutex_);
+    for (const auto &[_, table_meta] : table_id2table_meta_) {
+        UNUSED(_);
+        if (table_meta.state == state) {
+            table_meta_list->push_back(table_meta);
+        }
     }
     return Status::OK();
 }

@@ -10,11 +10,13 @@ namespace adviskv::sdm {
 
 class TableService {
    public:
-    explicit TableService(PlaceTableWorkflow* workflow);
+    TableService(SdmStore* store, PlaceTableWorkflow* workflow);
 
     Status place_table(const PlaceTableParam& param);
+    Status get_table_status(const GetTableStatusParam& param, Table* table);
 
    private:
+    SdmStore* store_;
     PlaceTableWorkflow* workflow_;
 };
 

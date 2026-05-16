@@ -13,22 +13,36 @@ namespace adviskv::sdm {
 
 // Placement Param
 struct PlaceTableParam {
-    int32_t db_id;
-    int32_t table_id;
+    DatabaseID db_id;
+    TableID table_id;
     std::string db_name;
     std::string table_name;
     int32_t replica_count;
     int32_t shard_count;
     std::string resource_pool;
+    std::string operation_id;
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(!db_name.empty(),
                                     "db_name should not empty")
         RETURN_IF_INVALID_CONDITION(!table_name.empty(),
                                     "table_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!operation_id.empty(),
+                                    "operation_id should not empty")
         RETURN_IF_INVALID_CONDITION(replica_count > 0,
                                     "replica_count should be greater than 0")
         RETURN_IF_INVALID_CONDITION(shard_count >= 0,
                                     "shard_count should be greater than 0")
+        return Status::OK();
+    }
+};
+
+struct GetTableStatusParam {
+    std::string operation_id;
+    TableID table_id{-1};
+
+    Status validate() const {
+        RETURN_IF_INVALID_CONDITION(
+            table_id >= 0, "table_id should be greater than or equal to 0")
         return Status::OK();
     }
 };
@@ -75,17 +89,42 @@ struct CreateReplicaParam {
     ReplicaID replica_id;
     EngineType engine_type{EngineType::MAP};
     std::vector<PeerMember> members;
-    Endpoint endpoint; // 对端的endpoint
+    Endpoint endpoint;  // 对端的endpoint
 
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(replica_id.table_id >= 0,
-                                    "table_id should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(replica_id.shard_index >= 0,
-                                    "shard_index should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(replica_id.replica_index >= 0,
-                                    "replica_index should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(
+            replica_id.table_id >= 0,
+            "table_id should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(
+            replica_id.shard_index >= 0,
+            "shard_index should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(
+            replica_id.replica_index >= 0,
+            "replica_index should be greater than or equal to 0")
         RETURN_IF_INVALID_CONDITION(!members.empty(),
                                     "members should not empty")
+        RETURN_IF_INVALID_CONDITION(!endpoint.ip.empty(),
+                                    "endpoint ip should not empty")
+        RETURN_IF_INVALID_CONDITION(endpoint.port > 0,
+                                    "endpoint port should greater than 0")
+        return Status::OK();
+    }
+};
+
+struct DeleteReplicaParam {
+    ReplicaID replica_id;
+    Endpoint endpoint;
+
+    Status validate() const {
+        RETURN_IF_INVALID_CONDITION(
+            replica_id.table_id >= 0,
+            "table_id should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(
+            replica_id.shard_index >= 0,
+            "shard_index should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(
+            replica_id.replica_index >= 0,
+            "replica_index should be greater than or equal to 0")
         RETURN_IF_INVALID_CONDITION(!endpoint.ip.empty(),
                                     "endpoint ip should not empty")
         RETURN_IF_INVALID_CONDITION(endpoint.port > 0,
@@ -145,7 +184,7 @@ message HeartBeatReplicaSepc{
     int32 table_id = 1;
     int32 shard_id = 2;
     int32 replica_index = 3;
-    adviskv.pb.ReplicaRole role = 4;    
+    adviskv.pb.ReplicaRole role = 4;
 }
 
 message HeartBeatResponse{
@@ -154,11 +193,11 @@ message HeartBeatResponse{
 }
 */
 
-struct HeartBeatReplicaInfo{
-  ShardID shard_id;
-  ReplicaIndex replica_index;
-  ReplicaRole role;
-  ReplicaStatus status;
+struct HeartBeatReplicaInfo {
+    ShardID shard_id;
+    ReplicaIndex replica_index;
+    ReplicaRole role;
+    ReplicaStatus status;
 };
 
 struct HeartBeatParam {
@@ -170,14 +209,15 @@ struct HeartBeatParam {
     std::vector<HeartBeatReplicaInfo> replica_list;
     int64_t last_heartbeat_ts{0};
 
-    Status validate()const{
-      RETURN_IF_INVALID_CONDITION(!node_id.empty(), "node need id");
-      RETURN_IF_INVALID_CONDITION(!ip.empty(), "ip should not empty");
-      RETURN_IF_INVALID_CONDITION(port!=-1, "port should not empty");
-      RETURN_IF_INVALID_CONDITION(!resoure_pool_name.empty(), "resource_pool should not empty");
-      RETURN_IF_INVALID_CONDITION(!dc.empty(), "dc should not empty");
-      //TODO check replica info 
-      return Status::OK();
+    Status validate() const {
+        RETURN_IF_INVALID_CONDITION(!node_id.empty(), "node need id");
+        RETURN_IF_INVALID_CONDITION(!ip.empty(), "ip should not empty");
+        RETURN_IF_INVALID_CONDITION(port != -1, "port should not empty");
+        RETURN_IF_INVALID_CONDITION(!resoure_pool_name.empty(),
+                                    "resource_pool should not empty");
+        RETURN_IF_INVALID_CONDITION(!dc.empty(), "dc should not empty");
+        // TODO check replica info
+        return Status::OK();
     }
 };
 
@@ -189,6 +229,5 @@ struct HeartBeatParam {
 // struct HeartBeatResult{
 //   std::vector<HeartBeatResultEntry> entry_list;
 // };
-
 
 }  // namespace adviskv::sdm

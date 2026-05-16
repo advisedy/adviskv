@@ -18,6 +18,7 @@ class IStorageClient {
     virtual ~IStorageClient() = default;
 
     virtual Status create_replica(const CreateReplicaParam& param) = 0;
+    virtual Status delete_replica(const DeleteReplicaParam& param) = 0;
 };
 
 class StorageClient : public IStorageClient {
@@ -25,6 +26,7 @@ class StorageClient : public IStorageClient {
     StorageClient() = default;
 
     Status create_replica(const CreateReplicaParam& param) override;
+    Status delete_replica(const DeleteReplicaParam& param) override;
 
    private:
     rpc::StorageService::Stub* make_stub(const std::string& ip, int32_t port);

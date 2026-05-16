@@ -71,4 +71,37 @@ Status StorageClient::create_replica(const CreateReplicaParam& param) {
     return Status::OK();
 }
 
+Status StorageClient::delete_replica(const DeleteReplicaParam& param) {
+    RETURN_IF_INVALID_PARAM(param)
+
+    rpc::StorageService::Stub* stub =
+        make_stub(param.endpoint.ip, param.endpoint.port);
+    if (!stub) {
+        return Status::ERROR(fmt::format("failed to create stub for {}:{}",
+                                         param.endpoint.ip,
+                                         param.endpoint.port));
+    }
+
+    rpc::DeleteReplicaRequest request;
+    request.set_table_id(param.replica_id.table_id);
+    request.set_shard_id(param.replica_id.shard_index);
+    request.set_replica_id(param.replica_id.replica_index);
+
+    rpc::DeleteReplicaResponse response;
+    grpc::ClientContext context;
+    grpc::Status grpc_status =
+        stub->DeleteReplica(&context, request, &response);
+    if (!grpc_status.ok()) {
+        return Status::ERROR(
+            fmt::format("DeleteReplica RPC failed for {}:{}, grpc error: {}",
+                        param.endpoint.ip, param.endpoint.port,
+                        grpc_status.error_message()));
+    }
+    if (response.base_rsp().code() != 0) {
+        return Status{static_cast<StatusCode>(response.base_rsp().code()),
+                      response.base_rsp().msg()};
+    }
+    return Status::OK();
+}
+
 }  // namespace adviskv::sdm

@@ -45,10 +45,25 @@ message PlaceTableRequest{
     int32 shard_count = 5;
     int32 replica_count = 6;
     string resource_pool = 7;
+    string operation_id = 8;
 }
 
 message PlaceTableResponse{
     adviskv.pb.BaseRsp base_rsp = 1;
+}
+
+message GetTableStatusRequest{
+    string operation_id = 1;
+    int32 table_id = 2;
+}
+
+message GetTableStatusResponse{
+    adviskv.pb.BaseRsp base_rsp = 1;
+    int32 table_id = 2;
+    int32 status = 3;
+    int32 lifecycle = 4;
+    string last_error_msg = 5;
+    string operation_id = 6;
 }
 
 message PlaceDBRequest{
@@ -96,6 +111,7 @@ service ShardingManagerService{
     rpc GetRoute(GetRouteRequest) returns (GetRouteResponse);
     rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
     rpc PlaceTable(PlaceTableRequest) returns (PlaceTableResponse);
+    rpc GetTableStatus(GetTableStatusRequest) returns (GetTableStatusResponse);
     rpc PlaceDB(PlaceDBRequest) returns (PlaceDBResponse);
     rpc HeartBeat(HeartBeatRequest) returns (HeartBeatResponse);
 }
