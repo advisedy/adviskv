@@ -36,6 +36,7 @@ class TableReconciler : public BackgroundTask {
     Status ensure_routes_absent(const Table& table);
     Status ensure_storage_replicas_absent(const Table& table);
     Status ensure_replica_metadata_absent(const Table& table);
+    Status get_assigned_node_endpoint(const Replica& replica, Endpoint& endpoint) const;
 
     bool all_replicas_ready(const Table& table);
     bool all_routes_ready(const Table& table);

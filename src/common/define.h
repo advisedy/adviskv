@@ -59,6 +59,12 @@
         break;                                       \
     }
 
+#define SWITCH_TYPE_EQUAL2(obj, type_a, name_a, type_b, name_b) \
+    case type_a::name_a: {                                      \
+        obj = type_b::name_b;                                   \
+        break;                                                  \
+    }
+
 #define SWITCH_DEFAULT_BREAK() \
     default: {                 \
         break;                 \

@@ -74,6 +74,19 @@ struct ReplicaInitParam {
     Endpoint local_endpoint;
     std::vector<PeerMember> members;
     std::string data_dir;  // 存放那些持久化数据的根目录
+
+    bool operator==(const ReplicaInitParam& other) const {
+        if (!(replica_id == other.replica_id)) return false;
+        if (!(engine_type == other.engine_type)) return false;
+        if (!(local_endpoint == other.local_endpoint)) return false;
+        if (!(members == other.members)) return false;
+        if (!(data_dir == other.data_dir)) return false;
+        return true;
+    }
+
+    bool operator!=(const ReplicaInitParam& other) const {
+        return !(*this == other);
+    }
 };
 
 struct RequestVoteParam {

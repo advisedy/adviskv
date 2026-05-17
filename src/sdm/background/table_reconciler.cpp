@@ -10,6 +10,7 @@
 #include "common/log.h"
 #include "common/status.h"
 #include "common/type.h"
+#include "sdm/utility/enum_convert.h"
 
 namespace adviskv::sdm {
 
@@ -114,54 +115,42 @@ Status TableReconciler::reconcile_table(Table& table) {
 }
 
 Status TableReconciler::reconcile_present(Table& table) {
-    try {
-        Status status = ensure_replica_metadata(table);
-        if (status.fail()) return mark_table_error(table, status);
-        status = ensure_storage_replicas(table);
-        if (status.fail()) return mark_table_error(table, status);
+    Status status = ensure_replica_metadata(table);
+    if (status.fail()) return mark_table_error(table, status);
+    status = ensure_storage_replicas(table);
+    if (status.fail()) return mark_table_error(table, status);
 
-        status = refresh_storage_replica_info(table);
-        if (status.fail()) {
-            LOG_DEBUG(
-                "refresh storage replica info skipped for table={}, msg={}",
-                table.table_id, status.msg());
-        }
+    status = refresh_storage_replica_info(table);
+    if (status.fail()) {
+        LOG_DEBUG(
+            "refresh storage replica info skipped for table={}, msg={}",
+            table.table_id, status.msg());
+    }
 
-        if (!all_replicas_ready(table) or !all_routes_ready(table)) {
-            table.state.phase = TablePhase::CREATING;
-            table.state.update_ts = func::get_current_ts_ms();
-            return store_->put_table(table);
-        }
-
-        table.state.phase = TablePhase::READY;
-        table.state.last_error_msg.clear();
+    if (!all_replicas_ready(table) or !all_routes_ready(table)) {
+        table.state.phase = TablePhase::CREATING;
         table.state.update_ts = func::get_current_ts_ms();
         return store_->put_table(table);
-    } catch (const std::exception& e) {
-        return mark_table_error(
-            table, Status::ERROR(fmt::format("reconcile_present exception: {}",
-                                             e.what())));
     }
+
+    table.state.phase = TablePhase::READY;
+    table.state.last_error_msg.clear();
+    table.state.update_ts = func::get_current_ts_ms();
+    return store_->put_table(table);
 }
 
 Status TableReconciler::reconcile_absent(Table& table) {
-    try {
-        Status status = ensure_routes_absent(table);
-        if (status.fail()) return mark_table_error(table, status);
-        status = ensure_storage_replicas_absent(table);
-        if (status.fail()) return mark_table_error(table, status);
-        status = ensure_replica_metadata_absent(table);
-        if (status.fail()) return mark_table_error(table, status);
+    Status status = ensure_routes_absent(table);
+    if (status.fail()) return mark_table_error(table, status);
+    status = ensure_storage_replicas_absent(table);
+    if (status.fail()) return mark_table_error(table, status);
+    status = ensure_replica_metadata_absent(table);
+    if (status.fail()) return mark_table_error(table, status);
 
-        table.state.phase = TablePhase::DELETED;
-        table.state.last_error_msg.clear();
-        table.state.update_ts = func::get_current_ts_ms();
-        return store_->put_table(table);
-    } catch (const std::exception& e) {
-        return mark_table_error(
-            table, Status::ERROR(fmt::format("reconcile_absent exception: {}",
-                                             e.what())));
-    }
+    table.state.phase = TablePhase::DELETED;
+    table.state.last_error_msg.clear();
+    table.state.update_ts = func::get_current_ts_ms();
+    return store_->put_table(table);
 }
 
 Status TableReconciler::ensure_replica_metadata(Table& table) {
@@ -284,21 +273,10 @@ Status TableReconciler::refresh_storage_replica_info(Table& table) {
             */
             replica->state.observed_role = info.role;
             replica->state.observed_endpoint = info.endpoint;
-            switch (info.status) {
-                case ReplicaStatus::ADDING: {
-                    replica->state.phase = ReplicaPhase::CREATING;
-                    break;
-                }
-
-                    SWITCH_TYPE_EQUAL(replica->state.phase, ReplicaStatus,
-                                      ReplicaPhase, READY)
-                    SWITCH_TYPE_EQUAL(replica->state.phase, ReplicaStatus,
-                                      ReplicaPhase, LOST)
-                    SWITCH_TYPE_EQUAL(replica->state.phase, ReplicaStatus,
-                                      ReplicaPhase, ERROR)
-
-                    SWITCH_DEFAULT_BREAK()
-            }
+            RETURN_IF_INVALID_CONDITION(
+                convert_replica_status_to_phase(info.status,
+                                                replica->state.phase),
+                "replica status is not valid")
             replica->state.update_ts = func::get_current_ts_ms();
             replica->state.last_error_msg.clear();
             RETURN_IF_INVALID_STATUS(store_->put_replica(*replica))

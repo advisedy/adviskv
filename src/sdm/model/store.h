@@ -52,7 +52,6 @@ enum class ReplicaPhase {
 struct ReplicaSpec {
     std::string dc;
     NodeID assign_node_id{""};
-    Endpoint endpoint;
     EngineType engine_type{EngineType::MAP};
     std::vector<PeerMember> members;
 };

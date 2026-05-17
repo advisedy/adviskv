@@ -1,7 +1,5 @@
 #pragma once
 
-#include <unordered_map>
-
 #include "common.pb.h"
 #include "sdm/model/store.h"
 namespace adviskv::sdm {
@@ -15,10 +13,12 @@ bool convert_pb_to_replica_role(pb::ReplicaRole in, sdm::ReplicaRole& out);
 bool convert_replica_role_to_pb(sdm::ReplicaRole in, pb::ReplicaRole& out);
 
 bool convert_pb_to_replica_status(pb::ReplicaStatus in,
-                                  sdm::ReplicaStatus& out);
+                                  ReplicaStatus& out);
 
-bool convert_replica_status_to_pb(sdm::ReplicaStatus in,
+bool convert_replica_status_to_pb(ReplicaStatus in,
                                   pb::ReplicaStatus& out);
+
+bool convert_replica_status_to_phase(ReplicaStatus in, ReplicaPhase& out);
 
 // ######################################################
 //  提供给外部的接口

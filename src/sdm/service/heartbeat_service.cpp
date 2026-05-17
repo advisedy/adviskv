@@ -3,6 +3,7 @@
 #include "common/define.h"
 #include "common/func.h"
 #include "sdm/model/service_param.h"
+#include "sdm/utility/enum_convert.h"
 namespace adviskv::sdm {
 
 HeartBeatService::HeartBeatService(SdmStore* sdm_store)
@@ -52,15 +53,14 @@ Status HeartBeatService::apply_reported_replicas(const HeartBeatParam& param) {
             continue;
         }
 
-        replica->state.role = info.role;
-        replica->state.endpoint = Endpoint{param.ip, param.port};
-
-        if (replica->spec.status == ReplicaStatus::ADDING &&
-            info.status == ReplicaStatus::READY) {
-            replica->spec.status = ReplicaStatus::READY;
-        } else {
-            replica->spec.status = info.status;
-        }
+        replica->state.observed_role = info.role;
+        replica->state.observed_endpoint = Endpoint{param.ip, param.port};
+        ReplicaPhase phase;
+        RETURN_IF_INVALID_CONDITION(
+            convert_replica_status_to_phase(info.status, phase),
+            "replica status is not valid")
+        replica->state.phase = phase;
+        replica->state.update_ts = func::get_current_ts_ms();
         status = sdm_store_->put_replica(*replica);
         RETURN_IF_INVALID_STATUS(status)
     }
