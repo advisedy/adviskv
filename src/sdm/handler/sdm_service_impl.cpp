@@ -164,14 +164,9 @@ grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context,
             auto* endpoint = route_replica->mutable_endpoint();
             endpoint->set_ip(replica.ip);
             endpoint->set_port(replica.port);
-            switch (replica.role) {
-                case ReplicaRole::LEADER:
-                    route_replica->set_role(pb::ReplicaRole::LEADER);
-                    break;
-                case ReplicaRole::FOLLOWER:
-                    route_replica->set_role(pb::ReplicaRole::FOLLOWER);
-                    break;
-            }
+            pb::ReplicaRole role{pb::ReplicaRole::FOLLOWER};
+            IGNORE_RESULT(convert_replica_role_to_pb(replica.role, role))
+            route_replica->set_role(role);
         }
     }
     return grpc::Status::OK;

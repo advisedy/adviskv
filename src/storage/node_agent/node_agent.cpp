@@ -4,39 +4,11 @@
 #include <thread>
 
 #include "common/define.h"
+#include "common/enum_convert.h"
 #include "common/log.h"
 #include "common/status.h"
 
 namespace adviskv::storage {
-namespace {
-
-pb::ReplicaRole to_pb_replica_role(ReplicaRole role) {
-    switch (role) {
-        case ReplicaRole::LEADER:
-            return pb::ReplicaRole::LEADER;
-        case ReplicaRole::FOLLOWER:
-        case ReplicaRole::CANDIDATE:
-            // SDM V1 only consumes leader/follower observations.
-            return pb::ReplicaRole::FOLLOWER;
-    }
-    return pb::ReplicaRole::FOLLOWER;
-}
-
-pb::ReplicaStatus to_pb_replica_status(ReplicaStatus status) {
-    switch (status) {
-        case ReplicaStatus::ADDING:
-            return pb::ReplicaStatus::ADDING;
-        case ReplicaStatus::READY:
-            return pb::ReplicaStatus::READY;
-        case ReplicaStatus::LOST:
-            return pb::ReplicaStatus::LOST;
-        case ReplicaStatus::ERROR:
-            return pb::ReplicaStatus::ERROR;
-    }
-    return pb::ReplicaStatus::ERROR;
-}
-
-}  // namespace
 
 Status NodeAgent::init(const NodeAgentConf& conf,
                        ReplicaManager* replica_manager) {

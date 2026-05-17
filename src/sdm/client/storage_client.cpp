@@ -10,6 +10,7 @@
 #include "common/log.h"
 #include "common/status.h"
 #include "sdm/model/store.h"
+#include "sdm/utility/enum_convert.h"
 
 namespace adviskv::sdm {
 
@@ -143,20 +144,10 @@ Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
     const auto& replica = response.replica();
 
     ReplicaRole role{ReplicaRole::FOLLOWER};
-    switch (replica.role()) {
-        SWITCH_TYPE_EQUAL(role, pb::ReplicaRole, ReplicaRole, LEADER)
-        SWITCH_TYPE_EQUAL(role, pb::ReplicaRole, ReplicaRole, FOLLOWER)
-        SWITCH_DEFAULT_BREAK()
-    }
+    IGNORE_RESULT(convert_pb_to_replica_role(replica.role(), role))
 
     ReplicaStatus status{ReplicaStatus::ADDING};
-    switch (replica.status()) {
-        SWITCH_TYPE_EQUAL(status, pb::ReplicaStatus, ReplicaStatus, ADDING)
-        SWITCH_TYPE_EQUAL(status, pb::ReplicaStatus, ReplicaStatus, READY)
-        SWITCH_TYPE_EQUAL(status, pb::ReplicaStatus, ReplicaStatus, LOST)
-        SWITCH_TYPE_EQUAL(status, pb::ReplicaStatus, ReplicaStatus, ERROR)
-        SWITCH_DEFAULT_BREAK()
-    }
+    IGNORE_RESULT(convert_pb_to_replica_status(replica.status(), status))
 
     out = StorageReplicaInfo{
         .replica_id = ReplicaID{.table_id = replica.table_id(),

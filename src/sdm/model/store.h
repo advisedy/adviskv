@@ -26,14 +26,6 @@ struct ResourcePool {
 };
 using ResourcePoolPtr = std::shared_ptr<ResourcePool>;
 
-//////////////////////////////
-// replica
-
-enum class ReplicaRole {
-    LEADER = 1,
-    FOLLOWER = 2,
-};
-
 enum class ReplicaDesired {
     PRESENT = 1,
     ABSENT = 2,
