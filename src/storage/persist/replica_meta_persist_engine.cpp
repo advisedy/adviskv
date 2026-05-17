@@ -146,6 +146,26 @@ Status ReplicaMetaPersistEngine::load_replica_meta(
     return Status::OK();
 }
 
+Status ReplicaMetaPersistEngine::load_replica_meta(
+    const ReplicaID& replica_id, ReplicaMetaPayload& payload) const {
+    return load_replica_meta(meta_path(replica_id), payload);
+}
+
+Status ReplicaMetaPersistEngine::delete_replica_meta(
+    const ReplicaID& replica_id) const {
+    std::filesystem::path path = meta_path(replica_id);
+    try {
+        if (!std::filesystem::exists(path)) {
+            return Status::OK();
+        }
+        std::filesystem::remove(path);
+        return Status::OK();
+    } catch (const std::exception& e) {
+        return Status::ERROR(
+            fmt::format("delete replica meta failed: {}", e.what()));
+    }
+}
+
 // 返回所有的meta的路径，用来调用load_replica_meta
 std::vector<std::filesystem::path>
 ReplicaMetaPersistEngine::scan_replica_meta_files() const {

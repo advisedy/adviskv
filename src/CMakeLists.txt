@@ -7,12 +7,13 @@ add_library(adviskv_common
     ${CMAKE_CURRENT_SOURCE_DIR}/common/log.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/common/background_task.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/common/thread_pool.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/common/enum_convert.cpp
     ${PROJECT_BINARY_DIR}/generated/common.pb.cc
 )
 
 target_include_directories(adviskv_common PUBLIC
     ${CMAKE_SOURCE_DIR}/src
-    ${PROJECT_BINARY_DIR}/build/generated
+    ${PROJECT_BINARY_DIR}/generated
 )
 
 target_compile_definitions(adviskv_common PUBLIC

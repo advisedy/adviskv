@@ -4,6 +4,7 @@
 #include <grpcpp/support/status.h>
 
 #include "common/confmgr.h"
+#include "common/enum_convert.h"
 #include "common/log.h"
 #include "common/path_util.h"
 #include "common/status.h"
@@ -126,19 +127,6 @@ grpc::Status StorageServiceImpl::CreateReplica(
         return grpc::Status::OK;
     }
 
-    const ShardID shard_id{
-        .table_id = request->table_id(),
-        .shard_index = request->shard_index(),
-    };
-    Replica* replica = replica_manager_->get_replica_by_shard(shard_id);
-
-    if (replica) {
-        LOG_WARN("replica have exists, table_id = {}, shard_index = {}",
-                 request->table_id(), request->shard_index());
-        fill_base_rsp(response, Status::ALREADY_EXIST("replica not found"));
-        return grpc::Status::OK;
-    }
-
     ReplicaInitParam param{
         .replica_id{.table_id = request->table_id(),
                     .shard_index = request->shard_index(),
@@ -171,12 +159,56 @@ grpc::Status StorageServiceImpl::CreateReplica(
 grpc::Status StorageServiceImpl::DeleteReplica(
     grpc::ServerContext* context, const rpc::DeleteReplicaRequest* request,
     rpc::DeleteReplicaResponse* response) {
+    if (!replica_manager_) {
+        LOG_WARN("replica manager is nullptr");
+        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
+                                       "replica manager not found"});
+        return grpc::Status::OK;
+    }
+
+    ReplicaID replica_id{
+        .table_id = request->table_id(),
+        .shard_index = request->shard_id(),
+        .replica_index = request->replica_id(),
+    };
+    Status status = replica_manager_->delete_replica(replica_id);
+    fill_base_rsp(response, status);
     return grpc::Status::OK;
 }
 
 grpc::Status StorageServiceImpl::GetReplicaInfo(
     grpc::ServerContext* context, const rpc::GetReplicaInfoRequest* request,
     rpc::GetReplicaInfoResponse* response) {
+    if (!replica_manager_) {
+        LOG_WARN("replica manager is nullptr");
+        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
+                                       "replica manager not found"});
+        return grpc::Status::OK;
+    }
+
+    const ReplicaID replica_id{
+        .table_id = request->table_id(),
+        .shard_index = request->shard_id(),
+        .replica_index = request->replica_id(),
+    };
+    Replica* replica = replica_manager_->get_replica_by_id(replica_id);
+    if (!replica) {
+        response->set_exists(false);
+        fill_base_rsp(response, Status::OK());
+        return grpc::Status::OK;
+    }
+
+    response->set_exists(true);
+    auto* info = response->mutable_replica();
+    info->set_table_id(replica->get_replica_id().table_id);
+    info->set_shard_id(replica->get_replica_id().shard_index);
+    info->set_replica_id(replica->get_replica_id().replica_index);
+    info->set_role(to_pb_replica_role(replica->get_role()));
+    info->set_status(to_pb_replica_status(replica->get_status()));
+    auto* endpoint = info->mutable_endpoint();
+    endpoint->set_ip(CONF_GET_STR("ip"));
+    endpoint->set_port(CONF_GET_INT("port"));
+    fill_base_rsp(response, Status::OK());
     return grpc::Status::OK;
 }
 

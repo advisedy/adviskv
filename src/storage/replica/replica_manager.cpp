@@ -48,14 +48,22 @@ Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
     std::unique_lock locker(mutex_);
 
     if (replica_map_.count(replica_id)) {
-        return Status{StatusCode::INVALID_ARGUMENT,
-                      fmt::format("replica already exists, table_id: {}, "
-                                  "shard_index: {}, replica_index: {}",
-                                  replica_id.table_id, replica_id.shard_index,
-                                  replica_id.replica_index)};
+        ReplicaMetaPayload old_payload;
+        RETURN_IF_INVALID_STATUS(
+            meta_persist_.load_replica_meta(replica_id, old_payload))
+        if (old_payload.init_param == param) {
+            return Status::OK();
+        }
+        return Status{
+            StatusCode::ALREADY_EXIST,
+            fmt::format("replica already exists, "
+                        "table_id: {}, shard_index: {}, replica_index: {}",
+                        replica_id.table_id, replica_id.shard_index,
+                        replica_id.replica_index)};
     }
+    
     if (shard_primary_index_.count(shard_id)) {
-        return Status{StatusCode::INVALID_ARGUMENT,
+        return Status{StatusCode::ALREADY_EXIST,
                       fmt::format("shard already exists on current node, "
                                   "table_id: {}, shard_index: {}",
                                   shard_id.table_id, shard_id.shard_index)};
@@ -76,12 +84,12 @@ Status ReplicaManager::delete_replica(const ReplicaID& replica_id) {
     std::unique_lock locker(mutex_);
     auto it = replica_map_.find(replica_id);
     if (it == replica_map_.end()) {
-        return Status::OK();
+        return meta_persist_.delete_replica_meta(replica_id);
     }
     ShardID shard_id = it->second->get_shard_id();
     shard_primary_index_.erase(shard_id);
     replica_map_.erase(it);
-    return Status::OK();
+    return meta_persist_.delete_replica_meta(replica_id);
 }
 
 std::vector<Replica*> ReplicaManager::get_replicas() const {
