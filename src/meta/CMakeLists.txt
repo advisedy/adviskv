@@ -2,6 +2,7 @@ set(META_SOURCES
     # current dir
     ${CMAKE_CURRENT_SOURCE_DIR}/main/main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/catalog/catalog_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/background/table_ddl_reconciler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/persist/meta_persist_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/service/ddl_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/handler/meta_service_impl.cpp

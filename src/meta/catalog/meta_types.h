@@ -59,13 +59,16 @@ struct TableMeta {
         if (update_ts != other.update_ts) return false;
         return true;
     }
+
+    DEFINE_OPERATOR_NOT_EQUAL(TableMeta)
 };
 
 struct CreateDBMetaParam {
     std::string db_name;
     std::string zone;
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(),
+                                    "db_name should not empty")
         return Status::OK();
     }
 };
@@ -77,10 +80,13 @@ struct CreateTableMetaParam {
     int32_t replica_count;
     std::string resource_pool;
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
-        RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(),
+                                    "db_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!table_name.empty(),
+                                    "table_name should not empty")
         RETURN_IF_INVALID_CONDITION(shard_count > 0, "shard count should > 0")
-        RETURN_IF_INVALID_CONDITION(replica_count >= 0, "replica count should >= 0")
+        RETURN_IF_INVALID_CONDITION(replica_count >= 0,
+                                    "replica count should >= 0")
         return Status::OK();
     }
 };

@@ -12,6 +12,7 @@
 #include "common/path_util.h"
 #include "common/status.h"
 #include "common/type.h"
+#include "meta/background/table_ddl_reconciler.h"
 #include "meta/catalog/catalog_manager.h"
 #include "meta/handler/meta_service_impl.h"
 #include "meta/persist/meta_persist_engine.h"
@@ -87,6 +88,9 @@ int main() {
 
         auto ddl_service = std::make_unique<DdlService>(catalog_manager.get(),
                                                         sdm_client.get());
+        auto table_ddl_reconciler = std::make_unique<TableDdlReconciler>(
+            catalog_manager.get(), sdm_client.get());
+        table_ddl_reconciler->start(Milliseconds(3000));
 
         auto meta_service = std::make_unique<MetaServiceImpl>(
             ddl_service.get(), catalog_manager.get());
@@ -100,6 +104,7 @@ int main() {
         LOG_INFO("Meta server listening on {}:{}", listen_host, listen_port);
 
         server->Wait();
+        table_ddl_reconciler->stop();
     }
 
     return 0;

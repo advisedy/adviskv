@@ -46,6 +46,11 @@ class MetaRecordCodec {
             buf.write(table_meta.db_name);
             buf.write(table_meta.table_name);
             buf.write(table_meta.resource_pool);
+            buf.write(static_cast<int32>(table_meta.state));
+            buf.write(table_meta.operation_id);
+            buf.write(table_meta.last_error_msg);
+            buf.write(table_meta.create_ts);
+            buf.write(table_meta.update_ts);
         }
     }
 
@@ -81,6 +86,13 @@ class MetaRecordCodec {
             RETURN_IF_INVALID_READ(buf, table_meta.db_name)
             RETURN_IF_INVALID_READ(buf, table_meta.table_name)
             RETURN_IF_INVALID_READ(buf, table_meta.resource_pool)
+            int32 state{0};
+            RETURN_IF_INVALID_READ(buf, state)
+            table_meta.state = static_cast<TableState>(state);
+            RETURN_IF_INVALID_READ(buf, table_meta.operation_id)
+            RETURN_IF_INVALID_READ(buf, table_meta.last_error_msg)
+            RETURN_IF_INVALID_READ(buf, table_meta.create_ts)
+            RETURN_IF_INVALID_READ(buf, table_meta.update_ts)
             record.table_id2table_meta[table_meta.table_id] =
                 std::move(table_meta);
         }
