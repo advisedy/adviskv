@@ -13,12 +13,21 @@
 
 namespace adviskv::sdm {
 
+struct StorageReplicaInfo {
+    ReplicaID replica_id;
+    ReplicaRole role{ReplicaRole::FOLLOWER};
+    ReplicaStatus status{ReplicaStatus::ADDING};
+    Endpoint endpoint;
+};
+
 class IStorageClient {
    public:
     virtual ~IStorageClient() = default;
 
     virtual Status create_replica(const CreateReplicaParam& param) = 0;
     virtual Status delete_replica(const DeleteReplicaParam& param) = 0;
+    virtual Status get_replica_info(const GetReplicaInfoParam& param,
+                                    StorageReplicaInfo& out, bool& exists) = 0;
 };
 
 class StorageClient : public IStorageClient {
@@ -27,6 +36,8 @@ class StorageClient : public IStorageClient {
 
     Status create_replica(const CreateReplicaParam& param) override;
     Status delete_replica(const DeleteReplicaParam& param) override;
+    Status get_replica_info(const GetReplicaInfoParam& param,
+                            StorageReplicaInfo& out, bool& exists) override;
 
    private:
     rpc::StorageService::Stub* make_stub(const std::string& ip, int32_t port);

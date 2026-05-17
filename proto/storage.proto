@@ -65,11 +65,13 @@ message DeleteReplicaResponse {
 message GetReplicaInfoRequest {
   int32 table_id = 1;
   int32 shard_id = 2;
+  int32 replica_id = 3;
 }
 
 message GetReplicaInfoResponse {
   adviskv.pb.BaseRsp base_rsp = 1;
-  repeated adviskv.pb.ReplicaInfo replicas = 2;
+  bool exists = 2;
+  adviskv.pb.ReplicaInfo replica = 3;
 }
 
 message RequestVoteRequest{

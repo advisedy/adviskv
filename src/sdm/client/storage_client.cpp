@@ -5,9 +5,11 @@
 #include <grpcpp/client_context.h>
 #include <grpcpp/create_channel.h>
 
+#include "common.pb.h"
 #include "common/define.h"
 #include "common/log.h"
 #include "common/status.h"
+#include "sdm/model/store.h"
 
 namespace adviskv::sdm {
 
@@ -101,6 +103,71 @@ Status StorageClient::delete_replica(const DeleteReplicaParam& param) {
         return Status{static_cast<StatusCode>(response.base_rsp().code()),
                       response.base_rsp().msg()};
     }
+    return Status::OK();
+}
+
+Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
+                                       StorageReplicaInfo& out, bool& exists) {
+    RETURN_IF_INVALID_PARAM(param)
+
+    rpc::StorageService::Stub* stub =
+        make_stub(param.endpoint.ip, param.endpoint.port);
+    if (!stub) {
+        return Status::ERROR(fmt::format("failed to create stub for {}:{}",
+                                         param.endpoint.ip,
+                                         param.endpoint.port));
+    }
+
+    rpc::GetReplicaInfoRequest request;
+    request.set_table_id(param.replica_id.table_id);
+    request.set_shard_id(param.replica_id.shard_index);
+    request.set_replica_id(param.replica_id.replica_index);
+
+    rpc::GetReplicaInfoResponse response;
+    grpc::ClientContext context;
+    grpc::Status grpc_status =
+        stub->GetReplicaInfo(&context, request, &response);
+    if (!grpc_status.ok()) {
+        return Status::ERROR(
+            fmt::format("GetReplicaInfo RPC failed for {}:{}, grpc error: {}",
+                        param.endpoint.ip, param.endpoint.port,
+                        grpc_status.error_message()));
+    }
+    if (response.base_rsp().code() != 0) {
+        return Status{static_cast<StatusCode>(response.base_rsp().code()),
+                      response.base_rsp().msg()};
+    }
+    exists = response.exists();
+    if (!response.exists()) return Status::OK();
+
+    const auto& replica = response.replica();
+
+    ReplicaRole role{ReplicaRole::FOLLOWER};
+    switch (replica.role()) {
+        SWITCH_TYPE_EQUAL(role, pb::ReplicaRole, ReplicaRole, LEADER)
+        SWITCH_TYPE_EQUAL(role, pb::ReplicaRole, ReplicaRole, FOLLOWER)
+        SWITCH_DEFAULT_BREAK()
+    }
+
+    ReplicaStatus status{ReplicaStatus::ADDING};
+    switch (replica.status()) {
+        SWITCH_TYPE_EQUAL(status, pb::ReplicaStatus, ReplicaStatus, ADDING)
+        SWITCH_TYPE_EQUAL(status, pb::ReplicaStatus, ReplicaStatus, READY)
+        SWITCH_TYPE_EQUAL(status, pb::ReplicaStatus, ReplicaStatus, LOST)
+        SWITCH_TYPE_EQUAL(status, pb::ReplicaStatus, ReplicaStatus, ERROR)
+        SWITCH_DEFAULT_BREAK()
+    }
+
+    out = StorageReplicaInfo{
+        .replica_id = ReplicaID{.table_id = replica.table_id(),
+                                .shard_index = replica.shard_id(),
+                                .replica_index = replica.replica_id()},
+        .role = role,
+        .status = status,
+        .endpoint = Endpoint{.ip = replica.endpoint().ip(),
+                             .port = replica.endpoint().port()},
+    };
+
     return Status::OK();
 }
 

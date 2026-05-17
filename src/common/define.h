@@ -8,8 +8,9 @@
 
 // 这里cond要填写应该合法的情况，如果cond与预期不符合，就会return，跟assert的语义有点像
 
-#include <chrono>
 #include <fmt/core.h>
+
+#include <chrono>
 #define RETURN_IF_INVALID_CONDITION(cond, msg)            \
     if (!(cond)) {                                        \
         return Status{StatusCode::INVALID_ARGUMENT, msg}; \
@@ -30,19 +31,19 @@
         return status;                                    \
     }
 
-#define RETURN_IF_INVALID_READ(buf, name)                                    \
-    do {                                                                     \
-        if (bool success = (buf).read(name); !success) {                     \
-            return Status::ERROR(fmt::format("read {} is invalid", #name));  \
-        }                                                                    \
+#define RETURN_IF_INVALID_READ(buf, name)                                   \
+    do {                                                                    \
+        if (bool success = (buf).read(name); !success) {                    \
+            return Status::ERROR(fmt::format("read {} is invalid", #name)); \
+        }                                                                   \
     } while (false);
 
-#define RETURN_IF_INVALID_READ_TYPE(buf, type, name)                           \
-    do {                                                                       \
-        if (bool success = (buf).read<type>(name); !success) {                 \
-            return Status::ERROR(                                              \
-                fmt::format("read {} is invalid, type: {}", #name, #type));    \
-        }                                                                      \
+#define RETURN_IF_INVALID_READ_TYPE(buf, type, name)                        \
+    do {                                                                    \
+        if (bool success = (buf).read<type>(name); !success) {              \
+            return Status::ERROR(                                           \
+                fmt::format("read {} is invalid, type: {}", #name, #type)); \
+        }                                                                   \
     } while (false);
 
 #define DEFINE_VECTOR_AND_RESERVE(type, name, size) \
@@ -52,22 +53,16 @@
 #define UNUSED(x) ((void)(x));
 #define IGNORE_RESULT(expr) ((void)(expr));
 
+#define SWITCH_TYPE_EQUAL(obj, type_a, type_b, name) \
+    case type_a::name: {                             \
+        obj = type_b::name;                          \
+        break;                                       \
+    }
+
+#define SWITCH_DEFAULT_BREAK() \
+    default: {                 \
+        break;                 \
+    }
+
 using Milliseconds = std::chrono::milliseconds;
 using Seconds = std::chrono::seconds;
-
-#include <vector>
-///////////// function
-namespace adviskv {
-
-// template <typename T, typename U>
-// inline void ad_erase_if(std::vector<T>& a, U f) {
-//     for (auto it = a.begin(); it != a.end();) {
-//         if (f(*it)) {
-//             it = a.erase(it);
-//         } else {
-//             it++;
-//         }
-//     }
-// }
-
-}  // namespace adviskv
