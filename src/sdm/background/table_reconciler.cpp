@@ -47,7 +47,6 @@ Status TableReconciler::build_replicas(Table& table, ShardIndex shard_index,
                 ReplicaSpec{
                     .dc = node->spec.dc,
                     .assign_node_id = node->id,
-                    .endpoint = node->state.endpoint,
                     .engine_type = EngineType::MAP,
                     .members = members,
                 },
@@ -62,6 +61,15 @@ Status TableReconciler::build_replicas(Table& table, ShardIndex shard_index,
         };
         RETURN_IF_INVALID_STATUS(store_->put_replica(replica))
     }
+    return Status::OK();
+}
+
+Status TableReconciler::get_assigned_node_endpoint(const Replica& replica,
+                                                   Endpoint& endpoint) const {
+    NodePtr node;
+    RETURN_IF_INVALID_STATUS(
+        store_->get_node(replica.spec.assign_node_id, node))
+    endpoint = node->state.endpoint;
     return Status::OK();
 }
 
@@ -215,11 +223,14 @@ Status TableReconciler::ensure_storage_replicas(Table& table) {
             // 关于这里如果是CREATING的话，
             // 说不定是storage那边发过来了创建好了， 但是我们这里没有收到，
             // 所以就再发送一遍，在storage那边保持好幂等应该就可以了。
+            Endpoint endpoint;
+            RETURN_IF_INVALID_STATUS(
+                get_assigned_node_endpoint(*replica, endpoint))
             Status status = storage_client_->create_replica(CreateReplicaParam{
                 .replica_id = replica->replica_id,
                 .engine_type = replica->spec.engine_type,
                 .members = replica->spec.members,
-                .endpoint = replica->spec.endpoint,
+                .endpoint = endpoint,
             });
             if (status.fail()) {
                 replica->state.last_error_msg = status.to_string();
@@ -251,10 +262,13 @@ Status TableReconciler::refresh_storage_replica_info(Table& table) {
             }
             StorageReplicaInfo info;
             bool exists{false};
+            Endpoint endpoint;
+            RETURN_IF_INVALID_STATUS(
+                get_assigned_node_endpoint(*replica, endpoint))
             RETURN_IF_INVALID_STATUS(storage_client_->get_replica_info(
                 GetReplicaInfoParam{
                     .replica_id = replica->replica_id,
-                    .endpoint = replica->spec.endpoint,
+                    .endpoint = endpoint,
                 },
                 info, exists))
             if (!exists) {
@@ -313,9 +327,12 @@ Status TableReconciler::ensure_storage_replicas_absent(const Table& table) {
             replicas))
         for (const ReplicaPtr& replica : replicas) {
             if (!replica) continue;
+            Endpoint endpoint;
+            RETURN_IF_INVALID_STATUS(
+                get_assigned_node_endpoint(*replica, endpoint))
             Status status = storage_client_->delete_replica(DeleteReplicaParam{
                 .replica_id = replica->replica_id,
-                .endpoint = replica->spec.endpoint,
+                .endpoint = endpoint,
             });
             if (status.fail()) {
                 replica->state.phase = ReplicaPhase::DELETING;

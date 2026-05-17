@@ -26,8 +26,6 @@ class SdmStore {
                              const std::string& table_name,
                              std::shared_ptr<Table>& out) const;
     Status list_tables(std::vector<std::shared_ptr<Table>>& out) const;
-    Status list_tables_by_lifecycle(TableLifecycle lifecycle,
-                                    std::vector<std::shared_ptr<Table>>& out) const;
 
     Status list_nodes_by_resource_pool(const std::string& pool_name,
                                        std::vector<NodePtr>& out) const;

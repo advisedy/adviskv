@@ -57,13 +57,8 @@ Status SdmRuntimeIndex::on_table_upsert(const Table* old_table,
                                         const Table& new_table) {
     if (old_table != nullptr) {
         table_name_index_.erase(make_table_name_key(*old_table));
-        auto old_lc_it = lifecycle_index_.find(old_table->state.lifecycle);
-        if (old_lc_it != lifecycle_index_.end()) {
-            old_lc_it->second.erase(new_table.table_id);
-        }
     }
     table_name_index_[make_table_name_key(new_table)] = new_table.table_id;
-    lifecycle_index_[new_table.state.lifecycle].insert(new_table.table_id);
     return Status::OK();
 }
 
@@ -117,11 +112,6 @@ Status SdmRuntimeIndex::on_replica_upsert(const Replica* old_replica,
 
 Status SdmRuntimeIndex::on_table_delete(const Table& table) {
     table_name_index_.erase(make_table_name_key(table));
-    //TODO shard route
-    auto lifecycle_it = lifecycle_index_.find(table.state.lifecycle);
-    if (lifecycle_it != lifecycle_index_.end()) {
-        lifecycle_it->second.erase(table.table_id);
-    }
     return Status::OK();
 }
 
@@ -178,18 +168,6 @@ Status SdmRuntimeIndex::list_nodes_by_resource_pool(
         return Status::OK();
     }
     out.insert(out.end(), it->second.begin(), it->second.end());
-    return Status::OK();
-}
-
-Status SdmRuntimeIndex::list_tables_by_lifecycle(
-    TableLifecycle lifecycle, std::vector<TableID>& out) const {
-    out.clear();
-    if (auto it = lifecycle_index_.find(lifecycle);
-        it != lifecycle_index_.end()) {
-        for (const TableID& id : it->second) {
-            out.push_back(id);
-        }
-    }
     return Status::OK();
 }
 

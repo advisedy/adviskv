@@ -75,9 +75,6 @@ class SdmRuntimeIndex {
     Status list_nodes_by_resource_pool(const std::string& pool_name,
                                        std::vector<NodeID>& out) const;
 
-    Status list_tables_by_lifecycle(TableLifecycle lifecycle,
-                                    std::vector<TableID>& out) const;
-
     Status list_replicas_by_shard(const ShardID& shard_id,
                                   std::vector<ReplicaKey>& out) const;
 
@@ -108,6 +105,5 @@ class SdmRuntimeIndex {
 
     std::unordered_map<ShardKey, ShardRoutePtr, ShardKeyHash>
         shard_route_cache_;
-    std::unordered_map<TableLifecycle, std::unordered_set<TableID>> lifecycle_index_;
 };
 }  // namespace adviskv::sdm

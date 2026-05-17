@@ -14,34 +14,42 @@
 namespace adviskv::sdm {
 
 void RouteUpdateCheckTask::run() {
+    Status status = update_once();
+    if (status.fail()) {
+        LOG_WARN("route update failed, msg={}", status.msg());
+    }
+}
+
+Status RouteUpdateCheckTask::update_once() {
     // 拿到路由表，然后进行更新，把对应的shardroute里面的没有用的replica给去掉。
     // 并且选择leader
     Status status{Status::OK()};
 
     std::vector<TablePtr> table_list;
-    status = sdm_store_->list_tables(table_list);
-    if (status.fail()) {
-        LOG_WARN("11");
-        return;
-    }
+
+    RETURN_IF_INVALID_STATUS(sdm_store_->list_tables(table_list))
 
     for (TablePtr& table_ptr : table_list) {
         if (!table_ptr) {
             continue;
         }
-        if (table_ptr->state.lifecycle != TableLifecycle::WAITING_ROUTE_READY &&
-            table_ptr->state.lifecycle != TableLifecycle::READY) {
+        if (table_ptr->state.desired != TableDesired::PRESENT ||
+            (table_ptr->state.phase != TablePhase::CREATING &&
+             table_ptr->state.phase != TablePhase::READY)) {
             continue;
         }
         for (int i = 0; i < table_ptr->spec.shard_count; i++) {
             status = check_shard_route(*table_ptr, static_cast<ShardIndex>(i));
             if (status.fail()) {
                 LOG_WARN(
-                    "route task update shard route failed, table={}, shard={}, msg={}",
+                    "route task update shard route failed, table={}, shard={}, "
+                    "msg={}",
                     table_ptr->table_id, i, status.msg());
+                return status;
             }
         }
     }
+    return Status::OK();
 }
 
 Status RouteUpdateCheckTask::check_shard_route(const Table& table,
@@ -65,7 +73,8 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
             continue;
         }
 
-        if (replica_ptr->spec.status != ReplicaStatus::READY) {
+        if (replica_ptr->state.desired != ReplicaDesired::PRESENT ||
+            replica_ptr->state.phase != ReplicaPhase::READY) {
             continue;
         }
 
@@ -85,11 +94,11 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
         RouteEntry entry{
             .replica_id = replica_ptr->replica_id,
             .node_id = replica_ptr->spec.assign_node_id,
-            .ip = replica_ptr->state.endpoint.ip,
-            .port = replica_ptr->state.endpoint.port,
-            .role = replica_ptr->state.role,
+            .ip = replica_ptr->state.observed_endpoint.ip,
+            .port = replica_ptr->state.observed_endpoint.port,
+            .role = replica_ptr->state.observed_role,
         };
-        if (replica_ptr->state.role == ReplicaRole::LEADER) {
+        if (replica_ptr->state.observed_role == ReplicaRole::LEADER) {
             leader_entries.push_back(std::move(entry));
         } else {
             follower_entries.push_back(std::move(entry));
@@ -97,16 +106,12 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
     }
 
     if (leader_entries.size() != 1) {
-        status = sdm_store_->delete_shard_route(shard_id);
-        RETURN_IF_INVALID_STATUS(status)
-        if (leader_entries.size() > 1) {
-            return Status{StatusCode::ERROR,
-                          fmt::format("leader count: {}",
-                                      leader_entries.size())};
-        }
-        LOG_DEBUG("shard route not ready, table_id={}, shard_index={}",
-                  shard_id.table_id, shard_id.shard_index);
-        return Status::OK();
+        RETURN_IF_INVALID_STATUS(sdm_store_->delete_shard_route(shard_id))
+
+        LOG_WARN(
+            "route not ready, leader_count={}, table_id={}, shard_index={}",
+            leader_entries.size(), shard_id.table_id, shard_id.shard_index);
+        return Status::OK("leader count != 1");
     }
 
     std::sort(follower_entries.begin(), follower_entries.end(),

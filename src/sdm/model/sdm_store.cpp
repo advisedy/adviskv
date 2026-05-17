@@ -68,28 +68,6 @@ Status SdmStore::list_tables(std::vector<std::shared_ptr<Table>>& out) const {
     return meta_store_->list_tables(out);
 }
 
-Status SdmStore::list_tables_by_lifecycle(
-    TableLifecycle lifecycle, std::vector<std::shared_ptr<Table>>& out) const {
-    std::shared_lock locker{mutex_};
-
-    std::vector<TableID> table_ids;
-    Status status =
-        runtime_index_.list_tables_by_lifecycle(lifecycle, table_ids);
-    RETURN_IF_INVALID_STATUS(status)
-
-    out.clear();
-    out.reserve(table_ids.size());
-    for (const TableID& table_id : table_ids) {
-        TablePtr table;
-        status = meta_store_->get_table(table_id, table);
-        RETURN_IF_INVALID_STATUS(status)
-        if (table != nullptr) {
-            out.push_back(table);
-        }
-    }
-    return Status::OK();
-}
-
 Status SdmStore::list_nodes_by_resource_pool(const std::string& pool_name,
                                              std::vector<NodePtr>& out) const {
     std::shared_lock locker{mutex_};
@@ -222,6 +200,7 @@ Status SdmStore::del_replica(const ReplicaID& replica_key) {
     return runtime_index_.on_replica_delete(*old_ptr);
 }
 
+// 如果shard上没有replicas，返回一个空集合是被允许的
 Status SdmStore::list_replicas_by_shard(const ShardID& shard_id,
                                         std::vector<ReplicaPtr>& out) const {
     std::shared_lock locker{mutex_};

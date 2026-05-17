@@ -21,14 +21,11 @@ set(SDM_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/model/sdm_runtime_index.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/persist/sdm_persist_engine.cpp
 
-    ${CMAKE_CURRENT_SOURCE_DIR}/background/capacity_check_task.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/background/heartbeat_check_task.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/background/routeupdate_check_task.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/background/table_reconciler.cpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/client/storage_client.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/workflow/table_workflow.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/workflow/placetable_workflow.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/workflow/placetable_workflow_runner.cpp
 
     # binary dir
     ${PROJECT_BINARY_DIR}/generated/sdm.pb.cc

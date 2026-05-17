@@ -19,6 +19,8 @@ TODO:
 
 [] meta的本地备份 ：每次写入前保留旧版本备份，防止磁盘静默损坏
 
+[] SDM Store 读接口后续改成 snapshot value 语义：`get_xxx` 返回 `std::optional<T>`（例如 `using ReplicaOr = std::optional<Replica>`），`list_xxx` 返回 `std::vector<T>`，避免把内部 mutable `shared_ptr` 暴露给调用方；所有修改必须通过 `put_xxx/delete_xxx` 进入 Store，以保证持久化和 runtime index 更新边界一致。
+
 [] 
 
 

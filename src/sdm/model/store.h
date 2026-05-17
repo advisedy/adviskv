@@ -29,32 +29,42 @@ using ResourcePoolPtr = std::shared_ptr<ResourcePool>;
 //////////////////////////////
 // replica
 
-// 这边这个pending 就是sdm这边先创建了，ADDING就是storage 已经确认接单，正在创建
-// / 启动中
-enum class ReplicaStatus {
-    PENDING = 1,
-    ADDING = 2,
-    READY = 3,
-    LOST = 4,
-    ERROR = 5,
-};
-
 enum class ReplicaRole {
     LEADER = 1,
     FOLLOWER = 2,
 };
 
+enum class ReplicaDesired {
+    PRESENT = 1,
+    ABSENT = 2,
+};
+
+enum class ReplicaPhase {
+    PENDING = 1,
+    CREATING = 2,
+    READY = 3,
+    DELETING = 4,
+    DELETED = 5,
+    LOST = 6,
+    ERROR = 7,
+};
+
 struct ReplicaSpec {
     std::string dc;
     NodeID assign_node_id{""};
-    ReplicaRole role;      // 目前sdm这边记录的role
-    ReplicaStatus status;  // 目前sdm这边记录的status
+    Endpoint endpoint;
+    EngineType engine_type{EngineType::MAP};
+    std::vector<PeerMember> members;
 };
 // 这边replca的status，RPC发送的时候会有，我们在心跳服务里面处理了， 这边就
 // 不会再存起来了。
 struct ReplicaState {
-    Endpoint endpoint;
-    ReplicaRole role;  // 实际返回的role
+    ReplicaDesired desired{ReplicaDesired::PRESENT};
+    ReplicaPhase phase{ReplicaPhase::PENDING};
+    ReplicaRole observed_role{ReplicaRole::FOLLOWER};
+    Endpoint observed_endpoint;
+    std::string last_error_msg;
+    int64_t update_ts{0};
 };
 
 struct Replica {
@@ -101,21 +111,17 @@ using NodePtr = std::shared_ptr<Node>;
 //////////////////////////////
 // table
 
-enum class TableLifecycle {
-    CREATING = 1,
-    PLACING = 2,
-    CREATING_REPLICAS = 3,
-    WAITING_READY = 4,
-    WAITING_ROUTE_READY = 5,
-    ROLLING_BACK = 6,
-    READY = 7,
-    FAILED = 99,
+enum class TableDesired {
+    PRESENT = 1,
+    ABSENT = 2,
 };
 
-enum class TableStatus {
-    CREATEING = 1,
+enum class TablePhase {
+    CREATING = 1,
     READY = 2,
-    FAILED = 3,
+    DELETING = 3,
+    DELETED = 4,
+    FAILED = 5,
 };
 
 struct TableSpec {
@@ -129,10 +135,10 @@ struct TableSpec {
 };
 
 struct TableState {
-    TableStatus status{TableStatus::CREATEING};
-    TableLifecycle lifecycle{TableLifecycle::CREATING};
-    std::string last_error_msg;     // TODO
-    int64_t last_transition_ts{0};  // TODO
+    TableDesired desired{TableDesired::PRESENT};
+    TablePhase phase{TablePhase::CREATING};
+    std::string last_error_msg;
+    int64_t update_ts{0};
 };
 
 struct Table {

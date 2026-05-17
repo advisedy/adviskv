@@ -48,7 +48,8 @@ void HeartBeatCheckTask::run() {
 }
 
 Status HeartBeatCheckTask::check_and_modify_node(Node& node) {
-    int64_t delta_time = func::get_current_ts_ms() - node.state.last_heartbeat_ts;
+    int64_t delta_time =
+        func::get_current_ts_ms() - node.state.last_heartbeat_ts;
     Status status = Status::OK();
     switch (node.spec.status) {
         case NodeStatus::ONLINE: {
@@ -92,7 +93,7 @@ Status HeartBeatCheckTask::check_and_modify_node(Node& node) {
 Status HeartBeatCheckTask::mark_node_offline(Node& node) {
     Status status = Status::OK();
     node.spec.status = NodeStatus::OFFLINE;
-    // TODO 应该在这里更新sdm_store那边的node2replicas的缓存
+    //  应该在这里更新sdm_store那边的node2replicas的缓存
 
     // for (const ReplicaKey& replica_key : node.replicas) {
     //     // 更换逻辑，直接在store里面删除replica，会在CapacityChecker那边补上
@@ -114,7 +115,8 @@ Status HeartBeatCheckTask::mark_node_offline(Node& node) {
         if (!replica) {
             continue;
         }
-        replica->spec.status = ReplicaStatus::LOST;
+        replica->state.phase = ReplicaPhase::LOST;
+        replica->state.update_ts = func::get_current_ts_ms();
         status = sdm_store_->put_replica(*replica);
         RETURN_IF_INVALID_STATUS(status)
     }

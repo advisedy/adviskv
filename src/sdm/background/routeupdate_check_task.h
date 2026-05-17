@@ -12,11 +12,12 @@ namespace adviskv::sdm {
 class RouteUpdateCheckTask : public BackgroundTask {
    public:
     explicit RouteUpdateCheckTask(SdmStore* sdm_store) : sdm_store_(sdm_store) {}
-
-   protected:
+    Status update_once();
+    
+    protected:
     void run() override;
-
-   private:
+    
+    private:
     Status check_shard_route(const Table& table, ShardIndex shard_index);
 
     SdmStore* sdm_store_;
