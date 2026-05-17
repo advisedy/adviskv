@@ -15,6 +15,7 @@
 #include "common/type.h"
 #include "sdm/background/heartbeat_check_task.h"
 #include "sdm/background/routeupdate_check_task.h"
+#include "sdm/background/table_reconciler.h"
 #include "sdm/client/storage_client.h"
 #include "sdm/handler/sdm_service_impl.h"
 #include "sdm/model/sdm_store.h"
@@ -23,8 +24,6 @@
 #include "sdm/service/node_service.h"
 #include "sdm/service/route_service.h"
 #include "sdm/service/table_service.h"
-#include "sdm/workflow/placetable_workflow.h"
-#include "sdm/workflow/placetable_workflow_runner.h"
 
 namespace {
 void init_conf() {
@@ -91,11 +90,8 @@ int main() {
         auto node_selector =
             std::make_unique<DefaultNodeSelector>(sdm_store.get());
 
-        auto workflow = std::make_unique<PlaceTableWorkflow>(
-            sdm_store.get(), storage_client.get(), node_selector.get());
-
         auto table_service =
-            std::make_unique<TableService>(sdm_store.get(), workflow.get());
+            std::make_unique<TableService>(sdm_store.get());
         auto node_service = std::make_unique<NodeService>(sdm_store.get());
         auto heartbeat_service =
             std::make_unique<HeartBeatService>(sdm_store.get());
@@ -105,13 +101,13 @@ int main() {
             table_service.get(), node_service.get(), heartbeat_service.get(),
             route_service.get());
 
-        auto runner = std::make_unique<PlaceTableWorkflowRunner>(
+        auto table_reconciler = std::make_unique<TableReconciler>(
             sdm_store.get(), storage_client.get(), node_selector.get());
         auto route_task =
             std::make_unique<RouteUpdateCheckTask>(sdm_store.get());
         auto heartbeat_check_task =
             std::make_unique<HeartBeatCheckTask>(sdm_store.get());
-        runner->start(Milliseconds(3000));
+        table_reconciler->start(Milliseconds(3000));
         route_task->start(Milliseconds(3000));
         heartbeat_check_task->start(Milliseconds(3000));
 
@@ -125,7 +121,7 @@ int main() {
 
         server->Wait();
         heartbeat_check_task->stop();
-        runner->stop();
+        table_reconciler->stop();
         route_task->stop();
     }
 

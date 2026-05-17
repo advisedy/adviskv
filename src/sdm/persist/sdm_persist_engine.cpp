@@ -25,6 +25,16 @@ class SdmMetaCodec {
     LenType max_payload_len() const { return kMaxSdmMetaPayloadBytes; }
 
     void encode_payload(const ObjectType& record, EncodeBuffer& buf) const {
+        encode_record(record, buf);
+    }
+
+    Status decode_payload(DecodeBuffer& buf, ObjectType& record) const {
+        record = {};
+        return decode_record(buf, record);
+    }
+
+   private:
+    static void encode_record(const ObjectType& record, EncodeBuffer& buf) {
         buf.write(static_cast<int32>(record.tables.size()));
         for (const auto& [table_id, table] : record.tables) {
             UNUSED(table_id);
@@ -56,9 +66,7 @@ class SdmMetaCodec {
         }
     }
 
-    Status decode_payload(DecodeBuffer& buf, ObjectType& record) const {
-        record = {};
-
+    static Status decode_record(DecodeBuffer& buf, ObjectType& record) {
         int32 table_count{0};
         RETURN_IF_INVALID_READ(buf, table_count)
         if (table_count < 0) return Status::ERROR("invalid table_count");
@@ -107,7 +115,6 @@ class SdmMetaCodec {
         return Status::OK();
     }
 
-   private:
     static void encode_shard_id(const ShardID& id, EncodeBuffer& buf) {
         buf.write(id.table_id);
         buf.write(id.shard_index);
@@ -151,10 +158,11 @@ class SdmMetaCodec {
         buf.write(table.spec.shard_count);
         buf.write(table.spec.replica_count);
         buf.write(table.spec.resource_pool);
-        buf.write(static_cast<int32>(table.state.status));
-        buf.write(static_cast<int32>(table.state.lifecycle));
+        buf.write(table.spec.operation_id);
+        buf.write(static_cast<int32>(table.state.desired));
+        buf.write(static_cast<int32>(table.state.phase));
         buf.write(table.state.last_error_msg);
-        buf.write(table.state.last_transition_ts);
+        buf.write(table.state.update_ts);
     }
 
     static Status decode_table(DecodeBuffer& buf, Table& table) {
@@ -166,17 +174,18 @@ class SdmMetaCodec {
         RETURN_IF_INVALID_READ(buf, table.spec.shard_count)
         RETURN_IF_INVALID_READ(buf, table.spec.replica_count)
         RETURN_IF_INVALID_READ(buf, table.spec.resource_pool)
+        RETURN_IF_INVALID_READ(buf, table.spec.operation_id)
 
-        int32 status{0};
-        RETURN_IF_INVALID_READ(buf, status)
-        table.state.status = static_cast<TableStatus>(status);
+        int32 desired{0};
+        RETURN_IF_INVALID_READ(buf, desired)
+        table.state.desired = static_cast<TableDesired>(desired);
 
-        int32 lifecycle{0};
-        RETURN_IF_INVALID_READ(buf, lifecycle)
-        table.state.lifecycle = static_cast<TableLifecycle>(lifecycle);
+        int32 phase{0};
+        RETURN_IF_INVALID_READ(buf, phase)
+        table.state.phase = static_cast<TablePhase>(phase);
 
         RETURN_IF_INVALID_READ(buf, table.state.last_error_msg)
-        RETURN_IF_INVALID_READ(buf, table.state.last_transition_ts)
+        RETURN_IF_INVALID_READ(buf, table.state.update_ts)
         return Status::OK();
     }
 
@@ -212,10 +221,19 @@ class SdmMetaCodec {
         encode_replica_id(replica.replica_id, buf);
         buf.write(replica.spec.dc);
         buf.write(replica.spec.assign_node_id);
-        buf.write(static_cast<int32>(replica.spec.role));
-        buf.write(static_cast<int32>(replica.spec.status));
-        encode_endpoint(replica.state.endpoint, buf);
-        buf.write(static_cast<int32>(replica.state.role));
+        buf.write(static_cast<int32>(replica.spec.engine_type));
+        buf.write<int32>(static_cast<int32>(replica.spec.members.size()));
+        for (const PeerMember& member : replica.spec.members) {
+            buf.write(member.node_id);
+            encode_replica_id(member.replica_id, buf);
+            encode_endpoint(member.endpoint, buf);
+        }
+        buf.write(static_cast<int32>(replica.state.desired));
+        buf.write(static_cast<int32>(replica.state.phase));
+        buf.write(static_cast<int32>(replica.state.observed_role));
+        encode_endpoint(replica.state.observed_endpoint, buf);
+        buf.write(replica.state.last_error_msg);
+        buf.write(replica.state.update_ts);
     }
 
     static Status decode_replica(DecodeBuffer& buf, Replica& replica) {
@@ -224,19 +242,38 @@ class SdmMetaCodec {
         RETURN_IF_INVALID_READ(buf, replica.spec.dc)
         RETURN_IF_INVALID_READ(buf, replica.spec.assign_node_id)
 
-        int32 spec_role{0};
-        RETURN_IF_INVALID_READ(buf, spec_role)
-        replica.spec.role = static_cast<ReplicaRole>(spec_role);
+        int32 engine_type{0};
+        RETURN_IF_INVALID_READ(buf, engine_type)
+        replica.spec.engine_type = static_cast<EngineType>(engine_type);
 
-        int32 spec_status{0};
-        RETURN_IF_INVALID_READ(buf, spec_status)
-        replica.spec.status = static_cast<ReplicaStatus>(spec_status);
+        int32 member_count{0};
+        RETURN_IF_INVALID_READ(buf, member_count)
+        if (member_count < 0) return Status::ERROR("invalid member_count");
+        replica.spec.members.clear();
+        replica.spec.members.reserve(static_cast<size_t>(member_count));
+        for (int32 i = 0; i < member_count; ++i) {
+            PeerMember member;
+            RETURN_IF_INVALID_READ(buf, member.node_id)
+            RETURN_IF_INVALID_STATUS(decode_replica_id(buf, member.replica_id))
+            RETURN_IF_INVALID_STATUS(decode_endpoint(buf, member.endpoint))
+            replica.spec.members.push_back(std::move(member));
+        }
 
-        RETURN_IF_INVALID_STATUS(decode_endpoint(buf, replica.state.endpoint))
+        int32 desired{0};
+        RETURN_IF_INVALID_READ(buf, desired)
+        replica.state.desired = static_cast<ReplicaDesired>(desired);
 
-        int32 state_role{0};
-        RETURN_IF_INVALID_READ(buf, state_role)
-        replica.state.role = static_cast<ReplicaRole>(state_role);
+        int32 phase{0};
+        RETURN_IF_INVALID_READ(buf, phase)
+        replica.state.phase = static_cast<ReplicaPhase>(phase);
+
+        int32 observed_role{0};
+        RETURN_IF_INVALID_READ(buf, observed_role)
+        replica.state.observed_role = static_cast<ReplicaRole>(observed_role);
+
+        RETURN_IF_INVALID_STATUS(decode_endpoint(buf, replica.state.observed_endpoint))
+        RETURN_IF_INVALID_READ(buf, replica.state.last_error_msg)
+        RETURN_IF_INVALID_READ(buf, replica.state.update_ts)
 
         return Status::OK();
     }

@@ -14,7 +14,7 @@ set(SDM_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/selector/node_selector/node_selector.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/selector/leader_selector/leader_selector.cpp
 
-    ${CMAKE_CURRENT_SOURCE_DIR}/utility/pb_convert.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/utility/enum_convert.cpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/model/i_sdm_metastore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/model/sdm_store.cpp

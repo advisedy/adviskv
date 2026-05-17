@@ -3,6 +3,7 @@
 #include <fmt/format.h>
 
 #include "common/define.h"
+#include "common/func.h"
 #include "common/status.h"
 #include "sdm/model/store.h"
 
@@ -20,27 +21,24 @@ bool is_same_table_request(const Table& table, const PlaceTableParam& param) {
 
 }  // namespace
 
-TableService::TableService(SdmStore* store, PlaceTableWorkflow* workflow)
-    : store_(store), workflow_(workflow) {}
+TableService::TableService(SdmStore* store) : store_(store) {}
 
 Status TableService::place_table(const PlaceTableParam& param) {
     RETURN_IF_INVALID_PARAM(param)
+    RETURN_IF_INVALID_CONDITION(store_ != nullptr, "store is nullptr")
 
     TablePtr existing;
     Status status = store_->get_table(param.table_id, existing);
     RETURN_IF_INVALID_STATUS(status)
     if (existing != nullptr) {
-        if (existing->spec.operation_id == param.operation_id) {
-            if (!is_same_table_request(*existing, param)) {
-                return Status::INVALID_ARGUMENT(fmt::format(
-                    "same operation_id {} carries different table spec",
-                    param.operation_id));
-            }
-            return Status::OK();
+        if (existing->spec.operation_id != param.operation_id) {
+            // 就代表是别的请求，正常处理就好
+            return Status::ALREADY_EXIST(
+                fmt::format("table_id {} already exists with operation_id {}",
+                            param.table_id, existing->spec.operation_id));
         }
-        return Status::ALREADY_EXIST(
-            fmt::format("table_id {} already exists with operation_id {}",
-                        param.table_id, existing->spec.operation_id));
+        // operation_id相等，要保证好幂等
+        return Status::OK();
     }
 
     Table table{
@@ -55,11 +53,49 @@ Status TableService::place_table(const PlaceTableParam& param) {
             .operation_id = param.operation_id,
         },
         .state{
-            .status = TableStatus::CREATEING,
-            .lifecycle = TableLifecycle::CREATING,
+            .desired = TableDesired::PRESENT,
+            .phase = TablePhase::CREATING,
+            .update_ts = func::get_current_ts_ms(),
         },
     };
-    return workflow_->step(table);
+    return store_->put_table(table);
+}
+
+Status TableService::drop_table(const DropTableParam& param) {
+    RETURN_IF_INVALID_PARAM(param)
+    RETURN_IF_INVALID_CONDITION(store_ != nullptr, "store is nullptr")
+
+    TablePtr existing;
+    RETURN_IF_INVALID_STATUS(store_->get_table(param.table_id, existing))
+    if (existing == nullptr) {
+        return Status::OK();
+    }
+
+    if (existing->state.phase == TablePhase::DELETED &&
+        existing->state.desired == TableDesired::ABSENT) {
+        return Status::OK();
+    }
+
+    if (existing->state.desired == TableDesired::ABSENT) {
+        if (existing->spec.operation_id == param.operation_id) {
+            return Status::OK();
+        }
+        return Status::ALREADY_EXIST(
+            fmt::format("table_id {} is already dropping with operation_id {}",
+                        param.table_id, existing->spec.operation_id));
+    }
+
+    if (existing->state.phase != TablePhase::READY) {
+        return Status::ALREADY_EXIST(
+            fmt::format("table_id {} is not READY for drop", param.table_id));
+    }
+
+    existing->state.desired = TableDesired::ABSENT;
+    existing->state.phase = TablePhase::DELETING;
+    existing->spec.operation_id = param.operation_id;
+    existing->state.last_error_msg.clear();
+    existing->state.update_ts = func::get_current_ts_ms();
+    return store_->put_table(*existing);
 }
 
 Status TableService::get_table_status(const GetTableStatusParam& param,
@@ -75,8 +111,8 @@ Status TableService::get_table_status(const GetTableStatusParam& param,
     }
     if (!param.operation_id.empty() &&
         existing->spec.operation_id != param.operation_id) {
-        return Status::INVALID_ARGUMENT(
-            fmt::format("operation_id mismatch for table_id {}", param.table_id));
+        return Status::INVALID_ARGUMENT(fmt::format(
+            "operation_id mismatch for table_id {}", param.table_id));
     }
     if (table != nullptr) {
         *table = *existing;

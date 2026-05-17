@@ -11,7 +11,7 @@
 #include "sdm.pb.h"
 #include "sdm/model/service_param.h"
 #include "sdm/model/store.h"
-#include "sdm/utility/pb_convert.h"
+#include "sdm/utility/enum_convert.h"
 
 namespace adviskv::sdm {
 
@@ -45,6 +45,18 @@ grpc::Status SdmServiceImpl::PlaceTable(grpc::ServerContext* context,
     return grpc::Status::OK;
 }
 
+grpc::Status SdmServiceImpl::DropTable(grpc::ServerContext* context,
+                                       const rpc::DropTableRequest* request,
+                                       rpc::DropTableResponse* response) {
+    DropTableParam param{
+        .table_id = request->table_id(),
+        .operation_id = request->operation_id(),
+    };
+    Status status = table_service_->drop_table(param);
+    fill_base_rsp(response, status);
+    return grpc::Status::OK;
+}
+
 grpc::Status SdmServiceImpl::GetTableStatus(
     grpc::ServerContext* context, const rpc::GetTableStatusRequest* request,
     rpc::GetTableStatusResponse* response) {
@@ -58,8 +70,8 @@ grpc::Status SdmServiceImpl::GetTableStatus(
     fill_base_rsp(response, status);
     if (status.ok()) {
         response->set_table_id(table.table_id);
-        response->set_status(static_cast<int32_t>(table.state.status));
-        response->set_lifecycle(static_cast<int32_t>(table.state.lifecycle));
+        response->set_desired(static_cast<int32_t>(table.state.desired));
+        response->set_phase(static_cast<int32_t>(table.state.phase));
         response->set_last_error_msg(table.state.last_error_msg);
         response->set_operation_id(table.spec.operation_id);
     }

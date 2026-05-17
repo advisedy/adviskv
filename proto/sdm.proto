@@ -52,6 +52,15 @@ message PlaceTableResponse{
     adviskv.pb.BaseRsp base_rsp = 1;
 }
 
+message DropTableRequest{
+    int32 table_id = 1;
+    string operation_id = 2;
+}
+
+message DropTableResponse{
+    adviskv.pb.BaseRsp base_rsp = 1;
+}
+
 message GetTableStatusRequest{
     string operation_id = 1;
     int32 table_id = 2;
@@ -60,8 +69,8 @@ message GetTableStatusRequest{
 message GetTableStatusResponse{
     adviskv.pb.BaseRsp base_rsp = 1;
     int32 table_id = 2;
-    int32 status = 3;
-    int32 lifecycle = 4;
+    int32 desired = 3;
+    int32 phase = 4;
     string last_error_msg = 5;
     string operation_id = 6;
 }
@@ -111,6 +120,7 @@ service ShardingManagerService{
     rpc GetRoute(GetRouteRequest) returns (GetRouteResponse);
     rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
     rpc PlaceTable(PlaceTableRequest) returns (PlaceTableResponse);
+    rpc DropTable(DropTableRequest) returns (DropTableResponse);
     rpc GetTableStatus(GetTableStatusRequest) returns (GetTableStatusResponse);
     rpc PlaceDB(PlaceDBRequest) returns (PlaceDBResponse);
     rpc HeartBeat(HeartBeatRequest) returns (HeartBeatResponse);

@@ -10,8 +10,6 @@ message BaseRsp {
 enum ReplicaRole {
   LEADER = 0;
   FOLLOWER = 1;
-  PRE_LEADER = 2;
-  PRE_FOLLOWER = 3;
 }
 
 enum ReplicaStatus {
@@ -40,6 +38,8 @@ message ReplicaInfo {
   int32 replica_id = 3;
   string node_id = 4;
   ReplicaRole role = 5;
+  ReplicaStatus status = 6;
+  Endpoint endpoint = 7;
 }
 
 message ReplicaID {
