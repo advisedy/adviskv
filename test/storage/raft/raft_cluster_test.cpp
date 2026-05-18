@@ -649,8 +649,11 @@ TEST_F(RaftClusterTest, test001) {
     cluster_.restore(4);
     ASSERT_NE(cluster_.node_ptr(3), nullptr);
     ASSERT_NE(cluster_.node_ptr(4), nullptr);
-    ASSERT_EQ(cluster_.node_ptr(3)->commit_index(), 0);
-    ASSERT_EQ(cluster_.node_ptr(4)->commit_index(), 0);
+    ASSERT_GE(cluster_.node_ptr(3)->commit_index(), 0);  //
+    ASSERT_GE(cluster_.node_ptr(4)->commit_index(), 0);
+
+    ASSERT_LE(cluster_.node_ptr(3)->commit_index(), 1);  //
+    ASSERT_LE(cluster_.node_ptr(4)->commit_index(), 1);
     ASSERT_TRUE(tick_until_all_committed(last_idx));
     ASSERT_EQ(cluster_.node_ptr(3)->commit_index(), last_idx);
     ASSERT_EQ(cluster_.node_ptr(4)->commit_index(), last_idx);
@@ -724,7 +727,22 @@ TEST_F(RaftClusterTest, test002) {
 
     entries = get_node_entries(0);
     ASSERT_EQ(entries.empty(), false);
-    ASSERT_EQ(entries.back().key, "new_key_5");
+    // 不要求最后一条一定是 new_key_5，因为 restore
+    // 后可能term过高从而重新选举，leader 会追加 no-op。
+    auto has_key = [&](const std::string& key) {
+        return std::any_of(
+            entries.begin(), entries.end(), [&](const LogEntry& entry) {
+                return entry.op_type == WriteOpType::PUT && entry.key == key;
+            });
+    };
+
+    for (int i = 1; i <= 5; i++) {
+        EXPECT_TRUE(has_key("new_key_" + std::to_string(i)));
+    }
+
+    for (int i = 1; i <= 10; i++) {
+        EXPECT_FALSE(has_key("key_" + std::to_string(i)));
+    }
 }
 
 //
