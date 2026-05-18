@@ -24,9 +24,8 @@ void update_table_state_or_log(CatalogManager& catalog_manager,
                                const TableMeta& table, TableState state,
                                const std::string& last_error_msg,
                                const char* action) {
-    Status status =
-        catalog_manager.update_table_state(table.table_id, state,
-                                           last_error_msg);
+    Status status = catalog_manager.update_table_state(table.table_id, state,
+                                                       last_error_msg);
     if (status.fail()) {
         LOG_WARN("{} failed, table_id={}, operation_id={}, msg={}", action,
                  table.table_id, table.operation_id, status.msg());
@@ -43,74 +42,125 @@ void keep_table_state_with_error(CatalogManager& catalog_manager,
                                                      status.to_string()));
 }
 
+enum class ReconcileAction {
+    DONE,
+    RESUBMIT,
+    FAILED,
+    WAIT,
+    ERROR,
+};
+
 struct AddTablePolicy {
     static constexpr const char* source_name = "ADDING";
     static constexpr TableState source_state = TableState::ADDING;
 
     static constexpr TableState done_state = TableState::NORMAL;
-    static constexpr sdm::TablePhase done_phase = sdm::TablePhase::READY;
 
-    static constexpr const char* resubmit_action =
-        "resubmit SDM place table";
+    static constexpr const char* resubmit_action = "resubmit SDM place table";
     static constexpr const char* done_action = "mark table NORMAL";
     static constexpr const char* failed_msg = "SDM table placement failed";
 
     static Status resubmit(SdmClient& client, const TableMeta& table) {
         return client.call_place_table(table);
     }
+
+    static ReconcileAction decide(const Status& status,
+                                  const SdmTableStatus& sdm_status) {
+        if (status.code() == StatusCode::TABLE_NOT_FOUND) {
+            return ReconcileAction::RESUBMIT;
+        }
+        if (status.fail()) {
+            return ReconcileAction::ERROR;
+        }
+        if (is_sdm_phase(sdm_status, sdm::TablePhase::READY)) {
+            return ReconcileAction::DONE;
+        }
+        if (is_sdm_phase(sdm_status, sdm::TablePhase::FAILED)) {
+            return ReconcileAction::FAILED;
+        }
+        if (is_sdm_phase(sdm_status, sdm::TablePhase::CREATING)) {
+            return ReconcileAction::WAIT;
+        }
+        return ReconcileAction::RESUBMIT;
+    }
 };
 
 struct DropTablePolicy {
     static constexpr const char* source_name = "DROPPING";
     static constexpr TableState source_state = TableState::DROPPING;
-    
-    static constexpr TableState done_state = TableState::DELETED;
-    static constexpr sdm::TablePhase done_phase = sdm::TablePhase::DELETED;
 
-    static constexpr const char* resubmit_action =
-        "resubmit SDM drop table";
+    static constexpr TableState done_state = TableState::DELETED;
+
+    static constexpr const char* resubmit_action = "resubmit SDM drop table";
     static constexpr const char* done_action = "mark table DELETED";
     static constexpr const char* failed_msg = "SDM table drop failed";
 
     static Status resubmit(SdmClient& client, const TableMeta& table) {
         return client.call_drop_table(table);
     }
+
+    static ReconcileAction decide(const Status& status,
+                                  const SdmTableStatus& sdm_status) {
+        if (status.code() == StatusCode::TABLE_NOT_FOUND) {
+            return ReconcileAction::DONE;
+        }
+        if (status.fail()) {
+            return ReconcileAction::ERROR;
+        }
+        if (is_sdm_phase(sdm_status, sdm::TablePhase::DELETED)) {
+            return ReconcileAction::DONE;
+        }
+        if (is_sdm_phase(sdm_status, sdm::TablePhase::FAILED)) {
+            return ReconcileAction::FAILED;
+        }
+        if (is_sdm_phase(sdm_status, sdm::TablePhase::DELETING)) {
+            return ReconcileAction::WAIT;
+        }
+        return ReconcileAction::RESUBMIT;
+    }
 };
+
+template <typename Policy>
+void resubmit_or_record_error(CatalogManager& catalog_manager,
+                              SdmClient& sdm_client, const TableMeta& table) {
+    Status resubmit_status = Policy::resubmit(sdm_client, table);
+    if (resubmit_status.fail()) {
+        keep_table_state_with_error(catalog_manager, table,
+                                    Policy::source_state, resubmit_status,
+                                    Policy::resubmit_action);
+    }
+}
 
 template <typename Policy>
 void reconcile_table(CatalogManager& catalog_manager, SdmClient& sdm_client,
                      const TableMeta& table) {
     SdmTableStatus sdm_status;
     Status status = sdm_client.get_table_status(table, &sdm_status);
+    ReconcileAction action = Policy::decide(status, sdm_status);
 
-    if (status.code() == StatusCode::TABLE_NOT_FOUND) {
-        Status resubmit_status = Policy::resubmit(sdm_client, table);
-        if (resubmit_status.fail()) {
-            keep_table_state_with_error(
-                catalog_manager, table, Policy::source_state, resubmit_status,
-                Policy::resubmit_action);
-        }
-        return;
-    }
-
-    if (status.fail()) {
-        keep_table_state_with_error(
-            catalog_manager, table, Policy::source_state, status,
-            "get SDM table status");
-        return;
-    }
-
-    if (is_sdm_phase(sdm_status, Policy::done_phase)) {
-        update_table_state_or_log(catalog_manager, table, Policy::done_state,
-                                  "", Policy::done_action);
-        return;
-    }
-
-    if (is_sdm_phase(sdm_status, sdm::TablePhase::FAILED)) {
-        update_table_state_or_log(
-            catalog_manager, table, TableState::FAILED,
-            fallback_msg(sdm_status.last_error_msg, Policy::failed_msg),
-            "mark table FAILED");
+    switch (action) {
+        case ReconcileAction::DONE:
+            update_table_state_or_log(catalog_manager, table,
+                                      Policy::done_state, "",
+                                      Policy::done_action);
+            return;
+        case ReconcileAction::RESUBMIT:
+            resubmit_or_record_error<Policy>(catalog_manager, sdm_client,
+                                             table);
+            return;
+        case ReconcileAction::FAILED:
+            update_table_state_or_log(
+                catalog_manager, table, TableState::FAILED,
+                fallback_msg(sdm_status.last_error_msg, Policy::failed_msg),
+                "mark table FAILED");
+            return;
+        case ReconcileAction::ERROR:
+            keep_table_state_with_error(catalog_manager, table,
+                                        Policy::source_state, status,
+                                        "get SDM table status");
+            return;
+        case ReconcileAction::WAIT:
+            return;
     }
 }
 

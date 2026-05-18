@@ -73,6 +73,58 @@ Status DdlService::create_table(const CreateTableParam& param,
     return Status::OK();
 }
 
+Status DdlService::drop_table(const DropTableParam& param,
+                              TableMeta* table_meta) {
+    RETURN_IF_INVALID_PARAM(param)
+
+    TableMeta table;
+    Status status = catalog_manager_->get_table_by_name(
+        param.db_name, param.table_name, &table);
+    RETURN_IF_INVALID_STATUS(status)
+
+    if (table.state == TableState::DELETED) {
+        return Status{StatusCode::TABLE_NOT_FOUND,
+                      fmt::format("table_name:{} does not exist in db:{}",
+                                  param.table_name, param.db_name)};
+    }
+
+    if (table.state == TableState::DROPPING) {
+        if (table_meta != nullptr) {
+            *table_meta = table;
+        }
+        return Status::OK();
+    }
+
+    RETURN_IF_INVALID_STATUS(catalog_manager_->delete_table(table.table_id,
+                                                            &table))
+
+    if (!sdm_client_) {
+        // 这里后续的内容交给reconclier去做，先返回OK。
+        const std::string err_msg = "sdm_client is nullptr";
+
+        //更新一遍持久化那边的last_error_msg
+        RETURN_IF_INVALID_STATUS(catalog_manager_->update_table_state(
+            table.table_id, TableState::DROPPING, err_msg))
+        table.last_error_msg = err_msg;
+        if (table_meta != nullptr) {
+            *table_meta = table;
+        }
+        return Status::OK();
+    }
+
+    status = sdm_client_->call_drop_table(table);
+    if (status.fail()) {
+        RETURN_IF_INVALID_STATUS(catalog_manager_->update_table_state(
+            table.table_id, TableState::DROPPING, status.to_string()))
+        table.last_error_msg = status.to_string();
+    }
+
+    if (table_meta != nullptr) {
+        *table_meta = table;
+    }
+    return Status::OK();
+}
+
 Status DdlService::create_db(const CreateDBParam& param, DBMeta* db_meta) {
     // if(Status status = CreateDBParam::validate(param); status.fail()){
     //     return status;
@@ -120,12 +172,9 @@ Status DdlService::create_db(const CreateDBParam& param, DBMeta* db_meta) {
 
 Status DdlService::get_table(const GetTableParam& param,
                              TableMeta* table_meta) {
-    // if(Status status = GetTableParam::validate(param); status.fail()){
-    //     return status;
-    // }
     RETURN_IF_INVALID_PARAM(param)
 
-    if (param.table_id != -1) {
+    if (param.use_table_id) {
         return catalog_manager_->get_table_by_id(param.table_id, table_meta);
     } else {
         return catalog_manager_->get_table_by_name(

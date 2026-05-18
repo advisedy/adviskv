@@ -44,12 +44,14 @@ public:
     Status create_db(const CreateDBMetaParam& param, DBMeta* db_meta);
     Status create_table(const CreateTableMetaParam& param, TableMeta* table_meta);
     Status delete_db(DatabaseID db_id);
-    Status delete_table(TableID table_id);
+    Status delete_table(TableID table_id, TableMeta* table_meta = nullptr);
     Status update_table_state(TableID table_id, TableState state,
                               const std::string& last_error_msg = "");
     Status get_db(const std::string& db_name, DBMeta* db_meta);
     Status get_table_by_id(TableID table_id, TableMeta* table_meta);
     Status get_table_by_name(const std::string& db_name, const std::string& table_name, TableMeta* table_meta);
+
+    // 注意，这个函数不会把删除的table列出来了
     Status list_tables(const std::string& db_name, std::vector<TableMeta>* table_meta_list);
     Status list_tables_by_state(TableState state,
                                 std::vector<TableMeta>* table_meta_list);
@@ -57,6 +59,8 @@ public:
 private:
 
     Status persist_meta();
+    void remove_table_name_index(const TableMeta& table_meta);
+    Status add_table_name_index(const TableMeta& table_meta);
 
     Status lookup_db_by_name(const std::string& db_name, DBMeta* db_meta);
     Status lookup_table_by_name(const std::string& db_name, const std::string& table_name, TableMeta* table_meta);

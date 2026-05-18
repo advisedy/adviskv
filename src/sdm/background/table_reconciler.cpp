@@ -70,6 +70,11 @@ Status TableReconciler::get_assigned_node_endpoint(const Replica& replica,
     NodePtr node;
     RETURN_IF_INVALID_STATUS(
         store_->get_node(replica.spec.assign_node_id, node))
+
+    RETURN_IF_INVALID_CONDITION(
+        node != nullptr, fmt::format("assigned node not found, node_id={}F",
+                                     replica.spec.assign_node_id))
+
     endpoint = node->state.endpoint;
     return Status::OK();
 }
@@ -122,9 +127,8 @@ Status TableReconciler::reconcile_present(Table& table) {
 
     status = refresh_storage_replica_info(table);
     if (status.fail()) {
-        LOG_DEBUG(
-            "refresh storage replica info skipped for table={}, msg={}",
-            table.table_id, status.msg());
+        LOG_DEBUG("refresh storage replica info skipped for table={}, msg={}",
+                  table.table_id, status.msg());
     }
 
     if (!all_replicas_ready(table) or !all_routes_ready(table)) {
@@ -159,15 +163,17 @@ Status TableReconciler::ensure_replica_metadata(Table& table) {
          ++shard_index) {
         ShardID shard_id{.table_id = table.table_id,
                          .shard_index = shard_index};
-        std::vector<ReplicaPtr> replicas;
-        RETURN_IF_INVALID_STATUS(
-            store_->list_replicas_by_shard(shard_id, replicas))
+        {
+            std::vector<ReplicaPtr> replicas;
+            RETURN_IF_INVALID_STATUS(
+                store_->list_replicas_by_shard(shard_id, replicas))
 
-        if (!replicas.empty()) {
-            RETURN_IF_INVALID_CONDITION(
-                (int32)replicas.size() == table.spec.replica_count,
-                "replica put error: size is not enough");
-            continue;
+            if (!replicas.empty()) {
+                RETURN_IF_INVALID_CONDITION(
+                    (int32)replicas.size() == table.spec.replica_count,
+                    "replica put error: size is not enough");
+                continue;
+            }
         }
 
         //   选出来nodes ， 然后构造出来members， 然后放到replicas
@@ -186,8 +192,12 @@ Status TableReconciler::ensure_replica_metadata(Table& table) {
         RETURN_IF_INVALID_STATUS(
             build_replicas(table, shard_index, nodes, members))
 
+        std::vector<ReplicaPtr> replicas;
+        RETURN_IF_INVALID_STATUS(
+            store_->list_replicas_by_shard(shard_id, replicas))
+
         RETURN_IF_INVALID_CONDITION(
-            (int32)replicas.size() != table.spec.replica_count,
+            (int32)replicas.size() == table.spec.replica_count,
             "replica put error: size is not enough");
     }
     return Status::OK();
@@ -273,10 +283,9 @@ Status TableReconciler::refresh_storage_replica_info(Table& table) {
             */
             replica->state.observed_role = info.role;
             replica->state.observed_endpoint = info.endpoint;
-            RETURN_IF_INVALID_CONDITION(
-                convert_replica_status_to_phase(info.status,
-                                                replica->state.phase),
-                "replica status is not valid")
+            RETURN_IF_INVALID_CONDITION(convert_replica_status_to_phase(
+                                            info.status, replica->state.phase),
+                                        "replica status is not valid")
             replica->state.update_ts = func::get_current_ts_ms();
             replica->state.last_error_msg.clear();
             RETURN_IF_INVALID_STATUS(store_->put_replica(*replica))

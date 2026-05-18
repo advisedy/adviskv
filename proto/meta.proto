@@ -29,9 +29,23 @@ message CreateTableResponse {
   string operation_id = 4;
 }
 
+message MetaDropTableRequest {
+  string db_name = 1;
+  string table_name = 2;
+}
+
+message MetaDropTableResponse {
+  adviskv.pb.BaseRsp base_rsp = 1;
+  int32 table_id = 2;
+  int32 table_state = 3;
+  string operation_id = 4;
+}
+
 message GetTableRequest {
   string db_name = 1;
   string table_name = 2;
+  bool use_table_id = 3;
+  int32 table_id = 4;
 }
 
 message GetTableResponse {
@@ -49,5 +63,6 @@ message GetTableResponse {
 service MetaService {
   rpc CreateDB(CreateDBRequest) returns (CreateDBResponse);
   rpc CreateTable(CreateTableRequest) returns (CreateTableResponse);
+  rpc DropTable(MetaDropTableRequest) returns (MetaDropTableResponse);
   rpc GetTable(GetTableRequest) returns (GetTableResponse);
 }

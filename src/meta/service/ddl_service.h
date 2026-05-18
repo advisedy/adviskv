@@ -49,11 +49,27 @@ struct GetTableParam {
     const std::string& db_name;
     const std::string& table_name;
     // 可选
-    int32_t table_id{-1};
+    bool use_table_id{false};
+    TableID table_id{-1};
+
+    // 以上两个内容选一个就可以，优先table_id
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(
-            table_id != -1 or (!db_name.empty() and !table_name.empty()),
-            "please fill table_id or (db_name, table_name)")
+            (use_table_id && table_id >= 0) ||
+                (!use_table_id && !db_name.empty() && !table_name.empty()),
+            "please fill (table_id) or (db_name, table_name)")
+        return Status::OK();
+    }
+};
+
+struct DropTableParam {
+    const std::string& db_name;
+    const std::string& table_name;
+    Status validate() const {
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(),
+                                    "db_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!table_name.empty(),
+                                    "table_name should not empty")
         return Status::OK();
     }
 };
@@ -100,6 +116,7 @@ class DdlService {
 
     // 负责一些会涉及到catalog和sdm的操作
     Status create_table(const CreateTableParam& param, TableMeta* table_meta);
+    Status drop_table(const DropTableParam& param, TableMeta* table_meta);
     Status create_db(const CreateDBParam& param, DBMeta* db_meta);
     Status get_table(const GetTableParam& param, TableMeta* table_meta);
 

@@ -23,6 +23,10 @@ public:
                         const rpc::CreateTableRequest* request,
                         rpc::CreateTableResponse* response) override;
 
+    grpc::Status DropTable(grpc::ServerContext* context,
+                        const rpc::MetaDropTableRequest* request,
+                        rpc::MetaDropTableResponse* response) override;
+
     grpc::Status CreateDB(grpc::ServerContext* context,
                         const rpc::CreateDBRequest* request,
                         rpc::CreateDBResponse* response) override;

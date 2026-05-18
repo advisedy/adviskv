@@ -4,6 +4,8 @@
 
 #include "common/define.h"
 #include "common/func.h"
+#include "common/status.h"
+#include "sdm/model/store.h"
 namespace adviskv::sdm {
 
 namespace {
@@ -58,6 +60,7 @@ Status SdmRuntimeIndex::on_table_upsert(const Table* old_table,
     if (old_table != nullptr) {
         table_name_index_.erase(make_table_name_key(*old_table));
     }
+    if (new_table.state.desired == TableDesired::PRESENT) return Status::OK();
     table_name_index_[make_table_name_key(new_table)] = new_table.table_id;
     return Status::OK();
 }

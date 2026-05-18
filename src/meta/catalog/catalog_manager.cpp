@@ -13,6 +13,7 @@
 #include "common/log.h"
 #include "common/status.h"
 #include "common/type.h"
+#include "meta/catalog/meta_types.h"
 #include "meta/persist/i_meta_persist_engine.h"
 
 namespace adviskv::meta {
@@ -42,9 +43,21 @@ Status CatalogManager::init() {
 
     for (const auto &[table_id, table_meta] : record.table_id2table_meta) {
         table_id2table_meta_[table_id] = table_meta;
-        db_table_name2table_id_[table_meta.db_name][table_meta.table_name] =
-            table_id;
         db_id2table_ids_[table_meta.db_id].insert(table_id);
+
+        if (table_meta.state == TableState::DELETED) continue;
+
+        auto &table_name_index = db_table_name2table_id_[table_meta.db_name];
+        auto [it, inserted] =
+            table_name_index.emplace(table_meta.table_name, table_id);
+        if (!inserted) {  // 按道理讲不应该insert不进去
+            return Status{
+                StatusCode::ERROR,
+                fmt::format("catalog has duplicate current table name: db={}, "
+                            "table={}, table_id={}, duplicate_table_id={}",
+                            table_meta.db_name, table_meta.table_name,
+                            it->second, table_id)};
+        }
     }
 
     LOG_INFO(
@@ -66,6 +79,36 @@ Status CatalogManager::persist_meta() {
         .next_db_id = db_id_allocator_.current_id(),
         .next_table_id = table_id_allocator_.current_id()};
     return persist_engine_->save_meta(record);
+}
+
+void CatalogManager::remove_table_name_index(const TableMeta &table_meta) {
+    auto db_table_it = db_table_name2table_id_.find(table_meta.db_name);
+    if (db_table_it == db_table_name2table_id_.end()) {
+        return;
+    }
+    auto table_it = db_table_it->second.find(table_meta.table_name);
+    if (table_it != db_table_it->second.end() &&
+        table_it->second == table_meta.table_id) {
+        db_table_it->second.erase(table_it);
+    }
+    if (db_table_it->second.empty()) {
+        db_table_name2table_id_.erase(db_table_it);
+    }
+}
+
+Status CatalogManager::add_table_name_index(const TableMeta &table_meta) {
+    if ((table_meta.state == TableState::DELETED)) {
+        return Status::OK();
+    }
+    auto &name_index = db_table_name2table_id_[table_meta.db_name];
+    auto [it, inserted] =
+        name_index.emplace(table_meta.table_name, table_meta.table_id);
+    if (!inserted && it->second != table_meta.table_id) {
+        return Status{StatusCode::ALREADY_EXIST,
+                      fmt::format("table_name:{} already exists in db:{}",
+                                  table_meta.table_name, table_meta.db_name)};
+    }
+    return Status::OK();
 }
 
 Status CatalogManager::create_db(const CreateDBMetaParam &param,
@@ -151,14 +194,14 @@ Status CatalogManager::create_table(const CreateTableMetaParam &param,
 
     table_id2table_meta_[new_table_meta.table_id] = new_table_meta;
 
-    db_table_name2table_id_[db_name][table_name] = new_table_meta.table_id;
+    RETURN_IF_INVALID_STATUS(add_table_name_index(new_table_meta))
 
     db_id2table_ids_[db_meta.db_id].insert(new_table_meta.table_id);
 
     Status persist_status = persist_meta();
     if (persist_status.fail()) {
         table_id2table_meta_.erase(new_table_meta.table_id);
-        db_table_name2table_id_[db_name].erase(table_name);
+        remove_table_name_index(new_table_meta);
         db_id2table_ids_[db_meta.db_id].erase(new_table_meta.table_id);
         return persist_status;
     }
@@ -201,7 +244,7 @@ Status CatalogManager::delete_db(DatabaseID db_id) {
     return Status::OK();
 }
 
-Status CatalogManager::delete_table(TableID table_id) {
+Status CatalogManager::delete_table(TableID table_id, TableMeta *table_meta) {
     std::unique_lock lock(mutex_);
 
     auto table_it = table_id2table_meta_.find(table_id);
@@ -211,29 +254,33 @@ Status CatalogManager::delete_table(TableID table_id) {
     }
 
     TableMeta old_table_meta = table_it->second;
-    table_id2table_meta_.erase(table_it);
-
-    auto db_table_it = db_table_name2table_id_.find(old_table_meta.db_name);
-    if (db_table_it != db_table_name2table_id_.end()) {
-        db_table_it->second.erase(old_table_meta.table_name);
-        if (db_table_it->second.empty()) {
-            db_table_name2table_id_.erase(db_table_it);
+    if (old_table_meta.state == TableState::DROPPING) {
+        if (table_meta != nullptr) {
+            *table_meta = old_table_meta;
         }
+        return Status::OK();
     }
 
-    auto db_table_ids_it = db_id2table_ids_.find(old_table_meta.db_id);
-    if (db_table_ids_it != db_id2table_ids_.end()) {
-        db_table_ids_it->second.erase(old_table_meta.table_id);
+    if (old_table_meta.state == TableState::DELETED) {
+        return Status{StatusCode::TABLE_NOT_FOUND,
+                      fmt::format("table_id:{} does not exist", table_id)};
     }
+
+    TableMeta new_table_meta = old_table_meta;
+    new_table_meta.state = TableState::DROPPING;
+    new_table_meta.operation_id =
+        fmt::format("drop-table-{}-{}", table_id, func::get_current_ts_ms());
+    new_table_meta.last_error_msg.clear();
+    new_table_meta.update_ts = func::get_current_ts_ms();
+    table_it->second = new_table_meta;
 
     Status status = persist_meta();
     if (status.fail()) {
-        table_id2table_meta_[old_table_meta.table_id] = old_table_meta;
-        db_table_name2table_id_[old_table_meta.db_name]
-                               [old_table_meta.table_name] =
-                                   old_table_meta.table_id;
-        db_id2table_ids_[old_table_meta.db_id].insert(old_table_meta.table_id);
+        table_it->second = old_table_meta;
         return status;
+    }
+    if (table_meta != nullptr) {
+        *table_meta = new_table_meta;
     }
     return Status::OK();
 }
@@ -252,10 +299,20 @@ Status CatalogManager::update_table_state(TableID table_id, TableState state,
     table_it->second.state = state;
     table_it->second.last_error_msg = last_error_msg;
     table_it->second.update_ts = func::get_current_ts_ms();
-
-    Status status = persist_meta();
+    TableMeta new_table_meta = table_it->second;
+    remove_table_name_index(old_table_meta);
+    Status status = add_table_name_index(new_table_meta);
     if (status.fail()) {
         table_it->second = old_table_meta;
+        RETURN_IF_INVALID_STATUS(add_table_name_index(old_table_meta))
+        return status;
+    }
+
+    status = persist_meta();
+    if (status.fail()) {
+        table_it->second = old_table_meta;
+        remove_table_name_index(new_table_meta);
+        RETURN_IF_INVALID_STATUS(add_table_name_index(old_table_meta))
         return status;
     }
     return Status::OK();
@@ -268,11 +325,8 @@ Status CatalogManager::get_db(const std::string &db_name, DBMeta *db_meta) {
 
 Status CatalogManager::get_table_by_id(TableID table_id,
                                        TableMeta *table_meta) {
-    // TODO: 目前get_table_by_id这个接口好像没有什么用，后续如果需要的话再完善
-    // std::shared_lock lock(mutex_);
-    // return lookup_table_by_id(table_id, &table_meta);
-    return Status{StatusCode::NOT_SUPPORTED,
-                  "get_table_by_id is not implemented yet"};
+    std::shared_lock lock(mutex_);
+    return lookup_table_by_id(table_id, table_meta);
 }
 
 Status CatalogManager::get_table_by_name(const std::string &db_name,
@@ -294,9 +348,7 @@ Status CatalogManager::list_tables(const std::string &db_name,
     table_meta_list->clear();
     std::shared_lock lock(mutex_);
     DBMeta db_meta;
-    if (Status status = lookup_db_by_name(db_name, &db_meta); status.fail()) {
-        return status;
-    }
+    RETURN_IF_INVALID_STATUS(lookup_db_by_name(db_name, &db_meta))
     auto set_it = db_id2table_ids_.find(db_meta.db_id);
     if (set_it == db_id2table_ids_.end()) {
         return Status::OK();
@@ -308,6 +360,9 @@ Status CatalogManager::list_tables(const std::string &db_name,
                 StatusCode::ERROR,
                 fmt::format("internal error: table_id:{} should exist",
                             table_id)};
+        }
+        if (it->second.state == TableState::DELETED) {
+            continue;
         }
         table_meta_list->push_back(it->second);
     }
@@ -348,6 +403,19 @@ Status CatalogManager::lookup_db_by_name(const std::string &db_name,
                       fmt::format("internal error: {} should exist", db_name)};
     }
     *db_meta = db_meta_it->second;
+    return Status::OK();
+}
+
+Status CatalogManager::lookup_table_by_id(TableID table_id,
+                                          TableMeta *table_meta) {
+    auto table_meta_it = table_id2table_meta_.find(table_id);
+    if (table_meta_it == table_id2table_meta_.end()) {
+        return Status{StatusCode::TABLE_NOT_FOUND,
+                      fmt::format("table_id:{} does not exist", table_id)};
+    }
+    if (table_meta != nullptr) {
+        *table_meta = table_meta_it->second;
+    }
     return Status::OK();
 }
 
