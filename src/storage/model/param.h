@@ -9,7 +9,6 @@
 
 namespace adviskv::storage {
 
-using Term = int64_t;
 using LogIndex = int64_t;
 
 enum class WriteOpType : int32_t { PUT = 0, DEL = 1, NONE = 2 };

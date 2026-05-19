@@ -91,6 +91,7 @@ message HeartBeatReplicaInfo{
     int32 replica_index = 3;
     adviskv.pb.ReplicaRole role = 4;
     adviskv.pb.ReplicaStatus status = 5;
+    int64 term = 6;
 }
 
 message HeartBeatRequest{

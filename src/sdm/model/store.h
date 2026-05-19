@@ -55,7 +55,8 @@ struct ReplicaState {
     ReplicaRole observed_role{ReplicaRole::FOLLOWER};
     Endpoint observed_endpoint;
     std::string last_error_msg;
-    int64_t update_ts{0};
+    int64 update_ts{0};
+    Term term{0};
 };
 
 struct Replica {
@@ -149,6 +150,7 @@ struct RouteEntry {
     std::string ip;
     int32_t port{0};
     ReplicaRole role{ReplicaRole::FOLLOWER};
+    Term term;
 };
 
 struct ShardRoute {

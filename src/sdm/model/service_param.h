@@ -168,8 +168,6 @@ struct GetReplicaInfoParam {
     }
 };
 
-
-
 // node service
 
 struct RegisterNodeParam {
@@ -235,6 +233,7 @@ struct HeartBeatReplicaInfo {
     ReplicaIndex replica_index;
     ReplicaRole role;
     ReplicaStatus status;
+    Term term;  // 用来帮助判断leader，term高的优先被认定是leader
 };
 
 struct HeartBeatParam {

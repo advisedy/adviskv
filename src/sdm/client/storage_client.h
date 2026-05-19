@@ -18,6 +18,7 @@ struct StorageReplicaInfo {
     ReplicaRole role{ReplicaRole::FOLLOWER};
     ReplicaStatus status{ReplicaStatus::ADDING};
     Endpoint endpoint;
+    Term term;
 };
 
 class IStorageClient {

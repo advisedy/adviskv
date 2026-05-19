@@ -40,6 +40,7 @@ message ReplicaInfo {
   ReplicaRole role = 5;
   ReplicaStatus status = 6;
   Endpoint endpoint = 7;
+  int64 term = 8;
 }
 
 message ReplicaID {

@@ -7,6 +7,7 @@
 #include "common/enum_convert.h"
 #include "common/log.h"
 #include "common/status.h"
+#include "storage/model/param.h"
 
 namespace adviskv::storage {
 
@@ -127,6 +128,7 @@ rpc::HeartBeatRequest NodeAgent::make_heartbeat_request() const {
         info->set_replica_index(replica_id.replica_index);
         info->set_role(to_pb_replica_role(replica->get_role()));
         info->set_status(to_pb_replica_status(replica->get_status()));
+        info->set_term(replica->current_term());
     }
     return request;
 }

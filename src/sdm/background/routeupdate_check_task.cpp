@@ -9,7 +9,9 @@
 #include "common/log.h"
 #include "common/status.h"
 #include "common/type.h"
+#include "sdm/model/i_sdm_metastore.h"
 #include "sdm/model/store.h"
+#include "sdm/selector/leader_selector/leader_selector.h"
 
 namespace adviskv::sdm {
 
@@ -97,6 +99,7 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
             .ip = replica_ptr->state.observed_endpoint.ip,
             .port = replica_ptr->state.observed_endpoint.port,
             .role = replica_ptr->state.observed_role,
+            .term = replica_ptr->state.term,
         };
         if (replica_ptr->state.observed_role == ReplicaRole::LEADER) {
             leader_entries.push_back(std::move(entry));
@@ -105,13 +108,37 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
         }
     }
 
-    if (leader_entries.size() != 1) {
+    if (leader_entries.size() < 1U) {
         RETURN_IF_INVALID_STATUS(sdm_store_->delete_shard_route(shard_id))
 
         LOG_WARN(
             "route not ready, leader_count={}, table_id={}, shard_index={}",
             leader_entries.size(), shard_id.table_id, shard_id.shard_index);
-        return Status::OK("leader count != 1");
+        return Status::OK("leader count < 1");
+    }
+
+    if (leader_entries.size() > 1U) {
+        // 这边也再check一下关于leader的term是否会有一样的（raft正确就应该没问题）
+        for (int i = 1, siz = leader_entries.size(); i < siz; i++) {
+            if (leader_entries[i].term == leader_entries[i - 1].term) {
+                RETURN_IF_INVALID_STATUS(
+                    sdm_store_->delete_shard_route(shard_id))
+                return Status::ERROR("error : leader term same!!!!!!");
+            }
+        }
+
+        // 要把leader只选出来一个term最大的
+        std::sort(leader_entries.begin(), leader_entries.end(),
+                  [](const RouteEntry& lhs, const RouteEntry& rhs) {
+                      return lhs.term > rhs.term;
+                  });
+        for (int i = 1, siz = leader_entries.size(); i < siz; i++) {
+            leader_entries[i].role = ReplicaRole::FOLLOWER;
+        }
+        follower_entries.insert(
+            follower_entries.end(),
+            std::make_move_iterator(leader_entries.begin() + 1),
+            std::make_move_iterator(leader_entries.end()));
     }
 
     std::sort(follower_entries.begin(), follower_entries.end(),

@@ -28,6 +28,8 @@ using ShardIndex = int32_t;
 using ReplicaIndex = int32_t;
 using NodeID = std::string;
 
+using Term = int64;
+
 struct ShardID {
     TableID table_id{-1};
     ShardIndex shard_index{-1};

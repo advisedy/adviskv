@@ -61,11 +61,11 @@ Status HeartBeatService::apply_reported_replicas(const HeartBeatParam& param) {
             "replica status is not valid")
         replica->state.phase = phase;
         replica->state.update_ts = func::get_current_ts_ms();
+        replica->state.term = info.term;
         status = sdm_store_->put_replica(*replica);
         RETURN_IF_INVALID_STATUS(status)
     }
     return Status::OK();
 }
-
 
 }  // namespace adviskv::sdm

@@ -157,6 +157,7 @@ Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
         .status = status,
         .endpoint = Endpoint{.ip = replica.endpoint().ip(),
                              .port = replica.endpoint().port()},
+        .term = replica.term(),
     };
 
     return Status::OK();

@@ -106,7 +106,8 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
                                      },
                                  .replica_index = replica_info.replica_index(),
                                  .role = role,
-                                 .status = status};
+                                 .status = status,
+                                 .term = replica_info.term()};
         replica_info_list.emplace_back(std::move(one));
     }
     HeartBeatParam param{
@@ -121,7 +122,7 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
     };
 
     Status status = heartbeat_service_->heartbeat(param);
-    
+
     fill_base_rsp(response, status);
     return grpc::Status::OK;
 }

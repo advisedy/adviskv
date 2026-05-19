@@ -3,6 +3,7 @@
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <cassert>
 
 #include "common/defer.h"
 #include "common/define.h"
@@ -10,6 +11,7 @@
 #include "common/log.h"
 #include "common/status.h"
 #include "common/type.h"
+#include "sdm/model/store.h"
 #include "sdm/utility/enum_convert.h"
 
 namespace adviskv::sdm {
@@ -51,14 +53,12 @@ Status TableReconciler::build_replicas(Table& table, ShardIndex shard_index,
                     .engine_type = EngineType::MAP,
                     .members = members,
                 },
-            .state =
-                ReplicaState{
-                    .desired = ReplicaDesired::PRESENT,
-                    .phase = ReplicaPhase::PENDING,
-                    .observed_role = ReplicaRole::FOLLOWER,
-                    .observed_endpoint = node->state.endpoint,
-                    .update_ts = func::get_current_ts_ms(),
-                },
+            .state = ReplicaState{.desired = ReplicaDesired::PRESENT,
+                                  .phase = ReplicaPhase::PENDING,
+                                  .observed_role = ReplicaRole::FOLLOWER,
+                                  .observed_endpoint = node->state.endpoint,
+                                  .update_ts = func::get_current_ts_ms(),
+                                  .term = 0},
         };
         RETURN_IF_INVALID_STATUS(store_->put_replica(replica))
     }
@@ -288,6 +288,7 @@ Status TableReconciler::refresh_storage_replica_info(Table& table) {
                                         "replica status is not valid")
             replica->state.update_ts = func::get_current_ts_ms();
             replica->state.last_error_msg.clear();
+            replica->state.term = info.term;
             RETURN_IF_INVALID_STATUS(store_->put_replica(*replica))
         }
     }
@@ -383,7 +384,8 @@ bool TableReconciler::all_routes_ready(const Table& table) {
         for (const RouteEntry& entry : route->replicas) {
             leader_count += (entry.role == ReplicaRole::LEADER);
         }
-        if (leader_count != 1) return false;
+        if (leader_count < 1) return false;
+        // 对于大于等于1的情况，我们在route_updater那边判断，这里只是判断一下是否准备好了
     }
     return true;
 }

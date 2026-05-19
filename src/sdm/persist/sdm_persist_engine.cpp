@@ -234,6 +234,7 @@ class SdmMetaCodec {
         encode_endpoint(replica.state.observed_endpoint, buf);
         buf.write(replica.state.last_error_msg);
         buf.write(replica.state.update_ts);
+        buf.write(replica.state.term);
     }
 
     static Status decode_replica(DecodeBuffer& buf, Replica& replica) {
@@ -271,9 +272,11 @@ class SdmMetaCodec {
         RETURN_IF_INVALID_READ(buf, observed_role)
         replica.state.observed_role = static_cast<ReplicaRole>(observed_role);
 
-        RETURN_IF_INVALID_STATUS(decode_endpoint(buf, replica.state.observed_endpoint))
+        RETURN_IF_INVALID_STATUS(
+            decode_endpoint(buf, replica.state.observed_endpoint))
         RETURN_IF_INVALID_READ(buf, replica.state.last_error_msg)
         RETURN_IF_INVALID_READ(buf, replica.state.update_ts)
+        RETURN_IF_INVALID_READ(buf, replica.state.term)
 
         return Status::OK();
     }
