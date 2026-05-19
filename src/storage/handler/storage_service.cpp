@@ -57,6 +57,12 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
 grpc::Status StorageServiceImpl::Get(grpc::ServerContext* context,
                                      const rpc::GetRequest* request,
                                      rpc::GetResponse* response) {
+    if (!replica_manager_) {
+        LOG_WARN("replica manager is nullptr");
+        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
+                                       "replica manager not found"});
+        return grpc::Status::OK;
+    }
     const ShardID shard_id{
         .table_id = request->table_id(),
         .shard_index = request->shard_id(),
@@ -95,25 +101,25 @@ grpc::Status StorageServiceImpl::Get(grpc::ServerContext* context,
 grpc::Status StorageServiceImpl::Delete(grpc::ServerContext* context,
                                         const rpc::DeleteRequest* request,
                                         rpc::DeleteResponse* response) {
-    // Replica* replica = replica_manager_->get_replica(request->table_id(),
-    // request->shard_id());
+    if (!replica_manager_) {
+        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
+                                       "replica manager not found"});
+        return grpc::Status::OK;
+    }
 
-    // if(!replica){
-    //     LOG_WARN("replica not found, table_id = {}, shard_id = {}",
-    //     request->table_id(), request->shard_id()); fill_base_rsp(*response,
-    //     Status{StatusCode::REPLICA_NOT_FOUND, "replica not found"}); return
-    //     grpc::Status::OK;
-    // }
+    ShardID shard_id{
+        .table_id = request->table_id(),
+        .shard_index = request->shard_id(),
+    };
+    Replica* replica = replica_manager_->get_replica_by_shard(shard_id);
+    if (!replica) {
+        fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND,
+                                       "replica not found"});
+        return grpc::Status::OK;
+    }
 
-    // Status status = replica->del(*request);
-
-    // if(!status.ok()){
-    //     LOG_WARN("replica del failed, table_id = {}, shard_id = {}, key = {},
-    //     msg = {}",
-    //         request->table_id(), request->shard_id(), request->key(),
-    //         status.msg());
-    // }
-
+    Status status = replica->del(DelParam{.key = request->key()});
+    fill_base_rsp(response, status);
     return grpc::Status::OK;
 }
 

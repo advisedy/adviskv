@@ -9,6 +9,8 @@
 namespace adviskv::sdk {
 
 struct KVClientConf {
+    std::string db_name;
+    std::string table_name;
     std::string sdm_host{"127.0.0.1"};
     int32_t sdm_port{50051};
     int32_t sdm_timeout_ms{2000};

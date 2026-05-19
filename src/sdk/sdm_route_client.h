@@ -1,9 +1,9 @@
 #pragma once
 
+#include <grpcpp/channel.h>
+
 #include <memory>
 #include <string>
-
-#include <grpcpp/channel.h>
 
 #include "common/status.h"
 #include "common/type.h"
@@ -17,8 +17,7 @@ class SdmRouteClient {
    public:
     explicit SdmRouteClient(const KVClientConf& conf);
 
-    Status get_route(const std::string& db_name, const std::string& table_name,
-                     const Key& key, RouteInfo* route) const;
+    Status get_route(const Key& key, RouteInfo* route) const;
 
    private:
     KVClientConf conf_;

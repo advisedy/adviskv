@@ -69,6 +69,11 @@ struct GetParam {
     Status validate() const { return Status::OK(); }
 };
 
+struct DelParam {
+    const Key& key;
+    Status validate() const { return Status::OK(); }
+};
+
 struct ReplicaInitParam {
     ReplicaID replica_id;
     EngineType engine_type;

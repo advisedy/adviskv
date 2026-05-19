@@ -85,6 +85,38 @@ Status StorageClient::put(const RouteInfo& route, const Key& key,
     return Status::OK();
 }
 
+Status StorageClient::del(const RouteInfo& route, const Key& key) const {
+    Endpoint endpoint;
+    Status status = select_endpoint(route, &endpoint);
+    RETURN_IF_INVALID_STATUS(status)
+
+    rpc::StorageService::Stub* stub = make_stub(endpoint);
+    RETURN_IF_NULLPTR(stub, "storage stub is nullptr")
+
+    rpc::DeleteRequest request;
+    request.set_table_id(route.table_id);
+    request.set_shard_id(route.shard_id);
+    request.set_key(key);
+
+    rpc::DeleteResponse response;
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() +
+                         std::chrono::milliseconds(conf_.storage_timeout_ms));
+
+    grpc::Status grpc_status = stub->Delete(&context, request, &response);
+    if (!grpc_status.ok()) {
+        return Status::ERROR(
+            fmt::format("Storage Delete RPC failed, grpc code = {}, msg = {}",
+                        static_cast<int>(grpc_status.error_code()),
+                        grpc_status.error_message()));
+    }
+    if (response.base_rsp().code() != to_rpc_code(StatusCode::OK)) {
+        return Status{static_cast<StatusCode>(response.base_rsp().code()),
+                      response.base_rsp().msg()};
+    }
+    return Status::OK();
+}
+
 Status StorageClient::get(const RouteInfo& route, const Key& key,
                           Value* value) const {
     RETURN_IF_NULLPTR(value, "value should not be nullptr")

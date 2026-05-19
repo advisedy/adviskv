@@ -32,17 +32,12 @@ SdmRouteClient::SdmRouteClient(const KVClientConf& conf) : conf_(conf) {
     stub_ = rpc::ShardingManagerService::NewStub(channel_);
 }
 
-Status SdmRouteClient::get_route(const std::string& db_name,
-                                 const std::string& table_name, const Key& key,
-                                 RouteInfo* route) const {
+Status SdmRouteClient::get_route(const Key& key, RouteInfo* route) const {
     RETURN_IF_NULLPTR(route, "route should not be nullptr")
-    RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
-    RETURN_IF_INVALID_CONDITION(!table_name.empty(),
-                                "table_name should not empty")
 
     rpc::GetRouteRequest request;
-    request.set_db_name(db_name);
-    request.set_table_name(table_name);
+    request.set_db_name(conf_.db_name);
+    request.set_table_name(conf_.table_name);
     request.set_key(key);
 
     rpc::GetRouteResponse response;

@@ -5,18 +5,12 @@
 namespace adviskv::sdk {
 
 KVClient::KVClient(const KVClientConf& conf)
-    : conf_(conf),
-      sdm_route_client_(conf),
-      storage_client_(conf) {}
+    : conf_(conf), sdm_route_client_(conf), storage_client_(conf) {}
 
-Status KVClient::put(const std::string& db_name, const std::string& table_name,
-                     const Key& key, const Value& value) {
+Status KVClient::put(const Key& key, const Value& value) {
     RETURN_IF_INVALID_PARAM(conf_)
-    RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
-    RETURN_IF_INVALID_CONDITION(!table_name.empty(),
-                                "table_name should not empty")
 
-    RouteCacheKey cache_key{db_name, table_name, key};
+    RouteCacheKey cache_key{conf_.db_name, conf_.table_name, key};
     RouteInfo route;
     Status status = resolve_route(cache_key, &route);
     RETURN_IF_INVALID_STATUS(status)
@@ -31,15 +25,29 @@ Status KVClient::put(const std::string& db_name, const std::string& table_name,
     return storage_client_.put(route, key, value);
 }
 
-Status KVClient::get(const std::string& db_name, const std::string& table_name,
-                     const Key& key, Value* value) {
+Status KVClient::del(const Key& key) {
+    RETURN_IF_INVALID_PARAM(conf_)
+
+    RouteCacheKey cache_key{conf_.db_name, conf_.table_name, key};
+    RouteInfo route;
+    Status status = resolve_route(cache_key, &route);
+    RETURN_IF_INVALID_STATUS(status)
+
+    status = storage_client_.del(route, key);
+    if (!should_invalidate_route(status)) {
+        return status;
+    }
+
+    status = resolve_route(cache_key, &route);
+    RETURN_IF_INVALID_STATUS(status)
+    return storage_client_.del(route, key);
+}
+
+Status KVClient::get(const Key& key, Value* value) {
     RETURN_IF_INVALID_PARAM(conf_)
     RETURN_IF_NULLPTR(value, "value should not be nullptr")
-    RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
-    RETURN_IF_INVALID_CONDITION(!table_name.empty(),
-                                "table_name should not empty")
 
-    RouteCacheKey cache_key{db_name, table_name, key};
+    RouteCacheKey cache_key{conf_.db_name, conf_.table_name, key};
     RouteInfo route;
     Status status = resolve_route(cache_key, &route);
     RETURN_IF_INVALID_STATUS(status)
@@ -60,11 +68,11 @@ bool KVClient::should_invalidate_route(const Status& status) {
            status.code() == StatusCode::ROUTE_NOT_FOUND;
 }
 
-Status KVClient::resolve_route(const RouteCacheKey& cache_key, RouteInfo* route) {
+Status KVClient::resolve_route(const RouteCacheKey& cache_key,
+                               RouteInfo* route) {
     RETURN_IF_NULLPTR(route, "route should not be nullptr")
 
-    return sdm_route_client_.get_route(
-        cache_key.db_name, cache_key.table_name, cache_key.key, route);
+    return sdm_route_client_.get_route(cache_key.key, route);
 }
 
 }  // namespace adviskv::sdk

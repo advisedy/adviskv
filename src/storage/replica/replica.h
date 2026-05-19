@@ -35,7 +35,7 @@ class Replica {
 
     Status put(const PutParam& param);
     Status get(const GetParam& param, Value& value);
-
+    Status del(const DelParam& param);
     Status handle_request_vote(const RequestVoteParam& param,
                                RequestVoteResult& result);
     Status handle_append_entries(const AppendEntriesParam& param,

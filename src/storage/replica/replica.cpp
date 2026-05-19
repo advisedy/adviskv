@@ -60,9 +60,9 @@ Status Replica::put(const PutParam& param) {
     // 这里推动raftnode里的apply_index是交给了replica外层去控制。
     apply_committed_entries();
 
-    if (!raft_node_->is_leader()) {
-        return Status{StatusCode::NOT_LEADER, "leader changed during propose"};
-    }
+    // if (!raft_node_->is_leader()) {
+    //     return Status{StatusCode::NOT_LEADER, "leader changed during propose"};
+    // }
 
     if (raft_node_->commit_index() < new_commit_idx) {
         return Status{StatusCode::NOT_YET_COMMIT, "this pyt is not yet commit"};
@@ -191,6 +191,26 @@ Status Replica::get(const GetParam& param, Value& value) {
                  status.msg());
     }
     return status;
+}
+
+Status Replica::del(const DelParam& param) {
+    RETURN_IF_INVALID_PARAM(param)
+    if (is_recovering()) {
+        return Status::ERROR("replica is recovering");
+    }
+
+    auto [status, new_commit_idx] =
+        raft_node_->propose(WriteOpType::DEL, param.key, "");
+    RETURN_IF_INVALID_STATUS(status)
+
+    flush_messages();
+    apply_committed_entries();
+
+    if (raft_node_->commit_index() < new_commit_idx) {
+        return Status{StatusCode::NOT_YET_COMMIT, "delete is not yet commit"};
+    }
+
+    return Status::OK();
 }
 
 void Replica::refresh_recovering_state() {

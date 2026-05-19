@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "common/define.h"
 #include "common/type.h"
 
 namespace adviskv::sdm {
@@ -161,5 +162,33 @@ struct ShardRoute {
 using ShardRoutePtr = std::shared_ptr<ShardRoute>;
 
 ///////////////// 内置pb对他们的转换
+
+// #define USING_TYPE_OR(name) using name##Or = std::optional<name>;
+
+// USING_TYPE_OR(ResourcePool)
+
+template <typename T>
+class Optional : public std::optional<T> {
+   public:
+    bool empty() { return !this->has_value(); }
+    T* point() {
+        if (this->has_value()) return nullptr;
+        return &this->value();
+    }
+
+    std::optional<T> self() { return *this; }
+
+    bool operator==(const Optional<T>& other) const {
+        return self() == other.self();
+    }
+
+    DEFINE_OPERATOR_NOT_EQUAL(Optional<T>)
+};
+
+using ResourcePoolOr = Optional<ResourcePool>;
+using ReplicaOr = Optional<Replica>;
+using NodeOr = Optional<Node>;
+using TableOr = Optional<Table>;
+using ShardRouteOr = Optional<ShardRoute>;
 
 }  // namespace adviskv::sdm
