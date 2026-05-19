@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 
+#include "common/define.h"
 #include "common/status.h"
 #include "common/type.h"
 
@@ -32,13 +33,12 @@ struct RaftMeta {
     LogIndex commit_index{0};
     std::optional<ReplicaID> voted_for;
     bool operator==(const RaftMeta& other) const {
-        if (voted_for.has_value() != other.voted_for.has_value()) return false;
-        return current_term == other.current_term and
-               commit_index == other.commit_index and
-               (voted_for.has_value()
-                    ? (voted_for.value() == other.voted_for.value())
-                    : true);
+        if(!(current_term == other.current_term)) return false;
+        if(!(commit_index == other.commit_index)) return false;
+        if(!(voted_for == other.voted_for)) return false;
+        return true;
     }
+    DEFINE_OPERATOR_NOT_EQUAL(RaftMeta)
 };
 
 struct LogEntry {
@@ -53,6 +53,8 @@ struct LogEntry {
                op_type == other.op_type and key == other.key and
                value == other.value;
     }
+    DEFINE_OPERATOR_NOT_EQUAL(LogEntry)
+
 };
 
 struct PutParam {
@@ -83,9 +85,7 @@ struct ReplicaInitParam {
         return true;
     }
 
-    bool operator!=(const ReplicaInitParam& other) const {
-        return !(*this == other);
-    }
+    DEFINE_OPERATOR_NOT_EQUAL(ReplicaInitParam)
 };
 
 struct RequestVoteParam {

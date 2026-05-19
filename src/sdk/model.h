@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "common/define.h"
 #include "common/type.h"
 
 namespace adviskv::sdk {
@@ -34,6 +35,8 @@ struct RouteCacheKey {
         return db_name == other.db_name && table_name == other.table_name &&
                key == other.key;
     }
+
+    DEFINE_OPERATOR_NOT_EQUAL(RouteCacheKey)
 };
 
 struct RouteCacheKeyHash {

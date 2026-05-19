@@ -28,6 +28,8 @@ struct DBMeta {
         if (zone != other.zone) return false;
         return true;
     }
+
+    DEFINE_OPERATOR_NOT_EQUAL(DBMeta)
 };
 
 struct TableMeta {

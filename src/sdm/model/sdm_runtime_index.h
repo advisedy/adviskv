@@ -4,6 +4,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "common/define.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "sdm/model/store.h"
@@ -29,6 +30,8 @@ struct TableNameKey {
     bool operator==(const TableNameKey& other) const {
         return db_name == other.db_name and table_name == other.table_name;
     }
+
+    DEFINE_OPERATOR_NOT_EQUAL(TableNameKey)
 };
 
 using ReplicaKeyHash = ReplicaIDHash;

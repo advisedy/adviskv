@@ -70,7 +70,6 @@
         break;                 \
     }
 
-
 #define DEFINE_OPERATOR_NOT_EQUAL(type) \
     bool operator!=(const type& other) const { return !(*this == other); }
 

@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include "common/define.h"
 
 namespace adviskv {
 
@@ -37,6 +38,8 @@ struct ShardID {
     bool operator==(const ShardID& other) const {
         return table_id == other.table_id && shard_index == other.shard_index;
     }
+
+    DEFINE_OPERATOR_NOT_EQUAL(ShardID)
 };
 
 struct ShardIDHash {
@@ -59,6 +62,8 @@ struct ReplicaID {
         return table_id == other.table_id && shard_index == other.shard_index &&
                replica_index == other.replica_index;
     }
+
+    DEFINE_OPERATOR_NOT_EQUAL(ReplicaID)
 };
 
 struct ReplicaIDHash {
@@ -86,6 +91,8 @@ struct Endpoint {
     bool operator==(const Endpoint& other) const {
         return ip == other.ip and port == other.port;
     }
+
+    DEFINE_OPERATOR_NOT_EQUAL(Endpoint)
 };
 
 struct PeerMember {
@@ -99,6 +106,8 @@ struct PeerMember {
         if (!(endpoint == other.endpoint)) return false;
         return true;
     }
+
+    DEFINE_OPERATOR_NOT_EQUAL(PeerMember)
 };
 
 }  // namespace adviskv
