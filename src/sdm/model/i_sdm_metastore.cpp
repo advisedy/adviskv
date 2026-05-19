@@ -1,7 +1,10 @@
 #include "sdm/model/i_sdm_metastore.h"
 
+#include <memory>
+
 #include "common/define.h"
 #include "common/log.h"
+#include "sdm/model/store.h"
 
 namespace adviskv::sdm {
 
@@ -63,7 +66,8 @@ Status MemoryMetaStore::upsert_replica(const Replica& replica) {
     return Status::OK();
 }
 
-Status MemoryMetaStore::get_replica(const ReplicaID& key, ReplicaPtr& out) const {
+Status MemoryMetaStore::get_replica(const ReplicaID& key,
+                                    ReplicaPtr& out) const {
     auto it = replicas_.find(key);
     if (it == replicas_.end()) {
         out.reset();
@@ -139,7 +143,8 @@ Status MemoryMetaStore::delete_shard_route(const ShardID& shard_id) {
     return Status::OK();
 }
 
-Status MemoryMetaStore::list_shard_routes(std::vector<ShardRoutePtr>& out) const {
+Status MemoryMetaStore::list_shard_routes(
+    std::vector<ShardRoutePtr>& out) const {
     out.clear();
     out.reserve(shard_routes_.size());
     for (const auto& [_, route] : shard_routes_) {
@@ -155,9 +160,9 @@ PersistentMetaStore::PersistentMetaStore(std::filesystem::path data_dir)
     IGNORE_RESULT(load());
 }
 
-PersistentMetaStore::PersistentMetaStore(std::unique_ptr<ISdmMetaStore> inner, std::filesystem::path data_dir)
-    : inner_(std::move(inner)),
-      persist_engine_(data_dir.string()) {
+PersistentMetaStore::PersistentMetaStore(std::unique_ptr<ISdmMetaStore> inner,
+                                         std::filesystem::path data_dir)
+    : inner_(std::move(inner)), persist_engine_(data_dir.string()) {
     persist_engine_.init();
     IGNORE_RESULT(load());
 }
@@ -250,7 +255,8 @@ Status PersistentMetaStore::upsert_node(const Node& node) {
     return persist();
 }
 
-Status PersistentMetaStore::get_node(const NodeID& node_id, NodePtr& out) const {
+Status PersistentMetaStore::get_node(const NodeID& node_id,
+                                     NodePtr& out) const {
     return inner_->get_node(node_id, out);
 }
 
@@ -263,7 +269,8 @@ Status PersistentMetaStore::upsert_replica(const Replica& replica) {
     return persist();
 }
 
-Status PersistentMetaStore::get_replica(const ReplicaID& key, ReplicaPtr& out) const {
+Status PersistentMetaStore::get_replica(const ReplicaID& key,
+                                        ReplicaPtr& out) const {
     return inner_->get_replica(key, out);
 }
 
@@ -282,11 +289,12 @@ Status PersistentMetaStore::upsert_resource_pool(const ResourcePool& pool) {
 }
 
 Status PersistentMetaStore::get_resource_pool(const std::string& name,
-                                               ResourcePoolPtr& out) const {
+                                              ResourcePoolPtr& out) const {
     return inner_->get_resource_pool(name, out);
 }
 
-Status PersistentMetaStore::list_resource_pools(std::vector<ResourcePoolPtr>& out) const {
+Status PersistentMetaStore::list_resource_pools(
+    std::vector<ResourcePoolPtr>& out) const {
     return inner_->list_resource_pools(out);
 }
 
@@ -301,7 +309,7 @@ Status PersistentMetaStore::upsert_shard_route(const ShardRoute& route) {
 }
 
 Status PersistentMetaStore::get_shard_route(const ShardID& shard_id,
-                                             ShardRoutePtr& out) const {
+                                            ShardRoutePtr& out) const {
     return inner_->get_shard_route(shard_id, out);
 }
 
@@ -310,7 +318,8 @@ Status PersistentMetaStore::delete_shard_route(const ShardID& shard_id) {
     return persist();
 }
 
-Status PersistentMetaStore::list_shard_routes(std::vector<ShardRoutePtr>& out) const {
+Status PersistentMetaStore::list_shard_routes(
+    std::vector<ShardRoutePtr>& out) const {
     return inner_->list_shard_routes(out);
 }
 

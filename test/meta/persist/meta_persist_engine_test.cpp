@@ -58,14 +58,24 @@ TEST_F(MetaPersistEngineTest, SaveAndLoadWithDBAndTable) {
                  .db_id = 1,
                  .db_name = "test_db",
                  .table_name = "users",
-                 .resource_pool = "pool-a"};
+                 .resource_pool = "pool-a",
+                 .state = TableState::NORMAL,
+                 .operation_id = "op-users",
+                 .last_error_msg = "",
+                 .create_ts = 100,
+                 .update_ts = 200};
     TableMeta t2{.table_id = 11,
                  .shard_count = 2,
                  .replica_count = 1,
                  .db_id = 1,
                  .db_name = "test_db",
                  .table_name = "orders",
-                 .resource_pool = "pool-b"};
+                 .resource_pool = "pool-b",
+                 .state = TableState::FAILED,
+                 .operation_id = "op-orders",
+                 .last_error_msg = "placement failed",
+                 .create_ts = 300,
+                 .update_ts = 400};
     record.table_id2table_meta[10] = t1;
     record.table_id2table_meta[11] = t2;
     record.next_db_id = 3;
@@ -92,12 +102,22 @@ TEST_F(MetaPersistEngineTest, SaveAndLoadWithDBAndTable) {
     EXPECT_EQ(loaded.table_id2table_meta[10].db_name, "test_db");
     EXPECT_EQ(loaded.table_id2table_meta[10].table_name, "users");
     EXPECT_EQ(loaded.table_id2table_meta[10].resource_pool, "pool-a");
+    EXPECT_EQ(loaded.table_id2table_meta[10].state, TableState::NORMAL);
+    EXPECT_EQ(loaded.table_id2table_meta[10].operation_id, "op-users");
+    EXPECT_EQ(loaded.table_id2table_meta[10].create_ts, 100);
+    EXPECT_EQ(loaded.table_id2table_meta[10].update_ts, 200);
     EXPECT_EQ(loaded.table_id2table_meta[11].table_id, 11);
     EXPECT_EQ(loaded.table_id2table_meta[11].shard_count, 2);
     EXPECT_EQ(loaded.table_id2table_meta[11].replica_count, 1);
     EXPECT_EQ(loaded.table_id2table_meta[11].db_name, "test_db");
     EXPECT_EQ(loaded.table_id2table_meta[11].table_name, "orders");
     EXPECT_EQ(loaded.table_id2table_meta[11].resource_pool, "pool-b");
+    EXPECT_EQ(loaded.table_id2table_meta[11].state, TableState::FAILED);
+    EXPECT_EQ(loaded.table_id2table_meta[11].operation_id, "op-orders");
+    EXPECT_EQ(loaded.table_id2table_meta[11].last_error_msg,
+              "placement failed");
+    EXPECT_EQ(loaded.table_id2table_meta[11].create_ts, 300);
+    EXPECT_EQ(loaded.table_id2table_meta[11].update_ts, 400);
 
     EXPECT_EQ(loaded.next_db_id, 3);
     EXPECT_EQ(loaded.next_table_id, 12);

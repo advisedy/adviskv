@@ -75,7 +75,7 @@ class Status {
    public:
     Status() : code_(StatusCode::OK) {}
     Status(StatusCode code) : code_(code) {}
-    Status(int code) : code_(static_cast<StatusCode>(code)) {}
+    explicit Status(int code) : code_(static_cast<StatusCode>(code)) {}
     Status(StatusCode code, const std::string& msg) : code_(code), msg_(msg) {}
 
     bool ok() const { return code_ == StatusCode::OK; }

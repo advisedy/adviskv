@@ -85,6 +85,11 @@ TEST_F(CatalogManagerTest, CreateDbAndTableBasic) {
     EXPECT_EQ(table_meta.replica_count, 3);
     EXPECT_EQ(table_meta.db_id, db_meta.db_id);
     EXPECT_EQ(table_meta.resource_pool, "pool-a");
+    EXPECT_EQ(table_meta.state, TableState::ADDING);
+    EXPECT_FALSE(table_meta.operation_id.empty());
+    EXPECT_TRUE(table_meta.last_error_msg.empty());
+    EXPECT_GT(table_meta.create_ts, 0);
+    EXPECT_GT(table_meta.update_ts, 0);
 
     TableMeta table_meta2;
     ASSERT_TRUE(catalog
@@ -115,10 +120,24 @@ TEST_F(CatalogManagerTest, CreateDbAndTableBasic) {
     EXPECT_EQ(got_table.resource_pool, "pool-a");
     EXPECT_EQ(got_table.db_name, "test_db");
     EXPECT_EQ(got_table.db_id, db_meta.db_id);
+    EXPECT_EQ(got_table.state, TableState::ADDING);
+    EXPECT_EQ(got_table.operation_id, table_meta.operation_id);
 
     std::vector<TableMeta> tables;
     ASSERT_TRUE(catalog.list_tables("test_db", &tables).ok());
     EXPECT_EQ(tables.size(), 2u);
+
+    ASSERT_TRUE(
+        catalog.update_table_state(table_meta.table_id, TableState::NORMAL)
+            .ok());
+    ASSERT_TRUE(catalog.get_table_by_name("test_db", "users", &got_table).ok());
+    EXPECT_EQ(got_table.state, TableState::NORMAL);
+
+    std::vector<TableMeta> adding_tables;
+    ASSERT_TRUE(
+        catalog.list_tables_by_state(TableState::ADDING, &adding_tables).ok());
+    EXPECT_EQ(adding_tables.size(), 1U);
+    EXPECT_EQ(adding_tables[0].table_id, table_meta2.table_id);
 
     // 这次再插入一次db和table，期待的结果是错误码是已经存在了。
 }
@@ -341,6 +360,7 @@ TEST_F(CatalogManagerTest, PersistAndRecoverDataConsistency) {
         EXPECT_EQ(got_users.replica_count, 3);
         EXPECT_EQ(got_users.resource_pool, "pool-a");
         EXPECT_EQ(got_users.db_name, "db_alpha");
+        EXPECT_EQ(got_users.state, TableState::ADDING);
 
         TableMeta got_orders;
         ASSERT_TRUE(
@@ -380,6 +400,170 @@ TEST_F(CatalogManagerTest, PersistAndRecoverDataConsistency) {
                                       &new_table)
                         .ok());
         EXPECT_EQ(new_table.table_id, 3);
+    }
+}
+
+// 测试关于创建一个table了之后删除他，然后查找table是否找得到
+TEST_F(CatalogManagerTest, DeletedTableRecreateSameNameUsesNewTableId) {
+    auto dir = make_sub_dir("deleted_recreate_same_name");
+
+    MetaPersistEngine engine(dir.string());
+    ASSERT_TRUE(engine.init().ok());
+    CatalogManager catalog(&engine);
+    ASSERT_TRUE(catalog.init().ok());
+
+    ASSERT_TRUE(
+        catalog.create_db({.db_name = "commerce", .zone = "z1"}, nullptr).ok());
+
+    TableMeta old_table;
+    ASSERT_TRUE(catalog
+                    .create_table({.db_name = "commerce",
+                                   .table_name = "orders",
+                                   .shard_count = 4,
+                                   .replica_count = 3,
+                                   .resource_pool = "pool-a"},
+                                  &old_table)
+                    .ok());
+    ASSERT_EQ(old_table.table_id, 0);
+
+    ASSERT_TRUE(
+        catalog.update_table_state(old_table.table_id, TableState::DELETED)
+            .ok());
+
+    TableMeta by_id;
+    ASSERT_TRUE(catalog.get_table_by_id(old_table.table_id, &by_id).ok());
+    EXPECT_EQ(by_id.state, TableState::DELETED);
+    EXPECT_EQ(catalog.get_table_by_name("commerce", "orders", &by_id).code(),
+              StatusCode::TABLE_NOT_FOUND);
+
+    std::vector<TableMeta> tables;
+    ASSERT_TRUE(catalog.list_tables("commerce", &tables).ok());
+    EXPECT_TRUE(tables.empty());
+
+    TableMeta new_table;
+    ASSERT_TRUE(catalog
+                    .create_table({.db_name = "commerce",
+                                   .table_name = "orders",
+                                   .shard_count = 8,
+                                   .replica_count = 2,
+                                   .resource_pool = "pool-b"},
+                                  &new_table)
+                    .ok());
+    EXPECT_EQ(new_table.table_id, 1);
+
+    TableMeta by_name;
+    ASSERT_TRUE(catalog.get_table_by_name("commerce", "orders", &by_name).ok());
+    EXPECT_EQ(by_name.table_id, new_table.table_id);
+    EXPECT_EQ(by_name.shard_count, 8);
+
+    ASSERT_TRUE(catalog.get_table_by_id(old_table.table_id, &by_id).ok());
+    EXPECT_EQ(by_id.table_id, old_table.table_id);
+    EXPECT_EQ(by_id.state, TableState::DELETED);
+}
+
+// 关于table删除后的持久化
+TEST_F(CatalogManagerTest, test001) {
+    auto dir = make_sub_dir("recover_deleted");
+    {
+        MetaPersistEngine engine(dir.string());
+        ASSERT_TRUE(engine.init().ok());
+        CatalogManager catalog(&engine);
+        ASSERT_TRUE(catalog.init().ok());
+
+        ASSERT_TRUE(
+            catalog.create_db({.db_name = "commerce", .zone = "z1"}, nullptr)
+                .ok());
+        TableMeta old_table;
+        ASSERT_TRUE(catalog
+                        .create_table({.db_name = "commerce",
+                                       .table_name = "orders",
+                                       .shard_count = 4,
+                                       .replica_count = 3,
+                                       .resource_pool = "pool-a"},
+                                      &old_table)
+                        .ok());
+        ASSERT_TRUE(
+            catalog.update_table_state(old_table.table_id, TableState::DELETED)
+                .ok());
+    }
+
+    {
+        MetaPersistEngine engine(dir.string());
+        ASSERT_TRUE(engine.init().ok());
+        CatalogManager catalog(&engine);
+        ASSERT_TRUE(catalog.init().ok());
+
+        TableMeta by_name;
+
+        Status status =
+            catalog.get_table_by_name("commerce", "orders", &by_name).code();
+        ASSERT_EQ(status.code(), StatusCode::TABLE_NOT_FOUND);
+        TableMeta old_by_id;
+        status = catalog.get_table_by_id(0, &old_by_id);
+        EXPECT_EQ(status.code(), StatusCode::TABLE_NOT_FOUND);
+
+        std::vector<TableMeta> tables;
+        ASSERT_TRUE(catalog.list_tables("commerce", &tables).ok());
+        ASSERT_TRUE(tables.empty());
+    }
+}
+
+// 关于同名字table删除又创建后的持久化是否正常
+TEST_F(CatalogManagerTest, RecoverSkipsDeletedNameIndexAndKeepsIdLookup) {
+    auto dir = make_sub_dir("recover_deleted_current_name");
+    {
+        MetaPersistEngine engine(dir.string());
+        ASSERT_TRUE(engine.init().ok());
+        CatalogManager catalog(&engine);
+        ASSERT_TRUE(catalog.init().ok());
+
+        ASSERT_TRUE(
+            catalog.create_db({.db_name = "commerce", .zone = "z1"}, nullptr)
+                .ok());
+        TableMeta old_table;
+        ASSERT_TRUE(catalog
+                        .create_table({.db_name = "commerce",
+                                       .table_name = "orders",
+                                       .shard_count = 4,
+                                       .replica_count = 3,
+                                       .resource_pool = "pool-a"},
+                                      &old_table)
+                        .ok());
+        ASSERT_TRUE(
+            catalog.update_table_state(old_table.table_id, TableState::DELETED)
+                .ok());
+        TableMeta new_table;
+        ASSERT_TRUE(catalog
+                        .create_table({.db_name = "commerce",
+                                       .table_name = "orders",
+                                       .shard_count = 8,
+                                       .replica_count = 2,
+                                       .resource_pool = "pool-b"},
+                                      &new_table)
+                        .ok());
+        ASSERT_EQ(new_table.table_id, 1);
+    }
+
+    {
+        MetaPersistEngine engine(dir.string());
+        ASSERT_TRUE(engine.init().ok());
+        CatalogManager catalog(&engine);
+        ASSERT_TRUE(catalog.init().ok());
+
+        TableMeta by_name;
+        ASSERT_TRUE(
+            catalog.get_table_by_name("commerce", "orders", &by_name).ok());
+        EXPECT_EQ(by_name.table_id, 1);
+        EXPECT_EQ(by_name.shard_count, 8);
+
+        TableMeta old_by_id;
+        ASSERT_TRUE(catalog.get_table_by_id(0, &old_by_id).ok());
+        EXPECT_EQ(old_by_id.state, TableState::DELETED);
+
+        std::vector<TableMeta> tables;
+        ASSERT_TRUE(catalog.list_tables("commerce", &tables).ok());
+        ASSERT_EQ(tables.size(), 1U);
+        EXPECT_EQ(tables[0].table_id, 1);
     }
 }
 

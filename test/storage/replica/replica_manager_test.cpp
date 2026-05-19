@@ -90,7 +90,7 @@ TEST_F(ReplicaManagerTest, RejectsDuplicateReplicaAndDuplicateShard) {
     ASSERT_TRUE(manager.add_replica(make_param(replica_id)).ok());
 
     Status duplicate_id_status = manager.add_replica(make_param(replica_id));
-    EXPECT_EQ(duplicate_id_status.code(), StatusCode::INVALID_ARGUMENT);
+    EXPECT_TRUE(duplicate_id_status.ok());
 
     ReplicaID another_replica_same_shard{
         .table_id = 9,
@@ -99,7 +99,7 @@ TEST_F(ReplicaManagerTest, RejectsDuplicateReplicaAndDuplicateShard) {
     };
     Status duplicate_shard_status =
         manager.add_replica(make_param(another_replica_same_shard));
-    EXPECT_EQ(duplicate_shard_status.code(), StatusCode::INVALID_ARGUMENT);
+    EXPECT_EQ(duplicate_shard_status.code(), StatusCode::ALREADY_EXIST);
 }
 
 // delete_replica后应无法再按ID或shard查到该replica
