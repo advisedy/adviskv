@@ -3,6 +3,7 @@
 #include <string>
 #include <yaml-cpp/node/node.h>
 #include <yaml-cpp/yaml.h>
+#include "common/define.h"
 #include "common/log.h"
 
 namespace adviskv {
@@ -11,8 +12,7 @@ class ConfMgr{
 
 public:
 
-    ConfMgr(const ConfMgr&) = delete;
-    ConfMgr& operator=(const ConfMgr&) = delete;
+    DISALLOW_COPY_AND_ASSIGN(ConfMgr)
 
     static ConfMgr& get_instance() {
         static ConfMgr instance;

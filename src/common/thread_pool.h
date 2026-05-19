@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/define.h"
 #include <condition_variable>
 #include <cstddef>
 #include <functional>
@@ -17,8 +18,7 @@ class ThreadPool {
 
     ~ThreadPool();
 
-    ThreadPool(const ThreadPool&) = delete;
-    ThreadPool& operator=(const ThreadPool&) = delete;
+    DISALLOW_COPY_AND_ASSIGN(ThreadPool)
 
    public:
     void start(size_t worker_count);

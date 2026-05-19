@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/define.h"
 #include <cassert>
 #include <memory>
 #include <mutex>
@@ -17,8 +18,7 @@ class KeyLock {
                      Lock<std::shared_mutex>&& locker)
             : mutex_(mutex), locker_(locker) {}
 
-        KeyLockGuard(const KeyLockGuard& one) = delete;
-        KeyLockGuard operator=(const KeyLockGuard& one) = delete;
+        DISALLOW_COPY_AND_ASSIGN(KeyLockGuard)
 
        private:
         std::shared_ptr<std::shared_mutex>
@@ -57,8 +57,7 @@ class KeyLock {
         return instance;
     }
 
-    KeyLock<T>(const KeyLock<T>& one) = delete;
-    KeyLock<T> operator=(const KeyLock<T>& one) = delete;
+    DISALLOW_COPY_AND_ASSIGN(KeyLock<T>)
 
    private:
     KeyLock<T>() = default;

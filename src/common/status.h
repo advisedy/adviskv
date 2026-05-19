@@ -1,5 +1,6 @@
 
 #pragma once
+#include "common/define.h"
 #include <fmt/core.h>
 #include <fmt/format.h>
 
@@ -84,8 +85,7 @@ class Status {
     const std::string& msg() const { return msg_; }
 
     bool operator==(const Status& other) const { return code_ == other.code_; }
-
-    bool operator!=(const Status& other) const { return !(*this == other); }
+    DEFINE_OPERATOR_NOT_EQUAL(Status)
 
     std::string to_string() const {
         return fmt::format("Status{code={}, msg='{}'}", static_cast<int>(code_),

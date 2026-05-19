@@ -15,8 +15,7 @@ Status NodeAgent::init(const NodeAgentConf& conf,
                        ReplicaManager* replica_manager) {
     RETURN_IF_INVALID_STATUS(conf.validate())
     RETURN_IF_INVALID_CONDITION(!initialized_, "node agent already initialized")
-    RETURN_IF_INVALID_CONDITION(replica_manager != nullptr,
-                                "replica_manager is nullptr")
+    RETURN_IF_NULLPTR(replica_manager, "replica_manager is nullptr")
 
     conf_ = conf;
     replica_manager_ = replica_manager;

@@ -25,7 +25,7 @@ TableService::TableService(SdmStore* store) : store_(store) {}
 
 Status TableService::place_table(const PlaceTableParam& param) {
     RETURN_IF_INVALID_PARAM(param)
-    RETURN_IF_INVALID_CONDITION(store_ != nullptr, "store is nullptr")
+    RETURN_IF_NULLPTR(store_, "store is nullptr")
 
     TablePtr existing;
     Status status = store_->get_table(param.table_id, existing);
@@ -63,7 +63,7 @@ Status TableService::place_table(const PlaceTableParam& param) {
 
 Status TableService::drop_table(const DropTableParam& param) {
     RETURN_IF_INVALID_PARAM(param)
-    RETURN_IF_INVALID_CONDITION(store_ != nullptr, "store is nullptr")
+    RETURN_IF_NULLPTR(store_, "store is nullptr")
 
     TablePtr existing;
     RETURN_IF_INVALID_STATUS(store_->get_table(param.table_id, existing))

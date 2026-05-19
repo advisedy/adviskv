@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/define.h"
 #include <string>
 #include <memory>
 #include "spdlog/logger.h"
@@ -28,8 +29,7 @@ public:
 
     std::shared_ptr<spdlog::logger> get_logger();
     
-    Logger &operator=(const Logger&) = delete;
-    Logger(const Logger&) = delete;
+    DISALLOW_COPY_AND_ASSIGN(Logger)
 
 private:
     Logger() = default;

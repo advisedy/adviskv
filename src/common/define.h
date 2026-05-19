@@ -46,9 +46,14 @@
         }                                                                   \
     } while (false);
 
-#define DEFINE_VECTOR_AND_RESERVE(type, name, size) \
-    std::vector<type> name;                         \
-    name.reserve(size);
+#define RETURN_IF_NULLPTR(ptr, msg)                          \
+    if ((ptr) == nullptr) {                                  \
+        return Status{StatusCode::INVALID_ARGUMENT, msg};    \
+    }
+
+#define DISALLOW_COPY_AND_ASSIGN(type)   \
+    type(const type&) = delete;          \
+    type& operator=(const type&) = delete;
 
 #define UNUSED(x) ((void)(x));
 #define IGNORE_RESULT(expr) ((void)(expr));
@@ -63,11 +68,6 @@
     case type_a::name_a: {                                      \
         obj = type_b::name_b;                                   \
         break;                                                  \
-    }
-
-#define SWITCH_DEFAULT_BREAK() \
-    default: {                 \
-        break;                 \
     }
 
 #define DEFINE_OPERATOR_NOT_EQUAL(type) \

@@ -17,7 +17,7 @@ namespace adviskv::sdm {
 Status DefaultNodeSelector::select_table_nodes(
     const PlaceNodesParam& param, TablePlacementResult& res) const {
     RETURN_IF_INVALID_PARAM(param)
-    RETURN_IF_INVALID_CONDITION(store_ != nullptr, "store should not nullptr")
+    RETURN_IF_NULLPTR(store_, "store should not nullptr")
 
     std::vector<NodePtr> candidate_nodes;
     Status status = store_->list_nodes_by_resource_pool(param.resource_pool,

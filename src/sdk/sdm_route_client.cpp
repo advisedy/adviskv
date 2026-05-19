@@ -35,7 +35,7 @@ SdmRouteClient::SdmRouteClient(const KVClientConf& conf) : conf_(conf) {
 Status SdmRouteClient::get_route(const std::string& db_name,
                                  const std::string& table_name, const Key& key,
                                  RouteInfo* route) const {
-    RETURN_IF_INVALID_CONDITION(route != nullptr, "route should not be nullptr")
+    RETURN_IF_NULLPTR(route, "route should not be nullptr")
     RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
     RETURN_IF_INVALID_CONDITION(!table_name.empty(),
                                 "table_name should not empty")

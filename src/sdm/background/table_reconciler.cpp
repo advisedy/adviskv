@@ -71,9 +71,9 @@ Status TableReconciler::get_assigned_node_endpoint(const Replica& replica,
     RETURN_IF_INVALID_STATUS(
         store_->get_node(replica.spec.assign_node_id, node))
 
-    RETURN_IF_INVALID_CONDITION(
-        node != nullptr, fmt::format("assigned node not found, node_id={}F",
-                                     replica.spec.assign_node_id))
+    RETURN_IF_NULLPTR(
+        node, fmt::format("assigned node not found, node_id={}F",
+                          replica.spec.assign_node_id))
 
     endpoint = node->state.endpoint;
     return Status::OK();
@@ -93,7 +93,7 @@ void TableReconciler::run() {
 
 // 列出来当前store的每一个table，然后去进行处理
 Status TableReconciler::reconcile_once() {
-    RETURN_IF_INVALID_CONDITION(store_ != nullptr, "store is nullptr")
+    RETURN_IF_NULLPTR(store_, "store is nullptr")
     std::vector<TablePtr> tables;
     RETURN_IF_INVALID_STATUS(store_->list_tables(tables))
     for (const TablePtr& table : tables) {
@@ -158,7 +158,7 @@ Status TableReconciler::reconcile_absent(Table& table) {
 }
 
 Status TableReconciler::ensure_replica_metadata(Table& table) {
-    RETURN_IF_INVALID_CONDITION(selector_ != nullptr, "selector is nullptr")
+    RETURN_IF_NULLPTR(selector_, "selector is nullptr")
     for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count;
          ++shard_index) {
         ShardID shard_id{.table_id = table.table_id,
@@ -204,8 +204,7 @@ Status TableReconciler::ensure_replica_metadata(Table& table) {
 }
 
 Status TableReconciler::ensure_storage_replicas(Table& table) {
-    RETURN_IF_INVALID_CONDITION(storage_client_ != nullptr,
-                                "storage_client is nullptr")
+    RETURN_IF_NULLPTR(storage_client_, "storage_client is nullptr")
     for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count;
          ++shard_index) {
         std::vector<ReplicaPtr> replicas;
@@ -247,8 +246,7 @@ Status TableReconciler::ensure_storage_replicas(Table& table) {
 }
 
 Status TableReconciler::refresh_storage_replica_info(Table& table) {
-    RETURN_IF_INVALID_CONDITION(storage_client_ != nullptr,
-                                "storage_client is nullptr")
+    RETURN_IF_NULLPTR(storage_client_, "storage_client is nullptr")
     for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count;
          ++shard_index) {
         std::vector<ReplicaPtr> replicas;
@@ -305,8 +303,7 @@ Status TableReconciler::ensure_routes_absent(const Table& table) {
 }
 
 Status TableReconciler::ensure_storage_replicas_absent(const Table& table) {
-    RETURN_IF_INVALID_CONDITION(storage_client_ != nullptr,
-                                "storage_client is nullptr")
+    RETURN_IF_NULLPTR(storage_client_, "storage_client is nullptr")
     for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count;
          ++shard_index) {
         std::vector<ReplicaPtr> replicas;

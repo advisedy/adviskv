@@ -14,8 +14,7 @@ StorageClient::StorageClient(const KVClientConf& conf) : conf_(conf) {}
 
 Status StorageClient::select_endpoint(const RouteInfo& route,
                                       Endpoint* endpoint) {
-    RETURN_IF_INVALID_CONDITION(endpoint != nullptr,
-                                "endpoint should not be nullptr")
+    RETURN_IF_NULLPTR(endpoint, "endpoint should not be nullptr")
     RETURN_IF_INVALID_CONDITION(route.table_id >= 0, "route.table_id invalid")
     RETURN_IF_INVALID_CONDITION(route.shard_id >= 0, "route.shard_id invalid")
     RETURN_IF_INVALID_CONDITION(!route.replicas.empty(),
@@ -59,7 +58,7 @@ Status StorageClient::put(const RouteInfo& route, const Key& key,
     RETURN_IF_INVALID_STATUS(status)
 
     rpc::StorageService::Stub* stub = make_stub(endpoint);
-    RETURN_IF_INVALID_CONDITION(stub != nullptr, "storage stub is nullptr")
+    RETURN_IF_NULLPTR(stub, "storage stub is nullptr")
 
     rpc::PutRequest request;
     request.set_table_id(route.table_id);
@@ -88,13 +87,13 @@ Status StorageClient::put(const RouteInfo& route, const Key& key,
 
 Status StorageClient::get(const RouteInfo& route, const Key& key,
                           Value* value) const {
-    RETURN_IF_INVALID_CONDITION(value != nullptr, "value should not be nullptr")
+    RETURN_IF_NULLPTR(value, "value should not be nullptr")
     Endpoint endpoint;
     Status status = select_endpoint(route, &endpoint);
     RETURN_IF_INVALID_STATUS(status)
 
     rpc::StorageService::Stub* stub = make_stub(endpoint);
-    RETURN_IF_INVALID_CONDITION(stub != nullptr, "storage stub is nullptr")
+    RETURN_IF_NULLPTR(stub, "storage stub is nullptr")
 
     rpc::GetRequest request;
     request.set_table_id(route.table_id);

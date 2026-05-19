@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/define.h"
 #include <type_traits>
 #include <utility>
 
@@ -10,8 +11,7 @@ class ScopeExit {
    public:
     explicit ScopeExit(F&& fn) : fn_(std::forward<F>(fn)) {}
 
-    ScopeExit(const ScopeExit&) = delete;
-    ScopeExit& operator=(const ScopeExit&) = delete;
+    DISALLOW_COPY_AND_ASSIGN(ScopeExit)
 
     ScopeExit(ScopeExit&& other) noexcept
         : fn_(std::move(other.fn_)), active_(other.active_) {

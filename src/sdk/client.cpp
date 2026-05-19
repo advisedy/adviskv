@@ -34,7 +34,7 @@ Status KVClient::put(const std::string& db_name, const std::string& table_name,
 Status KVClient::get(const std::string& db_name, const std::string& table_name,
                      const Key& key, Value* value) {
     RETURN_IF_INVALID_PARAM(conf_)
-    RETURN_IF_INVALID_CONDITION(value != nullptr, "value should not be nullptr")
+    RETURN_IF_NULLPTR(value, "value should not be nullptr")
     RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
     RETURN_IF_INVALID_CONDITION(!table_name.empty(),
                                 "table_name should not empty")
@@ -61,7 +61,7 @@ bool KVClient::should_invalidate_route(const Status& status) {
 }
 
 Status KVClient::resolve_route(const RouteCacheKey& cache_key, RouteInfo* route) {
-    RETURN_IF_INVALID_CONDITION(route != nullptr, "route should not be nullptr")
+    RETURN_IF_NULLPTR(route, "route should not be nullptr")
 
     return sdm_route_client_.get_route(
         cache_key.db_name, cache_key.table_name, cache_key.key, route);
