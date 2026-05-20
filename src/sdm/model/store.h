@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "common/define.h"
+#include "common/optional.h"
 #include "common/type.h"
 
 namespace adviskv::sdm {
@@ -151,7 +152,7 @@ struct RouteEntry {
     std::string ip;
     int32_t port{0};
     ReplicaRole role{ReplicaRole::FOLLOWER};
-    Term term;
+    Term term{0};
 };
 
 struct ShardRoute {
@@ -167,23 +168,23 @@ using ShardRoutePtr = std::shared_ptr<ShardRoute>;
 
 // USING_TYPE_OR(ResourcePool)
 
-template <typename T>
-class Optional : public std::optional<T> {
-   public:
-    bool empty() { return !this->has_value(); }
-    T* point() {
-        if (this->has_value()) return nullptr;
-        return &this->value();
-    }
+// template <typename T>
+// class Optional : public std::optional<T> {
+//    public:
+//     bool empty() { return !this->has_value(); }
+//     T* point() {
+//         if (this->has_value()) return nullptr;
+//         return &this->value();
+//     }
 
-    std::optional<T> self() { return *this; }
+//     std::optional<T> self() { return *this; }
 
-    bool operator==(const Optional<T>& other) const {
-        return self() == other.self();
-    }
+//     bool operator==(const Optional<T>& other) const {
+//         return self() == other.self();
+//     }
 
-    DEFINE_OPERATOR_NOT_EQUAL(Optional<T>)
-};
+//     DEFINE_OPERATOR_NOT_EQUAL(Optional<T>)
+// };
 
 using ResourcePoolOr = Optional<ResourcePool>;
 using ReplicaOr = Optional<Replica>;

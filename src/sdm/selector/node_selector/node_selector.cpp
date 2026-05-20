@@ -19,7 +19,7 @@ Status DefaultNodeSelector::select_table_nodes(
     RETURN_IF_INVALID_PARAM(param)
     RETURN_IF_NULLPTR(store_, "store should not nullptr")
 
-    std::vector<NodePtr> candidate_nodes;
+    std::vector<Node> candidate_nodes;
     Status status = store_->list_nodes_by_resource_pool(param.resource_pool,
                                                         candidate_nodes);
     RETURN_IF_INVALID_STATUS(status)
@@ -40,11 +40,10 @@ Status DefaultNodeSelector::select_table_nodes(
     //     candidate_nodes.emplace_back(node);
     // }
 
-    func::ad_erase_if(candidate_nodes, [](const NodePtr& node) {
-        if (!node) return true;
-        if (node->state.endpoint.ip.empty() or node->state.endpoint.port <= 0)
+    func::ad_erase_if(candidate_nodes, [](const Node& node) {
+        if (node.state.endpoint.ip.empty() or node.state.endpoint.port <= 0)
             return true;
-        if (node->spec.status != NodeStatus::ONLINE) return true;
+        if (node.spec.status != NodeStatus::ONLINE) return true;
         return false;
     });
 
@@ -55,18 +54,18 @@ Status DefaultNodeSelector::select_table_nodes(
             param.resource_pool, param.replica_count, candidate_nodes.size()))
 
     struct NodeView {
-        NodePtr node;
+        Node node;
         int32 owned_replica_count{0};
         std::string dc;
     };
 
     std::vector<NodeView> views;
     views.reserve(candidate_nodes.size());
-    for (const NodePtr& node : candidate_nodes) {
+    for (const Node& node : candidate_nodes) {
         views.push_back(
             NodeView{.node = node,
-                     .owned_replica_count = node->derived.owned_replica_count,
-                     .dc = node->spec.dc});
+                     .owned_replica_count = node.derived.owned_replica_count,
+                     .dc = node.spec.dc});
     }
 
     res.shards.clear();
@@ -78,7 +77,7 @@ Status DefaultNodeSelector::select_table_nodes(
                           return lhs.owned_replica_count <
                                  rhs.owned_replica_count;
                       }
-                      return lhs.node->id < rhs.node->id;
+                      return lhs.node.id < rhs.node.id;
                   });
 
         ShardPlacement shard{

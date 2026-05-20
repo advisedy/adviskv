@@ -78,7 +78,7 @@ struct PlaceNodesParam {
 
 struct ShardPlacement {
     ShardIndex shard_index{0};
-    std::vector<NodePtr> nodes;
+    std::vector<Node> nodes;
 };
 
 struct TablePlacementResult {

@@ -23,7 +23,7 @@ void HeartBeatCheckTask::run() {
         LOG_ERROR("[heartbeat] sdm_store is nullptr");
         return;
     }
-    std::vector<NodePtr> node_list;
+    std::vector<Node> node_list;
     Status status = sdm_store_->list_nodes(node_list);
     if (status.fail()) {
         LOG_WARN("[heartbeat] list nodes failed, msg={}", status.msg());
@@ -35,14 +35,11 @@ void HeartBeatCheckTask::run() {
         return;
     }
 
-    for (const NodePtr& node : node_list) {
-        if (!node) {
-            continue;
-        }
-        status = check_and_modify_node(*node);
+    for (Node& node : node_list) {
+        status = check_and_modify_node(node);
         if (status.fail()) {
             LOG_WARN("[heartbeat] check node failed, node_id={}, msg={}",
-                     node->id, status.msg());
+                     node.id, status.msg());
         }
     }
 }
@@ -108,16 +105,13 @@ Status HeartBeatCheckTask::mark_node_offline(Node& node) {
     //     // replica_ptr->state.endpoint = {};
     // }
     // node.replicas.clear();
-    std::vector<ReplicaPtr> replicas;
+    std::vector<Replica> replicas;
     status = sdm_store_->list_replicas_by_node(node.id, replicas);
     RETURN_IF_INVALID_STATUS(status)
-    for (const ReplicaPtr& replica : replicas) {
-        if (!replica) {
-            continue;
-        }
-        replica->state.phase = ReplicaPhase::LOST;
-        replica->state.update_ts = func::get_current_ts_ms();
-        status = sdm_store_->put_replica(*replica);
+    for (Replica& replica : replicas) {
+        replica.state.phase = ReplicaPhase::LOST;
+        replica.state.update_ts = func::get_current_ts_ms();
+        status = sdm_store_->put_replica(replica);
         RETURN_IF_INVALID_STATUS(status)
     }
     return status;

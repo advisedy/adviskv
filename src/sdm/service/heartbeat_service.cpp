@@ -26,10 +26,10 @@ Status HeartBeatService::heartbeat(const HeartBeatParam& param) {
 }
 
 Status HeartBeatService::update_node_state(const HeartBeatParam& param) {
-    NodePtr node;
+    NodeOr node;
     Status status = sdm_store_->get_node(param.node_id, node);
     RETURN_IF_INVALID_STATUS(status)
-    RETURN_IF_NULLPTR(node, "node not found")
+    RETURN_IF_INVALID_CONDITION(!node.empty(), "node not found")
 
     // 这里对于node的定义可能要变一下了，state里面的内容不全是代表着storage传过来的就要更新的。
     //  例如拥有的leader，这个应该是交给sdm的routeupdatechecker做的才对。 //TODO
@@ -42,11 +42,11 @@ Status HeartBeatService::apply_reported_replicas(const HeartBeatParam& param) {
     for (const auto& info : param.replica_list) {
         ReplicaID key{info.shard_id.table_id, info.shard_id.shard_index,
                       info.replica_index};
-        ReplicaPtr replica;
+        ReplicaOr replica;
         Status status = sdm_store_->get_replica(key, replica);
         RETURN_IF_INVALID_STATUS(status)
 
-        if (!replica) {
+        if (replica.empty()) {
             continue;
         }
         if (replica->spec.assign_node_id != param.node_id) {

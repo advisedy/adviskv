@@ -45,31 +45,45 @@ Status SdmStore::put_table(const Table& table) {
     return runtime_index_.on_table_upsert(old_ptr.get(), table);
 }
 
-Status SdmStore::get_table(TableID table_id,
-                           std::shared_ptr<Table>& out) const {
+Status SdmStore::get_table(TableID table_id, TableOr& out) const {
     std::shared_lock locker{mutex_};
-    return meta_store_->get_table(table_id, out);
+    TablePtr table;
+    RETURN_IF_INVALID_STATUS(meta_store_->get_table(table_id, table))
+    out = table ? TableOr{*table} : TableOr{};
+    return Status::OK();
 }
 
 Status SdmStore::get_table_by_name(const std::string& db_name,
                                    const std::string& table_name,
-                                   std::shared_ptr<Table>& out) const {
+                                   TableOr& out) const {
     std::shared_lock locker{mutex_};
 
     TableID table_id;
     Status status =
         runtime_index_.find_table_by_name(db_name, table_name, table_id);
     RETURN_IF_INVALID_STATUS(status)
-    return meta_store_->get_table(table_id, out);
+    TablePtr table;
+    RETURN_IF_INVALID_STATUS(meta_store_->get_table(table_id, table))
+    out = table ? TableOr{*table} : TableOr{};
+    return Status::OK();
 }
 
-Status SdmStore::list_tables(std::vector<std::shared_ptr<Table>>& out) const {
+Status SdmStore::list_tables(std::vector<Table>& out) const {
     std::shared_lock locker{mutex_};
-    return meta_store_->list_tables(out);
+    std::vector<TablePtr> tables;
+    RETURN_IF_INVALID_STATUS(meta_store_->list_tables(tables))
+    out.clear();
+    out.reserve(tables.size());
+    for (const TablePtr& table : tables) {
+        if (table) {
+            out.push_back(*table);
+        }
+    }
+    return Status::OK();
 }
 
 Status SdmStore::list_nodes_by_resource_pool(const std::string& pool_name,
-                                             std::vector<NodePtr>& out) const {
+                                             std::vector<Node>& out) const {
     std::shared_lock locker{mutex_};
 
     std::vector<NodeID> node_ids;
@@ -84,21 +98,33 @@ Status SdmStore::list_nodes_by_resource_pool(const std::string& pool_name,
         status = meta_store_->get_node(node_id, node);
         RETURN_IF_INVALID_STATUS(status)
         if (node != nullptr) {
-            out.push_back(node);
+            out.push_back(*node);
         }
     }
     return Status::OK();
 }
 
-Status SdmStore::list_nodes(std::vector<NodePtr>& out) const {
+Status SdmStore::list_nodes(std::vector<Node>& out) const {
     std::shared_lock locker{mutex_};
-    return meta_store_->list_nodes(out);
+    std::vector<NodePtr> nodes;
+    RETURN_IF_INVALID_STATUS(meta_store_->list_nodes(nodes))
+    out.clear();
+    out.reserve(nodes.size());
+    for (const NodePtr& node : nodes) {
+        if (node) {
+            out.push_back(*node);
+        }
+    }
+    return Status::OK();
 }
 
 Status SdmStore::get_shard_route(const ShardID& shard_id,
-                                 std::shared_ptr<ShardRoute>& out) const {
+                                 ShardRouteOr& out) const {
     std::shared_lock locker{mutex_};
-    return meta_store_->get_shard_route(shard_id, out);
+    ShardRoutePtr route;
+    RETURN_IF_INVALID_STATUS(meta_store_->get_shard_route(shard_id, route))
+    out = route ? ShardRouteOr{*route} : ShardRouteOr{};
+    return Status::OK();
 }
 
 Status SdmStore::put_shard_route(const ShardRoute& route) {
@@ -148,27 +174,44 @@ Status SdmStore::put_node(const Node& node) {
     return runtime_index_.on_node_upsert(old_ptr.get(), node);
 }
 
-Status SdmStore::get_node(const NodeID& node_id, NodePtr& out) const {
+Status SdmStore::get_node(const NodeID& node_id, NodeOr& out) const {
     std::shared_lock locker{mutex_};
-    return meta_store_->get_node(node_id, out);
+    NodePtr node;
+    RETURN_IF_INVALID_STATUS(meta_store_->get_node(node_id, node))
+    out = node ? NodeOr{*node} : NodeOr{};
+    return Status::OK();
 }
 
 Status SdmStore::get_resource_pool(const std::string& name,
-                                   std::shared_ptr<ResourcePool>& out) const {
+                                   ResourcePoolOr& out) const {
     std::shared_lock locker{mutex_};
-    return meta_store_->get_resource_pool(name, out);
+    ResourcePoolPtr pool;
+    RETURN_IF_INVALID_STATUS(meta_store_->get_resource_pool(name, pool))
+    out = pool ? ResourcePoolOr{*pool} : ResourcePoolOr{};
+    return Status::OK();
 }
 
-Status SdmStore::list_resource_pools(
-    std::vector<std::shared_ptr<ResourcePool>>& pools) const {
+Status SdmStore::list_resource_pools(std::vector<ResourcePool>& pools) const {
     std::shared_lock locker{mutex_};
-    return meta_store_->list_resource_pools(pools);
+    std::vector<ResourcePoolPtr> pool_ptrs;
+    RETURN_IF_INVALID_STATUS(meta_store_->list_resource_pools(pool_ptrs))
+    pools.clear();
+    pools.reserve(pool_ptrs.size());
+    for (const ResourcePoolPtr& pool : pool_ptrs) {
+        if (pool) {
+            pools.push_back(*pool);
+        }
+    }
+    return Status::OK();
 }
 
 Status SdmStore::get_replica(const ReplicaID& replica_key,
-                             ReplicaPtr& out) const {
+                             ReplicaOr& out) const {
     std::shared_lock locker{mutex_};
-    return meta_store_->get_replica(replica_key, out);
+    ReplicaPtr replica;
+    RETURN_IF_INVALID_STATUS(meta_store_->get_replica(replica_key, replica))
+    out = replica ? ReplicaOr{*replica} : ReplicaOr{};
+    return Status::OK();
 }
 
 Status SdmStore::put_replica(const Replica& replica) {
@@ -202,7 +245,7 @@ Status SdmStore::del_replica(const ReplicaID& replica_key) {
 
 // 如果shard上没有replicas，返回一个空集合是被允许的
 Status SdmStore::list_replicas_by_shard(const ShardID& shard_id,
-                                        std::vector<ReplicaPtr>& out) const {
+                                        std::vector<Replica>& out) const {
     std::shared_lock locker{mutex_};
 
     std::vector<ReplicaID> replica_ids;
@@ -217,14 +260,14 @@ Status SdmStore::list_replicas_by_shard(const ShardID& shard_id,
         status = meta_store_->get_replica(replica_id, replica);
         RETURN_IF_INVALID_STATUS(status)
         if (replica != nullptr) {
-            out.push_back(replica);
+            out.push_back(*replica);
         }
     }
     return Status::OK();
 }
 
 Status SdmStore::list_replicas_by_node(NodeID node_id,
-                                       std::vector<ReplicaPtr>& out) const {
+                                       std::vector<Replica>& out) const {
     std::shared_lock locker{mutex_};
 
     std::vector<ReplicaID> replica_ids;
@@ -238,7 +281,7 @@ Status SdmStore::list_replicas_by_node(NodeID node_id,
         status = meta_store_->get_replica(replica_id, replica);
         RETURN_IF_INVALID_STATUS(status)
         if (replica != nullptr) {
-            out.push_back(replica);
+            out.push_back(*replica);
         }
     }
     return Status::OK();

@@ -23,16 +23,21 @@ RouteService::RouteService(SdmStore* sdm_store) : sdm_store_(sdm_store) {}
 Status RouteService::get_route(const GetRouteParam& param,
                                ShardRoute* res) const {
     RETURN_IF_INVALID_PARAM(param)
-    std::shared_ptr<Table> table;
+    TableOr table;
     Status status =
         sdm_store_->get_table_by_name(param.db_name, param.table_name, table);
     RETURN_IF_INVALID_STATUS(status)
+    if (table.empty()) {
+        return Status::TABLE_NOT_FOUND(
+            fmt::format("table {}.{} not found", param.db_name,
+                        param.table_name));
+    }
 
     ShardID shard_id = calc_shard_id(*table, param.key);
-    std::shared_ptr<ShardRoute> route;
+    ShardRouteOr route;
     status = sdm_store_->get_shard_route(shard_id, route);
     RETURN_IF_INVALID_STATUS(status)
-    if (route == nullptr) {
+    if (route.empty()) {
         return Status::ROUTE_NOT_FOUND("route not found");
     }
     int leader_count =

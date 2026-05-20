@@ -42,11 +42,11 @@ class TableReconciler : public BackgroundTask {
     bool all_routes_ready(const Table& table);
     Status mark_table_error(Table& table, const Status& status);
 
-    std::vector<PeerMember> build_members(const std::vector<NodePtr>& nodes,
+    std::vector<PeerMember> build_members(const std::vector<Node>& nodes,
                                           TableID table_id,
                                           ShardIndex shard_index);
     Status build_replicas(Table& table, ShardIndex shard_index,
-                          const std::vector<NodePtr>& nodes,
+                          const std::vector<Node>& nodes,
                           const std::vector<PeerMember>& members);
     SdmStore* store_{nullptr};
     IStorageClient* storage_client_{nullptr};

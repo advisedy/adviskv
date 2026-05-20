@@ -27,26 +27,23 @@ Status RouteUpdateCheckTask::update_once() {
     // 并且选择leader
     Status status{Status::OK()};
 
-    std::vector<TablePtr> table_list;
+    std::vector<Table> table_list;
 
     RETURN_IF_INVALID_STATUS(sdm_store_->list_tables(table_list))
 
-    for (TablePtr& table_ptr : table_list) {
-        if (!table_ptr) {
+    for (const Table& table : table_list) {
+        if (table.state.desired != TableDesired::PRESENT ||
+            (table.state.phase != TablePhase::CREATING &&
+             table.state.phase != TablePhase::READY)) {
             continue;
         }
-        if (table_ptr->state.desired != TableDesired::PRESENT ||
-            (table_ptr->state.phase != TablePhase::CREATING &&
-             table_ptr->state.phase != TablePhase::READY)) {
-            continue;
-        }
-        for (int i = 0; i < table_ptr->spec.shard_count; i++) {
-            status = check_shard_route(*table_ptr, static_cast<ShardIndex>(i));
+        for (int i = 0; i < table.spec.shard_count; i++) {
+            status = check_shard_route(table, static_cast<ShardIndex>(i));
             if (status.fail()) {
                 LOG_WARN(
                     "route task update shard route failed, table={}, shard={}, "
                     "msg={}",
-                    table_ptr->table_id, i, status.msg());
+                    table.table_id, i, status.msg());
                 return status;
             }
         }
@@ -61,7 +58,7 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
                            .shard_index = shard_index};
 
     // 获取store里面shard里的replicas
-    std::vector<ReplicaPtr> replicas;
+    std::vector<Replica> replicas;
     status = sdm_store_->list_replicas_by_shard(shard_id, replicas);
     RETURN_IF_INVALID_STATUS(status)
 
@@ -70,38 +67,34 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
 
     // 获取里面状态是正常的replicas
     // 然后更新到我们的路由表里面
-    for (const ReplicaPtr& replica_ptr : replicas) {
-        if (!replica_ptr) {
+    for (const Replica& replica : replicas) {
+        if (replica.state.desired != ReplicaDesired::PRESENT ||
+            replica.state.phase != ReplicaPhase::READY) {
             continue;
         }
 
-        if (replica_ptr->state.desired != ReplicaDesired::PRESENT ||
-            replica_ptr->state.phase != ReplicaPhase::READY) {
+        if (replica.spec.assign_node_id.empty()) {
             continue;
         }
 
-        if (replica_ptr->spec.assign_node_id.empty()) {
-            continue;
-        }
-
-        NodePtr node_ptr;
+        NodeOr node;
         status =
-            sdm_store_->get_node(replica_ptr->spec.assign_node_id, node_ptr);
+            sdm_store_->get_node(replica.spec.assign_node_id, node);
         RETURN_IF_INVALID_STATUS(status)
 
-        if (!node_ptr || node_ptr->spec.status != NodeStatus::ONLINE) {
+        if (node.empty() || node->spec.status != NodeStatus::ONLINE) {
             continue;
         }
 
         RouteEntry entry{
-            .replica_id = replica_ptr->replica_id,
-            .node_id = replica_ptr->spec.assign_node_id,
-            .ip = replica_ptr->state.observed_endpoint.ip,
-            .port = replica_ptr->state.observed_endpoint.port,
-            .role = replica_ptr->state.observed_role,
-            .term = replica_ptr->state.term,
+            .replica_id = replica.replica_id,
+            .node_id = replica.spec.assign_node_id,
+            .ip = replica.state.observed_endpoint.ip,
+            .port = replica.state.observed_endpoint.port,
+            .role = replica.state.observed_role,
+            .term = replica.state.term,
         };
-        if (replica_ptr->state.observed_role == ReplicaRole::LEADER) {
+        if (replica.state.observed_role == ReplicaRole::LEADER) {
             leader_entries.push_back(std::move(entry));
         } else {
             follower_entries.push_back(std::move(entry));
