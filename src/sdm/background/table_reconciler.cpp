@@ -72,7 +72,7 @@ Status TableReconciler::get_assigned_node_endpoint(const Replica& replica,
         store_->get_node(replica.spec.assign_node_id, node))
 
     RETURN_IF_INVALID_CONDITION(
-        !node.empty(), fmt::format("assigned node not found, node_id={}F",
+        !node.is_empty(), fmt::format("assigned node not found, node_id={}F",
                                    replica.spec.assign_node_id))
 
     endpoint = node->state.endpoint;
@@ -373,7 +373,7 @@ bool TableReconciler::all_routes_ready(const Table& table) {
         Status status = store_->get_shard_route(
             ShardID{.table_id = table.table_id, .shard_index = shard_index},
             route);
-        if (status.fail() || route.empty() || route->replicas.empty()) return false;
+        if (status.fail() || route.is_empty() || route->replicas.empty()) return false;
         int leader_count = 0;
         for (const RouteEntry& entry : route->replicas) {
             leader_count += (entry.role == ReplicaRole::LEADER);

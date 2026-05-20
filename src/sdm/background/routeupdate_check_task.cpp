@@ -82,7 +82,7 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
             sdm_store_->get_node(replica.spec.assign_node_id, node);
         RETURN_IF_INVALID_STATUS(status)
 
-        if (node.empty() || node->spec.status != NodeStatus::ONLINE) {
+        if (node.is_empty() || node->spec.status != NodeStatus::ONLINE) {
             continue;
         }
 

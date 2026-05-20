@@ -30,7 +30,7 @@ Status TableService::place_table(const PlaceTableParam& param) {
     TableOr existing;
     Status status = store_->get_table(param.table_id, existing);
     RETURN_IF_INVALID_STATUS(status)
-    if (!existing.empty()) {
+    if (!existing.is_empty()) {
         if (existing->spec.operation_id != param.operation_id) {
             // 就代表是别的请求，正常处理就好
             return Status::ALREADY_EXIST(
@@ -67,7 +67,7 @@ Status TableService::drop_table(const DropTableParam& param) {
 
     TableOr existing;
     RETURN_IF_INVALID_STATUS(store_->get_table(param.table_id, existing))
-    if (existing.empty()) {
+    if (existing.is_empty()) {
         return Status::OK();
     }
 
@@ -105,7 +105,7 @@ Status TableService::get_table_status(const GetTableStatusParam& param,
     TableOr existing;
     Status status = store_->get_table(param.table_id, existing);
     RETURN_IF_INVALID_STATUS(status)
-    if (existing.empty()) {
+    if (existing.is_empty()) {
         return Status::TABLE_NOT_FOUND(
             fmt::format("table_id {} not found", param.table_id));
     }

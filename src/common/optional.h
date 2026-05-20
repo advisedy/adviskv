@@ -11,13 +11,13 @@ class Optional : public std::optional<T> {
    public:
     using std::optional<T>::optional;
 
-    bool empty() const { return !this->has_value(); }
+    bool is_empty() const { return !std::optional<T>::has_value(); }
 
-    T* ptr() { return this->has_value() ? &this->value() : nullptr; }
+    bool has_value() const { return std::optional<T>::has_value(); }
 
-    const T* ptr() const {
-        return this->has_value() ? &this->value() : nullptr;
-    }
+    T* ptr() { return has_value() ? &this->value() : nullptr; }
+
+    const T* ptr() const { return has_value() ? &this->value() : nullptr; }
 
     std::optional<T>& self() { return *this; }
 

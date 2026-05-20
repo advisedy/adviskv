@@ -27,7 +27,7 @@ Status RouteService::get_route(const GetRouteParam& param,
     Status status =
         sdm_store_->get_table_by_name(param.db_name, param.table_name, table);
     RETURN_IF_INVALID_STATUS(status)
-    if (table.empty()) {
+    if (table.is_empty()) {
         return Status::TABLE_NOT_FOUND(
             fmt::format("table {}.{} not found", param.db_name,
                         param.table_name));
@@ -37,7 +37,7 @@ Status RouteService::get_route(const GetRouteParam& param,
     ShardRouteOr route;
     status = sdm_store_->get_shard_route(shard_id, route);
     RETURN_IF_INVALID_STATUS(status)
-    if (route.empty()) {
+    if (route.is_empty()) {
         return Status::ROUTE_NOT_FOUND("route not found");
     }
     int leader_count =
