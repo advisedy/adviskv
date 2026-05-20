@@ -48,6 +48,7 @@ class SdmStore {
 
     Status get_replica(const ReplicaID& replica_key, ReplicaOr& out) const;
     Status put_replica(const Replica& replica);
+    Status put_replicas(const std::vector<Replica>& replicas);
     Status del_replica(const ReplicaID& replica_key);
 
     // Status get_table_shard(TableID table_id, ShardID shard_id) const;
@@ -60,6 +61,7 @@ class SdmStore {
 
    private:
     Status rebuild_runtime_index();
+    Status maybe_repair_runtime_index(Status index_status);
 
     mutable std::shared_mutex mutex_;
     std::unique_ptr<ISdmMetaStore> meta_store_;

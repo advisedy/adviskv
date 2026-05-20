@@ -42,7 +42,8 @@ Status SdmStore::put_table(const Table& table) {
     status = meta_store_->upsert_table(table);
     RETURN_IF_INVALID_STATUS(status)
 
-    return runtime_index_.on_table_upsert(old_ptr.get(), table);
+    return maybe_repair_runtime_index(
+        runtime_index_.on_table_upsert(old_ptr.get(), table));
 }
 
 Status SdmStore::get_table(TableID table_id, TableOr& out) const {
@@ -131,14 +132,14 @@ Status SdmStore::put_shard_route(const ShardRoute& route) {
     std::unique_lock locker{mutex_};
     Status status = meta_store_->upsert_shard_route(route);
     RETURN_IF_INVALID_STATUS(status)
-    return runtime_index_.put_shard_route(route);
+    return maybe_repair_runtime_index(runtime_index_.put_shard_route(route));
 }
 
 Status SdmStore::delete_shard_route(const ShardID& shard_id) {
     std::unique_lock locker{mutex_};
     Status status = meta_store_->delete_shard_route(shard_id);
     RETURN_IF_INVALID_STATUS(status)
-    return runtime_index_.delete_shard_route(shard_id);
+    return maybe_repair_runtime_index(runtime_index_.delete_shard_route(shard_id));
 }
 
 Status SdmStore::del_shard_route_entry(const ShardID& shard_id,
@@ -158,7 +159,7 @@ Status SdmStore::del_shard_route_entry(const ShardID& shard_id,
     });
     status = meta_store_->upsert_shard_route(*route);
     RETURN_IF_INVALID_STATUS(status)
-    return runtime_index_.put_shard_route(*route);
+    return maybe_repair_runtime_index(runtime_index_.put_shard_route(*route));
 }
 
 Status SdmStore::put_node(const Node& node) {
@@ -171,7 +172,8 @@ Status SdmStore::put_node(const Node& node) {
     status = meta_store_->upsert_node(node);
     RETURN_IF_INVALID_STATUS(status)
 
-    return runtime_index_.on_node_upsert(old_ptr.get(), node);
+    return maybe_repair_runtime_index(
+        runtime_index_.on_node_upsert(old_ptr.get(), node));
 }
 
 Status SdmStore::get_node(const NodeID& node_id, NodeOr& out) const {
@@ -224,7 +226,34 @@ Status SdmStore::put_replica(const Replica& replica) {
     status = meta_store_->upsert_replica(replica);
     RETURN_IF_INVALID_STATUS(status)
 
-    return runtime_index_.on_replica_upsert(old_ptr.get(), replica);
+    return maybe_repair_runtime_index(
+        runtime_index_.on_replica_upsert(old_ptr.get(), replica));
+}
+
+Status SdmStore::put_replicas(const std::vector<Replica>& replicas) {
+    std::unique_lock locker{mutex_};
+
+    std::vector<ReplicaPtr> old_ptrs;
+    for (const Replica& replica : replicas) {
+        ReplicaPtr old_ptr;
+        RETURN_IF_INVALID_STATUS(
+            meta_store_->get_replica(replica.replica_id, old_ptr))
+
+        old_ptrs.emplace_back(std::move(old_ptr));
+    }
+    RETURN_IF_INVALID_CONDITION(old_ptrs.size() == replicas.size(),
+                                "old_ptr size should == replicas size")
+
+    RETURN_IF_INVALID_STATUS(meta_store_->upsert_replicas(replicas))
+    for (int i = 0, siz = replicas.size(); i < siz; i++) {
+        Status status =
+            runtime_index_.on_replica_upsert(old_ptrs[i].get(), replicas[i]);
+        if (status.fail()) {
+            return maybe_repair_runtime_index(status);
+        }
+    }
+
+    return Status::OK();
 }
 
 Status SdmStore::del_replica(const ReplicaID& replica_key) {
@@ -240,7 +269,7 @@ Status SdmStore::del_replica(const ReplicaID& replica_key) {
     status = meta_store_->delete_replica(replica_key);
     RETURN_IF_INVALID_STATUS(status)
 
-    return runtime_index_.on_replica_delete(*old_ptr);
+    return maybe_repair_runtime_index(runtime_index_.on_replica_delete(*old_ptr));
 }
 
 // 如果shard上没有replicas，返回一个空集合是被允许的
@@ -300,7 +329,16 @@ Status SdmStore::delete_table(TableID table_id) {
     status = meta_store_->delete_table(table_id);
     RETURN_IF_INVALID_STATUS(status)
 
-    return runtime_index_.on_table_delete(*old_ptr);
+    return maybe_repair_runtime_index(runtime_index_.on_table_delete(*old_ptr));
+}
+
+Status SdmStore::maybe_repair_runtime_index(Status index_status) {
+    if (index_status.ok()) {
+        return Status::OK();
+    }
+    LOG_ERROR("runtime index update failed, rebuild index, msg={}",
+              index_status.msg());
+    return rebuild_runtime_index();
 }
 
 Status SdmStore::rebuild_runtime_index() {

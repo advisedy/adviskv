@@ -39,6 +39,7 @@ std::vector<PeerMember> TableReconciler::build_members(
 Status TableReconciler::build_replicas(Table& table, ShardIndex shard_index,
                                        const std::vector<Node>& nodes,
                                        const std::vector<PeerMember>& members) {
+    std::vector<Replica> replicas;
     for (ReplicaIndex replica_index = 0;
          replica_index < table.spec.replica_count; ++replica_index) {
         const Node& node = nodes[replica_index];
@@ -60,9 +61,9 @@ Status TableReconciler::build_replicas(Table& table, ShardIndex shard_index,
                                   .update_ts = func::get_current_ts_ms(),
                                   .term = 0},
         };
-        RETURN_IF_INVALID_STATUS(store_->put_replica(replica))
+        replicas.emplace_back(std::move(replica));
     }
-    return Status::OK();
+    return store_->put_replicas(replicas);
 }
 
 Status TableReconciler::get_assigned_node_endpoint(const Replica& replica,

@@ -62,10 +62,20 @@ Status DefaultNodeSelector::select_table_nodes(
     std::vector<NodeView> views;
     views.reserve(candidate_nodes.size());
     for (const Node& node : candidate_nodes) {
-        views.push_back(
-            NodeView{.node = node,
-                     .owned_replica_count = node.derived.owned_replica_count,
-                     .dc = node.spec.dc});
+        std::vector<Replica> replicas;
+        status = store_->list_replicas_by_node(node.id, replicas);
+        RETURN_IF_INVALID_STATUS(status)
+
+        int32 owned_replica_count{0};
+        for (const Replica& replica : replicas) {
+            if (replica.state.desired == ReplicaDesired::PRESENT) {
+                ++owned_replica_count;
+            }
+        }
+
+        views.push_back(NodeView{.node = node,
+                                 .owned_replica_count = owned_replica_count,
+                                 .dc = node.spec.dc});
     }
 
     res.shards.clear();
