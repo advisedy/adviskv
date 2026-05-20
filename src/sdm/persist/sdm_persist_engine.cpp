@@ -354,13 +354,23 @@ Status SdmPersistEngine::save_sdm_meta(const SdmPersistedRecord& record) {
     RETURN_IF_INVALID_STATUS(
         FramedRecord<SdmMetaCodec>::encode_to_fd(fd, record))
 
-    ::fsync(fd);
-    ::close(fd);
+    if (::fsync(fd) != 0) return Status::ERROR();
+
+    if (::close(fd) != 0) return Status::ERROR();
+
     fd = -1;
 
     if (::rename(meta_tmp_path_.c_str(), meta_path_.c_str()) != 0) {
         return Status::ERROR(
             fmt::format("failed to rename sdm meta file: {}", strerror(errno)));
+    }
+
+    {
+        int dir_fd = ::open(data_dir_.c_str(), O_RDONLY | O_DIRECTORY);
+        if (dir_fd < 0) return Status::ERROR();
+
+        if (::fsync(dir_fd) != 0) return Status::ERROR();
+        if (::close(dir_fd) != 0) return Status::ERROR();
     }
 
     LOG_DEBUG(

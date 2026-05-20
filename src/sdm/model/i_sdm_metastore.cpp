@@ -196,45 +196,58 @@ Status PersistentMetaStore::load() {
     return Status::OK();
 }
 
-Status PersistentMetaStore::persist() {
-    SdmPersistedRecord record;
+Status PersistentMetaStore::build_record(SdmPersistedRecord& record) const {
+    record = {};
 
     std::vector<TablePtr> tables;
-    inner_->list_tables(tables);
+    RETURN_IF_INVALID_STATUS(inner_->list_tables(tables))
     for (const auto& t : tables) {
         record.tables[t->table_id] = *t;
     }
 
     std::vector<NodePtr> nodes;
-    inner_->list_nodes(nodes);
+    RETURN_IF_INVALID_STATUS(inner_->list_nodes(nodes))
     for (const auto& n : nodes) {
         record.nodes[n->id] = *n;
     }
 
     std::vector<ReplicaPtr> replicas;
-    inner_->list_replicas(replicas);
+    RETURN_IF_INVALID_STATUS(inner_->list_replicas(replicas))
     for (const auto& r : replicas) {
         record.replicas[r->replica_id] = *r;
     }
 
     std::vector<ResourcePoolPtr> pools;
-    inner_->list_resource_pools(pools);
+    RETURN_IF_INVALID_STATUS(inner_->list_resource_pools(pools))
     for (const auto& p : pools) {
         record.resource_pools[p->name] = *p;
     }
 
     std::vector<ShardRoutePtr> routes;
-    inner_->list_shard_routes(routes);
+    RETURN_IF_INVALID_STATUS(inner_->list_shard_routes(routes))
     for (const auto& r : routes) {
         record.shard_routes[r->shard_id] = *r;
     }
 
+    return Status::OK();
+}
+
+Status PersistentMetaStore::persist_record(const SdmPersistedRecord& record) {
     return persist_engine_.save_sdm_meta(record);
 }
 
+Status PersistentMetaStore::persist() {
+    SdmPersistedRecord record;
+    RETURN_IF_INVALID_STATUS(build_record(record))
+    return persist_record(record);
+}
+
 Status PersistentMetaStore::upsert_table(const Table& table) {
-    RETURN_IF_INVALID_STATUS(inner_->upsert_table(table))
-    return persist();
+    SdmPersistedRecord next;
+    RETURN_IF_INVALID_STATUS(build_record(next))
+    next.tables[table.table_id] = table;
+    RETURN_IF_INVALID_STATUS(persist_record(next))
+    return inner_->upsert_table(table);
 }
 
 Status PersistentMetaStore::get_table(TableID table_id, TablePtr& out) const {
@@ -242,8 +255,11 @@ Status PersistentMetaStore::get_table(TableID table_id, TablePtr& out) const {
 }
 
 Status PersistentMetaStore::delete_table(TableID table_id) {
-    RETURN_IF_INVALID_STATUS(inner_->delete_table(table_id))
-    return persist();
+    SdmPersistedRecord next;
+    RETURN_IF_INVALID_STATUS(build_record(next))
+    next.tables.erase(table_id);
+    RETURN_IF_INVALID_STATUS(persist_record(next))
+    return inner_->delete_table(table_id);
 }
 
 Status PersistentMetaStore::list_tables(std::vector<TablePtr>& out) const {
@@ -251,8 +267,11 @@ Status PersistentMetaStore::list_tables(std::vector<TablePtr>& out) const {
 }
 
 Status PersistentMetaStore::upsert_node(const Node& node) {
-    RETURN_IF_INVALID_STATUS(inner_->upsert_node(node))
-    return persist();
+    SdmPersistedRecord next;
+    RETURN_IF_INVALID_STATUS(build_record(next))
+    next.nodes[node.id] = node;
+    RETURN_IF_INVALID_STATUS(persist_record(next))
+    return inner_->upsert_node(node);
 }
 
 Status PersistentMetaStore::get_node(const NodeID& node_id,
@@ -265,8 +284,11 @@ Status PersistentMetaStore::list_nodes(std::vector<NodePtr>& out) const {
 }
 
 Status PersistentMetaStore::upsert_replica(const Replica& replica) {
-    RETURN_IF_INVALID_STATUS(inner_->upsert_replica(replica))
-    return persist();
+    SdmPersistedRecord next;
+    RETURN_IF_INVALID_STATUS(build_record(next))
+    next.replicas[replica.replica_id] = replica;
+    RETURN_IF_INVALID_STATUS(persist_record(next))
+    return inner_->upsert_replica(replica);
 }
 
 Status PersistentMetaStore::get_replica(const ReplicaID& key,
@@ -275,8 +297,11 @@ Status PersistentMetaStore::get_replica(const ReplicaID& key,
 }
 
 Status PersistentMetaStore::delete_replica(const ReplicaID& key) {
-    RETURN_IF_INVALID_STATUS(inner_->delete_replica(key))
-    return persist();
+    SdmPersistedRecord next;
+    RETURN_IF_INVALID_STATUS(build_record(next))
+    next.replicas.erase(key);
+    RETURN_IF_INVALID_STATUS(persist_record(next))
+    return inner_->delete_replica(key);
 }
 
 Status PersistentMetaStore::list_replicas(std::vector<ReplicaPtr>& out) const {
@@ -284,8 +309,11 @@ Status PersistentMetaStore::list_replicas(std::vector<ReplicaPtr>& out) const {
 }
 
 Status PersistentMetaStore::upsert_resource_pool(const ResourcePool& pool) {
-    RETURN_IF_INVALID_STATUS(inner_->upsert_resource_pool(pool))
-    return persist();
+    SdmPersistedRecord next;
+    RETURN_IF_INVALID_STATUS(build_record(next))
+    next.resource_pools[pool.name] = pool;
+    RETURN_IF_INVALID_STATUS(persist_record(next))
+    return inner_->upsert_resource_pool(pool);
 }
 
 Status PersistentMetaStore::get_resource_pool(const std::string& name,
@@ -299,13 +327,19 @@ Status PersistentMetaStore::list_resource_pools(
 }
 
 Status PersistentMetaStore::delete_resource_pool(const std::string& name) {
-    RETURN_IF_INVALID_STATUS(inner_->delete_resource_pool(name))
-    return persist();
+    SdmPersistedRecord next;
+    RETURN_IF_INVALID_STATUS(build_record(next))
+    next.resource_pools.erase(name);
+    RETURN_IF_INVALID_STATUS(persist_record(next))
+    return inner_->delete_resource_pool(name);
 }
 
 Status PersistentMetaStore::upsert_shard_route(const ShardRoute& route) {
-    RETURN_IF_INVALID_STATUS(inner_->upsert_shard_route(route))
-    return persist();
+    SdmPersistedRecord next;
+    RETURN_IF_INVALID_STATUS(build_record(next))
+    next.shard_routes[route.shard_id] = route;
+    RETURN_IF_INVALID_STATUS(persist_record(next))
+    return inner_->upsert_shard_route(route);
 }
 
 Status PersistentMetaStore::get_shard_route(const ShardID& shard_id,
@@ -314,8 +348,11 @@ Status PersistentMetaStore::get_shard_route(const ShardID& shard_id,
 }
 
 Status PersistentMetaStore::delete_shard_route(const ShardID& shard_id) {
-    RETURN_IF_INVALID_STATUS(inner_->delete_shard_route(shard_id))
-    return persist();
+    SdmPersistedRecord next;
+    RETURN_IF_INVALID_STATUS(build_record(next))
+    next.shard_routes.erase(shard_id);
+    RETURN_IF_INVALID_STATUS(persist_record(next))
+    return inner_->delete_shard_route(shard_id);
 }
 
 Status PersistentMetaStore::list_shard_routes(

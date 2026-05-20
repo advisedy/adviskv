@@ -78,6 +78,8 @@ class PersistentMetaStore : public ISdmMetaStore {
 
    private:
     Status load();
+    Status build_record(SdmPersistedRecord& record) const;
+    Status persist_record(const SdmPersistedRecord& record);
     Status persist();
 
     std::unique_ptr<ISdmMetaStore> inner_;
