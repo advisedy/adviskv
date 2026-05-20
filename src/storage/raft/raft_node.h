@@ -78,8 +78,9 @@ class RaftNode {
     // raft_node会再去处理这个，response
     void handle_vote_response(const ReplicaID& from,
                               const RequestVoteResult& result);
-    void handle_append_response(const ReplicaID& from,
-                                const AppendEntriesResult& result);
+
+    Status handle_append_response(const ReplicaID& from,
+                                  const AppendEntriesResult& result);
 
     std::vector<RaftMessage>
     extract_messages();  // 提取raft这边产生的message，replica读取了之后会进行这些操作。
@@ -156,6 +157,10 @@ class RaftNode {
 
     void maybe_finish_recovering();
 
+    // 读一致性准备心跳
+    Status build_append_entries_for_read(std::vector<RaftMessage>& messages,
+                                         LogIndex& read_index, Term& read_term);
+
    private:
     LogIndex last_log_index_unlocked() const;
     Term last_log_term_unlocked() const;
@@ -174,6 +179,9 @@ class RaftNode {
     void try_update_commit_index();
     bool later_than_other(Term other_term, LogIndex other_index) const;
     void maybe_finish_recovering_unlocked();
+    bool has_committed_current_term_entry_unlocked() const;
+    RaftMessage build_append_entries_message_unlocked(const PeerMember& member,
+                                                      LogIndex next_index);
 
     // 对于raftNOde来说，发送RPC的申请交给了外包的replica，自己只需要负责放到vector里面就好了
     // replica那边会自动拿取队列里面的内容的

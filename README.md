@@ -29,6 +29,10 @@ TODO:
 
 [] 线性一致性读 ReadIndex
 
+[] 关于单测的更新
+
+[] 关于node上面负载的副本数量没有闭环， 应该在TableReconclier里面最后构建成功的时候更新一下
+
 
 
 

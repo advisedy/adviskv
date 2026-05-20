@@ -56,15 +56,39 @@ Status Replica::put(const PutParam& param) {
     // 发送 RaftNode 产出的消息（同步 RPC）
     flush_messages();
 
+    // (AI重新表述过的版本，自己的语言描述太烂了）：
+    //
+    // 这里有一个容易误解的点：flush_messages()
+    // 虽然是同步发送 RPC， apply_committed_entries() 也会立刻把已经 committed
+    // 的日志应用到状态机， 但这并不意味着本次 propose 出来的 target_index
+    // 一定已经 committed。
+    //
+    // 原因是 flush_messages() 只发送当前这一轮 pending messages。
+    // 如果 follower 日志落后，第一次 AppendEntries 可能会因为
+    // prev_log_index / prev_log_term 不匹配而失败；leader 这时通常只是回退
+    // 该 follower 的 next_index，需要后续多轮 AppendEntries 才能把 follower
+    // 补齐并拿到多数派确认。
+    //
+    // 因此，一轮 flush 后 commit_index 可能仍然小于 target_index。
+    // apply_committed_entries() 只能 apply 到当前 commit_index，不能把尚未
+    // committed 的 target_index 应用到状态机。 apply_committed_entries();
+
     // apply 已提交的日志到 engine
     // 这里推动raftnode里的apply_index是交给了replica外层去控制。
     apply_committed_entries();
 
-    // if (!raft_node_->is_leader()) {
-    //     return Status{StatusCode::NOT_LEADER, "leader changed during propose"};
-    // }
+    if (!raft_node_->is_leader()) {
+        return Status{StatusCode::NOT_LEADER, "leader changed during propose"};
+    }
 
     if (raft_node_->commit_index() < new_commit_idx) {
+        // 日志已经进入当前 leader 本地
+        // log，但这次请求返回前还没确认被多数派提交。
+        //  所以是有多种情况，有可能会在之后的这个操作里面，然后把当前的这个没有提交
+        // 的操作给提交掉。但是也有可能会被新的leader然后到时候给覆盖掉。所以这里其
+        // 实真正的语义是希望让客户那边去重试，或者说是用Get自己去判断一下这个结果，
+        // 我们这边的结果其实返回的应该是未知。
+        //
         return Status{StatusCode::NOT_YET_COMMIT, "this pyt is not yet commit"};
     }
 
@@ -115,8 +139,8 @@ void Replica::flush_messages() {
                 Status status = raft_sender_.send_append_entries(
                     msg.target, msg.append_param, result);
                 if (status.ok()) {
-                    raft_node_->handle_append_response(msg.target.replica_id,
-                                                       result);
+                    IGNORE_RESULT(raft_node_->handle_append_response(
+                        msg.target.replica_id, result));
                 }
                 break;
             }
@@ -179,10 +203,15 @@ Status Replica::get(const GetParam& param, Value& value) {
     if (is_recovering()) {
         return Status::ERROR("replica is recovering");
     }
-
     // TODO: ReadIndex 保证线性一致性 以后待定吧
-    if (!raft_node_->is_leader()) {
-        return Status{StatusCode::NOT_LEADER, "not leader"};
+
+    LogIndex read_index;
+    RETURN_IF_INVALID_STATUS(check_self_leader_and_get_read_index(read_index))
+
+    apply_committed_entries();
+
+    if (state_machine_->apply_index() < read_index) {
+        return Status::NOT_YET_COMMIT("state machine not yet apply");
     }
 
     Status status = state_machine_->get(param.key, value);
@@ -205,6 +234,10 @@ Status Replica::del(const DelParam& param) {
 
     flush_messages();
     apply_committed_entries();
+
+    if (!raft_node_->is_leader()) {
+        return Status{StatusCode::NOT_LEADER, ""};
+    }
 
     if (raft_node_->commit_index() < new_commit_idx) {
         return Status{StatusCode::NOT_YET_COMMIT, "delete is not yet commit"};
@@ -290,6 +323,47 @@ Status Replica::recover() {
     }
     refresh_recovering_state();
     return Status::OK();
+}
+
+// 新 leader 刚当选时，虽然它是合法 leader，但它的 commit_index 可能还没包含旧
+// term 中已经成功提交的日志。Raft 通过让新 leader 提交一条当前 term 的 no-op
+// entry，来安全推进 commit_index；一旦当前 term 的 entry 被提交，它前面的旧
+// term 日志也会被一起提交。ReadIndex 读之前检查“当前 term 是否已有 committed
+// entry”，就是为了确保 leader 的 commit_index
+// 已经处在一个安全位置。否则即使心跳拿到了多数派确认，也可能因为状态机还没
+// apply 到那些旧的已提交写，导致读到旧值。
+Status Replica::check_self_leader_and_get_read_index(LogIndex& read_index) {
+    if (!raft_node_->is_leader()) return Status::NOT_LEADER();
+
+    // 我们需要检测一下自己是不是leader，并且需要发送给followers自己的心跳，主动发送一次
+    std::vector<RaftMessage> messages;
+    Term read_term;
+    RETURN_IF_INVALID_STATUS(
+        raft_node_->build_append_entries_for_read(messages, read_index, read_term))
+
+    int success_cnt = 1;
+    int limit = (messages.size() + 1) / 2 + 1;  // 达到limit就可以了
+
+    for (const RaftMessage& msg : messages) {
+        if (msg.type != RaftMessageType::APPEND_ENTRIES) {
+            continue;
+        }
+
+        AppendEntriesResult res;
+        Status status =
+            raft_sender_.send_append_entries(msg.target, msg.append_param, res);
+        if (status.fail()) continue;
+
+        // 这个handle如果失败了，就说明自己不是leader
+        RETURN_IF_INVALID_STATUS(
+            raft_node_->handle_append_response(msg.target.replica_id, res))
+        if (res.success and res.term == read_term) success_cnt++;
+    }
+
+    if (success_cnt >= limit) {
+        return Status::OK();
+    }
+    return Status::NOT_LEADER("failed to confirm leader with quorum");
 }
 
 }  // namespace adviskv::storage

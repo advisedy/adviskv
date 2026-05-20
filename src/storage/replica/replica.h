@@ -65,6 +65,9 @@ class Replica {
 
     void try_take_snapshot();
 
+    // 给readIndex准备的
+    Status check_self_leader_and_get_read_index(LogIndex& read_index);
+
     ShardID shard_id_;
     ReplicaID replica_id_;
 
