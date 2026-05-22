@@ -35,9 +35,9 @@ Status StorageClient::create_replica(const CreateReplicaParam& param) {
     rpc::StorageService::Stub* stub =
         make_stub(param.endpoint.ip, param.endpoint.port);
     if (!stub) {
-        return Status::ERROR(fmt::format("failed to create stub for {}:{}",
-                                         param.endpoint.ip,
-                                         param.endpoint.port));
+        return Status::NO_STUB(fmt::format("failed to create stub for {}:{}",
+                                           param.endpoint.ip,
+                                           param.endpoint.port));
     }
 
     rpc::CreateReplicaRequest request;
@@ -62,7 +62,7 @@ Status StorageClient::create_replica(const CreateReplicaParam& param) {
     grpc::Status grpc_status =
         stub->CreateReplica(&context, request, &response);
     if (!grpc_status.ok()) {
-        return Status::ERROR(
+        return Status::RPC_ERROR(
             fmt::format("CreateReplica RPC failed for {}:{}, grpc error: {}",
                         param.endpoint.ip, param.endpoint.port,
                         grpc_status.error_message()));
@@ -80,9 +80,9 @@ Status StorageClient::delete_replica(const DeleteReplicaParam& param) {
     rpc::StorageService::Stub* stub =
         make_stub(param.endpoint.ip, param.endpoint.port);
     if (!stub) {
-        return Status::ERROR(fmt::format("failed to create stub for {}:{}",
-                                         param.endpoint.ip,
-                                         param.endpoint.port));
+        return Status::NO_STUB(fmt::format("failed to create stub for {}:{}",
+                                           param.endpoint.ip,
+                                           param.endpoint.port));
     }
 
     rpc::DeleteReplicaRequest request;
@@ -95,7 +95,7 @@ Status StorageClient::delete_replica(const DeleteReplicaParam& param) {
     grpc::Status grpc_status =
         stub->DeleteReplica(&context, request, &response);
     if (!grpc_status.ok()) {
-        return Status::ERROR(
+        return Status::RPC_ERROR(
             fmt::format("DeleteReplica RPC failed for {}:{}, grpc error: {}",
                         param.endpoint.ip, param.endpoint.port,
                         grpc_status.error_message()));

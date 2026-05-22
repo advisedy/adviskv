@@ -1,6 +1,7 @@
 #include "sdm/background/table_reconciler.h"
 
 #include <fmt/format.h>
+#include <google/protobuf/message.h>
 
 #include <algorithm>
 #include <cassert>
@@ -15,6 +16,58 @@
 #include "sdm/utility/enum_convert.h"
 
 namespace adviskv::sdm {
+
+namespace {
+bool is_retryable_replica_metadata_error(const Status& status) {
+    switch (status.code()) {
+        case StatusCode::RESOURCE_EXHAUSTED:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+bool is_retryable_create_replica_error(const Status& status) {
+    switch (status.code()) {
+        case StatusCode::IS_RECOVERING:
+        case StatusCode::NOT_YET_COMMIT:
+        case StatusCode::RPC_ERROR:
+            return true;
+
+        case StatusCode::ERROR:
+        case StatusCode::INVALID_ARGUMENT:
+        case StatusCode::NOT_SUPPORTED:
+        case StatusCode::NO_STUB:
+        case StatusCode::RESOURCE_EXHAUSTED:
+            return false;
+
+        default:
+            return false;
+    }
+}
+
+bool is_retryable_delete_replica_error(const Status& status) {
+    switch (status.code()) {
+        case StatusCode::IS_RECOVERING:
+        case StatusCode::NOT_YET_COMMIT:
+        case StatusCode::RPC_ERROR:
+            return true;
+
+        case StatusCode::ERROR:
+        case StatusCode::INVALID_ARGUMENT:
+        case StatusCode::NOT_SUPPORTED:
+        case StatusCode::NO_STUB:
+        case StatusCode::RESOURCE_EXHAUSTED:
+        case StatusCode::REPLICA_ERROR:
+            return false;
+
+        default:
+            return false;
+    }
+}
+
+}  // namespace
 
 std::vector<PeerMember> TableReconciler::build_members(
     const std::vector<Node>& nodes, TableID table_id, ShardIndex shard_index) {
@@ -107,6 +160,10 @@ Status TableReconciler::reconcile_once() {
 }
 
 Status TableReconciler::reconcile_table(Table& table) {
+    if (table.state.phase == TablePhase::FAILED) {
+        return Status::OK();
+    }
+
     switch (table.state.desired) {
         case TableDesired::PRESENT:
             return reconcile_present(table);
@@ -119,10 +176,26 @@ Status TableReconciler::reconcile_table(Table& table) {
 }
 
 Status TableReconciler::reconcile_present(Table& table) {
+    auto handle_error = [&](const Status& status, bool retryable) -> Status {
+        if (!retryable) {
+            return mark_table_error(table, status);
+        }
+        table.state.phase = TablePhase::CREATING;
+        table.state.last_error_msg = status.to_string();
+        table.state.update_ts = func::get_current_ts_ms();
+        return store_->put_table(table);
+    };
+
     Status status = ensure_replica_metadata(table);
-    if (status.fail()) return mark_table_error(table, status);
+    if (status.fail()) {
+        return handle_error(status,
+                            is_retryable_replica_metadata_error(status));
+    }
+
     status = ensure_storage_replicas(table);
-    if (status.fail()) return mark_table_error(table, status);
+    if (status.fail()) {
+        return handle_error(status, is_retryable_create_replica_error(status));
+    }
 
     status = refresh_storage_replica_info(table);
     if (status.fail()) {
@@ -143,12 +216,26 @@ Status TableReconciler::reconcile_present(Table& table) {
 }
 
 Status TableReconciler::reconcile_absent(Table& table) {
+    auto handle_error = [&](const Status& status, bool retryable) -> Status {
+        if (!retryable) {
+            return mark_table_error(table, status);
+        }
+        table.state.phase = TablePhase::DELETING;
+        table.state.last_error_msg = status.to_string();
+        table.state.update_ts = func::get_current_ts_ms();
+        return store_->put_table(table);
+    };
+
     Status status = ensure_routes_absent(table);
-    if (status.fail()) return mark_table_error(table, status);
+    if (status.fail()) return handle_error(status, false);
+
     status = ensure_storage_replicas_absent(table);
-    if (status.fail()) return mark_table_error(table, status);
+    if (status.fail()) {
+        return handle_error(status, is_retryable_delete_replica_error(status));
+    }
+
     status = ensure_replica_metadata_absent(table);
-    if (status.fail()) return mark_table_error(table, status);
+    if (status.fail()) return handle_error(status, false);
 
     table.state.phase = TablePhase::DELETED;
     table.state.last_error_msg.clear();
@@ -217,6 +304,11 @@ Status TableReconciler::ensure_storage_replicas(Table& table) {
             if (replica.state.phase == ReplicaPhase::READY) {
                 continue;
             }
+            if (replica.state.phase == ReplicaPhase::ERROR) {
+                return Status::REPLICA_ERROR(
+                    fmt::format("replica is in ERROR phase: {}",
+                                replica.state.last_error_msg));
+            }
             // 关于这里如果是CREATING的话，
             // 说不定是storage那边发过来了创建好了， 但是我们这里没有收到，
             // 所以就再发送一遍，在storage那边保持好幂等应该就可以了。
@@ -230,6 +322,11 @@ Status TableReconciler::ensure_storage_replicas(Table& table) {
                 .endpoint = endpoint,
             });
             if (status.fail()) {
+                if (!is_retryable_create_replica_error(status)) {
+                    replica.state.phase = ReplicaPhase::ERROR;
+                } else {
+                    replica.state.phase = ReplicaPhase::CREATING;
+                }
                 replica.state.last_error_msg = status.to_string();
                 replica.state.update_ts = func::get_current_ts_ms();
                 IGNORE_RESULT(store_->put_replica(replica));
@@ -310,6 +407,13 @@ Status TableReconciler::ensure_storage_replicas_absent(const Table& table) {
             ShardID{.table_id = table.table_id, .shard_index = shard_index},
             replicas))
         for (Replica& replica : replicas) {
+            if (replica.state.desired != ReplicaDesired::PRESENT) continue;
+            if (replica.state.phase == ReplicaPhase::DELETED) continue;
+            if (replica.state.phase == ReplicaPhase::ERROR) {
+                return Status::REPLICA_ERROR(
+                    fmt::format("replica is in ERROR phase: {}",
+                                replica.state.last_error_msg));
+            }
             Endpoint endpoint;
             RETURN_IF_INVALID_STATUS(
                 get_assigned_node_endpoint(replica, endpoint))
@@ -318,13 +422,18 @@ Status TableReconciler::ensure_storage_replicas_absent(const Table& table) {
                 .endpoint = endpoint,
             });
             if (status.fail()) {
-                replica.state.phase = ReplicaPhase::DELETING;
+                if (is_retryable_delete_replica_error(status)) {
+                    replica.state.phase = ReplicaPhase::DELETING;
+                } else {
+                    replica.state.phase = ReplicaPhase::ERROR;
+                }
                 replica.state.last_error_msg = status.to_string();
                 replica.state.update_ts = func::get_current_ts_ms();
                 IGNORE_RESULT(store_->put_replica(replica));
                 return status;
             }
             replica.state.phase = ReplicaPhase::DELETED;
+            replica.state.last_error_msg.clear();
             replica.state.update_ts = func::get_current_ts_ms();
             RETURN_IF_INVALID_STATUS(store_->put_replica(replica))
         }

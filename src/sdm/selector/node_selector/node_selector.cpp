@@ -47,11 +47,11 @@ Status DefaultNodeSelector::select_table_nodes(
         return false;
     });
 
-    RETURN_IF_INVALID_CONDITION(
-        (int32)(candidate_nodes.size()) >= param.replica_count,
-        fmt::format(
+    if ((int32)(candidate_nodes.size()) < param.replica_count) {
+        return Status::RESOURCE_EXHAUSTED(fmt::format(
             "not enough nodes in resource_pool '{}', need {} but have {}",
-            param.resource_pool, param.replica_count, candidate_nodes.size()))
+            param.resource_pool, param.replica_count, candidate_nodes.size()));
+    }
 
     struct NodeView {
         Node node;

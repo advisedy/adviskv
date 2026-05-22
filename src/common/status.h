@@ -30,9 +30,14 @@ namespace adviskv {
     X(REPLICA_MANAGER_NOT_FOUND, 7)                                \
     X(NOT_SUPPORTED, 8)                                            \
     X(ALREADY_EXIST, 9)                                            \
+    X(NO_STUB, 10) /*rpc层面的，没有stub*/                         \
+    X(RPC_ERROR, 11)                                               \
+    X(RETRY_ERROR, 12)                                             \
+    X(RESOURCE_EXHAUSTED, 13)                                      \
     X(ROUTE_NOT_FOUND, 1000)                                       \
     X(TABLE_META_CACHE_NOT_FOUND, 1001)                            \
     X(DB_META_CACHE_NOT_FOUND, 1002)                               \
+    X(REPLICA_ERROR, 1003)                                         \
     X(NOT_LEADER, 2000)                                            \
     X(NOT_YET_COMMIT, 2001) /*目前的写操作成功了，但是还没有提交*/ \
     X(IS_RECOVERING, 2002)                                         \
