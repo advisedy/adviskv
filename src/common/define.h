@@ -11,6 +11,7 @@
 #include <fmt/core.h>
 
 #include <chrono>
+#include <utility>
 #define RETURN_IF_INVALID_CONDITION(cond, msg)            \
     if (!(cond)) {                                        \
         return Status{StatusCode::INVALID_ARGUMENT, msg}; \
@@ -46,13 +47,13 @@
         }                                                                   \
     } while (false);
 
-#define RETURN_IF_NULLPTR(ptr, msg)                          \
-    if ((ptr) == nullptr) {                                  \
-        return Status{StatusCode::INVALID_ARGUMENT, msg};    \
+#define RETURN_IF_NULLPTR(ptr, msg)                       \
+    if ((ptr) == nullptr) {                               \
+        return Status{StatusCode::INVALID_ARGUMENT, msg}; \
     }
 
-#define DISALLOW_COPY_AND_ASSIGN(type)   \
-    type(const type&) = delete;          \
+#define DISALLOW_COPY_AND_ASSIGN(type) \
+    type(const type&) = delete;        \
     type& operator=(const type&) = delete;
 
 #define UNUSED(x) ((void)(x));
@@ -75,3 +76,8 @@
 
 using Milliseconds = std::chrono::milliseconds;
 using Seconds = std::chrono::seconds;
+
+template <typename To, typename From>
+constexpr To to(From&& x) noexcept {
+    return static_cast<To>(std::forward<From>(x));
+}

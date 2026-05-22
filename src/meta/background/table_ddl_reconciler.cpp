@@ -60,7 +60,7 @@ struct AddTablePolicy {
     static constexpr const char* done_action = "mark table NORMAL";
     static constexpr const char* failed_msg = "SDM table placement failed";
 
-    static Status resubmit(SdmClient& client, const TableMeta& table) {
+    static Status resubmit(ISdmClient& client, const TableMeta& table) {
         return client.call_place_table(table);
     }
 
@@ -95,7 +95,7 @@ struct DropTablePolicy {
     static constexpr const char* done_action = "mark table DELETED";
     static constexpr const char* failed_msg = "SDM table drop failed";
 
-    static Status resubmit(SdmClient& client, const TableMeta& table) {
+    static Status resubmit(ISdmClient& client, const TableMeta& table) {
         return client.call_drop_table(table);
     }
 
@@ -122,7 +122,7 @@ struct DropTablePolicy {
 
 template <typename Policy>
 void resubmit_or_record_error(CatalogManager& catalog_manager,
-                              SdmClient& sdm_client, const TableMeta& table) {
+                              ISdmClient& sdm_client, const TableMeta& table) {
     Status resubmit_status = Policy::resubmit(sdm_client, table);
     if (resubmit_status.fail()) {
         keep_table_state_with_error(catalog_manager, table,
@@ -132,7 +132,7 @@ void resubmit_or_record_error(CatalogManager& catalog_manager,
 }
 
 template <typename Policy>
-void reconcile_table(CatalogManager& catalog_manager, SdmClient& sdm_client,
+void reconcile_table(CatalogManager& catalog_manager, ISdmClient& sdm_client,
                      const TableMeta& table) {
     SdmTableStatus sdm_status;
     Status status = sdm_client.get_table_status(table, &sdm_status);
@@ -165,7 +165,7 @@ void reconcile_table(CatalogManager& catalog_manager, SdmClient& sdm_client,
 }
 
 template <typename Policy>
-void reconcile_tables(CatalogManager& catalog_manager, SdmClient& sdm_client) {
+void reconcile_tables(CatalogManager& catalog_manager, ISdmClient& sdm_client) {
     std::vector<TableMeta> tables;
     Status status =
         catalog_manager.list_tables_by_state(Policy::source_state, &tables);
@@ -183,7 +183,7 @@ void reconcile_tables(CatalogManager& catalog_manager, SdmClient& sdm_client) {
 }  // namespace
 
 TableDdlReconciler::TableDdlReconciler(CatalogManager* catalog_manager,
-                                       SdmClient* sdm_client)
+                                       ISdmClient* sdm_client)
     : catalog_manager_(catalog_manager), sdm_client_(sdm_client) {}
 
 void TableDdlReconciler::run() {

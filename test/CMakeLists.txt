@@ -122,3 +122,7 @@ add_adviskv_meta_gtest(meta_persist_engine_test
 add_adviskv_meta_gtest(catalog_manager_test
     ${CMAKE_SOURCE_DIR}/test/meta/catalog/catalog_manager_test.cpp
 )
+
+add_adviskv_meta_gtest(ddl_service_test
+    ${CMAKE_SOURCE_DIR}/test/meta/ddl_service/ddl_service_test.cpp
+)

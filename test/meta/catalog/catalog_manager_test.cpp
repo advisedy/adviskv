@@ -7,6 +7,7 @@
 #include <string>
 
 #include "common/status.h"
+#include "meta/catalog/meta_types.h"
 #include "meta/persist/i_meta_persist_engine.h"
 #include "meta/persist/meta_persist_engine.h"
 
@@ -500,7 +501,8 @@ TEST_F(CatalogManagerTest, test001) {
         ASSERT_EQ(status.code(), StatusCode::TABLE_NOT_FOUND);
         TableMeta old_by_id;
         status = catalog.get_table_by_id(0, &old_by_id);
-        EXPECT_EQ(status.code(), StatusCode::TABLE_NOT_FOUND);
+        EXPECT_EQ(status.code(), StatusCode::OK);
+        EXPECT_EQ(old_by_id.state, TableState::DELETED);
 
         std::vector<TableMeta> tables;
         ASSERT_TRUE(catalog.list_tables("commerce", &tables).ok());

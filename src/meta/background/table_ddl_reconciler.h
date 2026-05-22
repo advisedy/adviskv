@@ -9,14 +9,15 @@ namespace adviskv::meta {
 
 class TableDdlReconciler : public BackgroundTask {
    public:
-    TableDdlReconciler(CatalogManager* catalog_manager, SdmClient* sdm_client);
+    TableDdlReconciler(CatalogManager* catalog_manager,
+                       ISdmClient* sdm_client);
 
    protected:
     void run() override;
 
    private:
     CatalogManager* catalog_manager_;
-    SdmClient* sdm_client_;
+    ISdmClient* sdm_client_;
 };
 
 }  // namespace adviskv::meta

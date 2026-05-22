@@ -17,6 +17,7 @@
 #include "meta/handler/meta_service_impl.h"
 #include "meta/persist/meta_persist_engine.h"
 #include "meta/service/ddl_service.h"
+#include "meta/service/sdm_client.h"
 
 namespace {
 

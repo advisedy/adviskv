@@ -17,8 +17,7 @@
 namespace adviskv::sdm {
 
 std::vector<PeerMember> TableReconciler::build_members(
-    const std::vector<Node>& nodes, TableID table_id,
-    ShardIndex shard_index) {
+    const std::vector<Node>& nodes, TableID table_id, ShardIndex shard_index) {
     std::vector<PeerMember> members;
     members.reserve(nodes.size());
     for (ReplicaIndex replica_index = 0;
@@ -74,7 +73,7 @@ Status TableReconciler::get_assigned_node_endpoint(const Replica& replica,
 
     RETURN_IF_INVALID_CONDITION(
         !node.is_empty(), fmt::format("assigned node not found, node_id={}F",
-                                   replica.spec.assign_node_id))
+                                      replica.spec.assign_node_id))
 
     endpoint = node->state.endpoint;
     return Status::OK();
@@ -374,7 +373,8 @@ bool TableReconciler::all_routes_ready(const Table& table) {
         Status status = store_->get_shard_route(
             ShardID{.table_id = table.table_id, .shard_index = shard_index},
             route);
-        if (status.fail() || route.is_empty() || route->replicas.empty()) return false;
+        if (status.fail() || route.is_empty() || route->replicas.empty())
+            return false;
         int leader_count = 0;
         for (const RouteEntry& entry : route->replicas) {
             leader_count += (entry.role == ReplicaRole::LEADER);

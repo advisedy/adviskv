@@ -1,18 +1,13 @@
 #include "meta/service/ddl_service.h"
 
-#include <grpcpp/support/status.h>
-
-#include <memory>
-
 #include "common/define.h"
 #include "common/status.h"
 #include "meta/catalog/catalog_manager.h"
-#include "sdm.grpc.pb.h"
-#include "sdm.pb.h"
 
 namespace adviskv::meta {
 
-DdlService::DdlService(CatalogManager* catalog_manager, SdmClient* sdm_client) {
+DdlService::DdlService(CatalogManager* catalog_manager,
+                       ISdmClient* sdm_client) {
     catalog_manager_ = catalog_manager;
     sdm_client_ = sdm_client;
 }
@@ -180,125 +175,6 @@ Status DdlService::get_table(const GetTableParam& param,
         return catalog_manager_->get_table_by_name(
             param.db_name, param.table_name, table_meta);
     }
-}
-
-Status SdmClient::call_place_table(const TableMeta& table_meta) {
-    SdmClientStub& sdm_client = this->client();
-
-    rpc::PlaceTableRequest request;
-    request.set_db_id(table_meta.db_id);
-    request.set_table_id(table_meta.table_id);
-    request.set_db_name(table_meta.db_name);
-    request.set_table_name(table_meta.table_name);
-    request.set_shard_count(table_meta.shard_count);
-    request.set_replica_count(table_meta.replica_count);
-    request.set_resource_pool(table_meta.resource_pool);
-    request.set_operation_id(table_meta.operation_id);
-    rpc::PlaceTableResponse response;
-    grpc::ClientContext context;
-    grpc::Status status = sdm_client->PlaceTable(&context, request, &response);
-
-    if (!status.ok()) {
-        return Status{
-            StatusCode::ERROR,
-            fmt::format("call sdm place_table failed, grpc code = {}, msg = {}",
-                        (int)status.error_code(), status.error_message())};
-    }
-
-    if (response.mutable_base_rsp()->code() != to_rpc_code(StatusCode::OK)) {
-        return Status{
-            static_cast<StatusCode>(response.mutable_base_rsp()->code()),
-            response.mutable_base_rsp()->msg()};
-    }
-    return Status::OK();
-}
-
-Status SdmClient::get_table_status(const TableMeta& table_meta,
-                                   SdmTableStatus* table_status) {
-    SdmClientStub& sdm_client = this->client();
-
-    rpc::GetTableStatusRequest request;
-    request.set_table_id(table_meta.table_id);
-    request.set_operation_id(table_meta.operation_id);
-    rpc::GetTableStatusResponse response;
-    grpc::ClientContext context;
-    grpc::Status status =
-        sdm_client->GetTableStatus(&context, request, &response);
-
-    if (!status.ok()) {
-        return Status{
-            StatusCode::ERROR,
-            fmt::format(
-                "call sdm get_table_status failed, grpc code = {}, msg = {}",
-                static_cast<int>(status.error_code()), status.error_message())};
-    }
-
-    if (response.mutable_base_rsp()->code() != to_rpc_code(StatusCode::OK)) {
-        return Status{
-            static_cast<StatusCode>(response.mutable_base_rsp()->code()),
-            response.mutable_base_rsp()->msg()};
-    }
-
-    if (!table_status) return Status::OK();
-
-    table_status->table_id = response.table_id();
-    table_status->desired = response.desired();
-    table_status->phase = response.phase();
-    table_status->last_error_msg = response.last_error_msg();
-    table_status->operation_id = response.operation_id();
-
-    return Status::OK();
-}
-
-Status SdmClient::call_drop_table(const TableMeta& table_meta) {
-    SdmClientStub& sdm_client = this->client();
-
-    rpc::DropTableRequest request;
-    request.set_table_id(table_meta.table_id);
-    request.set_operation_id(table_meta.operation_id);
-    rpc::DropTableResponse response;
-    grpc::ClientContext context;
-    grpc::Status status = sdm_client->DropTable(&context, request, &response);
-
-    if (!status.ok()) {
-        return Status{
-            StatusCode::ERROR,
-            fmt::format("call sdm drop_table failed, grpc code = {}, msg = {}",
-                        static_cast<int>(status.error_code()),
-                        status.error_message())};
-    }
-    if (response.mutable_base_rsp()->code() != to_rpc_code(StatusCode::OK)) {
-        return Status{
-            static_cast<StatusCode>(response.mutable_base_rsp()->code()),
-            response.mutable_base_rsp()->msg()};
-    }
-    return Status::OK();
-}
-
-Status SdmClient::call_place_db(const DBMeta& db_meta) {
-    SdmClientStub& sdm_client = this->client();
-
-    rpc::PlaceDBRequest request;
-    request.set_db_id(db_meta.db_id);
-    request.set_db_name(db_meta.db_name);
-    request.set_zone(db_meta.zone);
-    rpc::PlaceDBResponse response;
-    grpc::ClientContext context;
-    grpc::Status status = sdm_client->PlaceDB(&context, request, &response);
-
-    if (!status.ok()) {
-        return Status{
-            StatusCode::ERROR,
-            fmt::format("call sdm place_db failed, grpc code = {}, msg = {}",
-                        (int)status.error_code(), status.error_message())};
-    }
-
-    if (response.mutable_base_rsp()->code() != to_rpc_code(StatusCode::OK)) {
-        return Status{
-            static_cast<StatusCode>(response.mutable_base_rsp()->code()),
-            response.mutable_base_rsp()->msg()};
-    }
-    return Status::OK();
 }
 
 }  // namespace adviskv::meta

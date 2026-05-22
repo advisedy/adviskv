@@ -1,12 +1,13 @@
 
 #pragma once
-#include "common/define.h"
 #include <fmt/core.h>
 #include <fmt/format.h>
 
 #include <cstdint>
 #include <optional>
 #include <string>
+
+#include "common/define.h"
 
 namespace adviskv {
 /*
@@ -87,9 +88,10 @@ class Status {
     bool operator==(const Status& other) const { return code_ == other.code_; }
     DEFINE_OPERATOR_NOT_EQUAL(Status)
 
-    std::string to_string() const {
-        return fmt::format("Status{code={}, msg='{}'}", static_cast<int>(code_),
-                           msg_);
+    std::string to_string()
+        const {  // 这里fmt里如果想要输出{}的转义，需要搞两下
+        return fmt::format("Status{{code={}, msg='{}'}}",
+                           static_cast<int>(code_), msg_);
     }
 
     void set_msg(const std::string& msg) { msg_ = msg; }
