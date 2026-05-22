@@ -99,12 +99,12 @@ add_adviskv_storage_gtest(raft_cluster_test
     ${CMAKE_SOURCE_DIR}/test/storage/raft/raft_cluster_test.cpp
 )
 
-add_adviskv_sdm_gtest(placetable_workflow_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/workflow/placetable_workflow_test.cpp
-)
-
 add_adviskv_sdm_gtest(sdm_service_test
     ${CMAKE_SOURCE_DIR}/test/sdm/service/sdm_service_test.cpp
+)
+
+add_adviskv_sdm_gtest(heartbeat_check_task_test
+    ${CMAKE_SOURCE_DIR}/test/sdm/background/heartbeat_check_task_test.cpp
 )
 
 add_adviskv_sdm_gtest(sdm_runtime_index_test
