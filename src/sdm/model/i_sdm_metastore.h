@@ -39,8 +39,9 @@ enum class SdmMetaStoreType {
     X(Status get_shard_route(const ShardID& shard_id, ShardRoutePtr& out)     \
           const)                                                              \
     X(Status delete_shard_route(const ShardID& shard_id))                     \
-    X(Status list_shard_routes(std::vector<ShardRoutePtr>& out) const)  \
-    X(std::unique_ptr<ISdmMetaStore> clone() const)
+    X(Status list_shard_routes(std::vector<ShardRoutePtr>& out) const)        \
+    X(std::unique_ptr<ISdmMetaStore> clone_memory_snapshot()                  \
+          const) /*内存数据快照，用来做恢复处理的*/
 
 class ISdmMetaStore {
    public:
@@ -53,8 +54,6 @@ class ISdmMetaStore {
 
 class MemoryMetaStore : public ISdmMetaStore {
    public:
-
-
 #define X(...) __VA_ARGS__ override;
     ISDM_METASTORE_METHODS(X)
 #undef X
@@ -70,16 +69,15 @@ class MemoryMetaStore : public ISdmMetaStore {
 class PersistentMetaStore : public ISdmMetaStore {
    public:
     explicit PersistentMetaStore(std::filesystem::path data_dir);
-    PersistentMetaStore(std::unique_ptr<ISdmMetaStore> inner,
+    PersistentMetaStore(std::unique_ptr<ISdmMetaStore> memory_store,
                         std::filesystem::path data_dir);
-
 
 #define X(...) __VA_ARGS__ override;
     ISDM_METASTORE_METHODS(X)
 #undef X
 
    private:
-    // PersistentMetaStore(std::unique_ptr<ISdmMetaStore> inner,
+    // PersistentMetaStore(std::unique_ptr<ISdmMetaStore> memory_store,
     //                     SdmPersistEngine persist_engine);
     Status load();
     Status build_record_from_store(const ISdmMetaStore& store,
@@ -89,7 +87,7 @@ class PersistentMetaStore : public ISdmMetaStore {
     Status persist();
     Status commit_with(const std::function<Status(ISdmMetaStore&)>& mutate);
 
-    std::unique_ptr<ISdmMetaStore> inner_;
+    std::unique_ptr<ISdmMetaStore> memory_store_;
     SdmPersistEngine persist_engine_;
 };
 

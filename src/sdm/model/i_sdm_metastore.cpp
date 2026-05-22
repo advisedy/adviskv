@@ -10,7 +10,7 @@
 
 namespace adviskv::sdm {
 
-std::unique_ptr<ISdmMetaStore> MemoryMetaStore::clone() const {
+std::unique_ptr<ISdmMetaStore> MemoryMetaStore::clone_memory_snapshot() const {
     auto copied = std::make_unique<MemoryMetaStore>();
     for (const auto& [id, table] : tables_) {
         copied->tables_[id] = std::make_shared<Table>(*table);
@@ -184,24 +184,24 @@ Status MemoryMetaStore::list_shard_routes(
 }
 
 PersistentMetaStore::PersistentMetaStore(std::filesystem::path data_dir)
-    : inner_(std::make_unique<MemoryMetaStore>()),
+    : memory_store_(std::make_unique<MemoryMetaStore>()),
       persist_engine_(data_dir.string()) {
     persist_engine_.init();
     IGNORE_RESULT(load());
 }
 
-PersistentMetaStore::PersistentMetaStore(std::unique_ptr<ISdmMetaStore> inner,
+PersistentMetaStore::PersistentMetaStore(
+    std::unique_ptr<ISdmMetaStore> memory_store,
                                          std::filesystem::path data_dir)
-    : inner_(std::move(inner)), persist_engine_(data_dir.string()) {
+    : memory_store_(std::move(memory_store)),
+      persist_engine_(data_dir.string()) {
     persist_engine_.init();
     IGNORE_RESULT(load());
 }
 
-std::unique_ptr<ISdmMetaStore> PersistentMetaStore::clone() const {
-    // SdmPersistEngine persist_engine{persist_engine_};
-    // return PersistentMetaStore{std::move(inner_->clone()), persist_engine};
-    //TODO 
-    return inner_->clone();
+std::unique_ptr<ISdmMetaStore> PersistentMetaStore::clone_memory_snapshot()
+    const {
+    return memory_store_->clone_memory_snapshot();
 }
 
 Status PersistentMetaStore::load() {
@@ -211,23 +211,23 @@ Status PersistentMetaStore::load() {
 
     for (const auto& [_, table] : record.tables) {
         UNUSED(_);
-        inner_->upsert_table(table);
+        memory_store_->upsert_table(table);
     }
     for (const auto& [_, node] : record.nodes) {
         UNUSED(_);
-        inner_->upsert_node(node);
+        memory_store_->upsert_node(node);
     }
     for (const auto& [_, replica] : record.replicas) {
         UNUSED(_);
-        inner_->upsert_replica(replica);
+        memory_store_->upsert_replica(replica);
     }
     for (const auto& [_, pool] : record.resource_pools) {
         UNUSED(_);
-        inner_->upsert_resource_pool(pool);
+        memory_store_->upsert_resource_pool(pool);
     }
     for (const auto& [_, route] : record.shard_routes) {
         UNUSED(_);
-        inner_->upsert_shard_route(route);
+        memory_store_->upsert_shard_route(route);
     }
 
     return Status::OK();
@@ -271,7 +271,7 @@ Status PersistentMetaStore::build_record_from_store(
 }
 
 Status PersistentMetaStore::build_record(SdmPersistedRecord& record) const {
-    return build_record_from_store(*inner_, record);
+    return build_record_from_store(*memory_store_, record);
 }
 
 Status PersistentMetaStore::persist_record(const SdmPersistedRecord& record) {
@@ -286,14 +286,15 @@ Status PersistentMetaStore::persist() {
 
 Status PersistentMetaStore::commit_with(
     const std::function<Status(ISdmMetaStore&)>& mutate) {
-    std::unique_ptr<ISdmMetaStore> next_inner = inner_->clone();
-    RETURN_IF_INVALID_STATUS(mutate(*next_inner))
+    std::unique_ptr<ISdmMetaStore> next_memory_store =
+        memory_store_->clone_memory_snapshot();
+    RETURN_IF_INVALID_STATUS(mutate(*next_memory_store))
 
     SdmPersistedRecord next;
-    RETURN_IF_INVALID_STATUS(build_record_from_store(*next_inner, next))
+    RETURN_IF_INVALID_STATUS(build_record_from_store(*next_memory_store, next))
     RETURN_IF_INVALID_STATUS(persist_record(next))
 
-    inner_ = std::move(next_inner);
+    memory_store_ = std::move(next_memory_store);
     return Status::OK();
 }
 
@@ -303,7 +304,7 @@ Status PersistentMetaStore::upsert_table(const Table& table) {
 }
 
 Status PersistentMetaStore::get_table(TableID table_id, TablePtr& out) const {
-    return inner_->get_table(table_id, out);
+    return memory_store_->get_table(table_id, out);
 }
 
 Status PersistentMetaStore::delete_table(TableID table_id) {
@@ -313,7 +314,7 @@ Status PersistentMetaStore::delete_table(TableID table_id) {
 }
 
 Status PersistentMetaStore::list_tables(std::vector<TablePtr>& out) const {
-    return inner_->list_tables(out);
+    return memory_store_->list_tables(out);
 }
 
 Status PersistentMetaStore::upsert_node(const Node& node) {
@@ -323,11 +324,11 @@ Status PersistentMetaStore::upsert_node(const Node& node) {
 
 Status PersistentMetaStore::get_node(const NodeID& node_id,
                                      NodePtr& out) const {
-    return inner_->get_node(node_id, out);
+    return memory_store_->get_node(node_id, out);
 }
 
 Status PersistentMetaStore::list_nodes(std::vector<NodePtr>& out) const {
-    return inner_->list_nodes(out);
+    return memory_store_->list_nodes(out);
 }
 
 Status PersistentMetaStore::upsert_replica(const Replica& replica) {
@@ -338,7 +339,7 @@ Status PersistentMetaStore::upsert_replica(const Replica& replica) {
 
 Status PersistentMetaStore::get_replica(const ReplicaID& key,
                                         ReplicaPtr& out) const {
-    return inner_->get_replica(key, out);
+    return memory_store_->get_replica(key, out);
 }
 
 Status PersistentMetaStore::delete_replica(const ReplicaID& key) {
@@ -354,7 +355,7 @@ Status PersistentMetaStore::upsert_replicas(
 }
 
 Status PersistentMetaStore::list_replicas(std::vector<ReplicaPtr>& out) const {
-    return inner_->list_replicas(out);
+    return memory_store_->list_replicas(out);
 }
 
 Status PersistentMetaStore::upsert_resource_pool(const ResourcePool& pool) {
@@ -365,12 +366,12 @@ Status PersistentMetaStore::upsert_resource_pool(const ResourcePool& pool) {
 
 Status PersistentMetaStore::get_resource_pool(const std::string& name,
                                               ResourcePoolPtr& out) const {
-    return inner_->get_resource_pool(name, out);
+    return memory_store_->get_resource_pool(name, out);
 }
 
 Status PersistentMetaStore::list_resource_pools(
     std::vector<ResourcePoolPtr>& out) const {
-    return inner_->list_resource_pools(out);
+    return memory_store_->list_resource_pools(out);
 }
 
 Status PersistentMetaStore::delete_resource_pool(const std::string& name) {
@@ -387,7 +388,7 @@ Status PersistentMetaStore::upsert_shard_route(const ShardRoute& route) {
 
 Status PersistentMetaStore::get_shard_route(const ShardID& shard_id,
                                             ShardRoutePtr& out) const {
-    return inner_->get_shard_route(shard_id, out);
+    return memory_store_->get_shard_route(shard_id, out);
 }
 
 Status PersistentMetaStore::delete_shard_route(const ShardID& shard_id) {
@@ -398,7 +399,7 @@ Status PersistentMetaStore::delete_shard_route(const ShardID& shard_id) {
 
 Status PersistentMetaStore::list_shard_routes(
     std::vector<ShardRoutePtr>& out) const {
-    return inner_->list_shard_routes(out);
+    return memory_store_->list_shard_routes(out);
 }
 
 }  // namespace adviskv::sdm

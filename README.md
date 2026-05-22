@@ -19,7 +19,7 @@ TODO:
 
 [] meta的本地备份 ：每次写入前保留旧版本备份，防止磁盘静默损坏
 
-[] SDM Store 读接口后续改成 snapshot value 语义：`get_xxx` 返回 `std::optional<T>`（例如 `using ReplicaOr = std::optional<Replica>`），`list_xxx` 返回 `std::vector<T>`，避免把内部 mutable `shared_ptr` 暴露给调用方；所有修改必须通过 `put_xxx/delete_xxx` 进入 Store，以保证持久化和 runtime index 更新边界一致。
+[ok] SDM Store 读接口后续改成 snapshot value 语义：`get_xxx` 返回 `std::optional<T>`（例如 `using ReplicaOr = std::optional<Replica>`），`list_xxx` 返回 `std::vector<T>`，避免把内部 mutable `shared_ptr` 暴露给调用方；所有修改必须通过 `put_xxx/delete_xxx` 进入 Store，以保证持久化和 runtime index 更新边界一致。
 
 [ok] 补全单测文件 storage 
 
@@ -27,11 +27,14 @@ TODO:
 
 [] 补全单测文件 sdm
 
-[] 线性一致性读 ReadIndex
+[ok] 线性一致性读 ReadIndex
 
 [] 关于单测的更新
 
-[] 关于node上面负载的副本数量没有闭环， 应该在TableReconclier里面最后构建成功的时候更新一下
+[ok] 关于node上面负载的副本数量没有闭环，直接当场计算
+
+[] 验证一下读一致性的单侧
+
 
 
 
