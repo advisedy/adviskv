@@ -2,6 +2,7 @@
 
 #include "common/background_task.h"
 #include "common/func.h"
+#include "common/type.h"
 #include "sdm/model/sdm_store.h"
 
 #define private public
@@ -10,10 +11,6 @@
 
 namespace adviskv::sdm {
 namespace {
-
-constexpr int64_t TEST_SUSPECT_TIMEOUT_MS = 10 * 1000;
-constexpr int64_t TEST_OFFLINE_TIMEOUT_MS = 30 * 1000;
-constexpr int64_t TEST_STARTUP_GRACE_MS = 30 * 1000;
 
 Node make_heartbeat_node(const NodeID& node_id, NodeStatus status,
                          int64_t last_heartbeat_ts, int32_t port) {
@@ -25,7 +22,7 @@ Node make_heartbeat_node(const NodeID& node_id, NodeStatus status,
             .status = status,
         },
         .state{
-            .endpoint = Endpoint{.ip = "127.0.0.1", .port = 18080},
+            .endpoint = Endpoint{.ip = "127.0.0.1", .port = port},
             .last_heartbeat_ts = last_heartbeat_ts,
         },
     };
@@ -51,8 +48,8 @@ Replica make_replica(const NodeID& node_id, ReplicaIndex replica_index,
 }
 
 void expire_startup_grace(HeartBeatCheckTask& task) {
-    task.start_ts_ms_ =
-        func::get_current_ts_ms() - TEST_STARTUP_GRACE_MS - 1000;
+    task.start_ts_ms_ = func::get_current_ts_ms() -
+                        HeartBeatCheckTask::STARTUP_GRACE_MS - 1000;
 }
 
 }  // namespace
@@ -66,7 +63,8 @@ TEST(HeartBeatCheckTaskTest,
         store
             .put_node(make_heartbeat_node(
                 "node-a", NodeStatus::ONLINE,
-                func::get_current_ts_ms() - TEST_SUSPECT_TIMEOUT_MS - 1000,
+                func::get_current_ts_ms() -
+                    HeartBeatCheckTask::SUSPECT_TIMEOUT_MS - 1000,
                 18080))
             .ok());
     ASSERT_TRUE(
@@ -89,7 +87,8 @@ TEST(HeartBeatCheckTaskTest,
     EXPECT_EQ(replica->state.phase, ReplicaPhase::READY);
 
     node->state.last_heartbeat_ts =
-        func::get_current_ts_ms() - TEST_OFFLINE_TIMEOUT_MS - 1000;
+        func::get_current_ts_ms() - HeartBeatCheckTask::OFFLINE_TIMEOUT_MS -
+        1000;
     ASSERT_TRUE(store.put_node(*node).ok());
     ASSERT_TRUE(task.prepare().ok());
 
@@ -139,14 +138,16 @@ TEST(HeartBeatCheckTaskTest, StartupGraceKeepsStaleOnlineNodesOnline) {
         store
             .put_node(make_heartbeat_node(
                 "node-a", NodeStatus::ONLINE,
-                func::get_current_ts_ms() - TEST_OFFLINE_TIMEOUT_MS - 1000,
+                func::get_current_ts_ms() -
+                    HeartBeatCheckTask::OFFLINE_TIMEOUT_MS - 1000,
                 18080))
             .ok());
     ASSERT_TRUE(
         store
             .put_node(make_heartbeat_node(
                 "node-b", NodeStatus::ONLINE,
-                func::get_current_ts_ms() - TEST_OFFLINE_TIMEOUT_MS - 1000,
+                func::get_current_ts_ms() -
+                    HeartBeatCheckTask::OFFLINE_TIMEOUT_MS - 1000,
                 18081))
             .ok());
     ASSERT_TRUE(

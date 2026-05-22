@@ -91,7 +91,7 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
             .node_id = replica.spec.assign_node_id,
             .ip = replica.state.observed_endpoint.ip,
             .port = replica.state.observed_endpoint.port,
-            .role = replica.state.observed_role,
+            .role = replica.state.observed_role, 
             .term = replica.state.term,
         };
         if (replica.state.observed_role == ReplicaRole::LEADER) {
