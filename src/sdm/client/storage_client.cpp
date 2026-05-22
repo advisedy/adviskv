@@ -114,9 +114,9 @@ Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
     rpc::StorageService::Stub* stub =
         make_stub(param.endpoint.ip, param.endpoint.port);
     if (!stub) {
-        return Status::ERROR(fmt::format("failed to create stub for {}:{}",
-                                         param.endpoint.ip,
-                                         param.endpoint.port));
+        return Status::NO_STUB(fmt::format("failed to create stub for {}:{}",
+                                           param.endpoint.ip,
+                                           param.endpoint.port));
     }
 
     rpc::GetReplicaInfoRequest request;
@@ -129,7 +129,7 @@ Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
     grpc::Status grpc_status =
         stub->GetReplicaInfo(&context, request, &response);
     if (!grpc_status.ok()) {
-        return Status::ERROR(
+        return Status::RPC_ERROR(
             fmt::format("GetReplicaInfo RPC failed for {}:{}, grpc error: {}",
                         param.endpoint.ip, param.endpoint.port,
                         grpc_status.error_message()));

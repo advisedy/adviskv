@@ -40,11 +40,16 @@ bool is_retryable_create_replica_error(const Status& status) {
         case StatusCode::NOT_SUPPORTED:
         case StatusCode::NO_STUB:
         case StatusCode::RESOURCE_EXHAUSTED:
+        case StatusCode::REPLICA_ERROR:
             return false;
 
         default:
             return false;
     }
+}
+
+bool is_retryable_get_replica_info_error(const Status& status) {
+    return is_retryable_create_replica_error(status);
 }
 
 bool is_retryable_delete_replica_error(const Status& status) {
@@ -199,8 +204,8 @@ Status TableReconciler::reconcile_present(Table& table) {
 
     status = refresh_storage_replica_info(table);
     if (status.fail()) {
-        LOG_DEBUG("refresh storage replica info skipped for table={}, msg={}",
-                  table.table_id, status.msg());
+        return handle_error(status,
+                            is_retryable_get_replica_info_error(status));
     }
 
     if (!all_replicas_ready(table) or !all_routes_ready(table)) {
@@ -358,12 +363,21 @@ Status TableReconciler::refresh_storage_replica_info(Table& table) {
             Endpoint endpoint;
             RETURN_IF_INVALID_STATUS(
                 get_assigned_node_endpoint(replica, endpoint))
-            RETURN_IF_INVALID_STATUS(storage_client_->get_replica_info(
+            Status status = storage_client_->get_replica_info(
                 GetReplicaInfoParam{
                     .replica_id = replica.replica_id,
                     .endpoint = endpoint,
                 },
-                info, exists))
+                info, exists);
+            if (status.fail()) {
+                if (!is_retryable_get_replica_info_error(status)) {
+                    replica.state.phase = ReplicaPhase::ERROR;
+                }
+                replica.state.last_error_msg = status.to_string();
+                replica.state.update_ts = func::get_current_ts_ms();
+                IGNORE_RESULT(store_->put_replica(replica));
+                return status;
+            }
             if (!exists) {
                 continue;
             }
