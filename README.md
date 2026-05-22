@@ -35,6 +35,7 @@ TODO:
 
 [] 验证一下读一致性的单侧
 
+[] 支持在adding table的时候可以delete
 
 
 
