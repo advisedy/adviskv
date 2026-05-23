@@ -39,7 +39,6 @@ bool is_retryable_create_replica_error(const Status& status) {
         case StatusCode::INVALID_ARGUMENT:
         case StatusCode::NOT_SUPPORTED:
         case StatusCode::NO_STUB:
-        case StatusCode::RESOURCE_EXHAUSTED:
         case StatusCode::REPLICA_ERROR:
             return false;
 
@@ -63,7 +62,6 @@ bool is_retryable_delete_replica_error(const Status& status) {
         case StatusCode::INVALID_ARGUMENT:
         case StatusCode::NOT_SUPPORTED:
         case StatusCode::NO_STUB:
-        case StatusCode::RESOURCE_EXHAUSTED:
         case StatusCode::REPLICA_ERROR:
             return false;
 

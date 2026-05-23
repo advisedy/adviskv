@@ -111,6 +111,9 @@ add_adviskv_sdm_gtest(routeupdate_check_task_test
     ${CMAKE_SOURCE_DIR}/test/sdm/background/routeupdate_check_task_test.cpp
 )
 
+add_adviskv_sdm_gtest(table_reconciler_test
+    ${CMAKE_SOURCE_DIR}/test/sdm/background/table_reconciler_test.cpp
+)
 
 add_adviskv_sdm_gtest(sdm_runtime_index_test
     ${CMAKE_SOURCE_DIR}/test/sdm/model/sdm_runtime_index_test.cpp
