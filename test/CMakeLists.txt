@@ -123,6 +123,10 @@ add_adviskv_sdm_gtest(memory_meta_store_test
     ${CMAKE_SOURCE_DIR}/test/sdm/model/memory_meta_store_test.cpp
 )
 
+add_adviskv_sdm_gtest(sdm_persist_engine_test
+    ${CMAKE_SOURCE_DIR}/test/sdm/persist/sdm_persist_engine_test.cpp
+)
+
 add_adviskv_sdm_gtest(sdm_store_test
     ${CMAKE_SOURCE_DIR}/test/sdm/model/sdm_store_test.cpp
 )

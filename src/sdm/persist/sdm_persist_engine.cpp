@@ -291,6 +291,7 @@ class SdmMetaCodec {
             buf.write(entry.ip);
             buf.write(entry.port);
             buf.write(static_cast<int32>(entry.role));
+            buf.write(entry.term);
         }
     }
 
@@ -313,6 +314,7 @@ class SdmMetaCodec {
             int32 role{0};
             RETURN_IF_INVALID_READ(buf, role)
             entry.role = static_cast<ReplicaRole>(role);
+            RETURN_IF_INVALID_READ(buf, entry.term)
 
             route.replicas.push_back(std::move(entry));
         }

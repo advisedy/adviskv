@@ -140,6 +140,7 @@ std::vector<Replica> list_replicas_or_die(SdmStore& store) {
     return replicas;
 }
 
+// 这个是设置storage_client在被调用到get_replica_info的时候会返回成功的数据
 void make_table_ready_in_storage(SdmStore& store, FakeStorageClient& storage) {
     std::vector<Replica> replicas = list_replicas_or_die(store);
     for (const Replica& replica : replicas) {
@@ -249,7 +250,7 @@ TEST(TableReconcilerTest, CreateTableNotEnoughNodesKeepsCreating) {
 }
 
 // storage 创建replica返回可重试错误，table还是CREATING并记录错误等待重试
-// 然后第二次replica创建成功了
+// 然后第二次replica可以创建了
 TEST(TableReconcilerTest, CreateReplicaRetryableErrorKeepsCreating) {
     SdmStore store{SdmMetaStoreType::MEMORY};
     put_default_nodes(store);
@@ -265,17 +266,33 @@ TEST(TableReconcilerTest, CreateReplicaRetryableErrorKeepsCreating) {
 
     expect_table_phase_and_msg(store, TablePhase::CREATING,
                                "storage rpc failed");
-    std::vector<Replica> replicas = list_replicas_or_die(store);
-    ASSERT_EQ(replicas.size(), 2U);
-    EXPECT_EQ(replicas[0].state.phase, ReplicaPhase::CREATING);
-    EXPECT_NE(replicas[0].state.last_error_msg.find("storage rpc failed"),
-              std::string::npos);
+    {
+        std::vector<Replica> replicas = list_replicas_or_die(store);
+        ASSERT_EQ(replicas.size(), 2U);
+        EXPECT_EQ(replicas[0].state.phase, ReplicaPhase::CREATING);
+        EXPECT_NE(replicas[0].state.last_error_msg.find("storage rpc failed"),
+                  std::string::npos);
+        EXPECT_EQ(replicas[1].state.phase, ReplicaPhase::PENDING);
+    }
+    {
+        std::vector<Replica> replicas = list_replicas_or_die(store);
 
-    storage_client.create_statuses.push_back(Status::OK());
-    ASSERT_TRUE(reconciler.reconcile_once().ok());
-    ASSERT_EQ(replicas.size(), 2U);
-    EXPECT_EQ(replicas[0].state.phase, ReplicaPhase::READY);
-    EXPECT_EQ(replicas[1].state.phase, ReplicaPhase::READY);
+        storage_client.create_statuses.push_back(Status::OK());
+        storage_client.create_statuses.push_back(Status::OK());
+        ASSERT_TRUE(reconciler.reconcile_once().ok());
+        ASSERT_EQ(replicas.size(), 2U);
+        EXPECT_EQ(replicas[0].state.phase, ReplicaPhase::CREATING);  //
+        EXPECT_EQ(replicas[1].state.phase, ReplicaPhase::CREATING);
+    }
+    {
+        make_table_ready_in_storage(store, storage_client);
+        ASSERT_TRUE(reconciler.reconcile_once().ok());
+
+        std::vector<Replica> replicas = list_replicas_or_die(store);
+        ASSERT_EQ(replicas.size(), 2U);
+        EXPECT_EQ(replicas[0].state.phase, ReplicaPhase::READY);
+        EXPECT_EQ(replicas[1].state.phase, ReplicaPhase::READY);
+    }
 }
 
 // 创建replica返回不可重试错误，table进入FAILED，replica进入ERROR
