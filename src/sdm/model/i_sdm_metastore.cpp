@@ -191,8 +191,7 @@ PersistentMetaStore::PersistentMetaStore(std::filesystem::path data_dir)
 }
 
 PersistentMetaStore::PersistentMetaStore(
-    std::unique_ptr<ISdmMetaStore> memory_store,
-                                         std::filesystem::path data_dir)
+    std::unique_ptr<ISdmMetaStore> memory_store, std::filesystem::path data_dir)
     : memory_store_(std::move(memory_store)),
       persist_engine_(data_dir.string()) {
     persist_engine_.init();
@@ -286,6 +285,8 @@ Status PersistentMetaStore::persist() {
 
 Status PersistentMetaStore::commit_with(
     const std::function<Status(ISdmMetaStore&)>& mutate) {
+    // 如果是先走内存后走持久化，或者说反过来的话，然后后者的操作失败了，需要进行回滚，处理起来比较麻烦
+    // 所以现在内存上拷贝然后搞一下，如果持久化成功了，再修改这个内存上的内容
     std::unique_ptr<ISdmMetaStore> next_memory_store =
         memory_store_->clone_memory_snapshot();
     RETURN_IF_INVALID_STATUS(mutate(*next_memory_store))

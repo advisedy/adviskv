@@ -19,20 +19,20 @@ class SdmStore {
    public:
     explicit SdmStore(SdmMetaStoreType type,
                       const std::string& persistent_data_dir = "");
+    SdmStore(SdmMetaStoreType type, std::unique_ptr<SdmRuntimeIndex> index,
+             const std::string& persistent_data_dir = "");
 
     Status put_table(const Table& table);
     Status get_table(TableID table_id, TableOr& out) const;
     Status get_table_by_name(const std::string& db_name,
-                             const std::string& table_name,
-                             TableOr& out) const;
+                             const std::string& table_name, TableOr& out) const;
     Status list_tables(std::vector<Table>& out) const;
 
     Status list_nodes_by_resource_pool(const std::string& pool_name,
                                        std::vector<Node>& out) const;
     Status list_nodes(std::vector<Node>& out) const;
 
-    Status get_shard_route(const ShardID& shard_id,
-                           ShardRouteOr& out) const;
+    Status get_shard_route(const ShardID& shard_id, ShardRouteOr& out) const;
     Status put_shard_route(const ShardRoute& route);
     Status delete_shard_route(const ShardID& shard_id);
     Status del_shard_route_entry(const ShardID& shard_id,
@@ -65,7 +65,7 @@ class SdmStore {
 
     mutable std::shared_mutex mutex_;
     std::unique_ptr<ISdmMetaStore> meta_store_;
-    SdmRuntimeIndex runtime_index_;
+    std::unique_ptr<SdmRuntimeIndex> runtime_index_;
 };
 
 }  // namespace adviskv::sdm

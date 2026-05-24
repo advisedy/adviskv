@@ -13,7 +13,18 @@
 namespace adviskv::sdm {
 
 SdmStore::SdmStore(SdmMetaStoreType type,
-                   const std::string& persistent_data_dir) {
+                   const std::string& persistent_data_dir)
+    : SdmStore(type, std::make_unique<SdmRuntimeIndex>(), persistent_data_dir) {
+}
+
+SdmStore::SdmStore(SdmMetaStoreType type,
+                   std::unique_ptr<SdmRuntimeIndex> index,
+                   const std::string& persistent_data_dir)
+    : runtime_index_(std::move(index)) {
+    if (runtime_index_ == nullptr) {
+        runtime_index_ = std::make_unique<SdmRuntimeIndex>();
+    }
+
     if (type == SdmMetaStoreType::PERSISTENT and persistent_data_dir.empty()) {
         LOG_ERROR("persistent_data_dir is empty");
         return;
@@ -43,7 +54,7 @@ Status SdmStore::put_table(const Table& table) {
     RETURN_IF_INVALID_STATUS(status)
 
     return maybe_repair_runtime_index(
-        runtime_index_.on_table_upsert(old_ptr.get(), table));
+        runtime_index_->on_table_upsert(old_ptr.get(), table));
 }
 
 Status SdmStore::get_table(TableID table_id, TableOr& out) const {
@@ -61,7 +72,7 @@ Status SdmStore::get_table_by_name(const std::string& db_name,
 
     TableID table_id;
     Status status =
-        runtime_index_.find_table_by_name(db_name, table_name, table_id);
+        runtime_index_->find_table_by_name(db_name, table_name, table_id);
     RETURN_IF_INVALID_STATUS(status)
     TablePtr table;
     RETURN_IF_INVALID_STATUS(meta_store_->get_table(table_id, table))
@@ -89,7 +100,7 @@ Status SdmStore::list_nodes_by_resource_pool(const std::string& pool_name,
 
     std::vector<NodeID> node_ids;
     Status status =
-        runtime_index_.list_nodes_by_resource_pool(pool_name, node_ids);
+        runtime_index_->list_nodes_by_resource_pool(pool_name, node_ids);
     RETURN_IF_INVALID_STATUS(status)
 
     out.clear();
@@ -132,14 +143,15 @@ Status SdmStore::put_shard_route(const ShardRoute& route) {
     std::unique_lock locker{mutex_};
     Status status = meta_store_->upsert_shard_route(route);
     RETURN_IF_INVALID_STATUS(status)
-    return maybe_repair_runtime_index(runtime_index_.put_shard_route(route));
+    return maybe_repair_runtime_index(runtime_index_->put_shard_route(route));
 }
 
 Status SdmStore::delete_shard_route(const ShardID& shard_id) {
     std::unique_lock locker{mutex_};
     Status status = meta_store_->delete_shard_route(shard_id);
     RETURN_IF_INVALID_STATUS(status)
-    return maybe_repair_runtime_index(runtime_index_.delete_shard_route(shard_id));
+    return maybe_repair_runtime_index(
+        runtime_index_->delete_shard_route(shard_id));
 }
 
 Status SdmStore::del_shard_route_entry(const ShardID& shard_id,
@@ -159,7 +171,7 @@ Status SdmStore::del_shard_route_entry(const ShardID& shard_id,
     });
     status = meta_store_->upsert_shard_route(*route);
     RETURN_IF_INVALID_STATUS(status)
-    return maybe_repair_runtime_index(runtime_index_.put_shard_route(*route));
+    return maybe_repair_runtime_index(runtime_index_->put_shard_route(*route));
 }
 
 Status SdmStore::put_node(const Node& node) {
@@ -173,7 +185,7 @@ Status SdmStore::put_node(const Node& node) {
     RETURN_IF_INVALID_STATUS(status)
 
     return maybe_repair_runtime_index(
-        runtime_index_.on_node_upsert(old_ptr.get(), node));
+        runtime_index_->on_node_upsert(old_ptr.get(), node));
 }
 
 Status SdmStore::get_node(const NodeID& node_id, NodeOr& out) const {
@@ -227,7 +239,7 @@ Status SdmStore::put_replica(const Replica& replica) {
     RETURN_IF_INVALID_STATUS(status)
 
     return maybe_repair_runtime_index(
-        runtime_index_.on_replica_upsert(old_ptr.get(), replica));
+        runtime_index_->on_replica_upsert(old_ptr.get(), replica));
 }
 
 Status SdmStore::put_replicas(const std::vector<Replica>& replicas) {
@@ -247,7 +259,7 @@ Status SdmStore::put_replicas(const std::vector<Replica>& replicas) {
     RETURN_IF_INVALID_STATUS(meta_store_->upsert_replicas(replicas))
     for (int i = 0, siz = replicas.size(); i < siz; i++) {
         Status status =
-            runtime_index_.on_replica_upsert(old_ptrs[i].get(), replicas[i]);
+            runtime_index_->on_replica_upsert(old_ptrs[i].get(), replicas[i]);
         if (status.fail()) {
             return maybe_repair_runtime_index(status);
         }
@@ -269,7 +281,8 @@ Status SdmStore::del_replica(const ReplicaID& replica_key) {
     status = meta_store_->delete_replica(replica_key);
     RETURN_IF_INVALID_STATUS(status)
 
-    return maybe_repair_runtime_index(runtime_index_.on_replica_delete(*old_ptr));
+    return maybe_repair_runtime_index(
+        runtime_index_->on_replica_delete(*old_ptr));
 }
 
 // 如果shard上没有replicas，返回一个空集合是被允许的
@@ -279,7 +292,7 @@ Status SdmStore::list_replicas_by_shard(const ShardID& shard_id,
 
     std::vector<ReplicaID> replica_ids;
     Status status =
-        runtime_index_.list_replicas_by_shard(shard_id, replica_ids);
+        runtime_index_->list_replicas_by_shard(shard_id, replica_ids);
     RETURN_IF_INVALID_STATUS(status)
 
     out.clear();
@@ -300,7 +313,7 @@ Status SdmStore::list_replicas_by_node(NodeID node_id,
     std::shared_lock locker{mutex_};
 
     std::vector<ReplicaID> replica_ids;
-    Status status = runtime_index_.list_replicas_by_node(node_id, replica_ids);
+    Status status = runtime_index_->list_replicas_by_node(node_id, replica_ids);
     RETURN_IF_INVALID_STATUS(status)
 
     out.clear();
@@ -320,16 +333,13 @@ Status SdmStore::delete_table(TableID table_id) {
     std::unique_lock locker{mutex_};
 
     TablePtr old_ptr;
-    Status status = meta_store_->get_table(table_id, old_ptr);
-    RETURN_IF_INVALID_STATUS(status)
+    RETURN_IF_INVALID_STATUS(meta_store_->get_table(table_id, old_ptr))
     if (old_ptr == nullptr) {
         return Status::OK();
     }
-
-    status = meta_store_->delete_table(table_id);
-    RETURN_IF_INVALID_STATUS(status)
-
-    return maybe_repair_runtime_index(runtime_index_.on_table_delete(*old_ptr));
+    RETURN_IF_INVALID_STATUS(meta_store_->delete_table(table_id))
+    return maybe_repair_runtime_index(
+        runtime_index_->on_table_delete(*old_ptr));
 }
 
 Status SdmStore::maybe_repair_runtime_index(Status index_status) {
@@ -342,14 +352,14 @@ Status SdmStore::maybe_repair_runtime_index(Status index_status) {
 }
 
 Status SdmStore::rebuild_runtime_index() {
-    runtime_index_ = SdmRuntimeIndex();
+    runtime_index_ = std::make_unique<SdmRuntimeIndex>();
 
     std::vector<TablePtr> tables;
     Status status = meta_store_->list_tables(tables);
     RETURN_IF_INVALID_STATUS(status)
     for (const TablePtr& table : tables) {
         if (!table) continue;
-        status = runtime_index_.on_table_upsert(nullptr, *table);
+        status = runtime_index_->on_table_upsert(nullptr, *table);
         RETURN_IF_INVALID_STATUS(status)
     }
 
@@ -358,7 +368,7 @@ Status SdmStore::rebuild_runtime_index() {
     RETURN_IF_INVALID_STATUS(status)
     for (const NodePtr& node : nodes) {
         if (!node) continue;
-        status = runtime_index_.on_node_upsert(nullptr, *node);
+        status = runtime_index_->on_node_upsert(nullptr, *node);
         RETURN_IF_INVALID_STATUS(status)
     }
 
@@ -367,7 +377,7 @@ Status SdmStore::rebuild_runtime_index() {
     RETURN_IF_INVALID_STATUS(status)
     for (const ReplicaPtr& replica : replicas) {
         if (!replica) continue;
-        status = runtime_index_.on_replica_upsert(nullptr, *replica);
+        status = runtime_index_->on_replica_upsert(nullptr, *replica);
         RETURN_IF_INVALID_STATUS(status)
     }
 
@@ -376,7 +386,7 @@ Status SdmStore::rebuild_runtime_index() {
     RETURN_IF_INVALID_STATUS(status)
     for (const ShardRoutePtr& route : routes) {
         if (route != nullptr) {
-            status = runtime_index_.put_shard_route(*route);
+            status = runtime_index_->put_shard_route(*route);
             RETURN_IF_INVALID_STATUS(status)
         }
     }

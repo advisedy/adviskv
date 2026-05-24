@@ -62,46 +62,47 @@ Status on_replica_delete(const ReplicaKey& key);
 
 class SdmRuntimeIndex {
    public:
-    Status on_table_upsert(const Table* old_table, const Table& new_table);
-    Status on_node_upsert(const Node* old_node, const Node& new_node);
-    Status on_replica_upsert(const Replica* old_replica,
-                             const Replica& new_replica);
+    virtual ~SdmRuntimeIndex() = default;
 
-    Status on_table_delete(const Table& table);
-    Status on_node_delete(const Node& node);
-    Status on_replica_delete(const Replica& replica);
+    virtual Status on_table_upsert(const Table* old_table,
+                                   const Table& new_table);
+    virtual Status on_node_upsert(const Node* old_node, const Node& new_node);
+    virtual Status on_replica_upsert(const Replica* old_replica,
+                                     const Replica& new_replica);
 
-    Status find_table_by_name(const std::string& db_name,
-                              const std::string& table_name,
-                              TableID& table_id) const;
+    virtual Status on_table_delete(const Table& table);
+    virtual Status on_node_delete(const Node& node);
+    virtual Status on_replica_delete(const Replica& replica);
 
-    Status list_nodes_by_resource_pool(const std::string& pool_name,
-                                       std::vector<NodeID>& out) const;
+    virtual Status find_table_by_name(const std::string& db_name,
+                                      const std::string& table_name,
+                                      TableID& table_id) const;
 
-    Status list_replicas_by_shard(const ShardID& shard_id,
-                                  std::vector<ReplicaKey>& out) const;
+    virtual Status list_nodes_by_resource_pool(const std::string& pool_name,
+                                               std::vector<NodeID>& out) const;
 
-    Status list_replicas_by_node(const NodeID& node_id,
-                                 std::vector<ReplicaKey>& out) const;
+    virtual Status list_replicas_by_shard(const ShardID& shard_id,
+                                          std::vector<ReplicaKey>& out) const;
 
-    Status get_shard_route(const ShardID& shard_id, ShardRoutePtr& out) const;
-    Status put_shard_route(const ShardRoute& route);
-    Status delete_shard_route(const ShardID& shard_id);
-    Status del_shard_route_entry(const ShardID& shard_id,
-                                 const ReplicaKey& replica_key);
+    virtual Status list_replicas_by_node(const NodeID& node_id,
+                                         std::vector<ReplicaKey>& out) const;
+
+    virtual Status get_shard_route(const ShardID& shard_id,
+                                   ShardRoutePtr& out) const;
+    virtual Status put_shard_route(const ShardRoute& route);
+    virtual Status delete_shard_route(const ShardID& shard_id);
+    virtual Status del_shard_route_entry(const ShardID& shard_id,
+                                         const ReplicaKey& replica_key);
 
    private:
     std::unordered_map<TableNameKey, TableID, TableNameKeyHash>
         table_name_index_;
     std::unordered_map<std::string, std::unordered_set<NodeID>>
         pool_nodes_index_;
-    std::unordered_map<
-        ShardKey,
-        std::unordered_set<ReplicaKey, ReplicaKeyHash>,
-        ShardKeyHash>
+    std::unordered_map<ShardKey, std::unordered_set<ReplicaKey, ReplicaKeyHash>,
+                       ShardKeyHash>
         shard_replicas_index_;
-    std::unordered_map<
-        NodeID, std::unordered_set<ReplicaKey, ReplicaKeyHash>>
+    std::unordered_map<NodeID, std::unordered_set<ReplicaKey, ReplicaKeyHash>>
         node_replicas_index_;
 
     std::unordered_map<NodeID, std::string> node_pool_index_;
