@@ -1,6 +1,9 @@
 build/
 build-*/
 
+.venv/
+.pytest_cache/
+
 logs/
 example/
 
@@ -8,5 +11,5 @@ example/
 .clangd
 
 docs/tmp/
-docs/.DS_Store
+
 **/.DS_Store
