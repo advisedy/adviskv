@@ -23,22 +23,25 @@ TODO:
 
 [ok] 补全单测文件 storage 
 
-[] 补全单测文件 meta
+[ok] 补全单测文件 meta
 
-[] 补全单测文件 sdm
+[ok] 补全单测文件 sdm
 
 [ok] 线性一致性读 ReadIndex
 
-[] 关于单测的更新
+[ok] 关于单测的更新
 
 [ok] 关于node上面负载的副本数量没有闭环，直接当场计算
 
-[] 验证一下读一致性的单侧
+[] 验证一下读一致性的单测
 
 [] 支持在adding table的时候可以delete
 
+[] 记得把build和run_test的脚本细节看一下
 
+[] 关于e2e的测试
 
+[] 接入benchmark
 
 ## 项目定位
 

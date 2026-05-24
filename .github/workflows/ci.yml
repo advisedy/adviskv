@@ -13,21 +13,28 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        # 使用 GitHub 官方提供的一个 Action：actions/checkout，作用是把你的仓库代码拉到 CI 机器上
+        uses: actions/checkout@v4 
         with:
-          submodules: recursive
+          submodules: recursive  # 带上 submodules
 
+      # 安装ninja
       - name: Install system packages
+          # pkg-config 是很多 C/C++ 依赖检测时会用到的工具。vcpkg 或某些 CMake 包查依赖时可能需要它。装上基本没坏处。
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config
+          sudo apt-get install -y ninja-build pkg-config 
 
+      # 搞缓存的
       - name: Cache vcpkg artifacts
         uses: actions/cache@v4
         with:
+          # path代表缓存哪些目录
+          # ~/.cache/vcpkg/archives 是 vcpkg 的二进制包缓存目录。
           path: |
             build/vcpkg_installed
             ~/.cache/vcpkg/archives
+          # key是缓存的名字
           key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('scripts/build.sh') }}
           restore-keys: |
             ${{ runner.os }}-vcpkg-

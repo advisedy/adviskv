@@ -6,6 +6,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(ADVISKV_ENABLE_COVERAGE "Enable coverage instrumentation" OFF)
+
+if(ADVISKV_ENABLE_COVERAGE)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+        add_compile_options(-O0 -g --coverage)
+        add_link_options(--coverage)
+    else()
+        message(FATAL_ERROR "Coverage is only supported with GCC/Clang-compatible compilers")
+    endif()
+endif()
+
 find_package(fmt CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(Protobuf CONFIG REQUIRED)
