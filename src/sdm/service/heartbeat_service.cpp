@@ -2,6 +2,7 @@
 
 #include "common/define.h"
 #include "common/func.h"
+#include "common/log.h"
 #include "sdm/model/service_param.h"
 #include "sdm/utility/enum_convert.h"
 namespace adviskv::sdm {
@@ -50,6 +51,7 @@ Status HeartBeatService::apply_reported_replicas(const HeartBeatParam& param) {
             continue;
         }
         if (replica->spec.assign_node_id != param.node_id) {
+            LOG_WARN("HeartBeatService: replica:aggsin_node_id != node_id");
             continue;
         }
 

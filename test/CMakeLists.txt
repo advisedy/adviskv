@@ -99,8 +99,20 @@ add_adviskv_storage_gtest(raft_cluster_test
     ${CMAKE_SOURCE_DIR}/test/storage/raft/raft_cluster_test.cpp
 )
 
-add_adviskv_sdm_gtest(sdm_service_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/service/sdm_service_test.cpp
+add_adviskv_sdm_gtest(node_service_test
+    ${CMAKE_SOURCE_DIR}/test/sdm/service/node_service_test.cpp
+)
+
+add_adviskv_sdm_gtest(table_service_test
+    ${CMAKE_SOURCE_DIR}/test/sdm/service/table_service_test.cpp
+)
+
+add_adviskv_sdm_gtest(route_service_test
+    ${CMAKE_SOURCE_DIR}/test/sdm/service/route_service_test.cpp
+)
+
+add_adviskv_sdm_gtest(heartbeat_service_test
+    ${CMAKE_SOURCE_DIR}/test/sdm/service/heartbeat_service_test.cpp
 )
 
 add_adviskv_sdm_gtest(heartbeat_check_task_test
