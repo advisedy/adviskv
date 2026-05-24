@@ -11,6 +11,7 @@
 #include "common/define.h"
 #include "common/framed_record_codec.h"
 #include "common/log.h"
+#include "common/status.h"
 
 namespace adviskv::sdm {
 namespace {
@@ -333,12 +334,15 @@ Status SdmPersistEngine::init() {
     IGNORE_RESULT(::mkdir(data_dir_.c_str(), 0755));
 
     LOG_DEBUG("sdm persist engine init, data_dir_={}", data_dir_);
+    init_flag_ = true;
     return Status::OK();
 }
 
 Status SdmPersistEngine::close() { return Status::OK(); }
 
 Status SdmPersistEngine::save_sdm_meta(const SdmPersistedRecord& record) {
+    if (!init_flag_) return Status::NOT_INIT("sdm persist engine is not init");
+
     int fd = ::open(meta_tmp_path_.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd < 0) {
         return Status::ERROR(fmt::format("failed to open sdm meta tmp file: {}",
@@ -382,6 +386,8 @@ Status SdmPersistEngine::save_sdm_meta(const SdmPersistedRecord& record) {
 }
 
 Status SdmPersistEngine::load_sdm_meta(SdmPersistedRecord& record) {
+    if (!init_flag_) return Status::NOT_INIT("sdm persist engine is not init");
+
     record = {};
 
     int fd = ::open(meta_path_.c_str(), O_RDONLY);

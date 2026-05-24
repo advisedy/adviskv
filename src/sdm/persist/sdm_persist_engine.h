@@ -32,6 +32,7 @@ class SdmPersistEngine {
     std::string data_dir_;
     std::string meta_path_;
     std::string meta_tmp_path_;
+    bool init_flag_{false};
 };
 
 }  // namespace adviskv::sdm

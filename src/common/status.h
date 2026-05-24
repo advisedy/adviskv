@@ -34,6 +34,7 @@ namespace adviskv {
     X(RPC_ERROR, 11)                                               \
     X(RETRY_ERROR, 12)                                             \
     X(RESOURCE_EXHAUSTED, 13)                                      \
+    X(NOT_INIT, 14)                                                \
     X(ROUTE_NOT_FOUND, 1000)                                       \
     X(TABLE_META_CACHE_NOT_FOUND, 1001)                            \
     X(DB_META_CACHE_NOT_FOUND, 1002)                               \
