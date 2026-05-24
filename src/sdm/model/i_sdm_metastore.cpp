@@ -198,6 +198,16 @@ PersistentMetaStore::PersistentMetaStore(
     IGNORE_RESULT(load());
 }
 
+PersistentMetaStore::PersistentMetaStore(
+    std::unique_ptr<ISdmMetaStore> memory_store,
+    std::unique_ptr<ISdmPersistEngine> persist_engine)
+    : memory_store_(std::move(memory_store)),
+      persist_engine_(std::move(persist_engine)) {
+    if (memory_store_ == nullptr) {
+        memory_store_ = std::make_unique<MemoryMetaStore>();
+    }
+}
+
 std::unique_ptr<ISdmMetaStore> PersistentMetaStore::clone_memory_snapshot()
     const {
     return memory_store_->clone_memory_snapshot();

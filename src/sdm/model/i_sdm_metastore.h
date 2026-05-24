@@ -71,14 +71,14 @@ class PersistentMetaStore : public ISdmMetaStore {
     explicit PersistentMetaStore(std::filesystem::path data_dir);
     PersistentMetaStore(std::unique_ptr<ISdmMetaStore> memory_store,
                         std::filesystem::path data_dir);
+    PersistentMetaStore(std::unique_ptr<ISdmMetaStore> memory_store,
+                        std::unique_ptr<ISdmPersistEngine> persist_engine);
 
 #define X(...) __VA_ARGS__ override;
     ISDM_METASTORE_METHODS(X)
 #undef X
 
    private:
-    // PersistentMetaStore(std::unique_ptr<ISdmMetaStore> memory_store,
-    //                     SdmPersistEngine persist_engine);
     Status load();
     Status build_record_from_store(const ISdmMetaStore& store,
                                    SdmPersistedRecord& record) const;
