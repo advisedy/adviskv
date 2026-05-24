@@ -6,6 +6,7 @@
 
 #include <cerrno>
 #include <cstring>
+#include <filesystem>
 
 #include "common/defer.h"
 #include "common/define.h"
@@ -333,7 +334,14 @@ Status SdmPersistEngine::init() {
     meta_path_ = data_dir_ + "/sdm_meta";
     meta_tmp_path_ = data_dir_ + "/sdm_meta.tmp";
 
-    IGNORE_RESULT(::mkdir(data_dir_.c_str(), 0755));
+    // IGNORE_RESULT(::mkdir(data_dir_.c_str(), 0755));
+    std::error_code ec;
+    std::filesystem::create_directories(data_dir_, ec);
+    if (ec) {
+        return Status::ERROR(fmt::format(
+            "failed to create sdm persist engine data dir: {}, error: {}",
+            data_dir_, ec.message()));
+    }
 
     LOG_DEBUG("sdm persist engine init, data_dir_={}", data_dir_);
     init_flag_ = true;
