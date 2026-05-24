@@ -185,16 +185,16 @@ Status MemoryMetaStore::list_shard_routes(
 
 PersistentMetaStore::PersistentMetaStore(std::filesystem::path data_dir)
     : memory_store_(std::make_unique<MemoryMetaStore>()),
-      persist_engine_(data_dir.string()) {
-    persist_engine_.init();
+      persist_engine_(std::make_unique<SdmPersistEngine>(data_dir.string())) {
+    persist_engine_->init();
     IGNORE_RESULT(load());
 }
 
 PersistentMetaStore::PersistentMetaStore(
     std::unique_ptr<ISdmMetaStore> memory_store, std::filesystem::path data_dir)
     : memory_store_(std::move(memory_store)),
-      persist_engine_(data_dir.string()) {
-    persist_engine_.init();
+      persist_engine_(std::make_unique<SdmPersistEngine>(data_dir.string())) {
+    persist_engine_->init();
     IGNORE_RESULT(load());
 }
 
@@ -205,7 +205,7 @@ std::unique_ptr<ISdmMetaStore> PersistentMetaStore::clone_memory_snapshot()
 
 Status PersistentMetaStore::load() {
     SdmPersistedRecord record;
-    Status status = persist_engine_.load_sdm_meta(record);
+    Status status = persist_engine_->load_sdm_meta(record);
     RETURN_IF_INVALID_STATUS(status)
 
     for (const auto& [_, table] : record.tables) {
@@ -274,7 +274,7 @@ Status PersistentMetaStore::build_record(SdmPersistedRecord& record) const {
 }
 
 Status PersistentMetaStore::persist_record(const SdmPersistedRecord& record) {
-    return persist_engine_.save_sdm_meta(record);
+    return persist_engine_->save_sdm_meta(record);
 }
 
 Status PersistentMetaStore::persist() {

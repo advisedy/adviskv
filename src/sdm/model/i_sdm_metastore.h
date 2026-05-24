@@ -88,7 +88,7 @@ class PersistentMetaStore : public ISdmMetaStore {
     Status commit_with(const std::function<Status(ISdmMetaStore&)>& mutate);
 
     std::unique_ptr<ISdmMetaStore> memory_store_;
-    SdmPersistEngine persist_engine_;
+    std::unique_ptr<ISdmPersistEngine> persist_engine_;
 };
 
 #undef ISDM_METASTORE_METHODS
