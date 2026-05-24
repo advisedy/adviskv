@@ -16,9 +16,11 @@ function(add_adviskv_storage_gtest target_name)
         ${CMAKE_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}/test
-        ${CMAKE_SOURCE_DIR}/build/generated
+        ${PROJECT_BINARY_DIR}/generated
     )
-    gtest_discover_tests(${target_name})
+    gtest_discover_tests(${target_name}
+        DISCOVERY_TIMEOUT 30
+    )
 endfunction()
 
 function(add_adviskv_sdm_gtest target_name)
@@ -37,9 +39,11 @@ function(add_adviskv_sdm_gtest target_name)
         ${CMAKE_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}/test
-        ${CMAKE_SOURCE_DIR}/build/generated
+        ${PROJECT_BINARY_DIR}/generated
     )
-    gtest_discover_tests(${target_name})
+    gtest_discover_tests(${target_name}
+        DISCOVERY_TIMEOUT 30
+    )
 endfunction()
 
 function(add_adviskv_meta_gtest target_name)
@@ -58,9 +62,11 @@ function(add_adviskv_meta_gtest target_name)
         ${CMAKE_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}/test
-        ${CMAKE_SOURCE_DIR}/build/generated
+        ${PROJECT_BINARY_DIR}/generated
     )
-    gtest_discover_tests(${target_name})
+    gtest_discover_tests(${target_name}
+        DISCOVERY_TIMEOUT 30
+    )
 endfunction()
 
 add_adviskv_storage_gtest(map_engine_test

@@ -27,7 +27,7 @@ target_link_libraries(storage PRIVATE
 
 target_include_directories(storage PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/build/generated
+    ${PROJECT_BINARY_DIR}/generated
 )
 
 
@@ -41,5 +41,5 @@ target_link_libraries(adviskv_storage_lib PUBLIC
 
 target_include_directories(adviskv_storage_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/build/generated
+    ${PROJECT_BINARY_DIR}/generated
 )

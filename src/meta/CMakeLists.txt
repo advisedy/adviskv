@@ -27,7 +27,7 @@ target_link_libraries(meta PRIVATE
 
 target_include_directories(meta PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/build/generated
+    ${PROJECT_BINARY_DIR}/generated
 )
 
 add_library(adviskv_meta_lib
@@ -40,5 +40,5 @@ target_link_libraries(adviskv_meta_lib PUBLIC
 
 target_include_directories(adviskv_meta_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/build/generated
+    ${PROJECT_BINARY_DIR}/generated
 )

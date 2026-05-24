@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-cd build && make && ctest
+BUILD_DIR="${BUILD_DIR:-build}"
+
+"$(dirname "$0")/build.sh" "$@"
+
+ctest --test-dir "$BUILD_DIR" --output-on-failure

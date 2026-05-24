@@ -45,7 +45,7 @@ target_link_libraries(adviskv_sdm_lib PUBLIC
 
 target_include_directories(adviskv_sdm_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/build/generated
+    ${PROJECT_BINARY_DIR}/generated
 )
 
 add_executable(sdm
