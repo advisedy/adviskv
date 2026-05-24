@@ -6,6 +6,7 @@
 
 #include <cerrno>
 #include <cstring>
+#include <filesystem>
 
 #include "common/defer.h"
 #include "common/define.h"
@@ -110,9 +111,14 @@ MetaPersistEngine::~MetaPersistEngine() { close(); }
 Status MetaPersistEngine::init() {
     meta_data_path_ = data_dir_ + "/meta_data";
     meta_data_tmp_path_ = data_dir_ + "/meta_data.tmp";
-
-    ::mkdir(data_dir_.c_str(), 0755);
-
+    
+    std::error_code ec;
+    std::filesystem::create_directories(data_dir_, ec);
+    if (ec) {
+        return Status::ERROR(
+            fmt::format("failed to create meta data dir: {}, error: {}",
+                        data_dir_, ec.message()));
+    }
     LOG_DEBUG("meta persist engine init, data_dir_={}, meta_data_path_={}",
               data_dir_, meta_data_path_);
     return Status::OK();
