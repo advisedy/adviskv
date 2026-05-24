@@ -119,6 +119,10 @@ add_adviskv_sdm_gtest(sdm_runtime_index_test
     ${CMAKE_SOURCE_DIR}/test/sdm/model/sdm_runtime_index_test.cpp
 )
 
+add_adviskv_sdm_gtest(node_selector_test
+    ${CMAKE_SOURCE_DIR}/test/sdm/selector/node_selector_test.cpp
+)
+
 add_adviskv_sdm_gtest(memory_meta_store_test
     ${CMAKE_SOURCE_DIR}/test/sdm/model/memory_meta_store_test.cpp
 )

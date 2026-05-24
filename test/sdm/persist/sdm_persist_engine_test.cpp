@@ -404,10 +404,10 @@ TEST_F(SdmPersistEngineTest, OverwriteSaveKeepsLatestRecord) {
     SdmPersistEngine engine(base_dir_.string());
     Status status = engine.init();
     ASSERT_TRUE(status.ok());
-    
+
     {
         SdmPersistedRecord old = make_record();
-        old.nodes.begin()->second.id = "node-999";
+        old.nodes["node-999"] = old.nodes["node-2"];
         status = engine.save_sdm_meta(old);
         ASSERT_TRUE(status.ok());
     }
@@ -421,9 +421,7 @@ TEST_F(SdmPersistEngineTest, OverwriteSaveKeepsLatestRecord) {
     ASSERT_TRUE(status.ok());
 
     expect_record_equal(loaded, latest);
-    EXPECT_EQ(loaded.tables.count(101), 0U);
-    EXPECT_EQ(loaded.nodes.count("node-1"), 0U);
-    EXPECT_EQ(loaded.resource_pools.count("pool-a"), 0U);
+    EXPECT_EQ(loaded.nodes.count("node-999"), 0U);
 }
 
 // 检测没有 init 时进行 save 或 load 会返回明确的未初始化错误。

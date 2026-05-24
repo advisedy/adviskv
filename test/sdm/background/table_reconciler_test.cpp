@@ -275,11 +275,10 @@ TEST(TableReconcilerTest, CreateReplicaRetryableErrorKeepsCreating) {
         EXPECT_EQ(replicas[1].state.phase, ReplicaPhase::PENDING);
     }
     {
-        std::vector<Replica> replicas = list_replicas_or_die(store);
-
         storage_client.create_statuses.push_back(Status::OK());
         storage_client.create_statuses.push_back(Status::OK());
         ASSERT_TRUE(reconciler.reconcile_once().ok());
+        std::vector<Replica> replicas = list_replicas_or_die(store);
         ASSERT_EQ(replicas.size(), 2U);
         EXPECT_EQ(replicas[0].state.phase, ReplicaPhase::CREATING);  //
         EXPECT_EQ(replicas[1].state.phase, ReplicaPhase::CREATING);
