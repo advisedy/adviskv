@@ -58,15 +58,13 @@ int main() {
         using namespace adviskv::meta;
 
         int32_t listen_port = CONF_GET_INT("port");
-        std::string listen_host = adviskv::ConfMgr::get_instance()
-                                      .Get<std::string>("listen_host",
-                                                        "127.0.0.1");
+        std::string listen_host =
+            adviskv::ConfMgr::get_instance().Get<std::string>("listen_host",
+                                                              "127.0.0.1");
         std::string sdm_host = CONF_GET_STR("sdm_host");
         int32_t sdm_port = CONF_GET_INT("sdm_port");
         std::string data_dir =
-            adviskv::path_from_project_root(
-                CONF_GET_STR("data_dir"))
-                .string();
+            adviskv::path_from_project_root(CONF_GET_STR("data_dir")).string();
 
         auto persist_engine = std::make_unique<MetaPersistEngine>(data_dir);
         if (adviskv::Status status = persist_engine->init(); status.fail()) {
@@ -93,8 +91,8 @@ int main() {
             catalog_manager.get(), sdm_client.get());
         table_ddl_reconciler->start(Milliseconds(3000));
 
-        auto meta_service = std::make_unique<MetaServiceImpl>(
-            ddl_service.get(), catalog_manager.get());
+        auto meta_service =
+            std::make_unique<MetaServiceImpl>(ddl_service.get());
 
         grpc::ServerBuilder builder;
         builder.AddListeningPort(fmt::format("{}:{}", listen_host, listen_port),

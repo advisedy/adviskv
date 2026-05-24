@@ -28,10 +28,10 @@ Status DdlService::create_table(const CreateTableParam& param,
     RETURN_IF_INVALID_PARAM(param)
 
     CreateTableMetaParam meta_param{
-        .table_name = param.table_name,
         .db_name = param.db_name,
-        .replica_count = param.replica_count,
+        .table_name = param.table_name,
         .shard_count = param.shard_count,
+        .replica_count = param.replica_count,
         .resource_pool = param.resource_pool,
     };
 

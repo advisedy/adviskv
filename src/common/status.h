@@ -30,7 +30,7 @@ namespace adviskv {
     X(REPLICA_MANAGER_NOT_FOUND, 7)                                \
     X(NOT_SUPPORTED, 8)                                            \
     X(ALREADY_EXIST, 9)                                            \
-    X(NO_STUB, 10) /*rpc层面的，没有stub*/                         \
+    X(NO_STUB, 10) /*rpc层面的,没有stub*/                         \
     X(RPC_ERROR, 11)                                               \
     X(RETRY_ERROR, 12)                                             \
     X(RESOURCE_EXHAUSTED, 13)                                      \

@@ -17,7 +17,7 @@ class MetaServiceImpl final : public rpc::MetaService::Service{
 public:
 
     MetaServiceImpl() = default;
-    MetaServiceImpl(DdlService* ddl_service, CatalogManager* catalog_manager);
+    explicit MetaServiceImpl(DdlService* ddl_service);
 
     grpc::Status CreateTable(grpc::ServerContext* context,
                         const rpc::CreateTableRequest* request,
@@ -39,7 +39,7 @@ public:
 private:
         // std::unique_ptr<CatalogManager> catalog_manager_{std::make_unique<CatalogManager>()};
     DdlService* ddl_service_;
-    CatalogManager* catalog_manager_;
+    // CatalogManager* catalog_manager_;
 };
 
 }

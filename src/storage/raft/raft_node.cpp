@@ -122,8 +122,8 @@ void RaftNode::send_request_vote_to(const PeerMember& member) {
         .from_replica_id = self_id_,
         .to_replica_id = member.replica_id,
         .term = current_term_,
-        .last_log_term = last_log_term_unlocked(),
         .last_log_index = last_log_index_unlocked(),
+        .last_log_term = last_log_term_unlocked(),
     };
     pending_messages_.push_back(std::move(msg));
 }
@@ -369,6 +369,7 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
 
 void RaftNode::handle_vote_response(const ReplicaID& from,
                                     const RequestVoteResult& result) {
+    UNUSED(from);
     std::lock_guard lock(mutex_);
     // 已经不是 CANDIDATE 了，就直接忽略之前的发起内容
     if (role_ != ReplicaRole::CANDIDATE) return;
@@ -575,8 +576,8 @@ Term RaftNode::get_term(LogIndex index) const {
 void RaftNode::save_raft_meta() const {
     if (!persist_) return;
 
-    persist_->save_raft_meta(RaftMeta{.commit_index = commit_index_,
-                                      .current_term = current_term_,
+    persist_->save_raft_meta(RaftMeta{.current_term = current_term_,
+                                      .commit_index = commit_index_,
                                       .voted_for = voted_for_});
 }
 

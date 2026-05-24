@@ -16,7 +16,6 @@ class HeartBeatCheckTask : public BackgroundTask {
    protected:
     void run() override;
 
-   private:
     Status check_and_modify_node(Node& node);
 
     Status mark_node_offline(Node& node);

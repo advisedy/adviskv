@@ -6,19 +6,20 @@
 
 #include <memory>
 
+#include "common/define.h"
 #include "common/status.h"
 #include "meta/catalog/catalog_manager.h"
 #include "meta/service/ddl_service.h"
 
 namespace adviskv::meta {
 
-MetaServiceImpl::MetaServiceImpl(DdlService *ddl_service,
-                                 CatalogManager *catalog_manager)
-    : ddl_service_(ddl_service), catalog_manager_(catalog_manager) {}
+MetaServiceImpl::MetaServiceImpl(DdlService *ddl_service)
+    : ddl_service_(ddl_service) {}
 
 grpc::Status MetaServiceImpl::CreateDB(grpc::ServerContext *context,
                                        const rpc::CreateDBRequest *request,
                                        rpc::CreateDBResponse *response) {
+    UNUSED(context);
     CreateDBParam param{request->db_name(), request->zone()};
 
     DBMeta db_meta;
@@ -34,6 +35,7 @@ grpc::Status MetaServiceImpl::CreateDB(grpc::ServerContext *context,
 grpc::Status MetaServiceImpl::CreateTable(
     grpc::ServerContext *context, const rpc::CreateTableRequest *request,
     rpc::CreateTableResponse *response) {
+    UNUSED(context);
     CreateTableParam param{
         .db_name = request->db_name(),
         .table_name = request->table_name(),
@@ -57,6 +59,7 @@ grpc::Status MetaServiceImpl::CreateTable(
 grpc::Status MetaServiceImpl::DropTable(
     grpc::ServerContext *context, const rpc::MetaDropTableRequest *request,
     rpc::MetaDropTableResponse *response) {
+    UNUSED(context);
     DropTableParam param{.db_name = request->db_name(),
                          .table_name = request->table_name()};
 
@@ -75,6 +78,8 @@ grpc::Status MetaServiceImpl::DropTable(
 grpc::Status MetaServiceImpl::GetTable(grpc::ServerContext *context,
                                        const rpc::GetTableRequest *request,
                                        rpc::GetTableResponse *response) {
+    UNUSED(context);
+
     GetTableParam param{.db_name = request->db_name(),
                         .table_name = request->table_name(),
                         .use_table_id = request->use_table_id(),

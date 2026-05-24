@@ -6,6 +6,7 @@
 #include <cstddef>
 
 #include "common.pb.h"
+#include "common/define.h"
 #include "common/func.h"
 #include "common/status.h"
 #include "sdm.pb.h"
@@ -27,6 +28,8 @@ SdmServiceImpl::SdmServiceImpl(TableService* table_service,
 grpc::Status SdmServiceImpl::PlaceTable(grpc::ServerContext* context,
                                         const rpc::PlaceTableRequest* request,
                                         rpc::PlaceTableResponse* response) {
+    UNUSED(context);
+
     PlaceTableParam param{
         .db_id = request->db_id(),
         .table_id = request->table_id(),
@@ -48,6 +51,7 @@ grpc::Status SdmServiceImpl::PlaceTable(grpc::ServerContext* context,
 grpc::Status SdmServiceImpl::DropTable(grpc::ServerContext* context,
                                        const rpc::DropTableRequest* request,
                                        rpc::DropTableResponse* response) {
+    UNUSED(context);
     DropTableParam param{
         .table_id = request->table_id(),
         .operation_id = request->operation_id(),
@@ -60,6 +64,8 @@ grpc::Status SdmServiceImpl::DropTable(grpc::ServerContext* context,
 grpc::Status SdmServiceImpl::GetTableStatus(
     grpc::ServerContext* context, const rpc::GetTableStatusRequest* request,
     rpc::GetTableStatusResponse* response) {
+    UNUSED(context);
+
     GetTableStatusParam param{
         .operation_id = request->operation_id(),
         .table_id = request->table_id(),
@@ -82,6 +88,10 @@ grpc::Status SdmServiceImpl::GetTableStatus(
 grpc::Status SdmServiceImpl::PlaceDB(grpc::ServerContext* context,
                                      const rpc::PlaceDBRequest* request,
                                      rpc::PlaceDBResponse* response) {
+    UNUSED(context);
+    UNUSED(request);
+    UNUSED(response);
+
     return grpc::Status::OK;
 }
 
@@ -90,7 +100,7 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
                                        rpc::HeartBeatResponse* response) {
     // NodeStatus node_status;
     // CONVERT_PB_TO_NODE_STATUS(request->node_status(), node_status)
-
+    UNUSED(context);
     std::vector<HeartBeatReplicaInfo> replica_info_list;
     for (const auto& replica_info : request->replica_info_list()) {
         ReplicaRole role;
@@ -114,8 +124,8 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
         .node_id = request->node_id(),
         .ip = request->ip(),
         .port = request->port(),
-        .dc = request->dc(),
         .resoure_pool_name = request->resource_pool(),
+        .dc = request->dc(),
         // .status = node_status,
         .replica_list = std::move(replica_info_list),
         .last_heartbeat_ts = func::get_current_ts_ms(),
@@ -130,6 +140,7 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
 grpc::Status SdmServiceImpl::RegisterNode(
     grpc::ServerContext* context, const rpc::RegisterNodeRequest* request,
     rpc::RegisterNodeResponse* response) {
+    UNUSED(context);
     RegisterNodeParam param{
         .node_id = request->node_id(),
         .ip = request->ip(),
@@ -146,6 +157,7 @@ grpc::Status SdmServiceImpl::RegisterNode(
 grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context,
                                       const rpc::GetRouteRequest* request,
                                       rpc::GetRouteResponse* response) {
+    UNUSED(context);
     GetRouteParam param{
         .db_name = request->db_name(),
         .table_name = request->table_name(),

@@ -4,6 +4,7 @@
 #include <grpcpp/support/status.h>
 
 #include "common/confmgr.h"
+#include "common/define.h"
 #include "common/enum_convert.h"
 #include "common/log.h"
 #include "common/path_util.h"
@@ -19,6 +20,7 @@ namespace adviskv::storage {
 grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
                                      const rpc::PutRequest* request,
                                      rpc::PutResponse* response) {
+    UNUSED(context);
     if (!replica_manager_) {
         LOG_WARN("replica manager is nullptr");
         fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
@@ -57,6 +59,8 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
 grpc::Status StorageServiceImpl::Get(grpc::ServerContext* context,
                                      const rpc::GetRequest* request,
                                      rpc::GetResponse* response) {
+    UNUSED(context);
+
     if (!replica_manager_) {
         LOG_WARN("replica manager is nullptr");
         fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
@@ -101,6 +105,8 @@ grpc::Status StorageServiceImpl::Get(grpc::ServerContext* context,
 grpc::Status StorageServiceImpl::Delete(grpc::ServerContext* context,
                                         const rpc::DeleteRequest* request,
                                         rpc::DeleteResponse* response) {
+    UNUSED(context);
+
     if (!replica_manager_) {
         fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
                                        "replica manager not found"});
@@ -126,6 +132,8 @@ grpc::Status StorageServiceImpl::Delete(grpc::ServerContext* context,
 grpc::Status StorageServiceImpl::CreateReplica(
     grpc::ServerContext* context, const rpc::CreateReplicaRequest* request,
     rpc::CreateReplicaResponse* response) {
+    UNUSED(context);
+
     if (!replica_manager_) {
         LOG_WARN("replica manager is nullptr");
         fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
@@ -163,6 +171,7 @@ grpc::Status StorageServiceImpl::CreateReplica(
 grpc::Status StorageServiceImpl::DeleteReplica(
     grpc::ServerContext* context, const rpc::DeleteReplicaRequest* request,
     rpc::DeleteReplicaResponse* response) {
+    UNUSED(context);
     if (!replica_manager_) {
         LOG_WARN("replica manager is nullptr");
         fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
@@ -183,6 +192,8 @@ grpc::Status StorageServiceImpl::DeleteReplica(
 grpc::Status StorageServiceImpl::GetReplicaInfo(
     grpc::ServerContext* context, const rpc::GetReplicaInfoRequest* request,
     rpc::GetReplicaInfoResponse* response) {
+    UNUSED(context);
+
     if (!replica_manager_) {
         LOG_WARN("replica manager is nullptr");
         fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
@@ -220,6 +231,7 @@ grpc::Status StorageServiceImpl::GetReplicaInfo(
 grpc::Status StorageServiceImpl::RequestVote(
     grpc::ServerContext* context, const rpc::RequestVoteRequest* request,
     rpc::RequestVoteResponse* response) {
+    UNUSED(context);
     if (!replica_manager_) {
         LOG_WARN("replica manager is nullptr");
         fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
@@ -239,16 +251,16 @@ grpc::Status StorageServiceImpl::RequestVote(
         return grpc::Status::OK;
     }
     RequestVoteParam param{
-        .to_replica_id = replica_id,
         .from_replica_id =
             {
                 .table_id = request->from().table_id(),
                 .shard_index = request->from().shard_index(),
                 .replica_index = request->from().replica_index(),
             },
+        .to_replica_id = replica_id,
         .term = request->term(),
-        .last_log_term = request->last_log_term(),
         .last_log_index = request->last_log_index(),
+        .last_log_term = request->last_log_term(),
     };
 
     RequestVoteResult result;
@@ -265,6 +277,8 @@ grpc::Status StorageServiceImpl::RequestVote(
 grpc::Status StorageServiceImpl::AppendEntries(
     grpc::ServerContext* context, const rpc::AppendEntriesRequest* request,
     rpc::AppendEntriesResponse* response) {
+    UNUSED(context);
+
     if (!replica_manager_) {
         LOG_WARN("replica manager is nullptr");
         fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
@@ -293,8 +307,8 @@ grpc::Status StorageServiceImpl::AppendEntries(
             },
         .to_replica_id = replica_id,
         .term = request->term(),
-        .prev_log_term = request->prev_log_term(),
         .prev_log_index = request->prev_log_index(),
+        .prev_log_term = request->prev_log_term(),
         .leader_commit = request->leader_commit(),
     };
     for (const rpc::LogEntry& one : request->entries()) {
@@ -323,6 +337,8 @@ grpc::Status StorageServiceImpl::AppendEntries(
 grpc::Status StorageServiceImpl::InstallSnapshot(
     grpc::ServerContext* context, const rpc::InstallSnapshotRequest* request,
     rpc::InstallSnapshotResponse* response) {
+    UNUSED(context);
+
     if (!replica_manager_) {
         fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
                                        "replica manager not found"});

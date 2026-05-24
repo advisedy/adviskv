@@ -8,18 +8,6 @@
 #include "sdm/model/store.h"
 
 namespace adviskv::sdm {
-namespace {
-
-bool is_same_table_request(const Table& table, const PlaceTableParam& param) {
-    return table.spec.db_id == param.db_id &&
-           table.spec.db_name == param.db_name &&
-           table.spec.table_name == param.table_name &&
-           table.spec.replica_count == param.replica_count &&
-           table.spec.shard_count == param.shard_count &&
-           table.spec.resource_pool == param.resource_pool;
-}
-
-}  // namespace
 
 TableService::TableService(SdmStore* store) : store_(store) {}
 
@@ -45,10 +33,10 @@ Status TableService::place_table(const PlaceTableParam& param) {
         .table_id = param.table_id,
         .spec{
             .table_name = param.table_name,
-            .db_name = param.db_name,
             .db_id = param.db_id,
-            .replica_count = param.replica_count,
+            .db_name = param.db_name,
             .shard_count = param.shard_count,
+            .replica_count = param.replica_count,
             .resource_pool = param.resource_pool,
             .operation_id = param.operation_id,
         },

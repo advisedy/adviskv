@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# 关于开启覆盖率的
 option(ADVISKV_ENABLE_COVERAGE "Enable coverage instrumentation" OFF)
 
 if(ADVISKV_ENABLE_COVERAGE)
@@ -14,6 +15,19 @@ if(ADVISKV_ENABLE_COVERAGE)
         add_link_options(--coverage)
     else()
         message(FATAL_ERROR "Coverage is only supported with GCC/Clang-compatible compilers")
+    endif()
+endif()
+
+# 关于开启warning
+option(ADVISKV_ENABLE_WARNINGS "Enable project compiler warnings" ON)
+
+if(ADVISKV_ENABLE_WARNINGS)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+        add_compile_options(-Wall -Wextra -Wpedantic)
+    endif()
+
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
+        add_compile_options(-Werror=reorder-init-list)
     endif()
 endif()
 
@@ -30,4 +44,5 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 add_subdirectory(src)
 add_subdirectory(tools/cli)
+add_subdirectory(tools/e2e)
 add_subdirectory(test)
