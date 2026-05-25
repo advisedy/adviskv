@@ -5,15 +5,22 @@
 
 #include "sdm/model/sdm_store.h"
 
-#define private public
 #include "sdm/background/routeupdate_check_task.h"
-#undef private
+
 
 namespace adviskv::sdm {
 namespace {
 
 constexpr TableID TEST_TABLE_ID = 1001;
 constexpr ShardIndex TEST_SHARD_INDEX = 0;
+
+class RouteUpdateCheckTaskTmp : public RouteUpdateCheckTask {
+   public:
+    using RouteUpdateCheckTask::RouteUpdateCheckTask;
+    Status check_shard_route_tmp(const Table& table, ShardIndex shard_index) {
+        return check_shard_route(table, shard_index);
+    }
+};
 
 Table make_table() {
     return Table{
@@ -111,8 +118,8 @@ TEST(RouteUpdateCheckTaskTest, DeleteShardRouteWhenLeaderCountLessThanOne) {
             })
             .ok());
 
-    RouteUpdateCheckTask task(&store);
-    Status status = task.check_shard_route(make_table(), TEST_SHARD_INDEX);
+    RouteUpdateCheckTaskTmp task(&store);
+    Status status = task.check_shard_route_tmp(make_table(), TEST_SHARD_INDEX);
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(status.msg(), "leader count < 1");
 
@@ -138,8 +145,8 @@ TEST(RouteUpdateCheckTaskTest, PutShardRouteWhenLeaderCountEqualsOne) {
                                               ReplicaRole::FOLLOWER, 20))
                     .ok());
 
-    RouteUpdateCheckTask task(&store);
-    Status status = task.check_shard_route(make_table(), TEST_SHARD_INDEX);
+    RouteUpdateCheckTaskTmp task(&store);
+    Status status = task.check_shard_route_tmp(make_table(), TEST_SHARD_INDEX);
     ASSERT_TRUE(status.ok());
 
     ShardRouteOr route;
@@ -181,8 +188,8 @@ TEST(RouteUpdateCheckTaskTest, ReturnErrorWhenMultipleLeadersHaveSameTerm) {
             })
             .ok());
 
-    RouteUpdateCheckTask task(&store);
-    Status status = task.check_shard_route(make_table(), TEST_SHARD_INDEX);
+    RouteUpdateCheckTaskTmp task(&store);
+    Status status = task.check_shard_route_tmp(make_table(), TEST_SHARD_INDEX);
     EXPECT_TRUE(status.fail());
 
     ShardRouteOr route;
@@ -213,8 +220,8 @@ TEST(RouteUpdateCheckTaskTest,
                                               ReplicaRole::FOLLOWER, 30))
                     .ok());
 
-    RouteUpdateCheckTask task(&store);
-    Status status = task.check_shard_route(make_table(), TEST_SHARD_INDEX);
+    RouteUpdateCheckTaskTmp task(&store);
+    Status status = task.check_shard_route_tmp(make_table(), TEST_SHARD_INDEX);
     ASSERT_TRUE(status.ok());
 
     ShardRouteOr route;
