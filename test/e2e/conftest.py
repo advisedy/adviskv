@@ -4,7 +4,7 @@ from .cluster import (
     AdvisKVCluster,
     build_e2e_targets,
     clean_data_dirs,
-    stop_existing_cluster,
+    write_e2e_configs,
 )
 
 
@@ -15,11 +15,11 @@ def build_targets():
 
 @pytest.fixture()
 def cluster():
-    stop_existing_cluster()
     clean_data_dirs()
+    write_e2e_configs()
     cluster = AdvisKVCluster()
-    cluster.start()
     try:
+        cluster.start()
         yield cluster
     finally:
         cluster.stop()
