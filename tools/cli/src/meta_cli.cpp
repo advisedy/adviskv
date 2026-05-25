@@ -180,9 +180,9 @@ int main(int argc, char* argv[]) {
                 client.get_table(tokens[1], tokens[2], &table_info);
             if (status.ok()) {
                 fmt::print("OK db_id={} table_id={} shard_count={} "
-                           "replica_count={}\n",
+                           "replica_count={} table_state={} last_error_msg={}\n",
                            table_info.db_id, table_info.table_id,
-                           table_info.shard_count, table_info.replica_count);
+                           table_info.shard_count, table_info.replica_count, table_info.table_state, table_info.last_error_msg);
             } else {
                 print_status(status);
             }

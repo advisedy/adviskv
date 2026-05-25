@@ -29,6 +29,8 @@ struct TableInfo {
     TableID table_id{-1};
     int32_t shard_count{0};
     int32_t replica_count{0};
+    int32 table_state{0};
+    std::string last_error_msg;
 };
 
 class DirectMetaClient {
