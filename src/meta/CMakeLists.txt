@@ -1,6 +1,5 @@
-set(META_SOURCES
+set(META_LIB_SOURCES
     # current dir
-    ${CMAKE_CURRENT_SOURCE_DIR}/main/main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/catalog/catalog_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/background/table_ddl_reconciler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/persist/meta_persist_engine.cpp
@@ -18,20 +17,15 @@ set(META_SOURCES
 )
 
 add_executable(meta
-    ${META_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/main/main.cpp
 )
 
 target_link_libraries(meta PRIVATE
-    adviskv_common
-)
-
-target_include_directories(meta PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${PROJECT_BINARY_DIR}/generated
+    adviskv_meta_lib
 )
 
 add_library(adviskv_meta_lib
-    ${META_SOURCES}
+    ${META_LIB_SOURCES}
 )
 
 target_link_libraries(adviskv_meta_lib PUBLIC
@@ -41,4 +35,21 @@ target_link_libraries(adviskv_meta_lib PUBLIC
 target_include_directories(adviskv_meta_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/src
     ${PROJECT_BINARY_DIR}/generated
+)
+
+add_library(adviskv_meta_test_lib
+    ${META_LIB_SOURCES}
+)
+
+target_link_libraries(adviskv_meta_test_lib PUBLIC
+    adviskv_common
+)
+
+target_include_directories(adviskv_meta_test_lib PUBLIC
+    ${CMAKE_SOURCE_DIR}/src
+    ${PROJECT_BINARY_DIR}/generated
+)
+
+target_compile_definitions(adviskv_meta_test_lib PRIVATE
+    ADVISKV_ENABLE_CRASH_TEST
 )

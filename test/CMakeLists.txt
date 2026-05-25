@@ -9,7 +9,7 @@ function(add_adviskv_storage_gtest target_name)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/test"
     )
     target_link_libraries(${target_name} PRIVATE
-        adviskv_storage_lib
+        adviskv_storage_test_lib
         GTest::gtest
     )
     target_include_directories(${target_name} PRIVATE
@@ -32,7 +32,7 @@ function(add_adviskv_sdm_gtest target_name)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/test"
     )
     target_link_libraries(${target_name} PRIVATE
-        adviskv_sdm_lib
+        adviskv_sdm_test_lib
         GTest::gtest
     )
     target_include_directories(${target_name} PRIVATE
@@ -55,7 +55,7 @@ function(add_adviskv_meta_gtest target_name)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/test"
     )
     target_link_libraries(${target_name} PRIVATE
-        adviskv_meta_lib
+        adviskv_meta_test_lib
         GTest::gtest
     )
     target_include_directories(${target_name} PRIVATE

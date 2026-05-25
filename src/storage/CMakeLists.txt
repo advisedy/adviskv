@@ -1,5 +1,4 @@
-set(STORAGE_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/main/main.cpp
+set(STORAGE_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/node_agent/node_agent.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_manager.cpp
@@ -19,21 +18,16 @@ set(STORAGE_SOURCES
 )
 
 add_executable(storage
-    ${STORAGE_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/main/main.cpp
 )
 
 target_link_libraries(storage PRIVATE
-    adviskv_common
-)
-
-target_include_directories(storage PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${PROJECT_BINARY_DIR}/generated
+    adviskv_storage_lib
 )
 
 
 add_library(adviskv_storage_lib
-    ${STORAGE_SOURCES}
+    ${STORAGE_LIB_SOURCES}
 )
 
 target_link_libraries(adviskv_storage_lib PUBLIC
@@ -43,4 +37,21 @@ target_link_libraries(adviskv_storage_lib PUBLIC
 target_include_directories(adviskv_storage_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/src
     ${PROJECT_BINARY_DIR}/generated
+)
+
+add_library(adviskv_storage_test_lib
+    ${STORAGE_LIB_SOURCES}
+)
+
+target_link_libraries(adviskv_storage_test_lib PUBLIC
+    adviskv_common
+)
+
+target_include_directories(adviskv_storage_test_lib PUBLIC
+    ${CMAKE_SOURCE_DIR}/src
+    ${PROJECT_BINARY_DIR}/generated
+)
+
+target_compile_definitions(adviskv_storage_test_lib PRIVATE
+    ADVISKV_ENABLE_CRASH_TEST
 )
