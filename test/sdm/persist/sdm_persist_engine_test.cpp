@@ -32,94 +32,39 @@ class SdmPersistEngineTest : public ::testing::Test {
         SdmPersistedRecord record;
 
         record.tables[101] = Table{
-            .table_id = 101,
-            .spec =
-                TableSpec{
-                    .table_name = "users",
-                    .db_id = 1,
-                    .db_name = "app",
-                    .shard_count = 8,
-                    .replica_count = 3,
-                    .resource_pool = "pool-a",
-                    .operation_id = "op-table",
-                },
-            .state =
-                TableState{
-                    .desired = TableDesired::PRESENT,
-                    .phase = TablePhase::READY,
-                    .last_error_msg = "",
-                    .update_ts = 100,
-                },
+            101,
+            TableSpec{"users", 1, "app", 8, 3, "pool-a", "op-table"},
+            TableState{TableDesired::PRESENT, TablePhase::READY, "", 100},
         };
 
         record.nodes["node-1"] = Node{
-            .id = "node-1",
-            .spec =
-                NodeSpec{
-                    .resource_pool = "pool-a",
-                    .dc = "dc-a",
-                    .status = NodeStatus::ONLINE,
-                },
-            .state =
-                NodeState{
-                    .endpoint = Endpoint{.ip = "127.0.0.1", .port = 9000},
-                    .last_heartbeat_ts = 200,
-                },
-            .derived =
-                NodeDerived{
-                    .owned_replica_count = 3,
-                    .owned_leader_count = 1,
-                },
+            "node-1",
+            NodeSpec{"pool-a", "dc-a", NodeStatus::ONLINE},
+            NodeState{Endpoint{"127.0.0.1", 9000}, 200},
+            NodeDerived{3, 1},
         };
 
-        ReplicaID replica_id{
-            .table_id = 101, .shard_index = 2, .replica_index = 0};
+        ReplicaID replica_id{101, 2, 0};
         record.replicas[replica_id] = Replica{
-            .replica_id = replica_id,
-            .spec =
-                ReplicaSpec{
-                    .dc = "dc-a",
-                    .assign_node_id = "node-1",
-                    .engine_type = EngineType::MAP,
-                    .members =
-                        {
-                            PeerMember{
-                                .node_id = "node-1",
-                                .replica_id = replica_id,
-                                .endpoint =
-                                    Endpoint{.ip = "127.0.0.1", .port = 9000},
-                            },
-                        },
-                },
-            .state =
-                ReplicaState{
-                    .desired = ReplicaDesired::PRESENT,
-                    .phase = ReplicaPhase::READY,
-                    .observed_role = ReplicaRole::LEADER,
-                    .observed_endpoint =
-                        Endpoint{.ip = "127.0.0.1", .port = 9000},
-                    .last_error_msg = "",
-                    .update_ts = 300,
-                    .term = 4,
-                },
+            replica_id,
+            ReplicaSpec{
+                "dc-a",
+                "node-1",
+                EngineType::MAP,
+                {PeerMember{"node-1", replica_id, Endpoint{"127.0.0.1", 9000}}},
+            },
+            ReplicaState{ReplicaDesired::PRESENT, ReplicaPhase::READY,
+                         ReplicaRole::LEADER, Endpoint{"127.0.0.1", 9000}, "",
+                         300, 4},
         };
 
-        record.resource_pools["pool-a"] = ResourcePool{.name = "pool-a"};
+        record.resource_pools["pool-a"] = ResourcePool{"pool-a"};
 
-        ShardID shard_id{.table_id = 101, .shard_index = 2};
+        ShardID shard_id{101, 2};
         record.shard_routes[shard_id] = ShardRoute{
-            .shard_id = shard_id,
-            .replicas =
-                {
-                    RouteEntry{
-                        .replica_id = replica_id,
-                        .node_id = "node-1",
-                        .ip = "127.0.0.1",
-                        .port = 9000,
-                        .role = ReplicaRole::LEADER,
-                        .term = 4,
-                    },
-                },
+            shard_id,
+            {RouteEntry{replica_id, "node-1", "127.0.0.1", 9000,
+                        ReplicaRole::LEADER, 4}},
         };
 
         return record;
@@ -129,110 +74,49 @@ class SdmPersistEngineTest : public ::testing::Test {
         SdmPersistedRecord record;
 
         record.tables[202] = Table{
-            .table_id = 202,
-            .spec =
-                TableSpec{
-                    .table_name = "orders",
-                    .db_id = 2,
-                    .db_name = "billing",
-                    .shard_count = 16,
-                    .replica_count = 5,
-                    .resource_pool = "pool-b",
-                    .operation_id = "op-table-2",
-                },
-            .state =
-                TableState{
-                    .desired = TableDesired::ABSENT,
-                    .phase = TablePhase::DELETING,
-                    .last_error_msg = "delete pending",
-                    .update_ts = 1000,
-                },
+            202,
+            TableSpec{"orders", 2, "billing", 16, 5, "pool-b", "op-table-2"},
+            TableState{TableDesired::ABSENT, TablePhase::DELETING,
+                       "delete pending", 1000},
         };
 
         record.nodes["node-2"] = Node{
-            .id = "node-2",
-            .spec =
-                NodeSpec{
-                    .resource_pool = "pool-b",
-                    .dc = "dc-b",
-                    .status = NodeStatus::SUSPECT,
-                },
-            .state =
-                NodeState{
-                    .endpoint = Endpoint{.ip = "127.0.0.2", .port = 9100},
-                    .last_heartbeat_ts = 2000,
-                },
-            .derived =
-                NodeDerived{
-                    .owned_replica_count = 7,
-                    .owned_leader_count = 2,
-                },
+            "node-2",
+            NodeSpec{"pool-b", "dc-b", NodeStatus::SUSPECT},
+            NodeState{Endpoint{"127.0.0.2", 9100}, 2000},
+            NodeDerived{7, 2},
         };
 
-        ReplicaID leader_id{
-            .table_id = 202, .shard_index = 3, .replica_index = 0};
-        ReplicaID follower_id{
-            .table_id = 202, .shard_index = 3, .replica_index = 1};
+        ReplicaID leader_id{202, 3, 0};
+        ReplicaID follower_id{202, 3, 1};
         record.replicas[leader_id] = Replica{
-            .replica_id = leader_id,
-            .spec =
-                ReplicaSpec{
-                    .dc = "dc-b",
-                    .assign_node_id = "node-2",
-                    .engine_type = EngineType::ROCKSDB,
-                    .members =
-                        {
-                            PeerMember{
-                                .node_id = "node-2",
-                                .replica_id = leader_id,
-                                .endpoint =
-                                    Endpoint{.ip = "127.0.0.2", .port = 9100},
-                            },
-                            PeerMember{
-                                .node_id = "node-3",
-                                .replica_id = follower_id,
-                                .endpoint =
-                                    Endpoint{.ip = "127.0.0.3", .port = 9101},
-                            },
-                        },
+            leader_id,
+            ReplicaSpec{
+                "dc-b",
+                "node-2",
+                EngineType::ROCKSDB,
+                {
+                    PeerMember{"node-2", leader_id, Endpoint{"127.0.0.2", 9100}},
+                    PeerMember{"node-3", follower_id,
+                               Endpoint{"127.0.0.3", 9101}},
                 },
-            .state =
-                ReplicaState{
-                    .desired = ReplicaDesired::ABSENT,
-                    .phase = ReplicaPhase::DELETING,
-                    .observed_role = ReplicaRole::FOLLOWER,
-                    .observed_endpoint =
-                        Endpoint{.ip = "127.0.0.2", .port = 9100},
-                    .last_error_msg = "replica draining",
-                    .update_ts = 3000,
-                    .term = 11,
-                },
+            },
+            ReplicaState{ReplicaDesired::ABSENT, ReplicaPhase::DELETING,
+                         ReplicaRole::FOLLOWER, Endpoint{"127.0.0.2", 9100},
+                         "replica draining", 3000, 11},
         };
 
-        record.resource_pools["pool-b"] = ResourcePool{.name = "pool-b"};
+        record.resource_pools["pool-b"] = ResourcePool{"pool-b"};
 
-        ShardID shard_id{.table_id = 202, .shard_index = 3};
+        ShardID shard_id{202, 3};
         record.shard_routes[shard_id] = ShardRoute{
-            .shard_id = shard_id,
-            .replicas =
-                {
-                    RouteEntry{
-                        .replica_id = leader_id,
-                        .node_id = "node-2",
-                        .ip = "127.0.0.2",
-                        .port = 9100,
-                        .role = ReplicaRole::LEADER,
-                        .term = 11,
-                    },
-                    RouteEntry{
-                        .replica_id = follower_id,
-                        .node_id = "node-3",
-                        .ip = "127.0.0.3",
-                        .port = 9101,
-                        .role = ReplicaRole::FOLLOWER,
-                        .term = 10,
-                    },
-                },
+            shard_id,
+            {
+                RouteEntry{leader_id, "node-2", "127.0.0.2", 9100,
+                           ReplicaRole::LEADER, 11},
+                RouteEntry{follower_id, "node-3", "127.0.0.3", 9101,
+                           ReplicaRole::FOLLOWER, 10},
+            },
         };
 
         return record;

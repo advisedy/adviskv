@@ -11,14 +11,8 @@ namespace adviskv::sdm {
 namespace {
 
 RegisterNodeParam make_register_node_param() {
-    return RegisterNodeParam{
-        .node_id = "node-a",
-        .ip = "127.0.0.1",
-        .port = 18080,
-        .resource_pool = "pool-a",
-        .dc = "dc-a",
-        .last_heartbeat_ts = 123456,
-    };
+    return RegisterNodeParam{"node-a", "127.0.0.1", 18080, "pool-a", "dc-a",
+                             123456};
 }
 
 }  // namespace

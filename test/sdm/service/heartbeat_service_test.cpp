@@ -9,56 +9,30 @@ namespace adviskv::sdm {
 namespace {
 
 Node make_node(const NodeID& id, int32_t port = 18080) {
-    return Node{
-        .id = id,
-        .spec{
-            .resource_pool = "pool-a",
-            .dc = "dc-a",
-            .status = NodeStatus::ONLINE,
-        },
-        .state{
-            .endpoint = Endpoint{.ip = "127.0.0.1", .port = port},
-            .last_heartbeat_ts = 1,
-        },
-    };
+    return Node{id,
+                NodeSpec{"pool-a", "dc-a", NodeStatus::ONLINE},
+                NodeState{Endpoint{"127.0.0.1", port}, 1},
+                NodeDerived{}};
 }
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
-    return Replica{
-        .replica_id = replica_id,
-        .spec{
-            .dc = "dc-a",
-            .assign_node_id = node_id,
-            .engine_type = EngineType::MAP,
-        },
-        .state{
-            .desired = ReplicaDesired::PRESENT,
-            .phase = ReplicaPhase::CREATING,
-            .observed_role = ReplicaRole::FOLLOWER,
-            .observed_endpoint = Endpoint{.ip = "127.0.0.1", .port = 18080},
-            .term = 1,
-        },
-    };
+    return Replica{replica_id,
+                   ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
+                   ReplicaState{ReplicaDesired::PRESENT, ReplicaPhase::CREATING,
+                                ReplicaRole::FOLLOWER,
+                                Endpoint{"127.0.0.1", 18080}, "", 0, 1}};
 }
 
 HeartBeatParam make_heartbeat_param() {
     return HeartBeatParam{
-        .node_id = "node-a",
-        .ip = "10.0.0.1",
-        .port = 19090,
-        .resoure_pool_name = "pool-a",
-        .dc = "dc-a",
-        .replica_list =
-            {
-                HeartBeatReplicaInfo{
-                    .shard_id = ShardID{.table_id = 1001, .shard_index = 0},
-                    .replica_index = 0,
-                    .role = ReplicaRole::LEADER,
-                    .status = ReplicaStatus::READY,
-                    .term = 7,
-                },
-            },
-        .last_heartbeat_ts = 987654,
+        "node-a",
+        "10.0.0.1",
+        19090,
+        "pool-a",
+        "dc-a",
+        {HeartBeatReplicaInfo{ShardID{1001, 0}, 0, ReplicaRole::LEADER,
+                              ReplicaStatus::READY, 7}},
+        987654,
     };
 }
 
@@ -102,18 +76,18 @@ TEST(HeartBeatServiceTest, HeartbeatIgnoresMissingAndOtherNodeReplicas) {
 
     HeartBeatParam param = make_heartbeat_param();
     param.replica_list.push_back(HeartBeatReplicaInfo{
-        .shard_id = ShardID{.table_id = 1001, .shard_index = 0},
-        .replica_index = 1,
-        .role = ReplicaRole::LEADER,
-        .status = ReplicaStatus::READY,
-        .term = 9,
+        ShardID{1001, 0},
+        1,
+        ReplicaRole::LEADER,
+        ReplicaStatus::READY,
+        9,
     });
     param.replica_list.push_back(HeartBeatReplicaInfo{
-        .shard_id = ShardID{.table_id = 9999, .shard_index = 0},
-        .replica_index = 0,
-        .role = ReplicaRole::LEADER,
-        .status = ReplicaStatus::READY,
-        .term = 9,
+        ShardID{9999, 0},
+        0,
+        ReplicaRole::LEADER,
+        ReplicaStatus::READY,
+        9,
     });
 
     Status status = service.heartbeat(param);

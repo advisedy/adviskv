@@ -15,45 +15,24 @@ namespace {
 Node make_node(const NodeID& id, const std::string& resource_pool, int32_t port,
                NodeStatus status = NodeStatus::ONLINE,
                const std::string& ip = "127.0.0.1") {
-    return Node{
-        .id = id,
-        .spec{
-            .resource_pool = resource_pool,
-            .dc = "dc-a",
-            .status = status,
-        },
-        .state{
-            .endpoint = Endpoint{.ip = ip, .port = port},
-            .last_heartbeat_ts = 100,
-        },
-    };
+    return Node{id,
+                NodeSpec{resource_pool, "dc-a", status},
+                NodeState{Endpoint{ip, port}, 100},
+                NodeDerived{}};
 }
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id,
                      ReplicaDesired desired = ReplicaDesired::PRESENT) {
-    return Replica{
-        .replica_id = replica_id,
-        .spec{
-            .dc = "dc-a",
-            .assign_node_id = node_id,
-            .engine_type = EngineType::MAP,
-        },
-        .state{
-            .desired = desired,
-            .phase = ReplicaPhase::READY,
-            .observed_role = ReplicaRole::FOLLOWER,
-            .observed_endpoint = Endpoint{.ip = "127.0.0.1", .port = 18080},
-        },
-    };
+    return Replica{replica_id,
+                   ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
+                   ReplicaState{desired, ReplicaPhase::READY,
+                                ReplicaRole::FOLLOWER,
+                                Endpoint{"127.0.0.1", 18080}}};
 }
 
 PlaceNodesParam make_param(int32_t shard_count = 1, int32_t replica_count = 2,
                            const std::string& resource_pool = "pool-a") {
-    return PlaceNodesParam{
-        .resource_pool = resource_pool,
-        .shard_count = shard_count,
-        .replica_count = replica_count,
-    };
+    return PlaceNodesParam{resource_pool, shard_count, replica_count};
 }
 
 std::vector<NodeID> node_ids(const std::vector<Node>& nodes) {
@@ -79,20 +58,17 @@ TEST(NodeSelectorTest, InvalidParamReturnsError) {
     TablePlacementResult result;
 
     Status status = selector.select_table_nodes(
-        PlaceNodesParam{
-            .resource_pool = "", .shard_count = 1, .replica_count = 1},
+        PlaceNodesParam{"", 1, 1},
         result);
     EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
 
     status = selector.select_table_nodes(
-        PlaceNodesParam{
-            .resource_pool = "pool-a", .shard_count = 0, .replica_count = 1},
+        PlaceNodesParam{"pool-a", 0, 1},
         result);
     EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
 
     status = selector.select_table_nodes(
-        PlaceNodesParam{
-            .resource_pool = "pool-a", .shard_count = 1, .replica_count = 0},
+        PlaceNodesParam{"pool-a", 1, 0},
         result);
     EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
 }
@@ -160,25 +136,25 @@ TEST(NodeSelectorTest, PrefersNodesWithFewerPresentReplicas) {
     ASSERT_TRUE(
         store
             .put_replica(make_replica(
-                ReplicaID{.table_id = 1, .shard_index = 0, .replica_index = 0},
+                ReplicaID{1, 0, 0},
                 "node-a"))
             .ok());
     ASSERT_TRUE(
         store
             .put_replica(make_replica(
-                ReplicaID{.table_id = 1, .shard_index = 1, .replica_index = 0},
+                ReplicaID{1, 1, 0},
                 "node-a"))
             .ok());
     ASSERT_TRUE(
         store
             .put_replica(make_replica(
-                ReplicaID{.table_id = 2, .shard_index = 0, .replica_index = 0},
+                ReplicaID{2, 0, 0},
                 "node-b"))
             .ok());
     ASSERT_TRUE(
         store
             .put_replica(make_replica(
-                ReplicaID{.table_id = 3, .shard_index = 0, .replica_index = 0},
+                ReplicaID{3, 0, 0},
                 "node-c", ReplicaDesired::ABSENT))
             .ok());
 
