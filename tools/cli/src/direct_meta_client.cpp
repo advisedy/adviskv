@@ -1,10 +1,10 @@
 #include "direct_meta_client.h"
 
-#include <chrono>
-
 #include <fmt/format.h>
 #include <grpcpp/client_context.h>
 #include <grpcpp/create_channel.h>
+
+#include <chrono>
 
 #include "common/define.h"
 
@@ -52,9 +52,8 @@ Status DirectMetaClient::create_db(const std::string& db_name,
 Status DirectMetaClient::create_table(const std::string& db_name,
                                       const std::string& table_name,
                                       int32_t shard_count,
-                                      int32_t replica_count,
-                                      TableID* table_id,
-                                    std::string resource) const {
+                                      int32_t replica_count, TableID* table_id,
+                                      std::string resource) const {
     RETURN_IF_INVALID_PARAM(target_)
     RETURN_IF_INVALID_CONDITION(table_id != nullptr,
                                 "table_id should not be nullptr")
@@ -65,19 +64,18 @@ Status DirectMetaClient::create_table(const std::string& db_name,
     request.set_shard_count(shard_count);
     request.set_replica_count(replica_count);
     request.set_resource_pool(resource);
-    
+
     rpc::CreateTableResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +
                          std::chrono::milliseconds(target_.timeout_ms));
 
-    grpc::Status grpc_status =
-        stub_->CreateTable(&context, request, &response);
+    grpc::Status grpc_status = stub_->CreateTable(&context, request, &response);
     if (!grpc_status.ok()) {
-        return Status::ERROR(fmt::format(
-            "Meta CreateTable RPC failed, grpc code = {}, msg = {}",
-            static_cast<int>(grpc_status.error_code()),
-            grpc_status.error_message()));
+        return Status::ERROR(
+            fmt::format("Meta CreateTable RPC failed, grpc code = {}, msg = {}",
+                        static_cast<int>(grpc_status.error_code()),
+                        grpc_status.error_message()));
     }
     if (response.base_rsp().code() != to_rpc_code(StatusCode::OK)) {
         return Status{static_cast<StatusCode>(response.base_rsp().code()),
@@ -118,6 +116,8 @@ Status DirectMetaClient::get_table(const std::string& db_name,
     table_info->table_id = response.table_id();
     table_info->shard_count = response.shard_count();
     table_info->replica_count = response.replica_count();
+    table_info->table_state = response.table_state();
+    table_info->last_error_msg = response.last_error_msg();
     return Status::OK();
 }
 
