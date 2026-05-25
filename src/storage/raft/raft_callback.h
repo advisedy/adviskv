@@ -2,6 +2,11 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <memory>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+
 #include "common/define.h"
 #include "common/status.h"
 #include "storage.grpc.pb.h"
@@ -16,15 +21,16 @@ namespace adviskv::storage {
 
 class RaftSender {
    public:
-    // TODO 以后要改
+    using StubFactory =
+        std::function<std::unique_ptr<rpc::StorageService::StubInterface>(
+            const PeerMember&)>;
+
+    RaftSender();
+    explicit RaftSender(StubFactory stub_factory);
+
     Status send_request_vote(const PeerMember& member,
                              const RequestVoteParam& param,
                              RequestVoteResult& result) const {
-        auto channel = grpc::CreateChannel(
-            member.endpoint.ip + ":" + std::to_string(member.endpoint.port),
-            grpc::InsecureChannelCredentials());
-        auto stub = rpc::StorageService::NewStub(channel);
-
         rpc::RequestVoteRequest request;
         request.mutable_from()->set_table_id(param.from_replica_id.table_id);
         request.mutable_from()->set_shard_index(
@@ -44,7 +50,7 @@ class RaftSender {
         rpc::RequestVoteResponse response;
         grpc::ClientContext context;
         grpc::Status grpc_status =
-            stub->RequestVote(&context, request, &response);
+            stub_for(member)->RequestVote(&context, request, &response);
         RETURN_IF_INVALID_CONDITION(grpc_status.ok(),
                                     grpc_status.error_message())
 
@@ -56,13 +62,6 @@ class RaftSender {
     Status send_append_entries(const PeerMember& member,
                                const AppendEntriesParam& param,
                                AppendEntriesResult& result) const {
-        // TODO 对于以后来说，应该不能每一次都重新连接，
-        // 可能需要提前练好搞个连接池？ 待定吧先.
-        auto channel = grpc::CreateChannel(
-            member.endpoint.ip + ":" + std::to_string(member.endpoint.port),
-            grpc::InsecureChannelCredentials());
-        auto stub = rpc::StorageService::NewStub(channel);
-
         rpc::AppendEntriesRequest request;
         request.mutable_from()->set_table_id(param.from_replica_id.table_id);
         request.mutable_from()->set_shard_index(
@@ -92,7 +91,7 @@ class RaftSender {
         rpc::AppendEntriesResponse response;
         grpc::ClientContext context;
         grpc::Status grpc_status =
-            stub->AppendEntries(&context, request, &response);
+            stub_for(member)->AppendEntries(&context, request, &response);
         RETURN_IF_INVALID_CONDITION(grpc_status.ok(),
                                     grpc_status.error_message())
 
@@ -105,13 +104,9 @@ class RaftSender {
                                  const InstallSnapshotParam& param,
                                  const PersistEngine& persist,
                                  InstallSnapshotResult& result) const {
-        auto channel = grpc::CreateChannel(
-            member.endpoint.ip + ":" + std::to_string(member.endpoint.port),
-            grpc::InsecureChannelCredentials());
-        auto stub = rpc::StorageService::NewStub(channel);
-
         constexpr size_t kChunkSize = 1 << 20;
         uint64 offset = 0;
+        rpc::StorageService::StubInterface* stub = stub_for(member);
         result.term = param.term;
         result.success = false;
         while (true) {
@@ -121,7 +116,8 @@ class RaftSender {
                 persist.read_snapshot_chunk(offset, kChunkSize, data, eof))
 
             rpc::InstallSnapshotRequest request;
-            request.mutable_from()->set_table_id(param.from_replica_id.table_id);
+            request.mutable_from()->set_table_id(
+                param.from_replica_id.table_id);
             request.mutable_from()->set_shard_index(
                 param.from_replica_id.shard_index);
             request.mutable_from()->set_replica_index(
@@ -162,6 +158,21 @@ class RaftSender {
         }
         return Status::OK();
     }
+
+   private:
+    static std::string target_of(const PeerMember& member);
+    
+    static std::unique_ptr<rpc::StorageService::StubInterface>
+    default_stub_factory(const PeerMember& member);
+
+    rpc::StorageService::StubInterface* stub_for(
+        const PeerMember& member) const;
+
+    StubFactory stub_factory_;
+    mutable std::mutex mutex_;
+    mutable std::unordered_map<
+        std::string, std::unique_ptr<rpc::StorageService::StubInterface>>
+        stub_pool_;
 };
 
 }  // namespace adviskv::storage
