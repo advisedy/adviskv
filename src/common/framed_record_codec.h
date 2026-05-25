@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/buffer.h"
+#include "common/crash_injection.h"
 #include "common/crc.h"
 #include "common/define.h"
 #include "common/func.h"
@@ -51,8 +52,13 @@ class FramedRecord {
         uint32_t crc = compute_crc32(payload.data(), payload.size());
 
         RETURN_IF_INVALID_STATUS(func::write_value(fd, total_len))
+        testhook::crash_point("framed_record.after_len_write");
         RETURN_IF_INVALID_STATUS(func::write_value(fd, crc))
-        RETURN_IF_INVALID_STATUS(func::write_full(fd, payload.data(), payload.size()))
+        testhook::crash_point("framed_record.after_crc_write");
+        RETURN_IF_INVALID_STATUS(func::write_full(
+            fd, payload.data(), payload.size(),
+            "framed_record.payload_write.after_partial_write"))
+        testhook::crash_point("framed_record.after_payload_write");
         return Status::OK();
     }
 

@@ -77,6 +77,28 @@ add_adviskv_storage_gtest(persist_engine_test
     ${CMAKE_SOURCE_DIR}/test/storage/persist/persist_engine_test.cpp
 )
 
+add_executable(wal_crash_runner
+    ${CMAKE_SOURCE_DIR}/test/storage/persist/wal_crash_runner.cpp
+)
+set_target_properties(wal_crash_runner PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/test"
+)
+target_link_libraries(wal_crash_runner PRIVATE
+    adviskv_storage_test_lib
+)
+target_include_directories(wal_crash_runner PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
+    ${PROJECT_BINARY_DIR}/generated
+)
+
+add_adviskv_storage_gtest(wal_crash_injection_test
+    ${CMAKE_SOURCE_DIR}/test/storage/persist/wal_crash_injection_test.cpp
+)
+target_compile_definitions(wal_crash_injection_test PRIVATE
+    ADVISKV_CRASH_RUNNER_PATH="$<TARGET_FILE:wal_crash_runner>"
+)
+
 add_adviskv_storage_gtest(replica_meta_persist_engine_test
     ${CMAKE_SOURCE_DIR}/test/storage/persist/replica_meta_persist_engine_test.cpp
 )
