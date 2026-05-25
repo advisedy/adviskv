@@ -144,8 +144,13 @@ Status MetaPersistEngine::save_meta(const PersistedMetaRecord& record) {
     RETURN_IF_INVALID_STATUS(
         FramedRecord<MetaRecordCodec>::encode_to_fd(fd, record))
 
-    ::fsync(fd);
-    ::close(fd);
+    if (::fsync(fd) != 0) {
+        return Status::ERROR("failed to fsync meta tmp file");
+    }
+    if (::close(fd) != 0) {
+        fd = -1;
+        return Status::ERROR("failed to close meta tmp file");
+    }
     fd = -1;
 
     if (::rename(meta_data_tmp_path_.c_str(), meta_data_path_.c_str()) != 0) {
@@ -154,6 +159,7 @@ Status MetaPersistEngine::save_meta(const PersistedMetaRecord& record) {
                                   meta_data_path_)};
     }
 
+    RETURN_IF_INVALID_STATUS(func::fsync_dir(data_dir_))
     LOG_DEBUG(
         "meta persist engine save_meta success, db_count={}, "
         "table_count={}, next_db_id={}, next_table_id={}",
