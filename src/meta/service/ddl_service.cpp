@@ -27,13 +27,12 @@ Status DdlService::create_table(const CreateTableParam& param,
     // }
     RETURN_IF_INVALID_PARAM(param)
 
-    CreateTableMetaParam meta_param{
-        .db_name = param.db_name,
-        .table_name = param.table_name,
-        .shard_count = param.shard_count,
-        .replica_count = param.replica_count,
-        .resource_pool = param.resource_pool,
-    };
+    CreateTableMetaParam meta_param;
+    meta_param.db_name = param.db_name;
+    meta_param.table_name = param.table_name;
+    meta_param.shard_count = param.shard_count;
+    meta_param.replica_count = param.replica_count;
+    meta_param.resource_pool = param.resource_pool;
 
     TableMeta created_table_meta;
     Status status =
@@ -131,7 +130,9 @@ Status DdlService::create_db(const CreateDBParam& param, DBMeta* db_meta) {
 
     RETURN_IF_INVALID_PARAM(param)
 
-    CreateDBMetaParam meta_param{.db_name = param.db_name, .zone = param.zone};
+    CreateDBMetaParam meta_param;
+    meta_param.db_name = param.db_name;
+    meta_param.zone = param.zone;
 
     DBMeta created_db_meta;
     Status status = catalog_manager_->create_db(meta_param, &created_db_meta);

@@ -54,8 +54,7 @@ Status RouteUpdateCheckTask::update_once() {
 Status RouteUpdateCheckTask::check_shard_route(const Table& table,
                                                ShardIndex shard_index) {
     Status status{Status::OK()};
-    const ShardID shard_id{.table_id = table.table_id,
-                           .shard_index = shard_index};
+    ShardID shard_id{table.table_id, shard_index};
 
     // 获取store里面shard里的replicas
     std::vector<Replica> replicas;
@@ -86,14 +85,13 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
             continue;
         }
 
-        RouteEntry entry{
-            .replica_id = replica.replica_id,
-            .node_id = replica.spec.assign_node_id,
-            .ip = replica.state.observed_endpoint.ip,
-            .port = replica.state.observed_endpoint.port,
-            .role = replica.state.observed_role, 
-            .term = replica.state.term,
-        };
+        RouteEntry entry;
+        entry.replica_id = replica.replica_id;
+        entry.node_id = replica.spec.assign_node_id;
+        entry.ip = replica.state.observed_endpoint.ip;
+        entry.port = replica.state.observed_endpoint.port;
+        entry.role = replica.state.observed_role;
+        entry.term = replica.state.term;
         if (replica.state.observed_role == ReplicaRole::LEADER) {
             leader_entries.push_back(std::move(entry));
         } else {
@@ -140,9 +138,8 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
                          rhs.replica_id.replica_index;
               });
 
-    ShardRoute route{
-        .shard_id = shard_id,
-    };
+    ShardRoute route;
+    route.shard_id = shard_id;
     route.replicas.push_back(std::move(leader_entries.front()));
     route.replicas.insert(route.replicas.end(),
                           std::make_move_iterator(follower_entries.begin()),

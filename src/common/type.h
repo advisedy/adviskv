@@ -35,6 +35,10 @@ struct ShardID {
     TableID table_id{-1};
     ShardIndex shard_index{-1};
 
+    ShardID() = default;
+    ShardID(TableID table_id, ShardIndex shard_index)
+        : table_id(table_id), shard_index(shard_index) {}
+
     bool operator==(const ShardID& other) const {
         return table_id == other.table_id && shard_index == other.shard_index;
     }
@@ -57,6 +61,13 @@ struct ReplicaID {
     TableID table_id{-1};
     ShardIndex shard_index{-1};
     ReplicaIndex replica_index{-1};
+
+    ReplicaID() = default;
+    ReplicaID(TableID table_id, ShardIndex shard_index,
+              ReplicaIndex replica_index)
+        : table_id(table_id),
+          shard_index(shard_index),
+          replica_index(replica_index) {}
 
     bool operator==(const ReplicaID& other) const {
         return table_id == other.table_id && shard_index == other.shard_index &&
@@ -86,7 +97,10 @@ enum class ReplicaStatus : int8 { ADDING = 0, READY = 1, LOST = 2, ERROR = 3 };
 
 struct Endpoint {
     std::string ip;
-    int32_t port;
+    int32_t port{0};
+
+    Endpoint() = default;
+    Endpoint(std::string ip, int32_t port) : ip(std::move(ip)), port(port) {}
 
     bool operator==(const Endpoint& other) const {
         return ip == other.ip and port == other.port;

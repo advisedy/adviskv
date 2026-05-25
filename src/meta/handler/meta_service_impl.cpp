@@ -36,13 +36,12 @@ grpc::Status MetaServiceImpl::CreateTable(
     grpc::ServerContext *context, const rpc::CreateTableRequest *request,
     rpc::CreateTableResponse *response) {
     UNUSED(context);
-    CreateTableParam param{
-        .db_name = request->db_name(),
-        .table_name = request->table_name(),
-        .shard_count = request->shard_count(),
-        .replica_count = request->replica_count(),
-        .resource_pool = request->resource_pool(),
-    };
+    CreateTableParam param;
+    param.db_name = request->db_name();
+    param.table_name = request->table_name();
+    param.shard_count = request->shard_count();
+    param.replica_count = request->replica_count();
+    param.resource_pool = request->resource_pool();
 
     TableMeta table_meta;
     Status status = ddl_service_->create_table(param, &table_meta);
@@ -60,8 +59,9 @@ grpc::Status MetaServiceImpl::DropTable(
     grpc::ServerContext *context, const rpc::MetaDropTableRequest *request,
     rpc::MetaDropTableResponse *response) {
     UNUSED(context);
-    DropTableParam param{.db_name = request->db_name(),
-                         .table_name = request->table_name()};
+    DropTableParam param;
+    param.db_name = request->db_name();
+    param.table_name = request->table_name();
 
     TableMeta table_meta;
     Status status = ddl_service_->drop_table(param, &table_meta);
@@ -80,10 +80,11 @@ grpc::Status MetaServiceImpl::GetTable(grpc::ServerContext *context,
                                        rpc::GetTableResponse *response) {
     UNUSED(context);
 
-    GetTableParam param{.db_name = request->db_name(),
-                        .table_name = request->table_name(),
-                        .use_table_id = request->use_table_id(),
-                        .table_id = request->table_id()};
+    GetTableParam param;
+    param.db_name = request->db_name();
+    param.table_name = request->table_name();
+    param.use_table_id = request->use_table_id();
+    param.table_id = request->table_id();
 
     TableMeta table_meta;
     Status status = ddl_service_->get_table(param, &table_meta);

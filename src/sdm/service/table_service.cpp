@@ -29,23 +29,18 @@ Status TableService::place_table(const PlaceTableParam& param) {
         return Status::OK();
     }
 
-    Table table{
-        .table_id = param.table_id,
-        .spec{
-            .table_name = param.table_name,
-            .db_id = param.db_id,
-            .db_name = param.db_name,
-            .shard_count = param.shard_count,
-            .replica_count = param.replica_count,
-            .resource_pool = param.resource_pool,
-            .operation_id = param.operation_id,
-        },
-        .state{
-            .desired = TableDesired::PRESENT,
-            .phase = TablePhase::CREATING,
-            .update_ts = func::get_current_ts_ms(),
-        },
-    };
+    Table table;
+    table.table_id = param.table_id;
+    table.spec.table_name = param.table_name;
+    table.spec.db_id = param.db_id;
+    table.spec.db_name = param.db_name;
+    table.spec.shard_count = param.shard_count;
+    table.spec.replica_count = param.replica_count;
+    table.spec.resource_pool = param.resource_pool;
+    table.spec.operation_id = param.operation_id;
+    table.state.desired = TableDesired::PRESENT;
+    table.state.phase = TablePhase::CREATING;
+    table.state.update_ts = func::get_current_ts_ms();
     return store_->put_table(table);
 }
 

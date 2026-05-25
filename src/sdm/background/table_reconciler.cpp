@@ -80,13 +80,11 @@ std::vector<PeerMember> TableReconciler::build_members(
          replica_index < static_cast<ReplicaIndex>(nodes.size());
          ++replica_index) {
         const Node& node = nodes[replica_index];
-        members.push_back(PeerMember{
-            .node_id = node.id,
-            .replica_id = ReplicaID{.table_id = table_id,
-                                    .shard_index = shard_index,
-                                    .replica_index = replica_index},
-            .endpoint = node.state.endpoint,
-        });
+        PeerMember member;
+        member.node_id = node.id;
+        member.replica_id = ReplicaID{table_id, shard_index, replica_index};
+        member.endpoint = node.state.endpoint;
+        members.push_back(std::move(member));
     }
     return members;
 }
@@ -98,24 +96,19 @@ Status TableReconciler::build_replicas(Table& table, ShardIndex shard_index,
     for (ReplicaIndex replica_index = 0;
          replica_index < table.spec.replica_count; ++replica_index) {
         const Node& node = nodes[replica_index];
-        Replica replica{
-            .replica_id = ReplicaID{.table_id = table.table_id,
-                                    .shard_index = shard_index,
-                                    .replica_index = replica_index},
-            .spec =
-                ReplicaSpec{
-                    .dc = node.spec.dc,
-                    .assign_node_id = node.id,
-                    .engine_type = EngineType::MAP,
-                    .members = members,
-                },
-            .state = ReplicaState{.desired = ReplicaDesired::PRESENT,
-                                  .phase = ReplicaPhase::PENDING,
-                                  .observed_role = ReplicaRole::FOLLOWER,
-                                  .observed_endpoint = node.state.endpoint,
-                                  .update_ts = func::get_current_ts_ms(),
-                                  .term = 0},
-        };
+        Replica replica;
+        replica.replica_id =
+            ReplicaID{table.table_id, shard_index, replica_index};
+        replica.spec.dc = node.spec.dc;
+        replica.spec.assign_node_id = node.id;
+        replica.spec.engine_type = EngineType::MAP;
+        replica.spec.members = members;
+        replica.state.desired = ReplicaDesired::PRESENT;
+        replica.state.phase = ReplicaPhase::PENDING;
+        replica.state.observed_role = ReplicaRole::FOLLOWER;
+        replica.state.observed_endpoint = node.state.endpoint;
+        replica.state.update_ts = func::get_current_ts_ms();
+        replica.state.term = 0;
         replicas.emplace_back(std::move(replica));
     }
     return store_->put_replicas(replicas);
@@ -250,8 +243,7 @@ Status TableReconciler::ensure_replica_metadata(Table& table) {
     RETURN_IF_NULLPTR(selector_, "selector is nullptr")
     for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count;
          ++shard_index) {
-        ShardID shard_id{.table_id = table.table_id,
-                         .shard_index = shard_index};
+        ShardID shard_id{table.table_id, shard_index};
         {
             std::vector<Replica> replicas;
             RETURN_IF_INVALID_STATUS(
@@ -267,11 +259,12 @@ Status TableReconciler::ensure_replica_metadata(Table& table) {
 
         //   选出来nodes ， 然后构造出来members， 然后放到replicas
         TablePlacementResult placement;
-        RETURN_IF_INVALID_STATUS(selector_->select_table_nodes(
-            PlaceNodesParam{.resource_pool = table.spec.resource_pool,
-                            .shard_count = 1,
-                            .replica_count = table.spec.replica_count},
-            placement))
+        PlaceNodesParam param;
+        param.resource_pool = table.spec.resource_pool;
+        param.shard_count = 1;
+        param.replica_count = table.spec.replica_count;
+        RETURN_IF_INVALID_STATUS(
+            selector_->select_table_nodes(param, placement))
 
         const std::vector<Node>& nodes = placement.shards.front().nodes;
 
@@ -297,9 +290,9 @@ Status TableReconciler::ensure_storage_replicas(Table& table) {
     for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count;
          ++shard_index) {
         std::vector<Replica> replicas;
-        RETURN_IF_INVALID_STATUS(store_->list_replicas_by_shard(
-            ShardID{.table_id = table.table_id, .shard_index = shard_index},
-            replicas))
+        ShardID current_shard_id{table.table_id, shard_index};
+        RETURN_IF_INVALID_STATUS(
+            store_->list_replicas_by_shard(current_shard_id, replicas))
         for (Replica& replica : replicas) {
             if (replica.state.desired != ReplicaDesired::PRESENT) {
                 continue;
@@ -318,12 +311,12 @@ Status TableReconciler::ensure_storage_replicas(Table& table) {
             Endpoint endpoint;
             RETURN_IF_INVALID_STATUS(
                 get_assigned_node_endpoint(replica, endpoint))
-            Status status = storage_client_->create_replica(CreateReplicaParam{
-                .replica_id = replica.replica_id,
-                .engine_type = replica.spec.engine_type,
-                .members = replica.spec.members,
-                .endpoint = endpoint,
-            });
+            CreateReplicaParam param;
+            param.replica_id = replica.replica_id;
+            param.engine_type = replica.spec.engine_type;
+            param.members = replica.spec.members;
+            param.endpoint = endpoint;
+            Status status = storage_client_->create_replica(param);
             if (status.fail()) {
                 if (!is_retryable_create_replica_error(status)) {
                     replica.state.phase = ReplicaPhase::ERROR;
@@ -349,9 +342,9 @@ Status TableReconciler::refresh_storage_replica_info(Table& table) {
     for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count;
          ++shard_index) {
         std::vector<Replica> replicas;
-        RETURN_IF_INVALID_STATUS(store_->list_replicas_by_shard(
-            ShardID{.table_id = table.table_id, .shard_index = shard_index},
-            replicas))
+        ShardID current_shard_id{table.table_id, shard_index};
+        RETURN_IF_INVALID_STATUS(
+            store_->list_replicas_by_shard(current_shard_id, replicas))
         for (Replica& replica : replicas) {
             if (replica.state.desired != ReplicaDesired::PRESENT) {
                 continue;
@@ -361,12 +354,11 @@ Status TableReconciler::refresh_storage_replica_info(Table& table) {
             Endpoint endpoint;
             RETURN_IF_INVALID_STATUS(
                 get_assigned_node_endpoint(replica, endpoint))
-            Status status = storage_client_->get_replica_info(
-                GetReplicaInfoParam{
-                    .replica_id = replica.replica_id,
-                    .endpoint = endpoint,
-                },
-                info, exists);
+            GetReplicaInfoParam param;
+            param.replica_id = replica.replica_id;
+            param.endpoint = endpoint;
+            Status status =
+                storage_client_->get_replica_info(param, info, exists);
             if (status.fail()) {
                 if (!is_retryable_get_replica_info_error(status)) {
                     replica.state.phase = ReplicaPhase::ERROR;
@@ -404,8 +396,8 @@ Status TableReconciler::refresh_storage_replica_info(Table& table) {
 Status TableReconciler::ensure_routes_absent(const Table& table) {
     for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count;
          ++shard_index) {
-        RETURN_IF_INVALID_STATUS(store_->delete_shard_route(
-            ShardID{.table_id = table.table_id, .shard_index = shard_index}))
+        ShardID shard_id{table.table_id, shard_index};
+        RETURN_IF_INVALID_STATUS(store_->delete_shard_route(shard_id))
     }
     return Status::OK();
 }
@@ -415,9 +407,9 @@ Status TableReconciler::ensure_storage_replicas_absent(const Table& table) {
     for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count;
          ++shard_index) {
         std::vector<Replica> replicas;
-        RETURN_IF_INVALID_STATUS(store_->list_replicas_by_shard(
-            ShardID{.table_id = table.table_id, .shard_index = shard_index},
-            replicas))
+        ShardID current_shard_id{table.table_id, shard_index};
+        RETURN_IF_INVALID_STATUS(
+            store_->list_replicas_by_shard(current_shard_id, replicas))
         for (Replica& replica : replicas) {
             if (replica.state.desired != ReplicaDesired::PRESENT) continue;
             if (replica.state.phase == ReplicaPhase::DELETED) continue;
@@ -429,10 +421,10 @@ Status TableReconciler::ensure_storage_replicas_absent(const Table& table) {
             Endpoint endpoint;
             RETURN_IF_INVALID_STATUS(
                 get_assigned_node_endpoint(replica, endpoint))
-            Status status = storage_client_->delete_replica(DeleteReplicaParam{
-                .replica_id = replica.replica_id,
-                .endpoint = endpoint,
-            });
+            DeleteReplicaParam param;
+            param.replica_id = replica.replica_id;
+            param.endpoint = endpoint;
+            Status status = storage_client_->delete_replica(param);
             if (status.fail()) {
                 if (is_retryable_delete_replica_error(status)) {
                     replica.state.phase = ReplicaPhase::DELETING;
@@ -457,9 +449,9 @@ Status TableReconciler::ensure_replica_metadata_absent(const Table& table) {
     for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count;
          ++shard_index) {
         std::vector<Replica> replicas;
-        RETURN_IF_INVALID_STATUS(store_->list_replicas_by_shard(
-            ShardID{.table_id = table.table_id, .shard_index = shard_index},
-            replicas))
+        ShardID current_shard_id{table.table_id, shard_index};
+        RETURN_IF_INVALID_STATUS(
+            store_->list_replicas_by_shard(current_shard_id, replicas))
         for (const Replica& replica : replicas) {
             RETURN_IF_INVALID_STATUS(store_->del_replica(replica.replica_id))
         }
@@ -471,9 +463,9 @@ bool TableReconciler::all_replicas_ready(const Table& table) {
     for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count;
          ++shard_index) {
         std::vector<Replica> replicas;
-        Status status = store_->list_replicas_by_shard(
-            ShardID{.table_id = table.table_id, .shard_index = shard_index},
-            replicas);
+        ShardID current_shard_id{table.table_id, shard_index};
+        Status status =
+            store_->list_replicas_by_shard(current_shard_id, replicas);
         if (status.fail() ||
             static_cast<int32_t>(replicas.size()) != table.spec.replica_count) {
             return false;
@@ -491,9 +483,8 @@ bool TableReconciler::all_routes_ready(const Table& table) {
     for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count;
          ++shard_index) {
         ShardRouteOr route;
-        Status status = store_->get_shard_route(
-            ShardID{.table_id = table.table_id, .shard_index = shard_index},
-            route);
+        ShardID current_shard_id{table.table_id, shard_index};
+        Status status = store_->get_shard_route(current_shard_id, route);
         if (status.fail() || route.is_empty() || route->replicas.empty())
             return false;
         int leader_count = 0;
