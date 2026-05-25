@@ -219,6 +219,11 @@ class AdvisKVCluster:
             except subprocess.TimeoutExpired:
                 handle.process.kill()
                 handle.process.wait(timeout=5)
+        self.processes.clear()
+
+    def restart(self) -> None:
+        self.stop()
+        self.start()
 
     def logs_summary(self) -> str:
         lines = [f"logs dir: {LOG_DIR}"]

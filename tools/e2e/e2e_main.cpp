@@ -5,6 +5,7 @@
 #include <string>
 
 #include "cases/basic_kv_case.h"
+#include "cases/restart_persistence_case.h"
 #include "e2e_assert.h"
 #include "e2e_options.h"
 
@@ -78,7 +79,14 @@ bool run_case(const adviskv::e2e::Options& options) {
     if (options.case_name == "basic_kv") {
         return adviskv::e2e::run_basic_kv_case(options);
     }
-    adviskv::e2e::print_fail("select case", fmt::format("unknown case '{}'"));
+    if (options.case_name == "restart_persistence_seed") {
+        return adviskv::e2e::run_restart_persistence_seed_case(options);
+    }
+    if (options.case_name == "restart_persistence_verify") {
+        return adviskv::e2e::run_restart_persistence_verify_case(options);
+    }
+    adviskv::e2e::print_fail(
+        "select case", fmt::format("unknown case '{}'", options.case_name));
     return false;
 }
 

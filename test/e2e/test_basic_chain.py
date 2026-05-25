@@ -23,3 +23,31 @@ def test_meta_to_storage_basic_kv_chain(cluster):
     output = strip_ansi(result.stdout)
     assert "[ FAIL ]" not in output, output
     assert "[ PASS ] e2e basic kv case test passed" in output
+
+
+def test_restart_persistence_case(cluster):
+    seed = run_e2e_client(
+        "--case=restart_persistence_seed",
+        "--db=pytest_restart_db",
+        "--table=pytest_restart_table",
+        "--key_count=16",
+    )
+    assert seed.returncode == 0, seed.stdout + "\n" + cluster.logs_summary()
+    seed_output = strip_ansi(seed.stdout)
+    assert "[ FAIL ]" not in seed_output, seed_output
+    assert "[ PASS ] e2e restart persistence seed passed" in seed_output
+
+    cluster.restart()
+
+    verify = run_e2e_client(
+        "--case=restart_persistence_verify",
+        "--db=pytest_restart_db",
+        "--table=pytest_restart_table",
+        "--key_count=16",
+    )
+    assert verify.returncode == 0, (
+        verify.stdout + "\n" + cluster.logs_summary()
+    )
+    verify_output = strip_ansi(verify.stdout)
+    assert "[ FAIL ]" not in verify_output, verify_output
+    assert "[ PASS ] e2e restart persistence verify passed" in verify_output

@@ -2,7 +2,9 @@ add_executable(e2e_client
     ${CMAKE_CURRENT_SOURCE_DIR}/e2e_main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/e2e_assert.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/e2e_context.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/e2e_kv_util.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cases/basic_kv_case.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/cases/restart_persistence_case.cpp
     ${PROJECT_BINARY_DIR}/generated/meta.pb.cc
     ${PROJECT_BINARY_DIR}/generated/meta.grpc.pb.cc
 )
