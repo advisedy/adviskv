@@ -16,11 +16,15 @@ Node make_node(const NodeID& id, int32_t port = 18080) {
 }
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
+    ReplicaState state{};
+    state.desired = ReplicaDesired::PRESENT;
+    state.phase = ReplicaPhase::CREATING;
+    state.observed_role = ReplicaRole::FOLLOWER;
+    state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
+    state.term = 1;
     return Replica{replica_id,
                    ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
-                   ReplicaState{ReplicaDesired::PRESENT, ReplicaPhase::CREATING,
-                                ReplicaRole::FOLLOWER,
-                                Endpoint{"127.0.0.1", 18080}, "", 0, 1}};
+                   state};
 }
 
 HeartBeatParam make_heartbeat_param() {

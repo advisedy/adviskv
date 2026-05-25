@@ -39,37 +39,33 @@ class ReplicaMetaPersistEngineTest : public ::testing::Test {
 
     static PeerMember make_member(std::string node_id, ReplicaID replica_id,
                                   std::string ip, int32_t port) {
-        return PeerMember{
-            .node_id = std::move(node_id),
-            .replica_id = replica_id,
-            .endpoint = Endpoint{.ip = std::move(ip), .port = port},
-        };
+        return PeerMember{std::move(node_id), replica_id,
+                          Endpoint{std::move(ip), port}};
     }
 
     ReplicaMetaPayload make_payload(const ReplicaID& replica_id) const {
         return ReplicaMetaPayload{
-            .init_param{
-                .replica_id = replica_id,
-                .engine_type = EngineType::MAP,
-                .local_endpoint = endpoint_,
-                .members = members_,
-                .data_dir = base_dir_.string(),
+            ReplicaInitParam{
+                replica_id,
+                EngineType::MAP,
+                endpoint_,
+                members_,
+                base_dir_.string(),
             },
         };
     }
 
-    ReplicaID replica_id_{
-        .table_id = 101, .shard_index = 7, .replica_index = 2};
+    ReplicaID replica_id_{101, 7, 2};
 
-    Endpoint endpoint_{.ip = "127.0.0.1", .port = 1000};
+    Endpoint endpoint_{"127.0.0.1", 1000};
     std::vector<PeerMember> members_{
         make_member(
             "node-1",
-            ReplicaID{.table_id = 101, .shard_index = 7, .replica_index = 0},
+            ReplicaID{101, 7, 0},
             "127.0.0.1", 1000),
         make_member(
             "node-2",
-            ReplicaID{.table_id = 101, .shard_index = 7, .replica_index = 1},
+            ReplicaID{101, 7, 1},
             "127.0.0.1", 1001),
         make_member("node-3", replica_id_, "127.0.0.1", 1002),
     };
@@ -107,8 +103,8 @@ TEST_F(ReplicaMetaPersistEngineTest,
        ScanReplicaMetaFilesReturnsOnlySavedMetas) {
     ReplicaMetaPersistEngine persist{base_dir_.string()};
 
-    ReplicaID first{.table_id = 101, .shard_index = 7, .replica_index = 0};
-    ReplicaID second{.table_id = 102, .shard_index = 8, .replica_index = 0};
+    ReplicaID first{101, 7, 0};
+    ReplicaID second{102, 8, 0};
     Status status = persist.save_replica_meta(make_payload(first));
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     status = persist.save_replica_meta(make_payload(second));

@@ -23,10 +23,13 @@ class RouteUpdateCheckTaskTmp : public RouteUpdateCheckTask {
 };
 
 Table make_table() {
+    TableState state{};
+    state.desired = TableDesired::PRESENT;
+    state.phase = TablePhase::READY;
     return Table{TEST_TABLE_ID,
                  TableSpec{"orders", 11, "commerce", 1, 3, "pool-a",
                            "create-1001"},
-                 TableState{TableDesired::PRESENT, TablePhase::READY}};
+                 state};
 }
 
 Node make_node(const NodeID& node_id, int32_t port) {
@@ -38,11 +41,15 @@ Node make_node(const NodeID& node_id, int32_t port) {
 
 Replica make_replica(ReplicaIndex replica_index, const NodeID& node_id,
                      int32_t port, ReplicaRole role, Term term) {
+    ReplicaState state{};
+    state.desired = ReplicaDesired::PRESENT;
+    state.phase = ReplicaPhase::READY;
+    state.observed_role = role;
+    state.observed_endpoint = Endpoint{"127.0.0.1", port};
+    state.term = term;
     return Replica{ReplicaID{TEST_TABLE_ID, TEST_SHARD_INDEX, replica_index},
                    ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
-                   ReplicaState{ReplicaDesired::PRESENT, ReplicaPhase::READY,
-                                role, Endpoint{"127.0.0.1", port}, "", 0,
-                                term}};
+                   state};
 }
 
 void put_nodes(SdmStore& store, int count) {

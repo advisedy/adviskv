@@ -159,35 +159,27 @@ class NodeAgentTest : public ::testing::Test {
 
     NodeAgentConf valid_conf() const {
         return NodeAgentConf{
-            .node_id = "node-1",
-            .ip = "127.0.0.1",
-            .port = 50050,
-            .resource_pool = "default",
-            .dc = "dc1",
-            .manager_host = "127.0.0.1",
-            .manager_port = fake_sdm_.port(),
-            .heartbeat_interval_ms = 20,
-            .first_sync_retry_ms = 10,
+            "node-1",
+            "127.0.0.1",
+            50050,
+            "default",
+            "dc1",
+            "127.0.0.1",
+            fake_sdm_.port(),
+            20,
+            10,
         };
     }
 
     ReplicaInitParam make_replica_param() const {
-        ReplicaID replica_id{
-            .table_id = 101, .shard_index = 7, .replica_index = 0};
-        Endpoint endpoint{.ip = "127.0.0.1", .port = 50050};
+        ReplicaID replica_id{101, 7, 0};
+        Endpoint endpoint{"127.0.0.1", 50050};
         return ReplicaInitParam{
-            .replica_id = replica_id,
-            .engine_type = EngineType::MAP,
-            .local_endpoint = endpoint,
-            .members =
-                {
-                    PeerMember{
-                        .node_id = "node-1",
-                        .replica_id = replica_id,
-                        .endpoint = endpoint,
-                    },
-                },
-            .data_dir = base_dir_.string(),
+            replica_id,
+            EngineType::MAP,
+            endpoint,
+            {PeerMember{"node-1", replica_id, endpoint}},
+            base_dir_.string(),
         };
     }
 

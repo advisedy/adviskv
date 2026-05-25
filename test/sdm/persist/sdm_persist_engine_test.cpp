@@ -30,11 +30,15 @@ class SdmPersistEngineTest : public ::testing::Test {
 
     static SdmPersistedRecord make_minimal_record() {
         SdmPersistedRecord record;
+        TableState table_state{};
+        table_state.desired = TableDesired::PRESENT;
+        table_state.phase = TablePhase::READY;
+        table_state.update_ts = 100;
 
         record.tables[101] = Table{
             101,
             TableSpec{"users", 1, "app", 8, 3, "pool-a", "op-table"},
-            TableState{TableDesired::PRESENT, TablePhase::READY, "", 100},
+            table_state,
         };
 
         record.nodes["node-1"] = Node{
@@ -45,6 +49,13 @@ class SdmPersistEngineTest : public ::testing::Test {
         };
 
         ReplicaID replica_id{101, 2, 0};
+        ReplicaState replica_state{};
+        replica_state.desired = ReplicaDesired::PRESENT;
+        replica_state.phase = ReplicaPhase::READY;
+        replica_state.observed_role = ReplicaRole::LEADER;
+        replica_state.observed_endpoint = Endpoint{"127.0.0.1", 9000};
+        replica_state.update_ts = 300;
+        replica_state.term = 4;
         record.replicas[replica_id] = Replica{
             replica_id,
             ReplicaSpec{
@@ -53,9 +64,7 @@ class SdmPersistEngineTest : public ::testing::Test {
                 EngineType::MAP,
                 {PeerMember{"node-1", replica_id, Endpoint{"127.0.0.1", 9000}}},
             },
-            ReplicaState{ReplicaDesired::PRESENT, ReplicaPhase::READY,
-                         ReplicaRole::LEADER, Endpoint{"127.0.0.1", 9000}, "",
-                         300, 4},
+            replica_state,
         };
 
         record.resource_pools["pool-a"] = ResourcePool{"pool-a"};
@@ -72,12 +81,16 @@ class SdmPersistEngineTest : public ::testing::Test {
 
     static SdmPersistedRecord make_record() {
         SdmPersistedRecord record;
+        TableState table_state{};
+        table_state.desired = TableDesired::ABSENT;
+        table_state.phase = TablePhase::DELETING;
+        table_state.last_error_msg = "delete pending";
+        table_state.update_ts = 1000;
 
         record.tables[202] = Table{
             202,
             TableSpec{"orders", 2, "billing", 16, 5, "pool-b", "op-table-2"},
-            TableState{TableDesired::ABSENT, TablePhase::DELETING,
-                       "delete pending", 1000},
+            table_state,
         };
 
         record.nodes["node-2"] = Node{
@@ -89,6 +102,14 @@ class SdmPersistEngineTest : public ::testing::Test {
 
         ReplicaID leader_id{202, 3, 0};
         ReplicaID follower_id{202, 3, 1};
+        ReplicaState replica_state{};
+        replica_state.desired = ReplicaDesired::ABSENT;
+        replica_state.phase = ReplicaPhase::DELETING;
+        replica_state.observed_role = ReplicaRole::FOLLOWER;
+        replica_state.observed_endpoint = Endpoint{"127.0.0.2", 9100};
+        replica_state.last_error_msg = "replica draining";
+        replica_state.update_ts = 3000;
+        replica_state.term = 11;
         record.replicas[leader_id] = Replica{
             leader_id,
             ReplicaSpec{
@@ -101,9 +122,7 @@ class SdmPersistEngineTest : public ::testing::Test {
                                Endpoint{"127.0.0.3", 9101}},
                 },
             },
-            ReplicaState{ReplicaDesired::ABSENT, ReplicaPhase::DELETING,
-                         ReplicaRole::FOLLOWER, Endpoint{"127.0.0.2", 9100},
-                         "replica draining", 3000, 11},
+            replica_state,
         };
 
         record.resource_pools["pool-b"] = ResourcePool{"pool-b"};

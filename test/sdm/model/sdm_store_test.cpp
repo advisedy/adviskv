@@ -13,10 +13,13 @@ namespace {
 Table make_table(TableID table_id, const std::string& db_name,
                  const std::string& table_name,
                  TableDesired desired = TableDesired::PRESENT) {
+    TableState state{};
+    state.desired = desired;
+    state.phase = TablePhase::READY;
     return Table{table_id,
                  TableSpec{table_name, 11, db_name, 2, 2, "pool-a",
                            "create-table-" + std::to_string(table_id)},
-                 TableState{desired, TablePhase::READY}};
+                 state};
 }
 
 Node make_node(const NodeID& id, const std::string& resource_pool,
@@ -28,11 +31,14 @@ Node make_node(const NodeID& id, const std::string& resource_pool,
 }
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
+    ReplicaState state{};
+    state.desired = ReplicaDesired::PRESENT;
+    state.phase = ReplicaPhase::READY;
+    state.observed_role = ReplicaRole::FOLLOWER;
+    state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
     return Replica{replica_id,
                    ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
-                   ReplicaState{ReplicaDesired::PRESENT, ReplicaPhase::READY,
-                                ReplicaRole::FOLLOWER,
-                                Endpoint{"127.0.0.1", 18080}}};
+                   state};
 }
 
 ShardRoute make_route(const ShardID& shard_id) {

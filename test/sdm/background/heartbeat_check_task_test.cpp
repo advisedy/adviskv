@@ -19,11 +19,14 @@ Node make_heartbeat_node(const NodeID& node_id, NodeStatus status,
 
 Replica make_replica(const NodeID& node_id, ReplicaIndex replica_index,
                      ReplicaPhase phase, int32_t port) {
+    ReplicaState state{};
+    state.desired = ReplicaDesired::PRESENT;
+    state.phase = phase;
+    state.observed_role = ReplicaRole::FOLLOWER;
+    state.observed_endpoint = Endpoint{"127.0.0.1", port};
     return Replica{ReplicaID{1001, 0, replica_index},
                    ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
-                   ReplicaState{ReplicaDesired::PRESENT, phase,
-                                ReplicaRole::FOLLOWER,
-                                Endpoint{"127.0.0.1", port}}};
+                   state};
 }
 
 class HeartBeatCheckTaskTmp : public HeartBeatCheckTask {

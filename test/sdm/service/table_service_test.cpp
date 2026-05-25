@@ -18,10 +18,13 @@ DropTableParam make_drop_table_param() {
 }
 
 void put_ready_table(SdmStore& store) {
+    TableState state{};
+    state.desired = TableDesired::PRESENT;
+    state.phase = TablePhase::READY;
     Table table{1001,
                 TableSpec{"orders", 11, "commerce", 3, 2, "pool-a",
                           "create-table-1001"},
-                TableState{TableDesired::PRESENT, TablePhase::READY}};
+                state};
     ASSERT_TRUE(store.put_table(table).ok());
 }
 
@@ -133,10 +136,13 @@ TEST(TableServiceTest, DropTableRejectsInvalidStateAndConflictingOperation) {
     Status not_ready = service.drop_table(make_drop_table_param());
     EXPECT_EQ(not_ready.code(), StatusCode::ALREADY_EXIST);
 
+    TableState state{};
+    state.desired = TableDesired::ABSENT;
+    state.phase = TablePhase::DELETING;
     Table table{1002,
                 TableSpec{"payments", 11, "commerce", 1, 1, "pool-a",
                           "drop-old"},
-                TableState{TableDesired::ABSENT, TablePhase::DELETING}};
+                state};
     ASSERT_TRUE(store.put_table(table).ok());
 
     Status conflict = service.drop_table(

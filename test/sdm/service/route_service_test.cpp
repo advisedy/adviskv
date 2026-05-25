@@ -11,10 +11,13 @@ namespace adviskv::sdm {
 namespace {
 
 Table make_table() {
+    TableState state{};
+    state.desired = TableDesired::PRESENT;
+    state.phase = TablePhase::READY;
     return Table{1001,
                  TableSpec{"orders", 11, "commerce", 4, 2, "pool-a",
                            "create-table-1001"},
-                 TableState{TableDesired::PRESENT, TablePhase::READY}};
+                 state};
 }
 
 ShardID shard_for_key(const Table& table, const Key& key) {

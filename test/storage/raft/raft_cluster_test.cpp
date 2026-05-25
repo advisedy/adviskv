@@ -233,11 +233,8 @@ class RaftCluster {
 
     static LogEntry make_entry(Term term, LogIndex index, WriteOpType op_type,
                                std::string key, std::string value) {
-        return LogEntry{.term = term,
-                        .index = index,
-                        .op_type = op_type,
-                        .key = std::move(key),
-                        .value = std::move(value)};
+        return LogEntry{
+            term, index, op_type, std::move(key), std::move(value)};
     }
 
     void cleanup_temp_dirs() {
@@ -613,12 +610,7 @@ TEST_F(RaftClusterTest, HigherTermVoteRequestForcesLeaderStepDown) {
     RequestVoteResult vote_result;
     cluster_.node_ptr(0)->handle_request_vote(
         RequestVoteParam{
-            .from_replica_id = cluster_.replica_id(1),
-            .to_replica_id = cluster_.replica_id(0),
-            .term = higher_term,
-            .last_log_index = 0,
-            .last_log_term = 0,
-        },
+            cluster_.replica_id(1), cluster_.replica_id(0), higher_term, 0, 0},
         vote_result);
 
     ASSERT_EQ(cluster_.node_ptr(0)->current_term(), higher_term);
@@ -933,13 +925,11 @@ TEST_F(RaftClusterTest, RecoveringFollowerCatchesUpByAppendEntries) {
     // 投票也会失败的
     RequestVoteResult vote_result;
     cluster_.node_ptr(1)->handle_request_vote(
-        RequestVoteParam{
-            .from_replica_id = ReplicaID{500, 0, 2},
-            .to_replica_id = ReplicaID{500, 0, 1},
-            .term = cluster_.node_ptr(1)->current_term(),
-            .last_log_index = 0,
-            .last_log_term = 0,
-        },
+        RequestVoteParam{ReplicaID{500, 0, 2},
+                         ReplicaID{500, 0, 1},
+                         cluster_.node_ptr(1)->current_term(),
+                         0,
+                         0},
         vote_result);
     ASSERT_FALSE(vote_result.vote_granted);
 

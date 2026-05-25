@@ -23,11 +23,14 @@ Node make_node(const NodeID& id, const std::string& resource_pool, int32_t port,
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id,
                      ReplicaDesired desired = ReplicaDesired::PRESENT) {
+    ReplicaState state{};
+    state.desired = desired;
+    state.phase = ReplicaPhase::READY;
+    state.observed_role = ReplicaRole::FOLLOWER;
+    state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
     return Replica{replica_id,
                    ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
-                   ReplicaState{desired, ReplicaPhase::READY,
-                                ReplicaRole::FOLLOWER,
-                                Endpoint{"127.0.0.1", 18080}}};
+                   state};
 }
 
 PlaceNodesParam make_param(int32_t shard_count = 1, int32_t replica_count = 2,

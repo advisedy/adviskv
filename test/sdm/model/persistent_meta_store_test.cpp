@@ -10,11 +10,14 @@ namespace adviskv::sdm {
 namespace {
 
 Table make_table(TableID table_id, const std::string& table_name) {
+    TableState state{};
+    state.desired = TableDesired::PRESENT;
+    state.phase = TablePhase::CREATING;
+    state.update_ts = 100;
     return Table{table_id,
                  TableSpec{table_name, 11, "commerce", 2, 2, "pool-a",
                            "create-table-" + std::to_string(table_id)},
-                 TableState{TableDesired::PRESENT, TablePhase::CREATING, "",
-                            100}};
+                 state};
 }
 
 Node make_node(const NodeID& id) {
@@ -25,11 +28,15 @@ Node make_node(const NodeID& id) {
 }
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
+    ReplicaState state{};
+    state.desired = ReplicaDesired::PRESENT;
+    state.phase = ReplicaPhase::READY;
+    state.observed_role = ReplicaRole::FOLLOWER;
+    state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
+    state.term = 7;
     return Replica{replica_id,
                    ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
-                   ReplicaState{ReplicaDesired::PRESENT, ReplicaPhase::READY,
-                                ReplicaRole::FOLLOWER,
-                                Endpoint{"127.0.0.1", 18080}, "", 0, 7}};
+                   state};
 }
 
 ShardRoute make_route(const ShardID& shard_id) {
