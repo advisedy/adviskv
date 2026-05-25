@@ -233,8 +233,7 @@ class RaftCluster {
 
     static LogEntry make_entry(Term term, LogIndex index, WriteOpType op_type,
                                std::string key, std::string value) {
-        return LogEntry{
-            term, index, op_type, std::move(key), std::move(value)};
+        return LogEntry{term, index, op_type, std::move(key), std::move(value)};
     }
 
     void cleanup_temp_dirs() {
@@ -609,8 +608,8 @@ TEST_F(RaftClusterTest, HigherTermVoteRequestForcesLeaderStepDown) {
     Term higher_term = cluster_.node_ptr(0)->current_term() + 1;
     RequestVoteResult vote_result;
     cluster_.node_ptr(0)->handle_request_vote(
-        RequestVoteParam{
-            cluster_.replica_id(1), cluster_.replica_id(0), higher_term, 0, 0},
+        RequestVoteParam{cluster_.replica_id(1), cluster_.replica_id(0),
+                         higher_term, 0, 0},
         vote_result);
 
     ASSERT_EQ(cluster_.node_ptr(0)->current_term(), higher_term);
@@ -925,11 +924,8 @@ TEST_F(RaftClusterTest, RecoveringFollowerCatchesUpByAppendEntries) {
     // 投票也会失败的
     RequestVoteResult vote_result;
     cluster_.node_ptr(1)->handle_request_vote(
-        RequestVoteParam{ReplicaID{500, 0, 2},
-                         ReplicaID{500, 0, 1},
-                         cluster_.node_ptr(1)->current_term(),
-                         0,
-                         0},
+        RequestVoteParam{ReplicaID{500, 0, 2}, ReplicaID{500, 0, 1},
+                         cluster_.node_ptr(1)->current_term(), 0, 0},
         vote_result);
     ASSERT_FALSE(vote_result.vote_granted);
 
@@ -1010,6 +1006,37 @@ TEST_F(RaftClusterTest, LaggingFollowerCatchesUpBySnapshotThenEntries) {
 
     ASSERT_EQ(cluster_.node_ptr(2)->commit_index(), last_idx);
     ASSERT_EQ(get_node_entries(2).back().key, "snap_then_log_4");
+}
+// 一开始0是leader，然后被隔离了，2当了leader，在提交no-op之前的get操作会不行，当提交了no-op之后，commit_idx推进了之后，才可以进行get操作
+TEST_F(RaftClusterTest, ReadIndexRequiresCommittedCurrentTermEntry) {
+    create_and_set_0_leader(3);
+    ASSERT_TRUE(tick_until_all_committed(1));
+    ASSERT_EQ(cluster_.leader_idx(), 0);
+    drop_all_messages();
+
+    cluster_.isolate(0);
+    elect_with_votes(2, {1});
+    ASSERT_EQ(cluster_.leader_idx(), 2);
+
+    std::vector<RaftMessage> read_messages;
+    LogIndex read_index = 0;
+    Term read_term = 0;
+    Status status = cluster_.node_ptr(2)->build_append_entries_for_read(
+        read_messages, read_index, read_term);
+
+    EXPECT_EQ(status.code(), StatusCode::NOT_YET_COMMIT);
+    EXPECT_TRUE(read_messages.empty());
+
+    LogIndex current_term_idx = cluster_.node_ptr(2)->last_log_index();
+    replicate_until_committed(2, current_term_idx, {1});
+
+    status = cluster_.node_ptr(2)->build_append_entries_for_read(
+        read_messages, read_index, read_term);
+
+    ASSERT_TRUE(status.ok()) << status.to_string();
+    EXPECT_EQ(read_index, cluster_.node_ptr(2)->commit_index());
+    EXPECT_EQ(read_term, cluster_.node_ptr(2)->current_term());
+    EXPECT_FALSE(read_messages.empty());
 }
 
 }  // namespace adviskv::storage
