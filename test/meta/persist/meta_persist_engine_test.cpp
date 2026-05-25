@@ -7,6 +7,7 @@
 
 #include "common/status.h"
 #include "meta/catalog/catalog_manager.h"
+#include "meta/catalog/meta_types.h"
 
 namespace adviskv::meta {
 namespace {
@@ -47,35 +48,20 @@ TEST_F(MetaPersistEngineTest, SaveAndLoadWithDBAndTable) {
     ASSERT_TRUE(engine.init().ok());
 
     PersistedMetaRecord record;
-    DBMeta db1{.db_id = 1, .db_name = "test_db", .zone = "zone-a"};
-    DBMeta db2{.db_id = 2, .db_name = "another_db", .zone = "zone-b"};
+    DBMeta db1{1, "test_db", "zone-a"};
+    DBMeta db2{2, "another_db", "zone-b"};
     record.db_meta_map[1] = db1;
     record.db_meta_map[2] = db2;
 
-    TableMeta t1{.table_id = 10,
-                 .shard_count = 4,
-                 .replica_count = 3,
-                 .db_id = 1,
-                 .db_name = "test_db",
-                 .table_name = "users",
-                 .resource_pool = "pool-a",
-                 .state = TableState::NORMAL,
-                 .operation_id = "op-users",
-                 .last_error_msg = "",
-                 .create_ts = 100,
-                 .update_ts = 200};
-    TableMeta t2{.table_id = 11,
-                 .shard_count = 2,
-                 .replica_count = 1,
-                 .db_id = 1,
-                 .db_name = "test_db",
-                 .table_name = "orders",
-                 .resource_pool = "pool-b",
-                 .state = TableState::FAILED,
-                 .operation_id = "op-orders",
-                 .last_error_msg = "placement failed",
-                 .create_ts = 300,
-                 .update_ts = 400};
+    TableMeta t1{10,         4,       3,        1,
+                 "test_db",  "users", "pool-a", TableState::NORMAL,
+                 "op-users", "",      100,      200};
+    TableMeta t2{11,          2,
+                 1,           1,
+                 "test_db",   "orders",
+                 "pool-b",    TableState::FAILED,
+                 "op-orders", "placement failed",
+                 300,         400};
     record.table_id2table_meta[10] = t1;
     record.table_id2table_meta[11] = t2;
     record.next_db_id = 3;
@@ -130,23 +116,22 @@ TEST_F(MetaPersistEngineTest, OverwriteSaveAndReload) {
 
     {
         PersistedMetaRecord record;
-        record.db_meta_map[1] =
-            DBMeta{.db_id = 1, .db_name = "first_db", .zone = "z1"};
+        record.db_meta_map[1] = DBMeta{1, "first_db", "z1"};
         record.next_db_id = 2;
         ASSERT_TRUE(engine.save_meta(record).ok());
     }
 
     {
         PersistedMetaRecord record;
-        record.db_meta_map[10] =
-            DBMeta{.db_id = 10, .db_name = "second_db", .zone = "z2"};
-        record.table_id2table_meta[20] = TableMeta{.table_id = 20,
-                                                   .shard_count = 8,
-                                                   .replica_count = 2,
-                                                   .db_id = 10,
-                                                   .db_name = "second_db",
-                                                   .table_name = "new_table",
-                                                   .resource_pool = "pool-c"};
+        record.db_meta_map[10] = DBMeta{10, "second_db", "z2"};
+        {
+            TableMeta table{};
+            table.table_id = 20, table.shard_count = 8, table.replica_count = 2;
+            table.db_id = 10, table.db_name = "second_db",
+            table.table_name = "new_table", table.resource_pool = "pool-c";
+            record.table_id2table_meta[20] = {table};
+        }
+
         record.next_db_id = 11;
         record.next_table_id = 21;
         ASSERT_TRUE(engine.save_meta(record).ok());

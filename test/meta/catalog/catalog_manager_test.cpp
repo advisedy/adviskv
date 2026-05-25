@@ -57,7 +57,7 @@ TEST_F(CatalogManagerTest, CreateDbAndTableBasic) {
 
     DBMeta db_meta;
     ASSERT_TRUE(
-        catalog.create_db({.db_name = "test_db", .zone = "zone-1"}, &db_meta)
+        catalog.create_db(CreateDBMetaParam{"test_db", "zone-1"}, &db_meta)
             .ok());
     EXPECT_EQ(db_meta.db_id, 0);
     EXPECT_EQ(db_meta.db_name, "test_db");
@@ -65,18 +65,18 @@ TEST_F(CatalogManagerTest, CreateDbAndTableBasic) {
 
     DBMeta db_meta2;
     ASSERT_TRUE(
-        catalog.create_db({.db_name = "test_db2", .zone = "zone-2"}, &db_meta2)
+        catalog.create_db(CreateDBMetaParam{"test_db2", "zone-2"}, &db_meta2)
             .ok());
     EXPECT_EQ(db_meta2.db_id, 1);
     EXPECT_EQ(db_meta2.db_name, "test_db2");
 
     TableMeta table_meta;
     ASSERT_TRUE(catalog
-                    .create_table({.db_name = "test_db",
-                                   .table_name = "users",
-                                   .shard_count = 4,
-                                   .replica_count = 3,
-                                   .resource_pool = "pool-a"},
+                    .create_table(CreateTableMetaParam{"test_db",
+                                                       "users",
+                                                       4,
+                                                       3,
+                                                       "pool-a"},
                                   &table_meta)
                     .ok());
     EXPECT_EQ(table_meta.table_id, 0);
@@ -94,11 +94,11 @@ TEST_F(CatalogManagerTest, CreateDbAndTableBasic) {
 
     TableMeta table_meta2;
     ASSERT_TRUE(catalog
-                    .create_table({.db_name = "test_db",
-                                   .table_name = "orders",
-                                   .shard_count = 8,
-                                   .replica_count = 2,
-                                   .resource_pool = "pool-b"},
+                    .create_table(CreateTableMetaParam{"test_db",
+                                                       "orders",
+                                                       8,
+                                                       2,
+                                                       "pool-b"},
                                   &table_meta2)
                     .ok());
     EXPECT_EQ(table_meta2.table_id, 1);
@@ -153,7 +153,7 @@ TEST_F(CatalogManagerTest, CreateDbFailsDueToPersist_DbShouldNotExist) {
 
     DBMeta db_meta;
     Status status =
-        catalog.create_db({.db_name = "fail_db", .zone = "z1"}, &db_meta);
+        catalog.create_db(CreateDBMetaParam{"fail_db", "z1"}, &db_meta);
     EXPECT_TRUE(status.fail());
 
     DBMeta check_meta;
@@ -173,15 +173,15 @@ TEST_F(CatalogManagerTest, CreateTableFailsDueToPersist_TableShouldNotExist) {
 
     DBMeta db_meta;
     ASSERT_TRUE(
-        catalog.create_db({.db_name = "mydb", .zone = "z1"}, &db_meta).ok());
+        catalog.create_db(CreateDBMetaParam{"mydb", "z1"}, &db_meta).ok());
 
     TableMeta table_meta;
     ASSERT_TRUE(catalog
-                    .create_table({.db_name = "mydb",
-                                   .table_name = "existing_table",
-                                   .shard_count = 4,
-                                   .replica_count = 3,
-                                   .resource_pool = "pool-a"},
+                    .create_table(CreateTableMetaParam{"mydb",
+                                                       "existing_table",
+                                                       4,
+                                                       3,
+                                                       "pool-a"},
                                   &table_meta)
                     .ok());
 
@@ -190,11 +190,11 @@ TEST_F(CatalogManagerTest, CreateTableFailsDueToPersist_TableShouldNotExist) {
     ASSERT_TRUE(faulty_catalog.init().ok());
 
     TableMeta fail_table_meta;
-    Status status = faulty_catalog.create_table({.db_name = "mydb",
-                                                 .table_name = "fail_table",
-                                                 .shard_count = 2,
-                                                 .replica_count = 1,
-                                                 .resource_pool = "pool-b"},
+    Status status = faulty_catalog.create_table(CreateTableMetaParam{"mydb",
+                                                                     "fail_table",
+                                                                     2,
+                                                                     1,
+                                                                     "pool-b"},
                                                 &fail_table_meta);
     EXPECT_TRUE(status.fail());
 
@@ -215,32 +215,32 @@ TEST_F(CatalogManagerTest, ListTablesAndGetQueries) {
     ASSERT_TRUE(catalog.init().ok());
 
     ASSERT_TRUE(
-        catalog.create_db({.db_name = "db1", .zone = "z1"}, nullptr).ok());
+        catalog.create_db(CreateDBMetaParam{"db1", "z1"}, nullptr).ok());
     ASSERT_TRUE(
-        catalog.create_db({.db_name = "db2", .zone = "z2"}, nullptr).ok());
+        catalog.create_db(CreateDBMetaParam{"db2", "z2"}, nullptr).ok());
 
     ASSERT_TRUE(catalog
-                    .create_table({.db_name = "db1",
-                                   .table_name = "table1",
-                                   .shard_count = 4,
-                                   .replica_count = 3,
-                                   .resource_pool = "pool-a"},
+                    .create_table(CreateTableMetaParam{"db1",
+                                                       "table1",
+                                                       4,
+                                                       3,
+                                                       "pool-a"},
                                   nullptr)
                     .ok());
     ASSERT_TRUE(catalog
-                    .create_table({.db_name = "db1",
-                                   .table_name = "table2",
-                                   .shard_count = 2,
-                                   .replica_count = 1,
-                                   .resource_pool = "pool-b"},
+                    .create_table(CreateTableMetaParam{"db1",
+                                                       "table2",
+                                                       2,
+                                                       1,
+                                                       "pool-b"},
                                   nullptr)
                     .ok());
     ASSERT_TRUE(catalog
-                    .create_table({.db_name = "db2",
-                                   .table_name = "table3",
-                                   .shard_count = 8,
-                                   .replica_count = 2,
-                                   .resource_pool = "pool-c"},
+                    .create_table(CreateTableMetaParam{"db2",
+                                                       "table3",
+                                                       8,
+                                                       2,
+                                                       "pool-c"},
                                   nullptr)
                     .ok());
 
@@ -284,7 +284,7 @@ TEST_F(CatalogManagerTest, ListTablesAndGetQueries) {
 
     DBMeta db3;
     ASSERT_TRUE(
-        catalog.create_db({.db_name = "empty_db", .zone = "z3"}, &db3).ok());
+        catalog.create_db(CreateDBMetaParam{"empty_db", "z3"}, &db3).ok());
     std::vector<TableMeta> empty_tables;
     ASSERT_TRUE(catalog.list_tables("empty_db", &empty_tables).ok());
     EXPECT_TRUE(empty_tables.empty());
@@ -302,34 +302,34 @@ TEST_F(CatalogManagerTest, PersistAndRecoverDataConsistency) {
 
         ASSERT_TRUE(
             catalog
-                .create_db({.db_name = "db_alpha", .zone = "zone-a"}, nullptr)
+                .create_db(CreateDBMetaParam{"db_alpha", "zone-a"}, nullptr)
                 .ok());
         ASSERT_TRUE(
-            catalog.create_db({.db_name = "db_beta", .zone = "zone-b"}, nullptr)
+            catalog.create_db(CreateDBMetaParam{"db_beta", "zone-b"}, nullptr)
                 .ok());
 
         ASSERT_TRUE(catalog
-                        .create_table({.db_name = "db_alpha",
-                                       .table_name = "users",
-                                       .shard_count = 4,
-                                       .replica_count = 3,
-                                       .resource_pool = "pool-a"},
+                        .create_table(CreateTableMetaParam{"db_alpha",
+                                                           "users",
+                                                           4,
+                                                           3,
+                                                           "pool-a"},
                                       nullptr)
                         .ok());
         ASSERT_TRUE(catalog
-                        .create_table({.db_name = "db_alpha",
-                                       .table_name = "orders",
-                                       .shard_count = 8,
-                                       .replica_count = 2,
-                                       .resource_pool = "pool-b"},
+                        .create_table(CreateTableMetaParam{"db_alpha",
+                                                           "orders",
+                                                           8,
+                                                           2,
+                                                           "pool-b"},
                                       nullptr)
                         .ok());
         ASSERT_TRUE(catalog
-                        .create_table({.db_name = "db_beta",
-                                       .table_name = "products",
-                                       .shard_count = 2,
-                                       .replica_count = 1,
-                                       .resource_pool = "pool-c"},
+                        .create_table(CreateTableMetaParam{"db_beta",
+                                                           "products",
+                                                           2,
+                                                           1,
+                                                           "pool-c"},
                                       nullptr)
                         .ok());
     }
@@ -387,17 +387,17 @@ TEST_F(CatalogManagerTest, PersistAndRecoverDataConsistency) {
         DBMeta new_db;
         ASSERT_TRUE(
             catalog
-                .create_db({.db_name = "db_gamma", .zone = "zone-c"}, &new_db)
+                .create_db(CreateDBMetaParam{"db_gamma", "zone-c"}, &new_db)
                 .ok());
         EXPECT_EQ(new_db.db_id, 2);
 
         TableMeta new_table;
         ASSERT_TRUE(catalog
-                        .create_table({.db_name = "db_gamma",
-                                       .table_name = "new_table",
-                                       .shard_count = 1,
-                                       .replica_count = 1,
-                                       .resource_pool = "pool-d"},
+                        .create_table(CreateTableMetaParam{"db_gamma",
+                                                           "new_table",
+                                                           1,
+                                                           1,
+                                                           "pool-d"},
                                       &new_table)
                         .ok());
         EXPECT_EQ(new_table.table_id, 3);
@@ -414,15 +414,15 @@ TEST_F(CatalogManagerTest, DeletedTableRecreateSameNameUsesNewTableId) {
     ASSERT_TRUE(catalog.init().ok());
 
     ASSERT_TRUE(
-        catalog.create_db({.db_name = "commerce", .zone = "z1"}, nullptr).ok());
+        catalog.create_db(CreateDBMetaParam{"commerce", "z1"}, nullptr).ok());
 
     TableMeta old_table;
     ASSERT_TRUE(catalog
-                    .create_table({.db_name = "commerce",
-                                   .table_name = "orders",
-                                   .shard_count = 4,
-                                   .replica_count = 3,
-                                   .resource_pool = "pool-a"},
+                    .create_table(CreateTableMetaParam{"commerce",
+                                                       "orders",
+                                                       4,
+                                                       3,
+                                                       "pool-a"},
                                   &old_table)
                     .ok());
     ASSERT_EQ(old_table.table_id, 0);
@@ -443,11 +443,11 @@ TEST_F(CatalogManagerTest, DeletedTableRecreateSameNameUsesNewTableId) {
 
     TableMeta new_table;
     ASSERT_TRUE(catalog
-                    .create_table({.db_name = "commerce",
-                                   .table_name = "orders",
-                                   .shard_count = 8,
-                                   .replica_count = 2,
-                                   .resource_pool = "pool-b"},
+                    .create_table(CreateTableMetaParam{"commerce",
+                                                       "orders",
+                                                       8,
+                                                       2,
+                                                       "pool-b"},
                                   &new_table)
                     .ok());
     EXPECT_EQ(new_table.table_id, 1);
@@ -472,15 +472,15 @@ TEST_F(CatalogManagerTest, test001) {
         ASSERT_TRUE(catalog.init().ok());
 
         ASSERT_TRUE(
-            catalog.create_db({.db_name = "commerce", .zone = "z1"}, nullptr)
+            catalog.create_db(CreateDBMetaParam{"commerce", "z1"}, nullptr)
                 .ok());
         TableMeta old_table;
         ASSERT_TRUE(catalog
-                        .create_table({.db_name = "commerce",
-                                       .table_name = "orders",
-                                       .shard_count = 4,
-                                       .replica_count = 3,
-                                       .resource_pool = "pool-a"},
+                        .create_table(CreateTableMetaParam{"commerce",
+                                                           "orders",
+                                                           4,
+                                                           3,
+                                                           "pool-a"},
                                       &old_table)
                         .ok());
         ASSERT_TRUE(
@@ -520,15 +520,15 @@ TEST_F(CatalogManagerTest, RecoverSkipsDeletedNameIndexAndKeepsIdLookup) {
         ASSERT_TRUE(catalog.init().ok());
 
         ASSERT_TRUE(
-            catalog.create_db({.db_name = "commerce", .zone = "z1"}, nullptr)
+            catalog.create_db(CreateDBMetaParam{"commerce", "z1"}, nullptr)
                 .ok());
         TableMeta old_table;
         ASSERT_TRUE(catalog
-                        .create_table({.db_name = "commerce",
-                                       .table_name = "orders",
-                                       .shard_count = 4,
-                                       .replica_count = 3,
-                                       .resource_pool = "pool-a"},
+                        .create_table(CreateTableMetaParam{"commerce",
+                                                           "orders",
+                                                           4,
+                                                           3,
+                                                           "pool-a"},
                                       &old_table)
                         .ok());
         ASSERT_TRUE(
@@ -536,11 +536,11 @@ TEST_F(CatalogManagerTest, RecoverSkipsDeletedNameIndexAndKeepsIdLookup) {
                 .ok());
         TableMeta new_table;
         ASSERT_TRUE(catalog
-                        .create_table({.db_name = "commerce",
-                                       .table_name = "orders",
-                                       .shard_count = 8,
-                                       .replica_count = 2,
-                                       .resource_pool = "pool-b"},
+                        .create_table(CreateTableMetaParam{"commerce",
+                                                           "orders",
+                                                           8,
+                                                           2,
+                                                           "pool-b"},
                                       &new_table)
                         .ok());
         ASSERT_EQ(new_table.table_id, 1);
