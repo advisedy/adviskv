@@ -26,10 +26,9 @@
 #include "sdm/service/table_service.h"
 
 namespace {
-void init_conf() {
+void init_conf(const char* conf_file) {
     auto& conf_mgr = adviskv::ConfMgr::get_instance();
-    conf_mgr.LoadFromFile(
-        adviskv::path_from_project_root("conf/sdm.yaml").string());
+    conf_mgr.LoadFromFile(adviskv::path_from_project_root(conf_file).string());
 }
 
 void init_logger() {
@@ -53,18 +52,22 @@ adviskv::sdm::SdmMetaStoreType get_metastore_type() {
 }
 
 std::string get_metastore_data_dir() {
-    return adviskv::path_from_project_root(CONF_GET_STR(
-                                                       "data_dir",
-                                                       std::string("./build/"
-                                                                   "sdm_metastore")))
+    return adviskv::path_from_project_root(
+               CONF_GET_STR("data_dir", std::string("./build/"
+                                                    "sdm_metastore")))
         .string();
 }
 
 }  // namespace
 
-int main() {
+int main(int argc, char* argv[]) {
+    if (argc > 2) {
+        fmt::print(stderr, "usage: sdm [conf_file]\n");
+        return 1;
+    }
+    const char* conf_file = argc == 2 ? argv[1] : "conf/sdm.yaml";
     try {
-        init_conf();
+        init_conf(conf_file);
         init_logger();
         LOG_INFO("init phase finish");
     } catch (const std::exception& e) {
@@ -90,8 +93,7 @@ int main() {
         auto node_selector =
             std::make_unique<DefaultNodeSelector>(sdm_store.get());
 
-        auto table_service =
-            std::make_unique<TableService>(sdm_store.get());
+        auto table_service = std::make_unique<TableService>(sdm_store.get());
         auto node_service = std::make_unique<NodeService>(sdm_store.get());
         auto heartbeat_service =
             std::make_unique<HeartBeatService>(sdm_store.get());

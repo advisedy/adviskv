@@ -21,10 +21,9 @@
 
 namespace {
 
-void init_conf() {
+void init_conf(const char* conf_file) {
     auto& conf_mgr = adviskv::ConfMgr::get_instance();
-    conf_mgr.LoadFromFile(
-        adviskv::path_from_project_root("conf/meta.yaml").string());
+    conf_mgr.LoadFromFile(adviskv::path_from_project_root(conf_file).string());
 }
 
 void init_logger() {
@@ -45,9 +44,14 @@ void init_logger() {
 
 }  // namespace
 
-int main() {
+int main(int argc, char* argv[]) {
+    if (argc > 2) {
+        fmt::print(stderr, "usage: meta [conf_file]\n");
+        return 1;
+    }
+    const char* conf_file = argc == 2 ? argv[1] : "conf/meta.yaml";
     try {
-        init_conf();
+        init_conf(conf_file);
         init_logger();
         LOG_INFO("init phase finish");
     } catch (const std::exception& e) {

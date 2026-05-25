@@ -9,7 +9,7 @@
 
 namespace adviskv::meta {
 
-enum class TableState {
+enum class TableState : int32 {
     ADDING = 1,
     NORMAL = 2,
     FAILED = 3,

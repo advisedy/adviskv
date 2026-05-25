@@ -21,8 +21,5 @@ def test_meta_to_storage_basic_kv_chain(cluster):
         result.stdout + "\n" + cluster.logs_summary()
     )
     output = strip_ansi(result.stdout)
-    assert "[ PASS ] create table" in output
-    assert "[ PASS ] table normal" in output
-    assert "[ PASS ] sdk overwrite first key" in output
-    assert "[ PASS ] sdk delete last key" in output
-    assert "PASS e2e smoke test passed" in output
+    assert "[ FAIL ]" not in output, output
+    assert "[ PASS ] e2e basic kv case test passed" in output

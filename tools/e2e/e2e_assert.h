@@ -35,6 +35,7 @@ std::string colorize(COLOR color, const std::string& text);
 
 void print_step(const std::string& message);
 void print_pass(const std::string& name, const std::string& message);
+void print_pass_bold(const std::string& message);
 void print_fail(const std::string& name, const std::string& message);
 
 bool eventually(const std::string& name, const Options& options,

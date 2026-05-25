@@ -83,18 +83,20 @@ TEST_F(RaftNodeTest, test_2) {
     ASSERT_EQ((int)entries.size(),
               2);  // 一个是选举发的no-op ， 一个是put放进去的
     {
-        LogEntry entry{.key = "1",
-                       .value = "1",
-                       .index = 2,
-                       .op_type = WriteOpType::PUT,
-                       .term = 1};
+        LogEntry entry{
+            .term = 1,
+            .index = 2,
+            .op_type = WriteOpType::PUT,
+            .key = "1",
+            .value = "1",
+        };
         ASSERT_EQ(entries.back(), entry);
     }
     {
         RaftMeta meta;
         persist.load_raft_meta(meta);
         RaftMeta real_meta{
-            .commit_index = 2, .current_term = 1, .voted_for = replica_id_};
+            .current_term = 1, .commit_index = 2, .voted_for = replica_id_};
         ASSERT_EQ(meta, real_meta);
     }
 }

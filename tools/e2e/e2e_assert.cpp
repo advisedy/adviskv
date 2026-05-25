@@ -52,7 +52,13 @@ void print_step(const std::string& message) {
 }
 
 void print_pass(const std::string& name, const std::string& message) {
-    fmt::print("{} {}: {}\n", colorize(COLOR::GREEN, "[ PASS ]"), name, message);
+    fmt::print("{} {}: {}\n", colorize(COLOR::GREEN, "[ PASS ]"), name,
+               message);
+}
+
+void print_pass_bold(const std::string& message) {
+    fmt::print("{} {}\n", colorize(COLOR::GREEN, "[ PASS ]"),
+               colorize(COLOR::BOLD, message));
 }
 
 void print_fail(const std::string& name, const std::string& message) {
