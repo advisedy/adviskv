@@ -8,6 +8,7 @@
 #include "common.pb.h"
 #include "common/define.h"
 #include "common/func.h"
+#include "common/log.h"
 #include "common/status.h"
 #include "sdm.pb.h"
 #include "sdm/model/service_param.h"
@@ -167,6 +168,7 @@ grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context,
     Status status = route_service_->get_route(param, &route);
     fill_base_rsp(response, status);
     if (status.fail()) {
+        LOG_WARN("GetRoute: status:{}", status.to_string());
         return grpc::Status::OK;
     }
     if (!route.replicas.empty()) {
@@ -182,6 +184,7 @@ grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context,
             route_replica->set_role(role);
         }
     }
+    LOG_INFO("GetRoute: status:{}", status.to_string());
     return grpc::Status::OK;
 }
 

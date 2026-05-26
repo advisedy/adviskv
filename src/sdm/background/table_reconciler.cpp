@@ -163,15 +163,40 @@ Status TableReconciler::reconcile_once() {
 }
 
 Status TableReconciler::reconcile_table(Table& table) {
+    // 这里要添加上，如果一个table搞完了，我们不应该对他reconclie，这个的期望是搞那些还没有完成的table
     if (table.state.phase == TablePhase::FAILED) {
         return Status::OK();
+    } else if (table.state.desired == TableDesired::PRESENT &&
+               table.state.phase == TablePhase::READY) {
+        return Status::OK();
+    } else if (table.state.desired == TableDesired::ABSENT &&
+               table.state.phase == TablePhase::DELETED) {
+        return Status::OK();
     }
-
+    LOG_DEBUG(
+        "reconcile_table: name:{}, id:{}, table_desired:{}, table_phase:{}",
+        table.spec.table_name, table.table_id, (int32)table.state.desired,
+        (int32)table.state.phase);
     switch (table.state.desired) {
-        case TableDesired::PRESENT:
-            return reconcile_present(table);
-        case TableDesired::ABSENT:
-            return reconcile_absent(table);
+        case TableDesired::PRESENT: {
+            Status status = reconcile_present(table);
+            if (status.ok() and table.state.phase == TablePhase::READY) {
+                LOG_INFO(
+                    "table create finish, phase is ready. table_id:{}, name:{}",
+                    table.table_id, table.spec.table_name);
+            }
+            return status;
+        }
+        case TableDesired::ABSENT: {
+            Status status = reconcile_absent(table);
+            if (status.ok() and table.state.phase == TablePhase::DELETED) {
+                LOG_INFO(
+                    "table delete finish, phase is deleted. table_id:{}, "
+                    "name:{}",
+                    table.table_id, table.spec.table_name);
+            }
+            return status;
+        }
     }
     LOG_WARN("unknown table desired state");
     return mark_table_error(table,
@@ -191,22 +216,36 @@ Status TableReconciler::reconcile_present(Table& table) {
 
     Status status = ensure_replica_metadata(table);
     if (status.fail()) {
+        LOG_DEBUG("ensure_replica_metadata failed, status:{}",
+                  status.to_string());
         return handle_error(status,
                             is_retryable_replica_metadata_error(status));
     }
 
     status = ensure_storage_replicas(table);
     if (status.fail()) {
+        LOG_DEBUG("ensure_storage_replicas failed, status:{}",
+                  status.to_string());
         return handle_error(status, is_retryable_create_replica_error(status));
     }
 
     status = refresh_storage_replica_info(table);
     if (status.fail()) {
+        LOG_DEBUG("refresh_storage_replica_info failed, status:{}",
+                  status.to_string());
         return handle_error(status,
                             is_retryable_get_replica_info_error(status));
     }
 
     if (!all_replicas_ready(table) or !all_routes_ready(table)) {
+        if (!all_replicas_ready(table)) {
+            LOG_DEBUG("all replicas are not ready: table: name:{}, id:{}",
+                      table.spec.table_name, table.table_id);
+        }
+        if (!all_routes_ready(table)) {
+            LOG_DEBUG("all routes are not ready: table: name:{}, id:{}",
+                      table.spec.table_name, table.table_id);
+        }
         table.state.phase = TablePhase::CREATING;
         table.state.update_ts = func::get_current_ts_ms();
         return store_->put_table(table);

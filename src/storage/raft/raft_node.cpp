@@ -92,7 +92,7 @@ void RaftNode::tick() {
 
 void RaftNode::become_candidate() {
     if (recovering_) return;
-
+    LOG_INFO("start become cadidate");
     election_generation_++;
     current_term_++;
     voted_for_ = self_id_;
@@ -254,6 +254,9 @@ RaftMessage RaftNode::build_append_entries_message_unlocked(
 
 void RaftNode::handle_request_vote(const RequestVoteParam& param,
                                    RequestVoteResult& result) {
+    LOG_DEBUG("get request vote from {}.{}.{}", param.from_replica_id.table_id,
+              param.from_replica_id.shard_index,
+              param.from_replica_id.replica_index);
     std::lock_guard lock(mutex_);
     result.term = current_term_;
     result.vote_granted = false;
@@ -286,6 +289,9 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
 
     if (!voted_for_.has_value() ||
         voted_for_.value() == param.from_replica_id) {
+        LOG_DEBUG("vote to {}.{}.{}, current_term:{}",
+                  param.to_replica_id.table_id, param.to_replica_id.shard_index,
+                  param.to_replica_id.replica_index, current_term_);
         result.vote_granted = true;
         voted_for_ = param.from_replica_id;
         // election_ticks_ = 0;
@@ -369,6 +375,8 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
 
 void RaftNode::handle_vote_response(const ReplicaID& from,
                                     const RequestVoteResult& result) {
+    LOG_DEBUG("get vote response from {}.{}.{}", from.table_id,
+              from.shard_index, from.replica_index);
     UNUSED(from);
     std::lock_guard lock(mutex_);
     // 已经不是 CANDIDATE 了，就直接忽略之前的发起内容
@@ -382,6 +390,10 @@ void RaftNode::handle_vote_response(const ReplicaID& from,
     if (!result.vote_granted) return;
 
     granted_vote_count_++;
+    LOG_DEBUG("get vote response from {}.{}.{}, self vote count++ to {}",
+              from.table_id, from.shard_index, from.replica_index,
+              granted_vote_count_);
+
     int limit = static_cast<int>(members_.size()) / 2 + 1;
     if (granted_vote_count_ >= limit) {
         become_leader();
@@ -467,7 +479,7 @@ void RaftNode::advance_last_applied(LogIndex applied) {
 
 void RaftNode::become_follower(Term later_term) {
     assert(later_term >= current_term_);
-
+    LOG_INFO("become follower");
     if (later_term > current_term_) {
         voted_for_.reset();
     }
@@ -480,7 +492,7 @@ void RaftNode::become_follower(Term later_term) {
 
 void RaftNode::become_leader() {
     if (recovering_) return;
-
+    LOG_INFO("become leader");
     role_ = ReplicaRole::LEADER;
     // heartbeat_ticks_ = election_ticks_ = 0;
     election_tick_trigger_.reset(ELECTION_TIMEOUT);

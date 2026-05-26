@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "common/define.h"
+#include "common/log.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "sdm/manager/meta_cache_manager.h"
@@ -28,9 +29,8 @@ Status RouteService::get_route(const GetRouteParam& param,
         sdm_store_->get_table_by_name(param.db_name, param.table_name, table);
     RETURN_IF_INVALID_STATUS(status)
     if (table.is_empty()) {
-        return Status::TABLE_NOT_FOUND(
-            fmt::format("table {}.{} not found", param.db_name,
-                        param.table_name));
+        return Status::TABLE_NOT_FOUND(fmt::format(
+            "table {}.{} not found", param.db_name, param.table_name));
     }
 
     ShardID shard_id = calc_shard_id(*table, param.key);
@@ -55,6 +55,19 @@ Status RouteService::get_route(const GetRouteParam& param,
         *res = *route;
         // 这边第一个就是leader的，
         // 这个是在route_updater那边就保证了的。
+    }
+
+    {  // 打一下日志
+        std::string route_res{route->shard_id.to_string()};
+        for (RouteEntry& one : route->replicas) {
+            route_res.append(" replica: " + one.replica_id.to_string() + ", ");
+            if (one.role == ReplicaRole::LEADER) {
+                route_res.append("role: leader.");
+            } else {
+                route_res.append("role: follower.");
+            }
+        }
+        LOG_DEBUG("route is ok, {}", route_res);
     }
 
     return status;

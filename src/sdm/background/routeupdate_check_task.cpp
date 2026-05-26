@@ -44,13 +44,16 @@ Status RouteUpdateCheckTask::update_once() {
                     "route task update shard route failed, table={}, shard={}, "
                     "msg={}",
                     table.table_id, i, status.msg());
-                return status;
+            } else {
+                LOG_DEBUG("route ready, table_id={}, shard_index={}",
+                          table.table_id, i);
             }
         }
     }
     return Status::OK();
 }
 
+// TODO 这里返回的状态不一致 maybe fix
 Status RouteUpdateCheckTask::check_shard_route(const Table& table,
                                                ShardIndex shard_index) {
     Status status{Status::OK()};
@@ -78,8 +81,7 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
         }
 
         NodeOr node;
-        status =
-            sdm_store_->get_node(replica.spec.assign_node_id, node);
+        status = sdm_store_->get_node(replica.spec.assign_node_id, node);
         RETURN_IF_INVALID_STATUS(status)
 
         if (node.is_empty() || node->spec.status != NodeStatus::ONLINE) {
@@ -91,7 +93,7 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
             .node_id = replica.spec.assign_node_id,
             .ip = replica.state.observed_endpoint.ip,
             .port = replica.state.observed_endpoint.port,
-            .role = replica.state.observed_role, 
+            .role = replica.state.observed_role,
             .term = replica.state.term,
         };
         if (replica.state.observed_role == ReplicaRole::LEADER) {
@@ -107,7 +109,7 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
         LOG_WARN(
             "route not ready, leader_count={}, table_id={}, shard_index={}",
             leader_entries.size(), shard_id.table_id, shard_id.shard_index);
-        return Status::OK("leader count < 1");
+        return Status::ERROR("leader count < 1");
     }
 
     if (leader_entries.size() > 1U) {
@@ -143,6 +145,17 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
     ShardRoute route{
         .shard_id = shard_id,
     };
+
+    {
+        RouteEntry& leader = leader_entries.front();
+        LOG_DEBUG(
+            "update route leader node id:{}, ip:{}, port:{}, table_id:{}, "
+            "shard_index:{}, replica_index:{} (if sdm_store put shard route is "
+            "ok)",
+            leader.node_id, leader.ip, leader.port, leader.replica_id.table_id,
+            leader.replica_id.shard_index, leader.replica_id.replica_index);
+    }
+
     route.replicas.push_back(std::move(leader_entries.front()));
     route.replicas.insert(route.replicas.end(),
                           std::make_move_iterator(follower_entries.begin()),

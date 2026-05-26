@@ -7,6 +7,7 @@ import textwrap
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -174,40 +175,80 @@ class AdvisKVCluster:
             ),
         ]
 
+    def _spec_by_name(self, name: str) -> ServiceSpec:
+        for spec in self.specs:
+            if spec.name == name:
+                return spec
+        raise KeyError(f"unknown service: {name}")
+
+    def _handle_by_name(self, name: str) -> Optional[ProcessHandle]:
+        for handle in self.processes:
+            if handle.spec.name == name:
+                return handle
+        return None
+
+    def service_name_for_port(self, port: int) -> str:
+        for spec in self.specs:
+            if spec.port == port:
+                return spec.name
+        raise KeyError(f"unknown service port: {port}")
+
     def start(self) -> None:
         try:
             for spec in self.specs:
                 assert_port_free(spec.host, spec.port)
 
             for spec in self.specs:
-                log_path = LOG_DIR / f"{spec.name}.log"
-                log_file = log_path.open("w")
-                process = subprocess.Popen(
-                    spec.command,
-                    cwd=ROOT_DIR,
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                )
-                log_file.close()
-                handle = ProcessHandle(spec, process, log_path)
-                self.processes.append(handle)
-                time.sleep(1.0)
-                if process.poll() is not None:
-                    raise RuntimeError(
-                        f"{spec.name} exited early with code "
-                        f"{process.returncode}; log: {log_path}"
-                    )
-                try:
-                    wait_port(spec.host, spec.port)
-                except TimeoutError as exc:
-                    raise RuntimeError(
-                        f"{spec.name} did not listen on {spec.host}:"
-                        f"{spec.port}; log: {log_path}"
-                    ) from exc
+                self.start_service(spec.name)
         except Exception:
             self.stop()
             raise
+
+    def start_service(self, name: str) -> None:
+        if self._handle_by_name(name) is not None:
+            raise RuntimeError(f"service already started: {name}")
+        spec = self._spec_by_name(name)
+        assert_port_free(spec.host, spec.port)
+
+        log_path = LOG_DIR / f"{spec.name}.log"
+        log_file = log_path.open("a")
+        process = subprocess.Popen(
+            spec.command,
+            cwd=ROOT_DIR,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        log_file.close()
+        handle = ProcessHandle(spec, process, log_path)
+        self.processes.append(handle)
+        time.sleep(1.0)
+        if process.poll() is not None:
+            self.processes.remove(handle)
+            raise RuntimeError(
+                f"{spec.name} exited early with code "
+                f"{process.returncode}; log: {log_path}"
+            )
+        try:
+            wait_port(spec.host, spec.port)
+        except TimeoutError as exc:
+            raise RuntimeError(
+                f"{spec.name} did not listen on {spec.host}:"
+                f"{spec.port}; log: {log_path}"
+            ) from exc
+
+    def stop_service(self, name: str) -> None:
+        handle = self._handle_by_name(name)
+        if handle is None:
+            return
+        if handle.process.poll() is None:
+            handle.process.terminate()
+        try:
+            handle.process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            handle.process.kill()
+            handle.process.wait(timeout=5)
+        self.processes.remove(handle)
 
     def stop(self) -> None:
         for handle in reversed(self.processes):
@@ -224,6 +265,10 @@ class AdvisKVCluster:
     def restart(self) -> None:
         self.stop()
         self.start()
+
+    def restart_service(self, name: str) -> None:
+        self.stop_service(name)
+        self.start_service(name)
 
     def logs_summary(self) -> str:
         lines = [f"logs dir: {LOG_DIR}"]

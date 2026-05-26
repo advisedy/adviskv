@@ -3,6 +3,7 @@
 #include "common/define.h"
 #include "common/func.h"
 #include "common/log.h"
+#include "common/type.h"
 #include "sdm/model/service_param.h"
 #include "sdm/utility/enum_convert.h"
 namespace adviskv::sdm {
@@ -22,7 +23,10 @@ Status HeartBeatService::heartbeat(const HeartBeatParam& param) {
 
     // status = build_desired_replicas(param.node_id, &result);
     // RETURN_IF_INVALID_STATUS(status)
-
+    LOG_DEBUG(
+        "HeartBeatService: get node_id:{} heartbeat, port:{}, "
+        "replica_list_size:{}",
+        param.node_id, param.port, param.replica_list.size());
     return Status::OK();
 }
 
@@ -66,6 +70,11 @@ Status HeartBeatService::apply_reported_replicas(const HeartBeatParam& param) {
         replica->state.term = info.term;
         status = sdm_store_->put_replica(*replica);
         RETURN_IF_INVALID_STATUS(status)
+
+        if (replica->state.observed_role == ReplicaRole::LEADER) {
+            LOG_DEBUG("HeartBeatSerive: replica_id:{} is leader",
+                      replica->replica_id.to_string());
+        }
     }
     return Status::OK();
 }

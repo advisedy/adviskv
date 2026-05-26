@@ -92,12 +92,17 @@ Status HeartBeatCheckTask::check_and_modify_node(Node& node) {
             return Status{StatusCode::ERROR, "node status is none"};
         }
     }
+    if (status.fail()) {
+        LOG_WARN("check_and_modify_node failed, status:{}", status.to_string());
+    }
     RETURN_IF_INVALID_STATUS(status)
     return sdm_store_->put_node(node);
 }
 
 Status HeartBeatCheckTask::mark_node_offline(Node& node) {
     Status status = Status::OK();
+    LOG_INFO("mark node offline: id:{}, ip:{}, port:{}", node.id,
+             node.state.endpoint.ip, node.state.endpoint.port);
     node.spec.status = NodeStatus::OFFLINE;
     //  应该在这里更新sdm_store那边的node2replicas的缓存
 
@@ -134,7 +139,9 @@ Status HeartBeatCheckTask::mark_node_suspect(Node& node) {
 Status HeartBeatCheckTask::mark_node_online(Node& node) {
     Status status = Status::OK();
     node.spec.status = NodeStatus::ONLINE;
-
+    LOG_INFO("mark node online: id:{}, ip:{}, port:{}", node.id,
+             node.state.endpoint.ip, node.state.endpoint.port);
+    node.spec.status = NodeStatus::OFFLINE;
     std::vector<Replica> replicas;
     status = sdm_store_->list_replicas_by_node(node.id, replicas);
     RETURN_IF_INVALID_STATUS(status)
@@ -153,7 +160,3 @@ Status HeartBeatCheckTask::mark_node_online(Node& node) {
 }
 
 }  // namespace adviskv::sdm
-
-
-
-

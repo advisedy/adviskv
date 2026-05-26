@@ -105,12 +105,12 @@ using NodePtr = std::shared_ptr<Node>;
 //////////////////////////////
 // table
 
-enum class TableDesired {
+enum class TableDesired : int32 {
     PRESENT = 1,
     ABSENT = 2,
 };
 
-enum class TablePhase {
+enum class TablePhase : int32 {
     CREATING = 1,
     READY = 2,
     DELETING = 3,
