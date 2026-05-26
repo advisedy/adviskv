@@ -367,10 +367,10 @@ bool print_current_leader(E2EContext* context, const std::string& key) {
     return true;
 }
 
-bool run_seed_case(const Options& options, const std::string& title,
+bool run_seed_case(const Options& options, 
                    const std::string& prefix, bool print_leader) {
-    fmt::print("{} {}\n", colorize(COLOR::BOLD, title),
-               colorize(COLOR::BLUE, "(seed data)"));
+    // fmt::print("{} {}\n", colorize(COLOR::BOLD, title),
+    //            colorize(COLOR::BLUE, "(seed data)"));
 
     if (!validate_key_count(options)) {
         return false;
@@ -392,11 +392,11 @@ bool run_seed_case(const Options& options, const std::string& title,
     return true;
 }
 
-bool run_verify_case(const Options& options, const std::string& title,
+bool run_verify_case(const Options& options, 
                      const std::string& prefix,
                      const std::string& after_key_suffix) {
-    fmt::print("{} {}\n", colorize(COLOR::BOLD, title),
-               colorize(COLOR::BLUE, "(verify data)"));
+    // fmt::print("{} {}\n", colorize(COLOR::BOLD, title),
+    //            colorize(COLOR::BLUE, "(verify data)"));
 
     if (!validate_key_count(options)) {
         return false;

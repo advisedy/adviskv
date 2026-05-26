@@ -1,5 +1,6 @@
 #include "e2e_assert.h"
 
+#include <fmt/base.h>
 #include <fmt/core.h>
 #include <unistd.h>
 
@@ -64,6 +65,19 @@ void print_pass_bold(const std::string& message) {
 void print_fail(const std::string& name, const std::string& message) {
     fmt::print(stderr, "{} {}: {}\n", colorize(COLOR::RED, "[ FAIL ]"), name,
                message);
+}
+
+void print_case_start(const std::string& name) {
+    fmt::print("{}: start", name);
+}
+
+void print_case_pass(const std::string& name) {
+    fmt::print("{} {}: {}\n", colorize(COLOR::GREEN, "[ PASS ]"), name, "pass");
+}
+
+void print_case_fail(const std::string& name) {
+    fmt::print(stderr, "{} {} {}\n", colorize(COLOR::RED, "[ FAIL ]"), name,
+               "fail");
 }
 
 bool eventually(const std::string& name, const Options& options,

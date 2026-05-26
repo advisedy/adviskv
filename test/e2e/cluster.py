@@ -83,6 +83,17 @@ def write_file(path: Path, content: str) -> None:
 
 def write_e2e_configs() -> None:
     write_file(
+        CONF_DIR / "e2e_client.yaml",
+        f"""
+        logger_name: "e2e_sdk_log"
+        log_dir: "{LOG_DIR}"
+        log_filename: "sdk.log"
+        log_level: "debug"
+        log_to_console: false
+        log_to_file: true
+        """,
+    )
+    write_file(
         CONF_DIR / "sdm.yaml",
         f"""
         listen_host: "127.0.0.1"
@@ -93,7 +104,7 @@ def write_e2e_configs() -> None:
         log_dir: "{LOG_DIR / "sdm"}"
         log_filename: "sdm.log"
         log_level: "debug"
-        log_to_console: true
+        log_to_console: false
         log_to_file: true
         """,
     )
@@ -110,7 +121,7 @@ def write_e2e_configs() -> None:
         log_dir: "{LOG_DIR / "meta"}"
         log_filename: "meta.log"
         log_level: "debug"
-        log_to_console: true
+        log_to_console: false
         log_to_file: true
         """,
     )
@@ -133,7 +144,7 @@ def write_e2e_configs() -> None:
             log_dir: "{LOG_DIR / f"storage-{index}"}"
             log_filename: "storage-{index}.log"
             log_level: "debug"
-            log_to_console: true
+            log_to_console: false
             log_to_file: true
             """,
         )
@@ -210,16 +221,12 @@ class AdvisKVCluster:
         spec = self._spec_by_name(name)
         assert_port_free(spec.host, spec.port)
 
-        log_path = LOG_DIR / f"{spec.name}.log"
-        log_file = log_path.open("a")
+        log_path = LOG_DIR / spec.name
         process = subprocess.Popen(
             spec.command,
             cwd=ROOT_DIR,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
             text=True,
         )
-        log_file.close()
         handle = ProcessHandle(spec, process, log_path)
         self.processes.append(handle)
         time.sleep(1.0)
@@ -246,6 +253,15 @@ class AdvisKVCluster:
         try:
             handle.process.wait(timeout=5)
         except subprocess.TimeoutExpired:
+            handle.process.kill()
+            handle.process.wait(timeout=5)
+        self.processes.remove(handle)
+
+    def kill_service(self, name: str) -> None:
+        handle = self._handle_by_name(name)
+        if handle is None:
+            return
+        if handle.process.poll() is None:
             handle.process.kill()
             handle.process.wait(timeout=5)
         self.processes.remove(handle)
@@ -282,6 +298,7 @@ def run_e2e_client(*args: str) -> subprocess.CompletedProcess:
     env.setdefault("FORCE_COLOR", "1")
     command = [
         str(BIN_DIR / "e2e_client"),
+        str(CONF_DIR / "e2e_client.yaml"),
         "--meta_host=127.0.0.1",
         "--meta_port=50048",
         "--sdm_host=127.0.0.1",

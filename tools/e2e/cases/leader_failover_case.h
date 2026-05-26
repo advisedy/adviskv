@@ -12,8 +12,8 @@ namespace adviskv::e2e {
 输出出来leader的ip和port之后，被python那边捕获，然后通过prot去停掉leader
 */
 inline bool run_leader_failover_seed_case(const Options& options) {
-    const bool ok = run_seed_case(options, "AdvisKV E2E Leader Failover Seed",
-                                  "leader-failover", true);
+    // TODO 要在这里输出一个title
+    const bool ok = run_seed_case(options, "leader-failover", true);
     if (ok) {
         print_pass_bold("e2e leader failover seed passed");
     }
@@ -21,9 +21,10 @@ inline bool run_leader_failover_seed_case(const Options& options) {
 }
 
 inline bool run_leader_failover_verify_case(const Options& options) {
+    // TODO 要在这里输出一个title
+
     const bool ok =
-        run_verify_case(options, "AdvisKV E2E Leader Failover Verify",
-                        "leader-failover", "after-failover");
+        run_verify_case(options, "leader-failover", "after-failover");
     if (ok) {
         print_pass_bold("e2e leader failover verify passed");
     }

@@ -38,6 +38,11 @@ void print_pass(const std::string& name, const std::string& message);
 void print_pass_bold(const std::string& message);
 void print_fail(const std::string& name, const std::string& message);
 
+void print_case_start(const std::string& name);
+void print_case_pass(const std::string& name);
+
+void print_case_fail(const std::string& name);
+
 bool eventually(const std::string& name, const Options& options,
                 const std::function<CheckResult()>& check,
                 std::string* last_error);
