@@ -1,6 +1,9 @@
 #include "sdk/client.h"
 
+#include <fmt/format.h>
+
 #include "common/define.h"
+#include "sdk/log.h"
 
 namespace adviskv::sdk {
 
@@ -13,16 +16,41 @@ Status KVClient::put(const Key& key, const Value& value) {
     RouteCacheKey cache_key{conf_.db_name, conf_.table_name, key};
     RouteInfo route;
     Status status = resolve_route(cache_key, &route);
-    RETURN_IF_INVALID_STATUS(status)
+    if (status.fail()) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "put resolve route failed, db={}, table={}, key={}, "
+                        "status={}",
+                        conf_.db_name, conf_.table_name, key,
+                        status.to_string());
+        return status;
+    }
 
     status = storage_client_.put(route, key, value);
     if (!should_invalidate_route(status)) {
         return status;
     }
 
+    ADVISKV_SDK_LOG(LogLevel::INFO,
+                    "put invalidates route, db={}, table={}, key={}, "
+                    "status={}",
+                    conf_.db_name, conf_.table_name, key, status.to_string());
     status = resolve_route(cache_key, &route);
-    RETURN_IF_INVALID_STATUS(status)
-    return storage_client_.put(route, key, value);
+    if (status.fail()) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "put retry resolve route failed, db={}, table={}, "
+                        "key={}, status={}",
+                        conf_.db_name, conf_.table_name, key,
+                        status.to_string());
+        return status;
+    }
+    status = storage_client_.put(route, key, value);
+    if (status.fail()) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "put retry failed, db={}, table={}, key={}, status={}",
+                        conf_.db_name, conf_.table_name, key,
+                        status.to_string());
+    }
+    return status;
 }
 
 Status KVClient::del(const Key& key) {
@@ -31,16 +59,42 @@ Status KVClient::del(const Key& key) {
     RouteCacheKey cache_key{conf_.db_name, conf_.table_name, key};
     RouteInfo route;
     Status status = resolve_route(cache_key, &route);
-    RETURN_IF_INVALID_STATUS(status)
+    if (status.fail()) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "delete resolve route failed, db={}, table={}, key={}, "
+                        "status={}",
+                        conf_.db_name, conf_.table_name, key,
+                        status.to_string());
+        return status;
+    }
 
     status = storage_client_.del(route, key);
     if (!should_invalidate_route(status)) {
         return status;
     }
 
+    ADVISKV_SDK_LOG(LogLevel::INFO,
+                    "delete invalidates route, db={}, table={}, key={}, "
+                    "status={}",
+                    conf_.db_name, conf_.table_name, key, status.to_string());
     status = resolve_route(cache_key, &route);
-    RETURN_IF_INVALID_STATUS(status)
-    return storage_client_.del(route, key);
+    if (status.fail()) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "delete retry resolve route failed, db={}, table={}, "
+                        "key={}, status={}",
+                        conf_.db_name, conf_.table_name, key,
+                        status.to_string());
+        return status;
+    }
+    status = storage_client_.del(route, key);
+    if (status.fail()) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "delete retry failed, db={}, table={}, key={}, "
+                        "status={}",
+                        conf_.db_name, conf_.table_name, key,
+                        status.to_string());
+    }
+    return status;
 }
 
 Status KVClient::get(const Key& key, Value* value) {
@@ -50,16 +104,40 @@ Status KVClient::get(const Key& key, Value* value) {
     RouteCacheKey cache_key{conf_.db_name, conf_.table_name, key};
     RouteInfo route;
     Status status = resolve_route(cache_key, &route);
-    RETURN_IF_INVALID_STATUS(status)
+    if (status.fail()) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "get resolve route failed, db={}, table={}, key={}, "
+                        "status={}",
+                        conf_.db_name, conf_.table_name, key,
+                        status.to_string());
+        return status;
+    }
 
     status = storage_client_.get(route, key, value);
     if (!should_invalidate_route(status)) {
         return status;
     }
 
+    ADVISKV_SDK_LOG(LogLevel::INFO,
+                    "get invalidates route, db={}, table={}, key={}, status={}",
+                    conf_.db_name, conf_.table_name, key, status.to_string());
     status = resolve_route(cache_key, &route);
-    RETURN_IF_INVALID_STATUS(status)
-    return storage_client_.get(route, key, value);
+    if (status.fail()) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "get retry resolve route failed, db={}, table={}, "
+                        "key={}, status={}",
+                        conf_.db_name, conf_.table_name, key,
+                        status.to_string());
+        return status;
+    }
+    status = storage_client_.get(route, key, value);
+    if (status.fail()) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "get retry failed, db={}, table={}, key={}, status={}",
+                        conf_.db_name, conf_.table_name, key,
+                        status.to_string());
+    }
+    return status;
 }
 
 bool KVClient::should_invalidate_route(const Status& status) {

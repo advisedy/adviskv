@@ -7,6 +7,7 @@
 #include <chrono>
 
 #include "common/define.h"
+#include "sdk/log.h"
 
 namespace adviskv::sdk {
 
@@ -55,7 +56,14 @@ Status StorageClient::put(const RouteInfo& route, const Key& key,
                           const Value& value) const {
     Endpoint endpoint;
     Status status = select_endpoint(route, &endpoint);
-    RETURN_IF_INVALID_STATUS(status)
+    if (status.fail()) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "select storage endpoint for put failed, table_id={}, "
+                        "shard_id={}, key={}, status={}",
+                        route.table_id, route.shard_id, key,
+                        status.to_string());
+        return status;
+    }
 
     rpc::StorageService::Stub* stub = make_stub(endpoint);
     RETURN_IF_NULLPTR(stub, "storage stub is nullptr")
@@ -73,12 +81,25 @@ Status StorageClient::put(const RouteInfo& route, const Key& key,
 
     grpc::Status grpc_status = stub->Put(&context, request, &response);
     if (!grpc_status.ok()) {
+        ADVISKV_SDK_LOG(LogLevel::ERROR,
+                        "Storage Put RPC failed, endpoint={}:{}, table_id={}, "
+                        "shard_id={}, key={}, grpc_code={}, msg={}",
+                        endpoint.ip, endpoint.port, route.table_id,
+                        route.shard_id, key,
+                        static_cast<int>(grpc_status.error_code()),
+                        grpc_status.error_message());
         return Status::ERROR(
             fmt::format("Storage Put RPC failed, grpc code = {}, msg = {}",
                         static_cast<int>(grpc_status.error_code()),
                         grpc_status.error_message()));
     }
     if (response.base_rsp().code() != to_rpc_code(StatusCode::OK)) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "Storage Put returns non-ok, endpoint={}:{}, "
+                        "table_id={}, shard_id={}, key={}, code={}, msg={}",
+                        endpoint.ip, endpoint.port, route.table_id,
+                        route.shard_id, key, response.base_rsp().code(),
+                        response.base_rsp().msg());
         return Status{static_cast<StatusCode>(response.base_rsp().code()),
                       response.base_rsp().msg()};
     }
@@ -88,7 +109,14 @@ Status StorageClient::put(const RouteInfo& route, const Key& key,
 Status StorageClient::del(const RouteInfo& route, const Key& key) const {
     Endpoint endpoint;
     Status status = select_endpoint(route, &endpoint);
-    RETURN_IF_INVALID_STATUS(status)
+    if (status.fail()) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "select storage endpoint for delete failed, "
+                        "table_id={}, shard_id={}, key={}, status={}",
+                        route.table_id, route.shard_id, key,
+                        status.to_string());
+        return status;
+    }
 
     rpc::StorageService::Stub* stub = make_stub(endpoint);
     RETURN_IF_NULLPTR(stub, "storage stub is nullptr")
@@ -105,12 +133,26 @@ Status StorageClient::del(const RouteInfo& route, const Key& key) const {
 
     grpc::Status grpc_status = stub->Delete(&context, request, &response);
     if (!grpc_status.ok()) {
+        ADVISKV_SDK_LOG(LogLevel::ERROR,
+                        "Storage Delete RPC failed, endpoint={}:{}, "
+                        "table_id={}, shard_id={}, key={}, grpc_code={}, "
+                        "msg={}",
+                        endpoint.ip, endpoint.port, route.table_id,
+                        route.shard_id, key,
+                        static_cast<int>(grpc_status.error_code()),
+                        grpc_status.error_message());
         return Status::ERROR(
             fmt::format("Storage Delete RPC failed, grpc code = {}, msg = {}",
                         static_cast<int>(grpc_status.error_code()),
                         grpc_status.error_message()));
     }
     if (response.base_rsp().code() != to_rpc_code(StatusCode::OK)) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "Storage Delete returns non-ok, endpoint={}:{}, "
+                        "table_id={}, shard_id={}, key={}, code={}, msg={}",
+                        endpoint.ip, endpoint.port, route.table_id,
+                        route.shard_id, key, response.base_rsp().code(),
+                        response.base_rsp().msg());
         return Status{static_cast<StatusCode>(response.base_rsp().code()),
                       response.base_rsp().msg()};
     }
@@ -122,7 +164,14 @@ Status StorageClient::get(const RouteInfo& route, const Key& key,
     RETURN_IF_NULLPTR(value, "value should not be nullptr")
     Endpoint endpoint;
     Status status = select_endpoint(route, &endpoint);
-    RETURN_IF_INVALID_STATUS(status)
+    if (status.fail()) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "select storage endpoint for get failed, table_id={}, "
+                        "shard_id={}, key={}, status={}",
+                        route.table_id, route.shard_id, key,
+                        status.to_string());
+        return status;
+    }
 
     rpc::StorageService::Stub* stub = make_stub(endpoint);
     RETURN_IF_NULLPTR(stub, "storage stub is nullptr")
@@ -139,12 +188,25 @@ Status StorageClient::get(const RouteInfo& route, const Key& key,
 
     grpc::Status grpc_status = stub->Get(&context, request, &response);
     if (!grpc_status.ok()) {
+        ADVISKV_SDK_LOG(LogLevel::ERROR,
+                        "Storage Get RPC failed, endpoint={}:{}, table_id={}, "
+                        "shard_id={}, key={}, grpc_code={}, msg={}",
+                        endpoint.ip, endpoint.port, route.table_id,
+                        route.shard_id, key,
+                        static_cast<int>(grpc_status.error_code()),
+                        grpc_status.error_message());
         return Status::ERROR(
             fmt::format("Storage Get RPC failed, grpc code = {}, msg = {}",
                         static_cast<int>(grpc_status.error_code()),
                         grpc_status.error_message()));
     }
     if (response.base_rsp().code() != to_rpc_code(StatusCode::OK)) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "Storage Get returns non-ok, endpoint={}:{}, "
+                        "table_id={}, shard_id={}, key={}, code={}, msg={}",
+                        endpoint.ip, endpoint.port, route.table_id,
+                        route.shard_id, key, response.base_rsp().code(),
+                        response.base_rsp().msg());
         return Status{static_cast<StatusCode>(response.base_rsp().code()),
                       response.base_rsp().msg()};
     }

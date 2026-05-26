@@ -7,6 +7,7 @@
 #include <chrono>
 
 #include "common/define.h"
+#include "sdk/log.h"
 
 namespace adviskv::sdk {
 
@@ -47,6 +48,13 @@ Status SdmRouteClient::get_route(const Key& key, RouteInfo* route) const {
 
     grpc::Status grpc_status = stub_->GetRoute(&context, request, &response);
     if (!grpc_status.ok()) {
+        ADVISKV_SDK_LOG(LogLevel::ERROR,
+                        "GetRoute RPC failed, sdm={}:{}, db={}, table={}, "
+                        "key={}, grpc_code={}, msg={}",
+                        conf_.sdm_host, conf_.sdm_port, conf_.db_name,
+                        conf_.table_name, key,
+                        static_cast<int>(grpc_status.error_code()),
+                        grpc_status.error_message());
         return Status::ERROR(
             fmt::format("GetRoute RPC failed, grpc code = {}, msg = {}",
                         static_cast<int>(grpc_status.error_code()),
@@ -54,6 +62,12 @@ Status SdmRouteClient::get_route(const Key& key, RouteInfo* route) const {
     }
 
     if (response.base_rsp().code() != to_rpc_code(StatusCode::OK)) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "GetRoute returns non-ok, sdm={}:{}, db={}, table={}, "
+                        "key={}, code={}, msg={}",
+                        conf_.sdm_host, conf_.sdm_port, conf_.db_name,
+                        conf_.table_name, key, response.base_rsp().code(),
+                        response.base_rsp().msg());
         return Status{static_cast<StatusCode>(response.base_rsp().code()),
                       response.base_rsp().msg()};
     }

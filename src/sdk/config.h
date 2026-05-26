@@ -1,12 +1,29 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
+#include <functional>
 #include <string>
+#include <string_view>
 
 #include "common/define.h"
 #include "common/status.h"
 
 namespace adviskv::sdk {
+
+enum class LogLevel : int32_t {
+    DEBUG = 0,
+    INFO = 1,
+    WARN = 2,
+    ERROR = 3,
+};
+
+using LogCallback = std::function<void(LogLevel, std::string_view)>;
+
+struct LogOptions {
+    LogLevel level{LogLevel::INFO};
+    LogCallback callback;
+};
 
 struct KVClientConf {
     std::string db_name;
@@ -17,6 +34,7 @@ struct KVClientConf {
     int32_t storage_timeout_ms{3000};
     int64_t route_cache_ttl_ms{8000};
     size_t route_cache_capacity{1024};
+    LogOptions log;
 
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(!sdm_host.empty(),
