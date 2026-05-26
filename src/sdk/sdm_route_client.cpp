@@ -7,7 +7,9 @@
 #include <chrono>
 
 #include "common/define.h"
+#include "sdk/config.h"
 #include "sdk/log.h"
+#include "sdk/model.h"
 
 namespace adviskv::sdk {
 
@@ -89,6 +91,18 @@ Status SdmRouteClient::get_route(const Key& key, RouteInfo* route) const {
             .role = from_pb_role(replica.role()),
         });
     }
+
+    {
+        std::string route_res;
+        for (const RouteReplica& one : route->replicas) {
+            std::string one_str{fmt::format(
+                "replica:[ip:{}, port:{}, role:{}], ", one.endpoint.ip,
+                one.endpoint.port, (int8)one.role)};
+            route_res.append(std::move(one_str));
+        }
+        ADVISKV_SDK_LOG(LogLevel::INFO, "get route ok, route: {}", route_res);
+    }
+
     return Status::OK();
 }
 

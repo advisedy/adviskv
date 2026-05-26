@@ -3,8 +3,10 @@
 #include <memory>
 #include <string>
 
+#include "common/type.h"
 #include "e2e_options.h"
 #include "meta.grpc.pb.h"
+#include "sdk/model.h"
 #include "sdm.grpc.pb.h"
 
 namespace adviskv::e2e {
@@ -23,9 +25,5 @@ private:
     std::unique_ptr<rpc::MetaService::Stub> meta_stub_;
     std::unique_ptr<rpc::ShardingManagerService::Stub> sdm_stub_;
 };
-
-bool create_db(E2EContext* context, std::string* error);
-bool create_table(E2EContext* context, std::string* error);
-bool wait_table_normal(E2EContext* context);
 
 }  // namespace adviskv::e2e
