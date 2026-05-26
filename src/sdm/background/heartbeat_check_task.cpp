@@ -141,7 +141,8 @@ Status HeartBeatCheckTask::mark_node_online(Node& node) {
     node.spec.status = NodeStatus::ONLINE;
     LOG_INFO("mark node online: id:{}, ip:{}, port:{}", node.id,
              node.state.endpoint.ip, node.state.endpoint.port);
-    node.spec.status = NodeStatus::OFFLINE;
+    // node.spec.status = NodeStatus::OFFLINE;
+
     std::vector<Replica> replicas;
     status = sdm_store_->list_replicas_by_node(node.id, replicas);
     RETURN_IF_INVALID_STATUS(status)

@@ -113,7 +113,7 @@ TEST(RouteUpdateCheckTaskTest, DeleteShardRouteWhenLeaderCountLessThanOne) {
 
     RouteUpdateCheckTask task(&store);
     Status status = task.check_shard_route(make_table(), TEST_SHARD_INDEX);
-    EXPECT_TRUE(status.ok());
+    EXPECT_TRUE(status.fail());
     EXPECT_EQ(status.msg(), "leader count < 1");
 
     ShardRouteOr route;

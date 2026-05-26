@@ -48,6 +48,9 @@ class HeartBeatCheckTaskTmp : public HeartBeatCheckTask {
    public:
     using HeartBeatCheckTask::HeartBeatCheckTask;
     void set_start_ts_ms(int64 one) { start_ts_ms_ = one; }
+    Status check_and_modify_node(Node& node) {
+        return HeartBeatCheckTask::check_and_modify_node(node);
+    }
 };
 
 void expire_startup_grace(HeartBeatCheckTaskTmp& task) {
@@ -129,6 +132,24 @@ TEST(HeartBeatCheckTaskTest, SuspectNodeBecomesOnlineAndReplicasUpdated) {
     ASSERT_TRUE(store.get_replica(ReplicaID{1001, 0, 0}, replica).ok());
     ASSERT_FALSE(replica.is_empty());
     EXPECT_EQ(replica->state.phase, ReplicaPhase::CREATING);
+}
+
+// 测试一下当时offline的node，然后发送了心跳之后，状态变成了ONLINE
+TEST(HeartBeatCheckTaskTest, OfflineNodeWithFreshHeartbeatBecomesOnline) {
+    Node node;
+    node.id = "storage-1";
+    node.spec.status = NodeStatus::OFFLINE;
+    node.state.last_heartbeat_ts = func::get_current_ts_ms();
+
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    ASSERT_EQ(store.put_node(node).ok(), true);
+    HeartBeatCheckTaskTmp task(&store);
+    ASSERT_TRUE(task.check_and_modify_node(node).ok());
+
+    NodeOr saved;
+    ASSERT_TRUE(store.get_node("storage-1", saved).ok());
+    ASSERT_FALSE(saved.is_empty());
+    EXPECT_EQ(saved->spec.status, NodeStatus::ONLINE);
 }
 
 // 测试一下，当所有的node都是online，结果这个SDM崩溃了，然后重新启动。
