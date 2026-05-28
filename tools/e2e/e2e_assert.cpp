@@ -68,7 +68,7 @@ void print_fail(const std::string& name, const std::string& message) {
 }
 
 void print_case_start(const std::string& name) {
-    fmt::print("{}: start", name);
+    fmt::print("{}: start\n", name);
 }
 
 void print_case_pass(const std::string& name) {
