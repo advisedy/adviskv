@@ -44,12 +44,14 @@ class Replica {
                                  AppendEntriesResult& result);
     Status handle_install_snapshot(const InstallSnapshotParam& param);
 
-    struct ApplyStateForTest {
+    struct ReplicaStateForTest {
         Term current_term;
         LogIndex commit_index;
         LogIndex last_applied;
+        LogIndex snapshot_index;
+        Term snapshot_term;
     };
-    Status get_apply_state_for_test(ApplyStateForTest& result) const;
+    Status get_replica_state_for_test(ReplicaStateForTest& result) const;
 
    private:
     friend class ReplicaManager;

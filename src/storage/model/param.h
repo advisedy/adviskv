@@ -151,15 +151,4 @@ struct RaftMessage {
     InstallSnapshotParam snapshot_param{};
 };
 
-// struct GetReplicaApplyStateParam {
-//     ShardID shard_id;
-// };
-
-// struct GetReplicaApplyStateResult {
-//     ShardID shard_id;
-//     Term current_term;
-//     LogIndex commit_index;
-//     LogIndex last_applied;
-// };
-
 }  // namespace adviskv::storage

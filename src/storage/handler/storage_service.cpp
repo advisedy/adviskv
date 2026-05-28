@@ -381,10 +381,10 @@ grpc::Status StorageServiceImpl::InstallSnapshot(
     return grpc::Status::OK;
 }
 
-grpc::Status StorageServiceImpl::TestGetReplicaApplyState(
+grpc::Status StorageServiceImpl::TestGetReplicaState(
     grpc::ServerContext* context,
-    const rpc::TestGetReplicaApplyStateRequest* request,
-    rpc::TestGetReplicaApplyStateResponse* response) {
+    const rpc::TestGetReplicaStateRequest* request,
+    rpc::TestGetReplicaStateResponse* response) {
     if (!CONF_GET_BOOL("enable_test_api", "false")) {
         fill_base_rsp(response, Status::ERROR("enable_test_api is false"));
         return grpc::Status::OK;
@@ -410,8 +410,8 @@ grpc::Status StorageServiceImpl::TestGetReplicaApplyState(
         return grpc::Status::OK;
     }
 
-    Replica::ApplyStateForTest res;
-    Status status = replica->get_apply_state_for_test(res);
+    Replica::ReplicaStateForTest res;
+    Status status = replica->get_replica_state_for_test(res);
     if (status.fail()) {
         fill_base_rsp(response, status);
         return grpc::Status::OK;
@@ -423,6 +423,8 @@ grpc::Status StorageServiceImpl::TestGetReplicaApplyState(
     response->set_current_term(res.current_term);
     response->set_commit_index(res.commit_index);
     response->set_last_applied(res.last_applied);
+    response->set_snapshot_index(res.snapshot_index);
+    response->set_snapshot_term(res.snapshot_term);
     return grpc::Status::OK;
 }
 

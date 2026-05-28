@@ -81,8 +81,8 @@ inline bool run_follower_log_catchup_verify_case(const Options& options) {
         return false;
     }
     print_pass("put new key", "ok");
-
-    // if(!wait_replica_applied_at_least_for_test(const Endpoint &endpoint,
+    
+ // if(!wait_replica_applied_at_least_for_test(const Endpoint &endpoint,
     // TableID table_id, ShardIndex shard_id, int64_t target_index, const
     // Options &options, std::chrono::milliseconds timeout))
     E2EContext context{options};
@@ -106,11 +106,11 @@ inline bool run_follower_log_catchup_verify_case(const Options& options) {
         return false;
     }
 
-    ReplicaApplyState leader_state;
-    if (!get_replica_apply_state_for_test(leader->endpoint, route.table_id,
-                                          route.shard_id, options,
-                                          &leader_state, &last_error)) {
-        print_fail("get leader apply state", last_error);
+    ReplicaState leader_state;
+    if (!get_replica_state_for_test(leader->endpoint, route.table_id,
+                                    route.shard_id, options, &leader_state,
+                                    &last_error)) {
+        print_fail("get leader replica state", last_error);
         return false;
     }
 

@@ -366,10 +366,12 @@ Status Replica::check_self_leader_and_get_read_index(LogIndex& read_index) {
     return Status::NOT_LEADER("failed to confirm leader with quorum");
 }
 
-Status Replica::get_apply_state_for_test(ApplyStateForTest& result) const {
+Status Replica::get_replica_state_for_test(ReplicaStateForTest& result) const {
     result.current_term = current_term();
     result.commit_index = raft_node_->commit_index();
     result.last_applied = raft_node_->last_applied();
+    result.snapshot_index = raft_node_->snapshot_index();
+    result.snapshot_term = raft_node_->snapshot_term();
     return Status::OK();
 }
 
