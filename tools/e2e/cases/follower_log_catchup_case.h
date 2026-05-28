@@ -14,8 +14,7 @@ namespace adviskv::e2e {
 namespace {
 constexpr const char* kFollowerLogCatchupBasePrefix =
     "follower-log-catchup-base";
-constexpr const char* kFollowerLogCatchupGapPrefix =
-    "follower-log-catchup-gap";
+constexpr const char* kFollowerLogCatchupGapPrefix = "follower-log-catchup-gap";
 constexpr const char* kFollowerLogCatchupAfterKey =
     "follower-log-catchup-after";
 constexpr const char* kFollowerLogCatchupAfterValue =
@@ -50,8 +49,12 @@ inline bool run_follower_log_catchup_write_gap_case(const Options& options) {
         print_fail("option key count", "is too big. please set small");
         return false;
     }
-    return heavy::write_gap_case(options, kFollowerLogCatchupGapPrefix,
-                                 options.key_count);
+    if (!heavy::wait_existing_table(
+            options, heavy::first_dataset_key(kFollowerLogCatchupGapPrefix))) {
+        return false;
+    }
+    sdk::KVClient client = make_kv_client(options);
+    return write_dataset(&client, options, kFollowerLogCatchupGapPrefix);
 }
 
 inline bool run_follower_log_catchup_verify_case(const Options& options) {
@@ -81,50 +84,25 @@ inline bool run_follower_log_catchup_verify_case(const Options& options) {
         return false;
     }
     print_pass("put new key", "ok");
-    
- // if(!wait_replica_applied_at_least_for_test(const Endpoint &endpoint,
-    // TableID table_id, ShardIndex shard_id, int64_t target_index, const
-    // Options &options, std::chrono::milliseconds timeout))
+
     E2EContext context{options};
-    sdk::RouteInfo route;
     std::string last_error;
-    if (!get_route(&context, kFollowerLogCatchupAfterKey, &route,
-                   &last_error)) {
+    RouteReplicaStatesForTest replica_states;
+    if (!get_route_replica_states_for_test(&context,
+                                           kFollowerLogCatchupAfterKey, options,
+                                           &replica_states, &last_error)) {
+        print_fail("get route replica states", last_error);
         return false;
     }
 
-    sdk::RouteReplica* leader = nullptr;
-    for (sdk::RouteReplica& replica : route.replicas) {
-        if (replica.role == sdk::RouteReplicaRole::LEADER) {
-            leader = &replica;
-            break;
-        }
-    }
-
-    if (leader == nullptr) {
-        print_fail("find leader", "leader not found");
-        return false;
-    }
-
-    ReplicaState leader_state;
-    if (!get_replica_state_for_test(leader->endpoint, route.table_id,
-                                    route.shard_id, options, &leader_state,
-                                    &last_error)) {
-        print_fail("get leader replica state", last_error);
-        return false;
-    }
-
-    int64 target_index = leader_state.last_applied;
+    int64 target_index = replica_states.leader_state.last_applied;
     print_pass("get leader last_applied",
                fmt::format("ok, last_applied:{}", target_index));
-    for (const auto& replica : route.replicas) {
-        if (replica.role == sdk::RouteReplicaRole::LEADER) {
-            continue;
-        }
-
+    for (const auto& replica : replica_states.followers) {
         if (!wait_replica_applied_at_least_for_test(
-                replica.endpoint, route.table_id, route.shard_id, target_index,
-                options, std::chrono::seconds(30))) {
+                replica.endpoint, replica_states.route.table_id,
+                replica_states.route.shard_id, target_index, options,
+                std::chrono::seconds(30))) {
             return false;
         }
     }
