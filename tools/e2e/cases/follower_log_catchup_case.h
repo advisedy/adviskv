@@ -5,7 +5,6 @@
 #include "e2e_assert.h"
 #include "e2e_context.h"
 #include "e2e_options.h"
-#include "e2e_route_util.h"
 #include "e2e_storage_test_util.h"
 #include "heavy_case_util.h"
 #include "sdk/model.h"
@@ -89,7 +88,7 @@ inline bool run_follower_log_catchup_verify_case(const Options& options) {
     std::string last_error;
     RouteReplicaStatesForTest replica_states;
     if (!get_route_replica_states_for_test(&context,
-                                           kFollowerLogCatchupAfterKey, options,
+                                           kFollowerLogCatchupAfterKey,
                                            &replica_states, &last_error)) {
         print_fail("get route replica states", last_error);
         return false;
@@ -99,7 +98,7 @@ inline bool run_follower_log_catchup_verify_case(const Options& options) {
     print_pass("get leader last_applied",
                fmt::format("ok, last_applied:{}", target_index));
     for (const auto& replica : replica_states.followers) {
-        if (!wait_replica_applied_at_least_for_test(
+        if (!wait_replica_apply_index_at_least_for_test(
                 replica.endpoint, replica_states.route.table_id,
                 replica_states.route.shard_id, target_index, options,
                 std::chrono::seconds(30))) {

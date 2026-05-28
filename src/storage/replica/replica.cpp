@@ -272,8 +272,10 @@ Status Replica::handle_append_entries(const AppendEntriesParam& param,
 void Replica::try_take_snapshot() {
     // LogIndex last_index = raft_node_->last_log_index();
     // LogIndex apply_index = state_machine_->apply_index();
+    // //我勒个雷，这里写成狗屎了啊，还一直没看出来，一直到e2e测试才发现
+
     LogIndex last_apply_index = raft_node_->last_applied(),
-             snapshot_index = state_machine_->apply_index();
+             snapshot_index = raft_node_->snapshot_index();
     if (last_apply_index - snapshot_index < SNAPSHOT_LIMIT) return;
     Status status = persist_->do_snapshot(*state_machine_);
     if (status.ok()) {

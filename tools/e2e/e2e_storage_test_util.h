@@ -35,15 +35,17 @@ struct RouteReplicaStatesForTest {
 };
 
 bool get_route_replica_states_for_test(E2EContext* context, const Key& key,
-                                       const Options& options,
                                        RouteReplicaStatesForTest* states,
                                        std::string* error);
 
-bool wait_replica_applied_at_least_for_test(const Endpoint& endpoint,
-                                            TableID table_id,
-                                            ShardIndex shard_id,
-                                            int64_t target_index,
-                                            const Options& options,
-                                            std::chrono::milliseconds timeout);
+bool wait_replica_apply_index_at_least_for_test(
+    const Endpoint& endpoint, TableID table_id, ShardIndex shard_id,
+    int64_t target_apply_index, const Options& options,
+    std::chrono::milliseconds timeout);
+
+bool wait_replica_snapshot_index_at_least_for_test(
+    const Endpoint& endpoint, TableID table_id, ShardIndex shard_id,
+    int64_t target_snapshot_index, const Options& options,
+    std::chrono::milliseconds timeout);
 
 }  // namespace adviskv::e2e

@@ -176,6 +176,49 @@ TEST_F(ReplicaTest, SingleReplicaPutAndGetAfterElection) {
     EXPECT_EQ(value, "v1");
 }
 
+// 单节点replica正常写入超过snapshot阈值后，通过后台tick自然触发snapshot。
+// 这个测试不手动调用do_snapshot/truncate_log，覆盖Replica::try_take_snapshot的真实链路。
+TEST_F(ReplicaTest, TakesSnapshotNaturallyAfterEnoughAppliedLogs) {
+    ReplicaManager manager(base_dir_.string());
+    Replica* replica = add_single_replica(manager);
+    ASSERT_NE(replica, nullptr);
+
+    manager.start_tick();
+    replica = wait_until_leader(manager);
+    ASSERT_NE(replica, nullptr);
+    ASSERT_EQ(replica->get_role(), ReplicaRole::LEADER);
+
+    for (int i = 0; i < 1000; ++i) {
+        Status status = replica->put(PutParam{
+            .key = "snapshot-auto-" + std::to_string(i),
+            .value = "value-" + std::to_string(i),
+        });
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status)
+                                 << ", index=" << i;
+    }
+
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    Replica::ReplicaStateForTest state{};
+    while (std::chrono::steady_clock::now() < deadline) {
+        Status status = replica->get_replica_state_for_test(state);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+        if (state.snapshot_index > 0) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+
+    EXPECT_GT(state.snapshot_index, 0);
+    EXPECT_GE(state.last_applied, state.snapshot_index);
+
+    Value value;
+    Status status =
+        replica->get(GetParam{.key = "snapshot-auto-999"}, value);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    EXPECT_EQ(value, "value-999");
+}
+
 // replica写入数据后关闭，重新创建replica并recover，应能恢复之前写入的数据
 TEST_F(ReplicaTest, RecoverRestoresDataFromPersistedState) {
     {
