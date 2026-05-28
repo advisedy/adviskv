@@ -139,6 +139,7 @@ def write_e2e_configs() -> None:
             manager_host: "127.0.0.1"
             manager_port: 50049
             heartbeat_interval_ms: 3000
+            enable_test_api: true
 
             logger_name: "e2e_storage-{index}_log"
             log_dir: "{LOG_DIR / f"storage-{index}"}"

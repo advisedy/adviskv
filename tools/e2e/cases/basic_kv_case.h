@@ -3,6 +3,7 @@
 #include "e2e_assert.h"
 #include "e2e_kv_util.h"
 #include "e2e_options.h"
+#include "e2e_table_util.h"
 
 namespace adviskv::e2e {
 
