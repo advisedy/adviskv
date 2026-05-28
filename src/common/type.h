@@ -96,7 +96,9 @@ enum class ReplicaStatus : int8 { ADDING = 0, READY = 1, LOST = 2, ERROR = 3 };
 
 struct Endpoint {
     std::string ip;
-    int32_t port;
+    int32 port;
+
+    std::string to_string() const { return fmt::format("{}:{}", ip, port); }
 
     bool operator==(const Endpoint& other) const {
         return ip == other.ip and port == other.port;

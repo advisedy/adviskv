@@ -3,230 +3,75 @@
 #include <fmt/core.h>
 #include <fmt/format.h>
 
+#include <algorithm>
+#include <chrono>
 #include <string_view>
+#include <thread>
 #include <utility>
 
 #include "common/log.h"
 #include "common/type.h"
 #include "e2e_assert.h"
-#include "meta/catalog/meta_types.h"
 #include "sdk/config.h"
 #include "sdk/log.h"
-#include "sdk/model.h"
 
 namespace adviskv::e2e {
 
 namespace {
-// TODO 这个回头可以放到convert文件里面，不在这放着
-sdk::RouteReplicaRole from_pb_role(pb::ReplicaRole role) {
-    switch (role) {
-        case pb::ReplicaRole::LEADER:
-            return sdk::RouteReplicaRole::LEADER;
-        case pb::ReplicaRole::FOLLOWER:
-            return sdk::RouteReplicaRole::FOLLOWER;
-        default:
-            return sdk::RouteReplicaRole::UNKNOWN;
+using Clock = std::chrono::steady_clock;
+
+constexpr int32_t kVerboseDatasetLogLimit = 32;
+constexpr int32_t kDatasetLogRangeSize = 100;
+
+bool wait_status_quiet(const std::string& name, const Options& options,
+                       const std::function<Status()>& operation) {
+    const auto deadline =
+        Clock::now() + std::chrono::milliseconds(options.timeout_ms);
+    Status last_status{StatusCode::ERROR, "not attempted"};
+    while (Clock::now() < deadline) {
+        last_status = operation();
+        if (last_status.ok()) {
+            return true;
+        }
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(options.poll_interval_ms));
     }
+    print_fail(name, fmt::format("timed out: {}", last_status.to_string()));
+    return false;
+}
+
+bool wait_get_value_quiet(sdk::KVClient* client, const Options& options,
+                          const std::string& key, const std::string& expected) {
+    const auto deadline =
+        Clock::now() + std::chrono::milliseconds(options.timeout_ms);
+    std::string last_error = "not attempted";
+    while (Clock::now() < deadline) {
+        Value value;
+        const Status status = client->get(key, &value);
+        if (status.fail()) {
+            last_error = status.to_string();
+        } else if (value != expected) {
+            last_error = fmt::format("unexpected value '{}', expected '{}'",
+                                     value, expected);
+        } else {
+            return true;
+        }
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(options.poll_interval_ms));
+    }
+    print_fail(fmt::format("sdk get {}", key),
+               fmt::format("timed out: {}", last_error));
+    return false;
+}
+
+std::string kv_range_message(const std::vector<KV>& kvs, size_t begin,
+                             size_t end) {
+    return fmt::format("index=[{}..{}], keys=[{}..{}], count={}", begin,
+                       end - 1, kvs[begin].first, kvs[end - 1].first,
+                       end - begin);
 }
 
 }  // namespace
-
-bool create_db(E2EContext* context, std::string* error) {
-    const Options& options = context->options();
-    rpc::CreateDBRequest request;
-    request.set_db_name(options.db);
-    request.set_zone(options.zone);
-
-    rpc::CreateDBResponse response;
-    grpc::ClientContext client_context;
-    client_context.set_deadline(std::chrono::system_clock::now() +
-                                std::chrono::milliseconds(options.timeout_ms));
-    const grpc::Status status =
-        context->meta()->CreateDB(&client_context, request, &response);
-    return grpc_ok(status, "CreateDB", error) &&
-           base_rsp_ok(response.base_rsp().code(), response.base_rsp().msg(),
-                       "CreateDB", error);
-}
-
-bool create_table(E2EContext* context, std::string* error) {
-    const Options& options = context->options();
-    rpc::CreateTableRequest request;
-    request.set_db_name(options.db);
-    request.set_table_name(options.table);
-    request.set_shard_count(options.shard_count);
-    request.set_replica_count(options.replica_count);
-    request.set_resource_pool(options.resource_pool);
-
-    rpc::CreateTableResponse response;
-    grpc::ClientContext client_context;
-    client_context.set_deadline(std::chrono::system_clock::now() +
-                                std::chrono::milliseconds(options.timeout_ms));
-    const grpc::Status status =
-        context->meta()->CreateTable(&client_context, request, &response);
-    return grpc_ok(status, "CreateTable", error) &&
-           base_rsp_ok(response.base_rsp().code(), response.base_rsp().msg(),
-                       "CreateTable", error);
-}
-
-bool drop_table(E2EContext* context, std::string* error) {
-    const Options& options = context->options();
-    rpc::MetaDropTableRequest request;
-    request.set_db_name(options.db);
-    request.set_table_name(options.table);
-
-    rpc::MetaDropTableResponse response;
-    grpc::ClientContext client_context;
-    client_context.set_deadline(std::chrono::system_clock::now() +
-                                std::chrono::milliseconds(options.timeout_ms));
-    const grpc::Status status =
-        context->meta()->DropTable(&client_context, request, &response);
-    return grpc_ok(status, "DropTable", error) &&
-           base_rsp_ok(response.base_rsp().code(), response.base_rsp().msg(),
-                       "DropTable", error);
-}
-
-bool wait_table_normal(E2EContext* context) {
-    const Options& options = context->options();
-    std::string last_error;
-    return eventually(
-        "table normal", options,
-        [&]() {
-            rpc::GetTableRequest request;
-            request.set_db_name(options.db);
-            request.set_table_name(options.table);
-
-            rpc::GetTableResponse response;
-            grpc::ClientContext client_context;
-            client_context.set_deadline(std::chrono::system_clock::now() +
-                                        std::chrono::milliseconds(3000));
-            const grpc::Status status =
-                context->meta()->GetTable(&client_context, request, &response);
-            std::string error;
-            if (!grpc_ok(status, "GetTable", &error)) {
-                return CheckResult::fail(error);
-            }
-            if (response.base_rsp().code() != to_rpc_code(StatusCode::OK)) {
-                return CheckResult::fail(fmt::format(
-                    "GetTable code={}, msg={}", response.base_rsp().code(),
-                    response.base_rsp().msg()));
-            }
-            if (response.table_state() != (int32)meta::TableState::NORMAL) {
-                return CheckResult::fail(fmt::format(
-                    "table_state={}, last_error={}", response.table_state(),
-                    response.last_error_msg()));
-            }
-            return CheckResult::pass(
-                fmt::format("db_id={}, table_id={}, shards={}, replicas={}",
-                            response.db_id(), response.table_id(),
-                            response.shard_count(), response.replica_count()));
-        },
-        &last_error);
-}
-
-bool wait_table_deleted(E2EContext* context) {
-    const Options& options = context->options();
-    std::string last_error;
-    return eventually(
-        "table deleted", options,
-        [&]() {
-            rpc::GetTableRequest request;
-            request.set_db_name(options.db);
-            request.set_table_name(options.table);
-
-            rpc::GetTableResponse response;
-            grpc::ClientContext client_context;
-            client_context.set_deadline(std::chrono::system_clock::now() +
-                                        std::chrono::milliseconds(3000));
-            const grpc::Status status =
-                context->meta()->GetTable(&client_context, request, &response);
-            std::string error;
-            if (!grpc_ok(status, "GetTable", &error)) {
-                return CheckResult::fail(error);
-            }
-            if (response.base_rsp().code() ==
-                to_rpc_code(StatusCode::TABLE_NOT_FOUND)) {
-                return CheckResult::pass(response.base_rsp().msg());
-            }
-            if (response.table_state() == (int32)meta::TableState::DELETED) {
-                return CheckResult::pass("table state is DELETED");
-            }
-            return CheckResult::fail(
-                fmt::format("GetTable code={}, table_state={}, msg={}",
-                            response.base_rsp().code(), response.table_state(),
-                            response.base_rsp().msg()));
-        },
-        &last_error);
-}
-
-bool get_route(E2EContext* context, const Key& key, sdk::RouteInfo* route,
-               std::string* error) {
-    if (route == nullptr) {
-        *error = "route is nullptr";
-        return false;
-    }
-
-    const Options& options = context->options();
-    rpc::GetRouteRequest request;
-    request.set_db_name(options.db);
-    request.set_table_name(options.table);
-    request.set_key(key);
-
-    rpc::GetRouteResponse response;
-    grpc::ClientContext client_context;
-    client_context.set_deadline(std::chrono::system_clock::now() +
-                                std::chrono::milliseconds(3000));
-    const grpc::Status status =
-        context->sdm()->GetRoute(&client_context, request, &response);
-    if (!grpc_ok(status, "GetRoute", error)) {
-        return false;
-    }
-    if (response.base_rsp().code() != to_rpc_code(StatusCode::OK)) {
-        *error =
-            fmt::format("GetRoute failed, code={}, msg={}",
-                        response.base_rsp().code(), response.base_rsp().msg());
-        return false;
-    }
-
-    route->table_id = response.table_id();
-    route->shard_id = response.shard_id();
-    route->replicas.clear();
-    route->replicas.reserve(response.replicas_size());
-    for (const auto& replica : response.replicas()) {
-        sdk::RouteReplica out;
-        out.endpoint =
-            Endpoint{replica.endpoint().ip(), replica.endpoint().port()};
-        out.role = from_pb_role(replica.role());
-        route->replicas.push_back(std::move(out));
-    }
-    return true;
-}
-
-bool wait_route_has_leader(E2EContext* context, const Key& key,
-                           sdk::RouteReplica* leader) {
-    const Options& options = context->options();
-    std::string last_error;
-    return eventually(
-        "route has leader", options,
-        [&]() {
-            sdk::RouteInfo route;
-            std::string error;
-            if (!get_route(context, key, &route, &error)) {
-                return CheckResult::fail(error);
-            }
-            for (const sdk::RouteReplica& replica : route.replicas) {
-                if (replica.role == sdk::RouteReplicaRole::LEADER) {
-                    if (leader != nullptr) {
-                        *leader = replica;
-                    }
-                    return CheckResult::pass(
-                        fmt::format("{}:{} shard={}", replica.endpoint.ip,
-                                    replica.endpoint.port, route.shard_id));
-                }
-            }
-            return CheckResult::fail("leader replica not found");
-        },
-        &last_error);
-}
 
 sdk::KVClient make_kv_client(const Options& options) {
     sdk::KVClientConf conf;
@@ -304,6 +149,72 @@ std::vector<KV> make_case_kvs(const std::string& prefix, int32_t key_count) {
     return kvs;
 }
 
+std::vector<Key> make_case_keys(const std::string& prefix, int32_t key_count) {
+    std::vector<Key> keys;
+    keys.reserve(key_count);
+    for (const KV& kv : make_case_kvs(prefix, key_count)) {
+        keys.push_back(kv.first);
+    }
+    return keys;
+}
+
+bool write_kvs(sdk::KVClient* client, const Options& options,
+               const std::string& name, const std::vector<KV>& kvs) {
+    if (static_cast<int32_t>(kvs.size()) <= kVerboseDatasetLogLimit) {
+        for (const KV& kv : kvs) {
+            const Key key = kv.first;
+            const Value value = kv.second;
+            if (!wait_status(fmt::format("sdk put {}", key), options,
+                             [&]() { return client->put(key, value); })) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    for (size_t begin = 0; begin < kvs.size(); begin += kDatasetLogRangeSize) {
+        const size_t end = std::min(
+            begin + static_cast<size_t>(kDatasetLogRangeSize), kvs.size());
+        for (size_t i = begin; i < end; ++i) {
+            const Key key = kvs[i].first;
+            const Value value = kvs[i].second;
+            if (!wait_status_quiet(fmt::format("sdk put {}", key), options,
+                                   [&]() { return client->put(key, value); })) {
+                return false;
+            }
+        }
+        print_pass(fmt::format("sdk put {}", name),
+                   kv_range_message(kvs, begin, end));
+    }
+    return true;
+}
+
+bool verify_kvs(sdk::KVClient* client, const Options& options,
+                const std::string& name, const std::vector<KV>& kvs) {
+    if (static_cast<int32_t>(kvs.size()) <= kVerboseDatasetLogLimit) {
+        for (const KV& kv : kvs) {
+            if (!wait_get_value(client, options, kv.first, kv.second)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    for (size_t begin = 0; begin < kvs.size(); begin += kDatasetLogRangeSize) {
+        const size_t end = std::min(
+            begin + static_cast<size_t>(kDatasetLogRangeSize), kvs.size());
+        for (size_t i = begin; i < end; ++i) {
+            if (!wait_get_value_quiet(client, options, kvs[i].first,
+                                      kvs[i].second)) {
+                return false;
+            }
+        }
+        print_pass(fmt::format("sdk get {}", name),
+                   kv_range_message(kvs, begin, end));
+    }
+    return true;
+}
+
 bool validate_key_count(const Options& options) {
     if (options.key_count <= 0) {
         print_fail("validate options", "--key_count must be positive");
@@ -312,118 +223,16 @@ bool validate_key_count(const Options& options) {
     return true;
 }
 
-bool prepare_table(E2EContext* context) {
-    std::string error;
-    if (!create_db(context, &error)) {
-        print_fail("create database", error);
-        return false;
-    }
-    print_pass("create database", context->options().db);
-
-    if (!create_table(context, &error)) {
-        print_fail("create table", error);
-        return false;
-    }
-    print_pass("create table", fmt::format("{}.{}", context->options().db,
-                                           context->options().table));
-
-    return wait_table_normal(context);
-}
-
 bool write_dataset(sdk::KVClient* client, const Options& options,
                    const std::string& prefix) {
-    const std::vector<KV> kvs = make_case_kvs(prefix, options.key_count);
-    for (int32_t i = 0; i < options.key_count; ++i) {
-        const Key key = kvs[i].first;
-        const Value value = kvs[i].second;
-        if (!wait_status(fmt::format("sdk put {}", key), options,
-                         [&]() { return client->put(key, value); })) {
-            return false;
-        }
-    }
-    return true;
+    return write_kvs(client, options, prefix,
+                     make_case_kvs(prefix, options.key_count));
 }
 
 bool verify_dataset(sdk::KVClient* client, const Options& options,
                     const std::string& prefix) {
-    const std::vector<KV> kvs = make_case_kvs(prefix, options.key_count);
-    for (int32_t i = 0; i < options.key_count; ++i) {
-        const Key key = kvs[i].first;
-        const Value value = kvs[i].second;
-        if (!wait_get_value(client, options, key, value)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool print_current_leader(E2EContext* context, const std::string& key) {
-    sdk::RouteReplica leader;
-    if (!wait_route_has_leader(context, key, &leader)) {
-        return false;
-    }
-    fmt::print("[ ROUTE_LEADER ] {}:{}\n", leader.endpoint.ip,
-               leader.endpoint.port);
-    return true;
-}
-
-bool run_seed_case(const Options& options, 
-                   const std::string& prefix, bool print_leader) {
-    // fmt::print("{} {}\n", colorize(COLOR::BOLD, title),
-    //            colorize(COLOR::BLUE, "(seed data)"));
-
-    if (!validate_key_count(options)) {
-        return false;
-    }
-
-    E2EContext context(options);
-    if (!prepare_table(&context)) {
-        return false;
-    }
-
-    sdk::KVClient client = make_kv_client(options);
-    if (!write_dataset(&client, options, prefix)) {
-        return false;
-    }
-
-    if (print_leader && !print_current_leader(&context, prefix + "-key-000")) {
-        return false;
-    }
-    return true;
-}
-
-bool run_verify_case(const Options& options, 
-                     const std::string& prefix,
-                     const std::string& after_key_suffix) {
-    // fmt::print("{} {}\n", colorize(COLOR::BOLD, title),
-    //            colorize(COLOR::BLUE, "(verify data)"));
-
-    if (!validate_key_count(options)) {
-        return false;
-    }
-
-    E2EContext context(options);
-    if (!wait_table_normal(&context)) {
-        return false;
-    }
-    if (!wait_route_has_leader(&context, prefix + "-key-000", nullptr)) {
-        return false;
-    }
-
-    sdk::KVClient client = make_kv_client(options);
-    if (!verify_dataset(&client, options, prefix)) {
-        return false;
-    }
-
-    if (after_key_suffix.empty()) return true;
-
-    const std::string after_key = prefix + "-" + after_key_suffix;
-    const std::string after_value = prefix + "-value-" + after_key_suffix;
-    if (!wait_status(fmt::format("sdk put {}", after_key), options,
-                     [&]() { return client.put(after_key, after_value); })) {
-        return false;
-    }
-    return wait_get_value(&client, options, after_key, after_value);
+    return verify_kvs(client, options, prefix,
+                      make_case_kvs(prefix, options.key_count));
 }
 
 }  // namespace adviskv::e2e
