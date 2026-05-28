@@ -118,13 +118,11 @@ void RaftNode::send_request_vote_to(const PeerMember& member) {
     RaftMessage msg;
     msg.type = RaftMessageType::REQUEST_VOTE;
     msg.target = member;
-    msg.vote_param = {
-        .from_replica_id = self_id_,
-        .to_replica_id = member.replica_id,
-        .term = current_term_,
-        .last_log_index = last_log_index_unlocked(),
-        .last_log_term = last_log_term_unlocked(),
-    };
+    msg.vote_param.from_replica_id = self_id_;
+    msg.vote_param.to_replica_id = member.replica_id;
+    msg.vote_param.term = current_term_;
+    msg.vote_param.last_log_index = last_log_index_unlocked();
+    msg.vote_param.last_log_term = last_log_term_unlocked();
     pending_messages_.push_back(std::move(msg));
 }
 
@@ -154,13 +152,12 @@ std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
     }
     LogIndex new_commit_idx = last_log_index_unlocked() + 1;
 
-    LogEntry entry{
-        .term = current_term_,
-        .index = last_log_index_unlocked() + 1,
-        .op_type = op,
-        .key = key,
-        .value = value,
-    };
+    LogEntry entry;
+    entry.term = current_term_;
+    entry.index = last_log_index_unlocked() + 1;
+    entry.op_type = op;
+    entry.key = key;
+    entry.value = value;
     log_entries_.push_back(entry);
 
     if (persist_) {
@@ -220,26 +217,23 @@ RaftMessage RaftNode::build_append_entries_message_unlocked(
         RaftMessage msg;
         msg.type = RaftMessageType::INSTALL_SNAPSHOT;
         msg.target = member;
-        msg.snapshot_param = InstallSnapshotParam{
-            .from_replica_id = self_id_,
-            .to_replica_id = member.replica_id,
-            .term = current_term_,
-            .snapshot_index = snapshot_index_,
-            .snapshot_term = snapshot_term_,
-        };
+        msg.snapshot_param.from_replica_id = self_id_;
+        msg.snapshot_param.to_replica_id = member.replica_id;
+        msg.snapshot_param.term = current_term_;
+        msg.snapshot_param.snapshot_index = snapshot_index_;
+        msg.snapshot_param.snapshot_term = snapshot_term_;
         return msg;
     }
 
     Term prev_log_term = get_term(prev_log_index);
 
-    AppendEntriesParam param{
-        .from_replica_id = self_id_,
-        .to_replica_id = member.replica_id,
-        .term = current_term_,
-        .prev_log_index = prev_log_index,
-        .prev_log_term = prev_log_term,
-        .leader_commit = commit_index_,
-    };
+    AppendEntriesParam param;
+    param.from_replica_id = self_id_;
+    param.to_replica_id = member.replica_id;
+    param.term = current_term_;
+    param.prev_log_index = prev_log_index;
+    param.prev_log_term = prev_log_term;
+    param.leader_commit = commit_index_;
 
     for (LogIndex idx = next_index; idx <= last_log_index_unlocked(); ++idx) {
         param.entries.push_back(log_entries_[index_to_offset(idx)]);
@@ -506,13 +500,12 @@ void RaftNode::become_leader() {
     }
 
     // 追加 no-op entry
-    LogEntry none_entry{
-        .term = current_term_,
-        .index = last_log_index_unlocked() + 1,
-        .op_type = WriteOpType::NONE,
-        .key = {"for debug: this is a no-op entry key"},
-        .value = {"for debug: this is a no-op entry value"},
-    };
+    LogEntry none_entry;
+    none_entry.term = current_term_;
+    none_entry.index = last_log_index_unlocked() + 1;
+    none_entry.op_type = WriteOpType::NONE;
+    none_entry.key = "for debug: this is a no-op entry key";
+    none_entry.value = "for debug: this is a no-op entry value";
     log_entries_.push_back(none_entry);
     persist_->append_wal(none_entry);
     // 立即广播（含 no-op），相当于心跳 + 日志复制合一
@@ -588,9 +581,11 @@ Term RaftNode::get_term(LogIndex index) const {
 void RaftNode::save_raft_meta() const {
     if (!persist_) return;
 
-    persist_->save_raft_meta(RaftMeta{.current_term = current_term_,
-                                      .commit_index = commit_index_,
-                                      .voted_for = voted_for_});
+    RaftMeta raft_meta;
+    raft_meta.current_term = current_term_;
+    raft_meta.commit_index = commit_index_;
+    raft_meta.voted_for = voted_for_;
+    persist_->save_raft_meta(raft_meta);
 }
 
 // void try_take_snapshot();

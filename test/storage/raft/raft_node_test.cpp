@@ -30,16 +30,9 @@ class RaftNodeTest : public ::testing::Test {
 
     static LogEntry make_entry(Term term, LogIndex index, WriteOpType op_type,
                                std::string key, std::string value) {
-        return LogEntry{
-            .term = term,
-            .index = index,
-            .op_type = op_type,
-            .key = std::move(key),
-            .value = std::move(value),
-        };
+        return LogEntry{term, index, op_type, std::move(key), std::move(value)};
     }
-    ReplicaID replica_id_{
-        .table_id = 101, .shard_index = 7, .replica_index = 2};
+    ReplicaID replica_id_{101, 7, 2};
     std::vector<PeerMember> members_{PeerMember{"", replica_id_, {}}};
 
    private:
@@ -83,20 +76,13 @@ TEST_F(RaftNodeTest, test_2) {
     ASSERT_EQ((int)entries.size(),
               2);  // 一个是选举发的no-op ， 一个是put放进去的
     {
-        LogEntry entry{
-            .term = 1,
-            .index = 2,
-            .op_type = WriteOpType::PUT,
-            .key = "1",
-            .value = "1",
-        };
+        LogEntry entry{1, 2, WriteOpType::PUT, "1", "1"};
         ASSERT_EQ(entries.back(), entry);
     }
     {
         RaftMeta meta;
         persist.load_raft_meta(meta);
-        RaftMeta real_meta{
-            .current_term = 1, .commit_index = 2, .voted_for = replica_id_};
+        RaftMeta real_meta{1, 2, replica_id_};
         ASSERT_EQ(meta, real_meta);
     }
 }
@@ -104,7 +90,7 @@ TEST_F(RaftNodeTest, test_2) {
 // 进入recovering后，tick不应触发选举，RequestVote不应授票，propose应失败；
 // 收到AppendEntries补齐entries后应退出recovering
 TEST_F(RaftNodeTest, RecoveringBlocksElectionVoteAndProposeUntilCatchUp) {
-    ReplicaID leader_id{.table_id = 101, .shard_index = 7, .replica_index = 1};
+    ReplicaID leader_id{101, 7, 1};
     std::vector<PeerMember> members{
         PeerMember{"leader", leader_id, {}},
         PeerMember{"self", replica_id_, {}},
@@ -120,11 +106,7 @@ TEST_F(RaftNodeTest, RecoveringBlocksElectionVoteAndProposeUntilCatchUp) {
     ASSERT_EQ(node.role(), ReplicaRole::FOLLOWER);
 
     RequestVoteResult vote_result;
-    node.handle_request_vote(RequestVoteParam{.from_replica_id = leader_id,
-                                              .to_replica_id = replica_id_,
-                                              .term = 1,
-                                              .last_log_index = 0,
-                                              .last_log_term = 0},
+    node.handle_request_vote(RequestVoteParam{leader_id, replica_id_, 1, 0, 0},
                              vote_result);
     ASSERT_FALSE(vote_result.vote_granted);
 
@@ -133,15 +115,14 @@ TEST_F(RaftNodeTest, RecoveringBlocksElectionVoteAndProposeUntilCatchUp) {
     ASSERT_EQ(new_index, -1);
 
     AppendEntriesResult append_result;
-    AppendEntriesParam append_param{
-        .from_replica_id = leader_id,
-        .to_replica_id = replica_id_,
-        .term = 1,
-        .entries = {make_entry(1, 1, WriteOpType::PUT, "k1", "v1"),
-                    make_entry(1, 2, WriteOpType::PUT, "k2", "v2")},
-        .prev_log_index = 0,
-        .prev_log_term = 0,
-        .leader_commit = 2};
+    AppendEntriesParam append_param{leader_id,
+                                    replica_id_,
+                                    1,
+                                    {make_entry(1, 1, WriteOpType::PUT, "k1", "v1"),
+                                     make_entry(1, 2, WriteOpType::PUT, "k2", "v2")},
+                                    0,
+                                    0,
+                                    2};
     node.handle_append_entries(append_param, append_result);
 
     ASSERT_TRUE(append_result.success);

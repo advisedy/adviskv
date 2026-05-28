@@ -31,16 +31,15 @@ grpc::Status SdmServiceImpl::PlaceTable(grpc::ServerContext* context,
                                         rpc::PlaceTableResponse* response) {
     UNUSED(context);
 
-    PlaceTableParam param{
-        .db_id = request->db_id(),
-        .table_id = request->table_id(),
-        .db_name = request->db_name(),
-        .table_name = request->table_name(),
-        .replica_count = request->replica_count(),
-        .shard_count = request->shard_count(),
-        .resource_pool = request->resource_pool(),
-        .operation_id = request->operation_id(),
-    };
+    PlaceTableParam param;
+    param.db_id = request->db_id();
+    param.table_id = request->table_id();
+    param.db_name = request->db_name();
+    param.table_name = request->table_name();
+    param.replica_count = request->replica_count();
+    param.shard_count = request->shard_count();
+    param.resource_pool = request->resource_pool();
+    param.operation_id = request->operation_id();
 
     Status status = table_service_->place_table(param);
 
@@ -53,10 +52,9 @@ grpc::Status SdmServiceImpl::DropTable(grpc::ServerContext* context,
                                        const rpc::DropTableRequest* request,
                                        rpc::DropTableResponse* response) {
     UNUSED(context);
-    DropTableParam param{
-        .table_id = request->table_id(),
-        .operation_id = request->operation_id(),
-    };
+    DropTableParam param;
+    param.table_id = request->table_id();
+    param.operation_id = request->operation_id();
     Status status = table_service_->drop_table(param);
     fill_base_rsp(response, status);
     return grpc::Status::OK;
@@ -67,10 +65,9 @@ grpc::Status SdmServiceImpl::GetTableStatus(
     rpc::GetTableStatusResponse* response) {
     UNUSED(context);
 
-    GetTableStatusParam param{
-        .operation_id = request->operation_id(),
-        .table_id = request->table_id(),
-    };
+    GetTableStatusParam param;
+    param.operation_id = request->operation_id();
+    param.table_id = request->table_id();
 
     Table table;
     Status status = table_service_->get_table_status(param, &table);
@@ -110,27 +107,22 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
         ReplicaStatus status;
         CONVERT_PB_TO_REPLICA_STATUS(replica_info.status(), status)
 
-        HeartBeatReplicaInfo one{.shard_id =
-                                     ShardID{
-                                         .table_id = replica_info.table_id(),
-                                         .shard_index = replica_info.shard_id(),
-                                     },
-                                 .replica_index = replica_info.replica_index(),
-                                 .role = role,
-                                 .status = status,
-                                 .term = replica_info.term()};
+        HeartBeatReplicaInfo one;
+        one.shard_id = ShardID{replica_info.table_id(), replica_info.shard_id()};
+        one.replica_index = replica_info.replica_index();
+        one.role = role;
+        one.status = status;
+        one.term = replica_info.term();
         replica_info_list.emplace_back(std::move(one));
     }
-    HeartBeatParam param{
-        .node_id = request->node_id(),
-        .ip = request->ip(),
-        .port = request->port(),
-        .resoure_pool_name = request->resource_pool(),
-        .dc = request->dc(),
-        // .status = node_status,
-        .replica_list = std::move(replica_info_list),
-        .last_heartbeat_ts = func::get_current_ts_ms(),
-    };
+    HeartBeatParam param;
+    param.node_id = request->node_id();
+    param.ip = request->ip();
+    param.port = request->port();
+    param.resoure_pool_name = request->resource_pool();
+    param.dc = request->dc();
+    param.replica_list = std::move(replica_info_list);
+    param.last_heartbeat_ts = func::get_current_ts_ms();
 
     Status status = heartbeat_service_->heartbeat(param);
 
@@ -142,14 +134,13 @@ grpc::Status SdmServiceImpl::RegisterNode(
     grpc::ServerContext* context, const rpc::RegisterNodeRequest* request,
     rpc::RegisterNodeResponse* response) {
     UNUSED(context);
-    RegisterNodeParam param{
-        .node_id = request->node_id(),
-        .ip = request->ip(),
-        .port = request->port(),
-        .resource_pool = request->resource_pool(),
-        .dc = request->dc(),
-        .last_heartbeat_ts = func::get_current_ts_ms(),
-    };
+    RegisterNodeParam param;
+    param.node_id = request->node_id();
+    param.ip = request->ip();
+    param.port = request->port();
+    param.resource_pool = request->resource_pool();
+    param.dc = request->dc();
+    param.last_heartbeat_ts = func::get_current_ts_ms();
     Status status = node_service_->register_node(param);
     fill_base_rsp(response, status);
     return grpc::Status::OK;
@@ -159,11 +150,10 @@ grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context,
                                       const rpc::GetRouteRequest* request,
                                       rpc::GetRouteResponse* response) {
     UNUSED(context);
-    GetRouteParam param{
-        .db_name = request->db_name(),
-        .table_name = request->table_name(),
-        .key = request->key(),
-    };
+    GetRouteParam param;
+    param.db_name = request->db_name();
+    param.table_name = request->table_name();
+    param.key = request->key();
     ShardRoute route;
     Status status = route_service_->get_route(param, &route);
     fill_base_rsp(response, status);

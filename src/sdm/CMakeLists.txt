@@ -35,6 +35,14 @@ set(SDM_LIB_SOURCES
     
 )
 
+add_executable(sdm
+    ${CMAKE_CURRENT_SOURCE_DIR}/main/main.cpp
+)
+
+target_link_libraries(sdm PRIVATE
+    adviskv_sdm_lib
+)
+
 add_library(adviskv_sdm_lib
     ${SDM_LIB_SOURCES}
 )
@@ -48,10 +56,21 @@ target_include_directories(adviskv_sdm_lib PUBLIC
     ${PROJECT_BINARY_DIR}/generated
 )
 
-add_executable(sdm
-    ${CMAKE_CURRENT_SOURCE_DIR}/main/main.cpp
+add_library(adviskv_sdm_test_lib
+    ${SDM_LIB_SOURCES}
 )
 
-target_link_libraries(sdm PRIVATE
-    adviskv_sdm_lib
+target_link_libraries(adviskv_sdm_test_lib PUBLIC
+    adviskv_common
 )
+
+target_include_directories(adviskv_sdm_test_lib PUBLIC
+    ${CMAKE_SOURCE_DIR}/src
+    ${PROJECT_BINARY_DIR}/generated
+)
+
+target_compile_definitions(adviskv_sdm_test_lib PRIVATE
+    ADVISKV_ENABLE_CRASH_TEST
+)
+
+

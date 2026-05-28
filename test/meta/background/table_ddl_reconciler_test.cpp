@@ -98,16 +98,16 @@ class TableDdlReconcilerTest : public ::testing::Test {
 
     TableMeta create_table(CatalogManager& catalog, TableState state) {
         DBMeta db;
-        EXPECT_TRUE(catalog.create_db({.db_name = db_name_, .zone = zone_}, &db)
+        EXPECT_TRUE(catalog.create_db(CreateDBMetaParam{db_name_, zone_}, &db)
                         .ok());
 
         TableMeta table;
         EXPECT_TRUE(catalog
-                        .create_table({.db_name = db_name_,
-                                       .table_name = table_name_,
-                                       .shard_count = 4,
-                                       .replica_count = 3,
-                                       .resource_pool = resource_pool_},
+                        .create_table(CreateTableMetaParam{db_name_,
+                                                           table_name_,
+                                                           4,
+                                                           3,
+                                                           resource_pool_},
                                       &table)
                         .ok());
         if (table.state != state) {
@@ -119,11 +119,12 @@ class TableDdlReconcilerTest : public ::testing::Test {
 
     SdmTableStatus sdm_status(sdm::TablePhase phase,
                               const std::string& error_msg = "") {
-        return SdmTableStatus{.table_id = 0,
-                              .desired = 0,
-                              .phase = static_cast<int32_t>(phase),
-                              .last_error_msg = error_msg,
-                              .operation_id = ""};
+        SdmTableStatus status{};
+        status.table_id = 0;
+        status.desired = 0;
+        status.phase = static_cast<int32_t>(phase);
+        status.last_error_msg = error_msg;
+        return status;
     }
 
     std::filesystem::path test_dir_;

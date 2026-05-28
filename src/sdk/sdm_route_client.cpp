@@ -82,14 +82,11 @@ Status SdmRouteClient::get_route(const Key& key, RouteInfo* route) const {
     route->replicas.clear();
     route->replicas.reserve(response.replicas_size());
     for (const auto& replica : response.replicas()) {
-        route->replicas.push_back(RouteReplica{
-            .endpoint =
-                Endpoint{
-                    .ip = replica.endpoint().ip(),
-                    .port = replica.endpoint().port(),
-                },
-            .role = from_pb_role(replica.role()),
-        });
+        RouteReplica route_replica;
+        route_replica.endpoint =
+            Endpoint{replica.endpoint().ip(), replica.endpoint().port()};
+        route_replica.role = from_pb_role(replica.role());
+        route->replicas.push_back(std::move(route_replica));
     }
 
     {

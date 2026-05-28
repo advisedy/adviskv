@@ -11,17 +11,14 @@ namespace adviskv::sdm {
 namespace {
 
 TableNameKey make_table_name_key(const Table& table) {
-    return TableNameKey{
-        .db_name = table.spec.db_name,
-        .table_name = table.spec.table_name,
-    };
+    TableNameKey key;
+    key.db_name = table.spec.db_name;
+    key.table_name = table.spec.table_name;
+    return key;
 }
 
 ShardKey make_shard_key(const ReplicaKey& key) {
-    return ShardKey{
-        .table_id = key.table_id,
-        .shard_index = key.shard_index,
-    };
+    return ShardKey{key.table_id, key.shard_index};
 }
 
 void cleanup_empty_node_set(
@@ -151,10 +148,9 @@ Status SdmRuntimeIndex::on_replica_delete(const Replica& replica) {
 Status SdmRuntimeIndex::find_table_by_name(const std::string& db_name,
                                            const std::string& table_name,
                                            TableID& table_id) const {
-    TableNameKey key{
-        .db_name = db_name,
-        .table_name = table_name,
-    };
+    TableNameKey key;
+    key.db_name = db_name;
+    key.table_name = table_name;
     auto it = table_name_index_.find(key);
     if (it == table_name_index_.end()) {
         return Status{StatusCode::TABLE_NOT_FOUND, "table name not found"};

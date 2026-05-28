@@ -89,25 +89,19 @@ class DdlServiceTest : public ::testing::Test {
     };
 
     CreateDBParam create_db_param() {
-        return CreateDBParam{.db_name = db_name_, .zone = zone_};
+        return CreateDBParam{db_name_, zone_};
     }
 
     CreateTableParam create_table_param() {
-        return CreateTableParam{.db_name = db_name_,
-                                .table_name = table_name_,
-                                .shard_count = 4,
-                                .replica_count = 3,
-                                .resource_pool = resource_pool_};
+        return CreateTableParam{db_name_, table_name_, 4, 3, resource_pool_};
     }
 
     DropTableParam drop_table_param() {
-        return DropTableParam{.db_name = db_name_, .table_name = table_name_};
+        return DropTableParam{db_name_, table_name_};
     }
 
     GetTableParam get_table_by_name_param() {
-        return GetTableParam{.db_name = db_name_,
-                             .table_name = table_name_,
-                             .use_table_id = false};
+        return GetTableParam{db_name_, table_name_, false, -1};
     }
 
     void create_db_or_die(DdlService& service) {
@@ -174,7 +168,7 @@ TEST_F(DdlServiceTest, CreateDbSuccessPersistsCatalog) {
 TEST_F(DdlServiceTest, CreateTableWithoutSdmClientKeepsAddingWithError) {
     Fixture fixture{make_sub_dir("create_table_without_sdm")};
     ASSERT_TRUE(
-        fixture.catalog.create_db({.db_name = db_name_, .zone = zone_}, nullptr)
+        fixture.catalog.create_db(CreateDBMetaParam{db_name_, zone_}, nullptr)
             .ok());
 
     DdlService db_service{&fixture.catalog, nullptr};
@@ -235,11 +229,9 @@ TEST_F(DdlServiceTest, CreateTableSuccessSupportsGetByNameAndId) {
     EXPECT_EQ(by_name.table_name, table_name_);
 
     TableMeta by_id;
-    ASSERT_TRUE(service
-                    .get_table(GetTableParam{.use_table_id = true,
-                                             .table_id = created.table_id},
-                               &by_id)
-                    .ok());
+    ASSERT_TRUE(
+        service.get_table(GetTableParam{"", "", true, created.table_id}, &by_id)
+            .ok());
     EXPECT_EQ(by_id, by_name);
 }
 
@@ -377,9 +369,9 @@ TEST_F(DdlServiceTest, RecreateSameNameAfterDeleteKeepsOldIdLookup) {
 
     TableMeta old_by_id;
     ASSERT_TRUE(service
-                    .get_table(GetTableParam{.use_table_id = true,
-                                             .table_id = old_table.table_id},
-                               &old_by_id)
+                    .get_table(
+                        GetTableParam{"", "", true, old_table.table_id},
+                        &old_by_id)
                     .ok());
     EXPECT_EQ(old_by_id.table_id, old_table.table_id);
     EXPECT_EQ(old_by_id.state, TableState::DELETED);

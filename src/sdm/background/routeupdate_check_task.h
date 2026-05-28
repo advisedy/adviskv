@@ -17,7 +17,7 @@ class RouteUpdateCheckTask : public BackgroundTask {
     protected:
     void run() override;
     
-    private:
+
     Status check_shard_route(const Table& table, ShardIndex shard_index);
 
     SdmStore* sdm_store_;

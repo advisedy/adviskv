@@ -1,8 +1,9 @@
 #pragma once
+#include <fcntl.h>
 #include <unistd.h>
 
-#include <chrono>
 #include <cerrno>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -12,6 +13,8 @@
 #include <vector>
 
 #include "common/buffer.h"
+#include "common/crash_injection.h"
+#include "common/defer.h"
 #include "common/define.h"
 #include "common/status.h"
 namespace adviskv {
@@ -42,16 +45,22 @@ inline void ad_erase_if(std::vector<T>& a, U f) {
     }
 }
 
-inline Status write_full(int fd, const void* buf, size_t len) {
+inline Status write_full(int fd, const void* buf, size_t len,
+                         const char* crash_point_name = nullptr) {
     const char* b = static_cast<const char*>(buf);
     size_t have_write_len = 0;
     while (have_write_len < len) {
-        ssize_t cur_write_len =
-            ::write(fd, b + have_write_len, len - have_write_len);
+        size_t write_len = len - have_write_len;
+        if (testhook::crash_point_enabled(crash_point_name) && write_len > 1) {
+            write_len = 1;
+        }
+
+        ssize_t cur_write_len = ::write(fd, b + have_write_len, write_len);
         if (cur_write_len <= 0) {
             return StatusCode::ERROR;
         }
         have_write_len += (size_t)cur_write_len;
+        testhook::crash_point(crash_point_name);
     }
     return Status::OK();
 }
@@ -117,6 +126,31 @@ inline Status read_string(int fd, std::string& s) {
     }
     s.resize(len);
     return read_full(fd, s.data(), static_cast<size_t>(len));
+}
+
+inline Status fsync_dir(const std::string& dir_path) {
+    int dir_fd = ::open(dir_path.c_str(), O_RDONLY | O_DIRECTORY);
+    if (dir_fd < 0) {
+        return Status::ERROR(
+            fmt::format("failed to open dir for fsync: {}", dir_path));
+    }
+    auto dir_fd_guard = Defer([&dir_fd]() {
+        if (dir_fd != -1) {
+            ::close(dir_fd);
+            dir_fd = -1;
+        }
+    });
+
+    if (::fsync(dir_fd) != 0) {
+        return Status::ERROR(fmt::format("failed to fsync dir: {}", dir_path));
+    }
+    if (::close(dir_fd) != 0) {
+        dir_fd = -1;
+        return Status::ERROR(
+            fmt::format("failed to close dir after fsync: {}", dir_path));
+    }
+    dir_fd = -1;
+    return Status::OK();
 }
 
 }  // namespace func

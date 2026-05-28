@@ -43,8 +43,7 @@ Replica* ReplicaManager::get_replica_by_shard(const ShardID& shard_id) const {
 
 Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
     const ReplicaID replica_id = param.replica_id;
-    const ShardID shard_id{.table_id = replica_id.table_id,
-                           .shard_index = replica_id.shard_index};
+    ShardID shard_id{replica_id.table_id, replica_id.shard_index};
     std::unique_lock locker(mutex_);
 
     if (replica_map_.count(replica_id)) {
@@ -72,7 +71,8 @@ Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
     auto replica = std::make_unique<Replica>();
     RETURN_IF_INVALID_STATUS(replica->init(param))
 
-    ReplicaMetaPayload payload{.init_param = param};
+    ReplicaMetaPayload payload;
+    payload.init_param = param;
     RETURN_IF_INVALID_STATUS(meta_persist_.save_replica_meta(payload))
 
     shard_primary_index_.insert({shard_id, replica_id});
@@ -127,8 +127,8 @@ void ReplicaManager::recover() {
                 continue;
             }
             ReplicaInitParam& param = payload.init_param;
-            ShardID shard_id{.table_id = param.replica_id.table_id,
-                             .shard_index = param.replica_id.shard_index};
+            ShardID shard_id{param.replica_id.table_id,
+                             param.replica_id.shard_index};
             if (replica_map_.count(param.replica_id) ||
                 shard_primary_index_.count(shard_id)) {
                 continue;

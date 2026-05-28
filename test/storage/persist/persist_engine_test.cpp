@@ -67,13 +67,7 @@ class PersistEngineTest : public ::testing::Test {
 
     static LogEntry make_entry(Term term, LogIndex index, WriteOpType op_type,
                                std::string key, std::string value) {
-        return LogEntry{
-            .term = term,
-            .index = index,
-            .op_type = op_type,
-            .key = std::move(key),
-            .value = std::move(value),
-        };
+        return LogEntry{term, index, op_type, std::move(key), std::move(value)};
     }
 
     static std::vector<uint8_t> encode_wal_payload(const LogEntry& entry) {
@@ -123,8 +117,7 @@ class PersistEngineTest : public ::testing::Test {
     static inline int sequence_{0};
 
     fs::path base_dir_;
-    ReplicaID replica_id_{
-        .table_id = 101, .shard_index = 7, .replica_index = 2};
+    ReplicaID replica_id_{101, 7, 2};
 };
 
 // 测试一下append_wal_batch和read_wal_batch是否可以正常运行
@@ -162,12 +155,7 @@ TEST_F(PersistEngineTest, SaveAndLoadRaftMeta) {
     Status status = engine.init();
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
-    RaftMeta expected{
-        .current_term = 9,
-        .commit_index = 17,
-        .voted_for =
-            ReplicaID{.table_id = 9, .shard_index = 2, .replica_index = 1},
-    };
+    RaftMeta expected{9, 17, ReplicaID{9, 2, 1}};
 
     status = engine.save_raft_meta(expected);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -308,12 +296,7 @@ TEST_F(PersistEngineTest, RecoverLoadsSnapshotMetaAndWalTogether) {
     ASSERT_TRUE(
         state_machine.apply(make_entry(4, 13, WriteOpType::PUT, "beta", "2"))
             .ok());
-    const RaftMeta meta{
-        .current_term = 11,
-        .commit_index = 22,
-        .voted_for =
-            ReplicaID{.table_id = 101, .shard_index = 7, .replica_index = 0},
-    };
+    const RaftMeta meta{11, 22, ReplicaID{101, 7, 0}};
 
     status = engine.append_wal_batch(wal_entries);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -361,8 +344,7 @@ TEST_F(PersistEngineTest, RecoverLoadsCompleteWalWithoutRepair) {
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal_batch(entries);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{
-            .current_term = 1, .commit_index = 2, .voted_for = std::nullopt});
+        status = engine.save_raft_meta(RaftMeta{1, 2, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -395,8 +377,7 @@ TEST_F(PersistEngineTest, RecoverTruncatesUncommittedPartialWalTail) {
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal_batch(entries);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{
-            .current_term = 1, .commit_index = 2, .voted_for = std::nullopt});
+        status = engine.save_raft_meta(RaftMeta{1, 2, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -437,8 +418,7 @@ TEST_F(PersistEngineTest, RecoverTruncatesUncommittedCrcMismatch) {
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal(committed);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{
-            .current_term = 1, .commit_index = 1, .voted_for = std::nullopt});
+        status = engine.save_raft_meta(RaftMeta{1, 1, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -475,8 +455,7 @@ TEST_F(PersistEngineTest, RecoverTruncatesCommittedCorruptionForRaftCatchUp) {
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal(entry1);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{
-            .current_term = 1, .commit_index = 3, .voted_for = std::nullopt});
+        status = engine.save_raft_meta(RaftMeta{1, 3, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -519,8 +498,7 @@ TEST_F(PersistEngineTest, RecoverContinuesCatchUpAfterCrashDuringRecovering) {
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal(entry1);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{
-            .current_term = 1, .commit_index = 2, .voted_for = std::nullopt});
+        status = engine.save_raft_meta(RaftMeta{1, 2, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -570,8 +548,7 @@ TEST_F(PersistEngineTest, RecoverHandlesInvalidWalDataLenByCommitIndex) {
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal(committed);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{
-            .current_term = 1, .commit_index = 1, .voted_for = std::nullopt});
+        status = engine.save_raft_meta(RaftMeta{1, 1, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);

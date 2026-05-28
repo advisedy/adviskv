@@ -73,9 +73,11 @@ Status DefaultNodeSelector::select_table_nodes(
             }
         }
 
-        views.push_back(NodeView{.node = node,
-                                 .owned_replica_count = owned_replica_count,
-                                 .dc = node.spec.dc});
+        NodeView view;
+        view.node = node;
+        view.owned_replica_count = owned_replica_count;
+        view.dc = node.spec.dc;
+        views.push_back(std::move(view));
     }
 
     res.shards.clear();
@@ -90,9 +92,8 @@ Status DefaultNodeSelector::select_table_nodes(
                       return lhs.node.id < rhs.node.id;
                   });
 
-        ShardPlacement shard{
-            .shard_index = shard_idx,
-        };
+        ShardPlacement shard;
+        shard.shard_index = shard_idx;
         shard.nodes.reserve(param.replica_count);
         for (int32_t i = 0; i < param.replica_count; ++i) {
             shard.nodes.emplace_back(views[i].node);

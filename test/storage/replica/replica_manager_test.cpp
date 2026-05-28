@@ -29,18 +29,11 @@ class ReplicaManagerTest : public ::testing::Test {
 
     ReplicaInitParam make_param(ReplicaID replica_id) const {
         return ReplicaInitParam{
-            .replica_id = replica_id,
-            .engine_type = EngineType::MAP,
-            .local_endpoint = Endpoint{"127.0.0.1", 18080},
-            .members =
-                {
-                    PeerMember{
-                        .node_id = "node-1",
-                        .replica_id = replica_id,
-                        .endpoint = Endpoint{"127.0.0.1", 18080},
-                    },
-                },
-            .data_dir = base_dir_.string(),
+            replica_id,
+            EngineType::MAP,
+            Endpoint{"127.0.0.1", 18080},
+            {PeerMember{"node-1", replica_id, Endpoint{"127.0.0.1", 18080}}},
+            base_dir_.string(),
         };
     }
 
@@ -62,7 +55,7 @@ TEST_F(ReplicaManagerTest, EmptyManagerReturnsNullForMissingReplica) {
 // add_replica后应能按ID和shard索引查到对应replica
 TEST_F(ReplicaManagerTest, AddReplicaIndexesByIdAndShard) {
     ReplicaManager manager(base_dir_.string());
-    ReplicaID replica_id{.table_id = 7, .shard_index = 3, .replica_index = 0};
+    ReplicaID replica_id{7, 3, 0};
 
     Status status = manager.add_replica(make_param(replica_id));
     ASSERT_TRUE(status.ok())
@@ -85,18 +78,14 @@ TEST_F(ReplicaManagerTest, AddReplicaIndexesByIdAndShard) {
 // 重复添加相同replica_id或相同shard的replica应返回INVALID_ARGUMENT
 TEST_F(ReplicaManagerTest, RejectsDuplicateReplicaAndDuplicateShard) {
     ReplicaManager manager(base_dir_.string());
-    ReplicaID replica_id{.table_id = 9, .shard_index = 1, .replica_index = 0};
+    ReplicaID replica_id{9, 1, 0};
 
     ASSERT_TRUE(manager.add_replica(make_param(replica_id)).ok());
 
     Status duplicate_id_status = manager.add_replica(make_param(replica_id));
     EXPECT_TRUE(duplicate_id_status.ok());
 
-    ReplicaID another_replica_same_shard{
-        .table_id = 9,
-        .shard_index = 1,
-        .replica_index = 1,
-    };
+    ReplicaID another_replica_same_shard{9, 1, 1};
     Status duplicate_shard_status =
         manager.add_replica(make_param(another_replica_same_shard));
     EXPECT_EQ(duplicate_shard_status.code(), StatusCode::ALREADY_EXIST);
@@ -105,7 +94,7 @@ TEST_F(ReplicaManagerTest, RejectsDuplicateReplicaAndDuplicateShard) {
 // delete_replica后应无法再按ID或shard查到该replica
 TEST_F(ReplicaManagerTest, DeleteReplicaRemovesIndexes) {
     ReplicaManager manager(base_dir_.string());
-    ReplicaID replica_id{.table_id = 5, .shard_index = 2, .replica_index = 0};
+    ReplicaID replica_id{5, 2, 0};
 
     ASSERT_TRUE(manager.add_replica(make_param(replica_id)).ok());
     ASSERT_TRUE(manager.delete_replica(replica_id).ok());
@@ -119,7 +108,7 @@ TEST_F(ReplicaManagerTest, DeleteReplicaRemovesIndexes) {
 
 // recover应扫描磁盘上的replica_meta，并重建内存里的replica索引
 TEST_F(ReplicaManagerTest, RecoverScansDiskAndRebuildsReplicaIndexes) {
-    ReplicaID replica_id{.table_id = 12, .shard_index = 4, .replica_index = 0};
+    ReplicaID replica_id{12, 4, 0};
 
     {
         ReplicaManager manager(base_dir_.string());
@@ -134,8 +123,7 @@ TEST_F(ReplicaManagerTest, RecoverScansDiskAndRebuildsReplicaIndexes) {
     EXPECT_EQ(by_id->get_replica_id(), replica_id);
 
     Replica* by_shard = recovered.get_replica_by_shard(
-        ShardID{.table_id = replica_id.table_id,
-                .shard_index = replica_id.shard_index});
+        ShardID{replica_id.table_id, replica_id.shard_index});
     ASSERT_NE(by_shard, nullptr);
     EXPECT_EQ(by_shard->get_replica_id(), replica_id);
     EXPECT_EQ(recovered.get_replicas().size(), 1U);

@@ -19,14 +19,13 @@ Status NodeService::register_node(const RegisterNodeParam& param) {
     //   RETURN_IF_INVALID_STATUS(status)
 
     //   return Status::OK();
-    Node node{
-        .id = param.node_id,
-        .spec.dc = param.dc,
-        .spec.resource_pool = param.resource_pool,
-        .spec.status = NodeStatus::ONLINE,
-        .state.endpoint = {param.ip, param.port},
-        .state.last_heartbeat_ts = param.last_heartbeat_ts,
-    };
+    Node node;
+    node.id = param.node_id;
+    node.spec.dc = param.dc;
+    node.spec.resource_pool = param.resource_pool;
+    node.spec.status = NodeStatus::ONLINE;
+    node.state.endpoint = Endpoint{param.ip, param.port};
+    node.state.last_heartbeat_ts = param.last_heartbeat_ts;
     Status status = sdm_store_->put_node(node);
 
     return status;

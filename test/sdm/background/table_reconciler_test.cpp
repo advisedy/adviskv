@@ -90,31 +90,15 @@ class TestTableReconciler : public TableReconciler {
 };
 
 Node make_node(const NodeID& id, int32_t port) {
-    return Node{
-        .id = id,
-        .spec{
-            .resource_pool = "pool-a",
-            .dc = "dc-a",
-            .status = NodeStatus::ONLINE,
-        },
-        .state{
-            .endpoint = Endpoint{.ip = "127.0.0.1", .port = port},
-            .last_heartbeat_ts = 1,
-        },
-    };
+    return Node{id,
+                NodeSpec{"pool-a", "dc-a", NodeStatus::ONLINE},
+                NodeState{Endpoint{"127.0.0.1", port}, 1},
+                NodeDerived{}};
 }
 
 PlaceTableParam make_place_table_param() {
-    return PlaceTableParam{
-        .db_id = 11,
-        .table_id = 1001,
-        .db_name = "commerce",
-        .table_name = "orders",
-        .replica_count = 2,
-        .shard_count = 1,
-        .resource_pool = "pool-a",
-        .operation_id = "create-1001",
-    };
+    return PlaceTableParam{11, 1001, "commerce", "orders", 2, 1, "pool-a",
+                           "create-1001"};
 }
 
 void put_default_nodes(SdmStore& store) {
@@ -145,13 +129,12 @@ void make_table_ready_in_storage(SdmStore& store, FakeStorageClient& storage) {
     std::vector<Replica> replicas = list_replicas_or_die(store);
     for (const Replica& replica : replicas) {
         storage.replica_infos.push_back(StorageReplicaInfo{
-            .replica_id = replica.replica_id,
-            .role = replica.replica_id.replica_index == 0
-                        ? ReplicaRole::LEADER
-                        : ReplicaRole::FOLLOWER,
-            .status = ReplicaStatus::READY,
-            .endpoint = replica.state.observed_endpoint,
-            .term = 1,
+            replica.replica_id,
+            replica.replica_id.replica_index == 0 ? ReplicaRole::LEADER
+                                                  : ReplicaRole::FOLLOWER,
+            ReplicaStatus::READY,
+            replica.state.observed_endpoint,
+            1,
         });
     }
 }

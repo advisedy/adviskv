@@ -9,42 +9,22 @@ namespace adviskv::sdm {
 namespace {
 
 PlaceTableParam make_place_table_param() {
-    return PlaceTableParam{
-        .db_id = 11,
-        .table_id = 1001,
-        .db_name = "commerce",
-        .table_name = "orders",
-        .replica_count = 2,
-        .shard_count = 3,
-        .resource_pool = "pool-a",
-        .operation_id = "create-table-1001",
-    };
+    return PlaceTableParam{11, 1001, "commerce", "orders", 2, 3, "pool-a",
+                           "create-table-1001"};
 }
 
 DropTableParam make_drop_table_param() {
-    return DropTableParam{
-        .table_id = 1001,
-        .operation_id = "drop-table-1001",
-    };
+    return DropTableParam{1001, "drop-table-1001"};
 }
 
 void put_ready_table(SdmStore& store) {
-    Table table{
-        .table_id = 1001,
-        .spec{
-            .table_name = "orders",
-            .db_id = 11,
-            .db_name = "commerce",
-            .shard_count = 3,
-            .replica_count = 2,
-            .resource_pool = "pool-a",
-            .operation_id = "create-table-1001",
-        },
-        .state{
-            .desired = TableDesired::PRESENT,
-            .phase = TablePhase::READY,
-        },
-    };
+    TableState state{};
+    state.desired = TableDesired::PRESENT;
+    state.phase = TablePhase::READY;
+    Table table{1001,
+                TableSpec{"orders", 11, "commerce", 3, 2, "pool-a",
+                          "create-table-1001"},
+                state};
     ASSERT_TRUE(store.put_table(table).ok());
 }
 
@@ -156,26 +136,17 @@ TEST(TableServiceTest, DropTableRejectsInvalidStateAndConflictingOperation) {
     Status not_ready = service.drop_table(make_drop_table_param());
     EXPECT_EQ(not_ready.code(), StatusCode::ALREADY_EXIST);
 
-    Table table{
-        .table_id = 1002,
-        .spec{
-            .table_name = "payments",
-            .db_id = 11,
-            .db_name = "commerce",
-            .shard_count = 1,
-            .replica_count = 1,
-            .resource_pool = "pool-a",
-            .operation_id = "drop-old",
-        },
-        .state{
-            .desired = TableDesired::ABSENT,
-            .phase = TablePhase::DELETING,
-        },
-    };
+    TableState state{};
+    state.desired = TableDesired::ABSENT;
+    state.phase = TablePhase::DELETING;
+    Table table{1002,
+                TableSpec{"payments", 11, "commerce", 1, 1, "pool-a",
+                          "drop-old"},
+                state};
     ASSERT_TRUE(store.put_table(table).ok());
 
     Status conflict = service.drop_table(
-        DropTableParam{.table_id = 1002, .operation_id = "drop-new"});
+        DropTableParam{1002, "drop-new"});
     EXPECT_EQ(conflict.code(), StatusCode::ALREADY_EXIST);
 }
 
@@ -188,8 +159,7 @@ TEST(TableServiceTest, GetTableStatusReturnsStoredTableAndChecksOperationId) {
 
     Table table;
     Status status = service.get_table_status(
-        GetTableStatusParam{.operation_id = param.operation_id,
-                            .table_id = param.table_id},
+        GetTableStatusParam{param.operation_id, param.table_id},
         &table);
 
     ASSERT_TRUE(status.ok()) << status.msg();
@@ -197,13 +167,12 @@ TEST(TableServiceTest, GetTableStatusReturnsStoredTableAndChecksOperationId) {
     EXPECT_EQ(table.spec.operation_id, param.operation_id);
 
     Status mismatch = service.get_table_status(
-        GetTableStatusParam{.operation_id = "other-op",
-                            .table_id = param.table_id},
+        GetTableStatusParam{"other-op", param.table_id},
         nullptr);
     EXPECT_EQ(mismatch.code(), StatusCode::INVALID_ARGUMENT);
 
     Status missing = service.get_table_status(
-        GetTableStatusParam{.operation_id = "", .table_id = 9999}, nullptr);
+        GetTableStatusParam{"", 9999}, nullptr);
     EXPECT_EQ(missing.code(), StatusCode::TABLE_NOT_FOUND);
 }
 

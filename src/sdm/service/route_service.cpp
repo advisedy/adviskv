@@ -76,10 +76,8 @@ Status RouteService::get_route(const GetRouteParam& param,
 ShardID RouteService::calc_shard_id(const Table& table, Key key) const {
     // TODO 将来得搞range
     return ShardID{
-        .table_id = table.table_id,
-        .shard_index = static_cast<ShardIndex>(std::hash<Key>{}(key) %
-                                               table.spec.shard_count),
-    };
+        table.table_id, static_cast<ShardIndex>(std::hash<Key>{}(key) %
+                                                table.spec.shard_count)};
 }
 
 }  // namespace adviskv::sdm

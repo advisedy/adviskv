@@ -13,73 +13,40 @@ namespace {
 Table make_table(TableID table_id, const std::string& db_name,
                  const std::string& table_name,
                  TableDesired desired = TableDesired::PRESENT) {
-    return Table{
-        .table_id = table_id,
-        .spec{
-            .table_name = table_name,
-            .db_id = 11,
-            .db_name = db_name,
-            .shard_count = 2,
-            .replica_count = 2,
-            .resource_pool = "pool-a",
-            .operation_id = "create-table-" + std::to_string(table_id),
-        },
-        .state{
-            .desired = desired,
-            .phase = TablePhase::READY,
-        },
-    };
+    TableState state{};
+    state.desired = desired;
+    state.phase = TablePhase::READY;
+    return Table{table_id,
+                 TableSpec{table_name, 11, db_name, 2, 2, "pool-a",
+                           "create-table-" + std::to_string(table_id)},
+                 state};
 }
 
 Node make_node(const NodeID& id, const std::string& resource_pool,
                int32_t port = 18080) {
-    return Node{
-        .id = id,
-        .spec{
-            .resource_pool = resource_pool,
-            .dc = "dc-a",
-            .status = NodeStatus::ONLINE,
-        },
-        .state{
-            .endpoint = Endpoint{.ip = "127.0.0.1", .port = port},
-            .last_heartbeat_ts = 100,
-        },
-    };
+    return Node{id,
+                NodeSpec{resource_pool, "dc-a", NodeStatus::ONLINE},
+                NodeState{Endpoint{"127.0.0.1", port}, 100},
+                NodeDerived{}};
 }
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
-    return Replica{
-        .replica_id = replica_id,
-        .spec{
-            .dc = "dc-a",
-            .assign_node_id = node_id,
-            .engine_type = EngineType::MAP,
-        },
-        .state{
-            .desired = ReplicaDesired::PRESENT,
-            .phase = ReplicaPhase::READY,
-            .observed_role = ReplicaRole::FOLLOWER,
-            .observed_endpoint = Endpoint{.ip = "127.0.0.1", .port = 18080},
-        },
-    };
+    ReplicaState state{};
+    state.desired = ReplicaDesired::PRESENT;
+    state.phase = ReplicaPhase::READY;
+    state.observed_role = ReplicaRole::FOLLOWER;
+    state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
+    return Replica{replica_id,
+                   ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
+                   state};
 }
 
 ShardRoute make_route(const ShardID& shard_id) {
-    return ShardRoute{
-        .shard_id = shard_id,
-        .replicas =
-            {
-                RouteEntry{
-                    .replica_id =
-                        ReplicaID{shard_id.table_id, shard_id.shard_index, 0},
-                    .node_id = "node-a",
-                    .ip = "127.0.0.1",
-                    .port = 18080,
-                    .role = ReplicaRole::LEADER,
-                    .term = 7,
-                },
-            },
-    };
+    return ShardRoute{shard_id,
+                      {RouteEntry{ReplicaID{shard_id.table_id,
+                                            shard_id.shard_index, 0},
+                                  "node-a", "127.0.0.1", 18080,
+                                  ReplicaRole::LEADER, 7}}};
 }
 
 std::vector<NodeID> node_ids(std::vector<Node> nodes) {

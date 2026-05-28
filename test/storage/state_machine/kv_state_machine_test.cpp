@@ -18,13 +18,7 @@ namespace fs = std::filesystem;
 
 LogEntry make_entry(Term term, LogIndex index, WriteOpType op_type,
                     std::string key, std::string value) {
-    return LogEntry{
-        .term = term,
-        .index = index,
-        .op_type = op_type,
-        .key = std::move(key),
-        .value = std::move(value),
-    };
+    return LogEntry{term, index, op_type, std::move(key), std::move(value)};
 }
 
 class KvStateMachineTest : public ::testing::Test {
@@ -41,9 +35,7 @@ class KvStateMachineTest : public ::testing::Test {
     }
 
     PersistEngine make_engine() const {
-        return PersistEngine(
-            base_dir_.string(),
-            ReplicaID{.table_id = 1, .shard_index = 1, .replica_index = 0});
+        return PersistEngine(base_dir_.string(), ReplicaID{1, 1, 0});
     }
 
    private:

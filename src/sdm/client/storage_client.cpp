@@ -149,16 +149,12 @@ Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
     ReplicaStatus status{ReplicaStatus::ADDING};
     IGNORE_RESULT(convert_pb_to_replica_status(replica.status(), status))
 
-    out = StorageReplicaInfo{
-        .replica_id = ReplicaID{.table_id = replica.table_id(),
-                                .shard_index = replica.shard_id(),
-                                .replica_index = replica.replica_id()},
-        .role = role,
-        .status = status,
-        .endpoint = Endpoint{.ip = replica.endpoint().ip(),
-                             .port = replica.endpoint().port()},
-        .term = replica.term(),
-    };
+    out.replica_id = ReplicaID{replica.table_id(), replica.shard_id(),
+                               replica.replica_id()};
+    out.role = role;
+    out.status = status;
+    out.endpoint = Endpoint{replica.endpoint().ip(), replica.endpoint().port()};
+    out.term = replica.term();
 
     return Status::OK();
 }

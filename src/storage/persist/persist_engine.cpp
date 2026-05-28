@@ -183,15 +183,38 @@ Status PersistEngine::truncate_wal(const LogIndex& snapshot_index) {
     if (fd < 0) {
         return Status{StatusCode::ERROR, "fd < 0"};
     }
+    auto fd_guard = Defer([&fd]() {
+        if (fd != -1) {
+            ::close(fd);
+            fd = -1;
+        }
+    });
+
     for (const LogEntry& entry : remain) {
         RETURN_IF_INVALID_STATUS(write_wal_to_disk(fd, entry))
     }
 
-    ::fsync(fd);
-    ::close(fd);
-    ::close(wal_fd_);
+    if (::fsync(fd) != 0) {
+        return Status::ERROR("failed to fsync wal tmp file");
+    }
+    if (::close(fd) != 0) {
+        fd = -1;
+        return Status::ERROR("failed to close wal tmp file");
+    }
+    fd = -1;
 
-    ::rename(tmp_path.c_str(), wal_path_.c_str());
+    if (wal_fd_ != -1) {
+        if (::close(wal_fd_) != 0) {
+            wal_fd_ = -1;
+            return Status::ERROR("failed to close wal file before rename");
+        }
+        wal_fd_ = -1;
+    }
+
+    if (::rename(tmp_path.c_str(), wal_path_.c_str()) != 0) {
+        return Status::ERROR("failed to rename wal tmp file");
+    }
+    RETURN_IF_INVALID_STATUS(func::fsync_dir(dir_path_))
 
     wal_fd_ = ::open(wal_path_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (wal_fd_ < 0) {
@@ -371,7 +394,9 @@ Status PersistEngine::append_snapshot_chunk(const InstallSnapshotParam& param) {
         RETURN_IF_INVALID_STATUS(
             func::write_full(fd, param.data.data(), param.data.size()))
     }
-    ::fsync(fd);
+    if (::fsync(fd) != 0) {
+        return Status::ERROR("failed to fsync snapshot tmp file");
+    }
     return Status::OK();
 }
 
@@ -383,6 +408,8 @@ Status PersistEngine::finish_snapshot_receive(const SnapshotPtr& snap) {
     if (::rename(snapshot_tmp_path_.c_str(), snapshot_path_.c_str()) != 0) {
         return Status::ERROR("failed to publish received snapshot");
     }
+    RETURN_IF_INVALID_STATUS(func::fsync_dir(dir_path_))
+
     snap->path = snapshot_path_;
     return Status::OK();
 }
@@ -437,13 +464,22 @@ Status PersistEngine::do_snapshot(const StateMachine& state_machine) {
     }
     RETURN_IF_INVALID_STATUS(func::write_value(fd, kv_count))
 
-    ::fsync(fd);
+    if (::fsync(fd) != 0) {
+        return Status::ERROR("failed to fsync snapshot tmp file");
+    }
     // Close before rename.
-    ::close(fd);
+    if (::close(fd) != 0) {
+        fd = -1;
+        return Status::ERROR("failed to close snapshot tmp file");
+    }
     fd = -1;
 
     // 1) Publish snapshot (atomic rename)
-    ::rename(snapshot_tmp_path_.c_str(), snapshot_path_.c_str());
+    if (::rename(snapshot_tmp_path_.c_str(), snapshot_path_.c_str()) != 0) {
+        return Status::ERROR("failed to rename snapshot tmp file");
+    }
+    RETURN_IF_INVALID_STATUS(func::fsync_dir(dir_path_))
+
     // 2) Then truncate WAL up to snapshot index
     RETURN_IF_INVALID_STATUS(truncate_wal(apply_index))
     return Status::OK();
@@ -467,11 +503,20 @@ Status PersistEngine::save_raft_meta(const RaftMeta& meta) {
     RETURN_IF_INVALID_STATUS(
         FramedRecord<RaftMetaCodec>::encode_to_fd(fd, meta))
 
-    ::fsync(fd);
-    ::close(fd);
+    if (::fsync(fd) != 0) {
+        return Status::ERROR("failed to fsync raft meta tmp file");
+    }
+    if (::close(fd) != 0) {
+        fd = -1;
+        return Status::ERROR("failed to close raft meta tmp file");
+    }
     fd = -1;
 
-    ::rename(tmp_path.c_str(), raft_meta_path_.c_str());
+    if (::rename(tmp_path.c_str(), raft_meta_path_.c_str()) != 0) {
+        return Status::ERROR("failed to rename raft meta tmp file");
+    }
+    RETURN_IF_INVALID_STATUS(func::fsync_dir(dir_path_))
+
     return Status::OK();
 }
 Status PersistEngine::load_raft_meta(RaftMeta& meta) const {

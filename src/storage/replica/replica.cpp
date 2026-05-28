@@ -18,8 +18,8 @@ namespace adviskv::storage {
 static constexpr int SNAPSHOT_LIMIT = 1000;
 
 Status Replica::init(const ReplicaInitParam& param) {
-    shard_id_ = {.table_id = param.replica_id.table_id,
-                 .shard_index = param.replica_id.shard_index};
+    shard_id_ =
+        ShardID{param.replica_id.table_id, param.replica_id.shard_index};
     replica_id_ = param.replica_id;
 
     persist_ =

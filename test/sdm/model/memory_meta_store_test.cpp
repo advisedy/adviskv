@@ -11,89 +11,47 @@ namespace {
 
 Table make_table(TableID table_id, const std::string& table_name,
                  TablePhase phase = TablePhase::CREATING) {
-    return Table{
-        .table_id = table_id,
-        .spec{
-            .table_name = table_name,
-            .db_id = 11,
-            .db_name = "commerce",
-            .shard_count = 2,
-            .replica_count = 2,
-            .resource_pool = "pool-a",
-            .operation_id = "create-table-" + std::to_string(table_id),
-        },
-        .state{
-            .desired = TableDesired::PRESENT,
-            .phase = phase,
-            .update_ts = 100 + table_id,
-        },
-    };
+    TableState state{};
+    state.desired = TableDesired::PRESENT;
+    state.phase = phase;
+    state.update_ts = 100 + table_id;
+    return Table{table_id,
+                 TableSpec{table_name, 11, "commerce", 2, 2, "pool-a",
+                           "create-table-" + std::to_string(table_id)},
+                 state};
 }
 
 Node make_node(const NodeID& id, const std::string& resource_pool,
                int32_t port = 18080) {
-    return Node{
-        .id = id,
-        .spec{
-            .resource_pool = resource_pool,
-            .dc = "dc-a",
-            .status = NodeStatus::ONLINE,
-        },
-        .state{
-            .endpoint = Endpoint{.ip = "127.0.0.1", .port = port},
-            .last_heartbeat_ts = 123456,
-        },
-        .derived{
-            .owned_replica_count = 3,
-            .owned_leader_count = 1,
-        },
-    };
+    return Node{id,
+                NodeSpec{resource_pool, "dc-a", NodeStatus::ONLINE},
+                NodeState{Endpoint{"127.0.0.1", port}, 123456},
+                NodeDerived{3, 1}};
 }
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id,
                      ReplicaRole role = ReplicaRole::FOLLOWER) {
-    return Replica{
-        .replica_id = replica_id,
-        .spec{
-            .dc = "dc-a",
-            .assign_node_id = node_id,
-            .engine_type = EngineType::MAP,
-        },
-        .state{
-            .desired = ReplicaDesired::PRESENT,
-            .phase = ReplicaPhase::READY,
-            .observed_role = role,
-            .observed_endpoint = Endpoint{.ip = "127.0.0.1", .port = 18080},
-            .term = 7,
-        },
-    };
+    ReplicaState state{};
+    state.desired = ReplicaDesired::PRESENT;
+    state.phase = ReplicaPhase::READY;
+    state.observed_role = role;
+    state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
+    state.term = 7;
+    return Replica{replica_id,
+                   ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
+                   state};
 }
 
 ShardRoute make_route(const ShardID& shard_id) {
-    return ShardRoute{
-        .shard_id = shard_id,
-        .replicas =
-            {
-                RouteEntry{
-                    .replica_id =
-                        ReplicaID{shard_id.table_id, shard_id.shard_index, 0},
-                    .node_id = "node-a",
-                    .ip = "127.0.0.1",
-                    .port = 18080,
-                    .role = ReplicaRole::LEADER,
-                    .term = 8,
-                },
-                RouteEntry{
-                    .replica_id =
-                        ReplicaID{shard_id.table_id, shard_id.shard_index, 1},
-                    .node_id = "node-b",
-                    .ip = "127.0.0.2",
-                    .port = 18081,
-                    .role = ReplicaRole::FOLLOWER,
-                    .term = 8,
-                },
-            },
-    };
+    return ShardRoute{shard_id,
+                      {RouteEntry{ReplicaID{shard_id.table_id,
+                                            shard_id.shard_index, 0},
+                                  "node-a", "127.0.0.1", 18080,
+                                  ReplicaRole::LEADER, 8},
+                       RouteEntry{ReplicaID{shard_id.table_id,
+                                            shard_id.shard_index, 1},
+                                  "node-b", "127.0.0.2", 18081,
+                                  ReplicaRole::FOLLOWER, 8}}};
 }
 
 std::vector<TableID> sorted_table_ids(const std::vector<TablePtr>& tables) {
@@ -279,9 +237,9 @@ TEST(MemoryMetaStoreTest, ResourcePoolUpsertGetListAndDeleteWork) {
     MemoryMetaStore store;
 
     ASSERT_TRUE(
-        store.upsert_resource_pool(ResourcePool{.name = "pool-a"}).ok());
+        store.upsert_resource_pool(ResourcePool{"pool-a"}).ok());
     ASSERT_TRUE(
-        store.upsert_resource_pool(ResourcePool{.name = "pool-b"}).ok());
+        store.upsert_resource_pool(ResourcePool{"pool-b"}).ok());
 
     ResourcePoolPtr out;
     ASSERT_TRUE(store.get_resource_pool("pool-a", out).ok());
@@ -289,7 +247,7 @@ TEST(MemoryMetaStoreTest, ResourcePoolUpsertGetListAndDeleteWork) {
     EXPECT_EQ(out->name, "pool-a");
 
     ASSERT_TRUE(
-        store.upsert_resource_pool(ResourcePool{.name = "pool-a-renamed"})
+        store.upsert_resource_pool(ResourcePool{"pool-a-renamed"})
             .ok());
     ASSERT_TRUE(store.get_resource_pool("pool-a-renamed", out).ok());
     ASSERT_TRUE(out != nullptr);
@@ -352,7 +310,7 @@ TEST(MemoryMetaStoreTest, CloneMemorySnapshotCopiesCurrentDataIndependently) {
     ASSERT_TRUE(store.upsert_node(make_node(node_id, "pool-a")).ok());
     ASSERT_TRUE(store.upsert_replica(make_replica(replica_id, node_id)).ok());
     ASSERT_TRUE(
-        store.upsert_resource_pool(ResourcePool{.name = "pool-a"}).ok());
+        store.upsert_resource_pool(ResourcePool{"pool-a"}).ok());
     ASSERT_TRUE(store.upsert_shard_route(make_route(shard_id)).ok());
 
     std::unique_ptr<ISdmMetaStore> snapshot = store.clone_memory_snapshot();

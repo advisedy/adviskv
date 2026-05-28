@@ -73,11 +73,11 @@ Status CatalogManager::persist_meta() {
         return Status::ERROR("persist engine is nullptr");
     }
 
-    PersistedMetaRecord record{
-        .db_meta_map = db_meta_map_,
-        .table_id2table_meta = table_id2table_meta_,
-        .next_db_id = db_id_allocator_.current_id(),
-        .next_table_id = table_id_allocator_.current_id()};
+    PersistedMetaRecord record;
+    record.db_meta_map = db_meta_map_;
+    record.table_id2table_meta = table_id2table_meta_;
+    record.next_db_id = db_id_allocator_.current_id();
+    record.next_table_id = table_id_allocator_.current_id();
     return persist_engine_->save_meta(record);
 }
 

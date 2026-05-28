@@ -28,10 +28,7 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
         return grpc::Status::OK;
     }
 
-    const ShardID shard_id{
-        .table_id = request->table_id(),
-        .shard_index = request->shard_id(),
-    };
+    ShardID shard_id{request->table_id(), request->shard_id()};
     Replica* replica = replica_manager_->get_replica_by_shard(shard_id);
 
     if (!replica) {
@@ -41,7 +38,7 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
                                        "replica not found"});
         return grpc::Status::OK;
     }
-    PutParam param{.key = request->key(), .value = request->value()};
+    PutParam param{request->key(), request->value()};
     Status status = replica->put(param);
 
     if (!status.ok()) {
@@ -67,10 +64,7 @@ grpc::Status StorageServiceImpl::Get(grpc::ServerContext* context,
                                        "replica manager not found"});
         return grpc::Status::OK;
     }
-    const ShardID shard_id{
-        .table_id = request->table_id(),
-        .shard_index = request->shard_id(),
-    };
+    ShardID shard_id{request->table_id(), request->shard_id()};
     Replica* replica = replica_manager_->get_replica_by_shard(shard_id);
 
     if (!replica) {
@@ -81,7 +75,7 @@ grpc::Status StorageServiceImpl::Get(grpc::ServerContext* context,
         return grpc::Status::OK;
     }
 
-    GetParam param{.key = request->key()};
+    GetParam param{request->key()};
     Value value;
 
     Status status = replica->get(param, value);
@@ -113,10 +107,7 @@ grpc::Status StorageServiceImpl::Delete(grpc::ServerContext* context,
         return grpc::Status::OK;
     }
 
-    ShardID shard_id{
-        .table_id = request->table_id(),
-        .shard_index = request->shard_id(),
-    };
+    ShardID shard_id{request->table_id(), request->shard_id()};
     Replica* replica = replica_manager_->get_replica_by_shard(shard_id);
     if (!replica) {
         fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND,
@@ -124,7 +115,7 @@ grpc::Status StorageServiceImpl::Delete(grpc::ServerContext* context,
         return grpc::Status::OK;
     }
 
-    Status status = replica->del(DelParam{.key = request->key()});
+    Status status = replica->del(DelParam{request->key()});
     fill_base_rsp(response, status);
     return grpc::Status::OK;
 }
@@ -141,26 +132,22 @@ grpc::Status StorageServiceImpl::CreateReplica(
         return grpc::Status::OK;
     }
 
-    ReplicaInitParam param{
-        .replica_id{.table_id = request->table_id(),
-                    .shard_index = request->shard_index(),
-                    .replica_index = request->replica_index()},
-        .engine_type = (EngineType)request->engine_type(),
-    };
+    ReplicaInitParam param;
+    param.replica_id = ReplicaID{request->table_id(), request->shard_index(),
+                                 request->replica_index()};
+    param.engine_type = static_cast<EngineType>(request->engine_type());
     param.members.clear();
     for (const auto& member : request->members()) {
-        PeerMember one{
-            .node_id = member.node_id(),
-            .replica_id{.table_id = member.replica_id().table_id(),
-                        .shard_index = member.replica_id().shard_index(),
-                        .replica_index = member.replica_id().replica_index()},
-            .endpoint{.ip = member.endpoint().ip(),
-                      .port = member.endpoint().port()},
-        };
+        PeerMember one;
+        one.node_id = member.node_id();
+        one.replica_id = ReplicaID{member.replica_id().table_id(),
+                                   member.replica_id().shard_index(),
+                                   member.replica_id().replica_index()};
+        one.endpoint = Endpoint{member.endpoint().ip(),
+                                member.endpoint().port()};
         param.members.push_back(std::move(one));
     }
-    param.local_endpoint = {.ip = CONF_GET_STR("ip"),
-                            .port = CONF_GET_INT("port")};
+    param.local_endpoint = Endpoint{CONF_GET_STR("ip"), CONF_GET_INT("port")};
     param.data_dir = adviskv::path_from_config("data_dir").string();
 
     Status status = replica_manager_->add_replica(param);
@@ -180,10 +167,7 @@ grpc::Status StorageServiceImpl::DeleteReplica(
     }
 
     ReplicaID replica_id{
-        .table_id = request->table_id(),
-        .shard_index = request->shard_id(),
-        .replica_index = request->replica_id(),
-    };
+        request->table_id(), request->shard_id(), request->replica_id()};
     Status status = replica_manager_->delete_replica(replica_id);
     fill_base_rsp(response, status);
     return grpc::Status::OK;
@@ -201,11 +185,8 @@ grpc::Status StorageServiceImpl::GetReplicaInfo(
         return grpc::Status::OK;
     }
 
-    const ReplicaID replica_id{
-        .table_id = request->table_id(),
-        .shard_index = request->shard_id(),
-        .replica_index = request->replica_id(),
-    };
+    ReplicaID replica_id{
+        request->table_id(), request->shard_id(), request->replica_id()};
     Replica* replica = replica_manager_->get_replica_by_id(replica_id);
     if (!replica) {
         response->set_exists(false);
@@ -238,11 +219,8 @@ grpc::Status StorageServiceImpl::RequestVote(
                                        "replica manager not found"});
         return grpc::Status::OK;
     }
-    const ReplicaID replica_id{
-        .table_id = request->to().table_id(),
-        .shard_index = request->to().shard_index(),
-        .replica_index = request->to().replica_index(),
-    };
+    ReplicaID replica_id{request->to().table_id(), request->to().shard_index(),
+                         request->to().replica_index()};
 
     Replica* replica = replica_manager_->get_replica_by_id(replica_id);
     if (!replica) {
@@ -250,18 +228,14 @@ grpc::Status StorageServiceImpl::RequestVote(
                                        "target replica not found"});
         return grpc::Status::OK;
     }
-    RequestVoteParam param{
-        .from_replica_id =
-            {
-                .table_id = request->from().table_id(),
-                .shard_index = request->from().shard_index(),
-                .replica_index = request->from().replica_index(),
-            },
-        .to_replica_id = replica_id,
-        .term = request->term(),
-        .last_log_index = request->last_log_index(),
-        .last_log_term = request->last_log_term(),
-    };
+    RequestVoteParam param;
+    param.from_replica_id =
+        ReplicaID{request->from().table_id(), request->from().shard_index(),
+                  request->from().replica_index()};
+    param.to_replica_id = replica_id;
+    param.term = request->term();
+    param.last_log_index = request->last_log_index();
+    param.last_log_term = request->last_log_term();
 
     RequestVoteResult result;
     Status status = replica->handle_request_vote(param, result);
@@ -285,11 +259,8 @@ grpc::Status StorageServiceImpl::AppendEntries(
                                        "replica manager not found"});
         return grpc::Status::OK;
     }
-    const ReplicaID replica_id{
-        .table_id = request->to().table_id(),
-        .shard_index = request->to().shard_index(),
-        .replica_index = request->to().replica_index(),
-    };
+    ReplicaID replica_id{request->to().table_id(), request->to().shard_index(),
+                         request->to().replica_index()};
 
     Replica* replica = replica_manager_->get_replica_by_id(replica_id);
     if (!replica) {
@@ -298,27 +269,22 @@ grpc::Status StorageServiceImpl::AppendEntries(
         return grpc::Status::OK;
     }
 
-    AppendEntriesParam param{
-        .from_replica_id =
-            {
-                .table_id = request->from().table_id(),
-                .shard_index = request->from().shard_index(),
-                .replica_index = request->from().replica_index(),
-            },
-        .to_replica_id = replica_id,
-        .term = request->term(),
-        .prev_log_index = request->prev_log_index(),
-        .prev_log_term = request->prev_log_term(),
-        .leader_commit = request->leader_commit(),
-    };
+    AppendEntriesParam param;
+    param.from_replica_id =
+        ReplicaID{request->from().table_id(), request->from().shard_index(),
+                  request->from().replica_index()};
+    param.to_replica_id = replica_id;
+    param.term = request->term();
+    param.prev_log_index = request->prev_log_index();
+    param.prev_log_term = request->prev_log_term();
+    param.leader_commit = request->leader_commit();
     for (const rpc::LogEntry& one : request->entries()) {
-        LogEntry entry{
-            .term = one.term(),
-            .index = one.index(),
-            .op_type = (WriteOpType)one.op_type(),
-            .key = one.key(),
-            .value = one.value(),
-        };
+        LogEntry entry;
+        entry.term = one.term();
+        entry.index = one.index();
+        entry.op_type = static_cast<WriteOpType>(one.op_type());
+        entry.key = one.key();
+        entry.value = one.value();
         param.entries.push_back(std::move(entry));
     }
 
@@ -345,11 +311,8 @@ grpc::Status StorageServiceImpl::InstallSnapshot(
         return grpc::Status::OK;
     }
 
-    ReplicaID replica_id{
-        .table_id = request->to().table_id(),
-        .shard_index = request->to().shard_index(),
-        .replica_index = request->to().replica_index(),
-    };
+    ReplicaID replica_id{request->to().table_id(), request->to().shard_index(),
+                         request->to().replica_index()};
 
     Replica* replica = replica_manager_->get_replica_by_id(replica_id);
     if (!replica) {
@@ -358,21 +321,17 @@ grpc::Status StorageServiceImpl::InstallSnapshot(
         return grpc::Status::OK;
     }
 
-    InstallSnapshotParam param{
-        .from_replica_id =
-            {
-                .table_id = request->from().table_id(),
-                .shard_index = request->from().shard_index(),
-                .replica_index = request->from().replica_index(),
-            },
-        .to_replica_id = replica_id,
-        .term = request->term(),
-        .snapshot_index = request->apply_index(),
-        .snapshot_term = request->apply_term(),
-        .offset = request->offset(),
-        .data = request->data(),
-        .done = request->done(),
-    };
+    InstallSnapshotParam param;
+    param.from_replica_id =
+        ReplicaID{request->from().table_id(), request->from().shard_index(),
+                  request->from().replica_index()};
+    param.to_replica_id = replica_id;
+    param.term = request->term();
+    param.snapshot_index = request->apply_index();
+    param.snapshot_term = request->apply_term();
+    param.offset = request->offset();
+    param.data = request->data();
+    param.done = request->done();
 
     Status status = replica->handle_install_snapshot(param);
 

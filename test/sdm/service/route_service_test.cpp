@@ -11,64 +11,46 @@ namespace adviskv::sdm {
 namespace {
 
 Table make_table() {
-    return Table{
-        .table_id = 1001,
-        .spec{
-            .table_name = "orders",
-            .db_id = 11,
-            .db_name = "commerce",
-            .shard_count = 4,
-            .replica_count = 2,
-            .resource_pool = "pool-a",
-            .operation_id = "create-table-1001",
-        },
-        .state{
-            .desired = TableDesired::PRESENT,
-            .phase = TablePhase::READY,
-        },
-    };
+    TableState state{};
+    state.desired = TableDesired::PRESENT;
+    state.phase = TablePhase::READY;
+    return Table{1001,
+                 TableSpec{"orders", 11, "commerce", 4, 2, "pool-a",
+                           "create-table-1001"},
+                 state};
 }
 
 ShardID shard_for_key(const Table& table, const Key& key) {
-    return ShardID{
-        .table_id = table.table_id,
-        .shard_index = static_cast<ShardIndex>(std::hash<Key>{}(key) %
-                                               table.spec.shard_count),
-    };
+    return ShardID(
+        table.table_id,
+        static_cast<ShardIndex>(std::hash<Key>{}(key) % table.spec.shard_count));
 }
 
 ShardRoute make_route(const ShardID& shard_id,
                       std::vector<ReplicaRole> roles = {ReplicaRole::LEADER,
                                                         ReplicaRole::FOLLOWER},
                       bool valid_leader_endpoint = true) {
-    ShardRoute route{.shard_id = shard_id};
+    ShardRoute route;
+    route.shard_id = shard_id;
     for (size_t i = 0; i < roles.size(); ++i) {
         const bool leader = roles[i] == ReplicaRole::LEADER;
         route.replicas.push_back(RouteEntry{
-            .replica_id =
-                ReplicaID{.table_id = shard_id.table_id,
-                          .shard_index = shard_id.shard_index,
-                          .replica_index = static_cast<ReplicaIndex>(i)},
-            .node_id = "node-" + std::to_string(i),
-            .ip = leader && !valid_leader_endpoint
-                      ? ""
-                      : "127.0.0." + std::to_string(i + 1),
-            .port = leader && !valid_leader_endpoint
-                        ? 0
-                        : static_cast<int32_t>(18080 + i),
-            .role = roles[i],
-            .term = 7,
+            ReplicaID{shard_id.table_id, shard_id.shard_index,
+                      static_cast<ReplicaIndex>(i)},
+            "node-" + std::to_string(i),
+            leader && !valid_leader_endpoint ? ""
+                                             : "127.0.0." + std::to_string(i + 1),
+            leader && !valid_leader_endpoint ? 0
+                                             : static_cast<int32_t>(18080 + i),
+            roles[i],
+            7,
         });
     }
     return route;
 }
 
 GetRouteParam make_get_route_param(const Key& key = "user-123") {
-    return GetRouteParam{
-        .db_name = "commerce",
-        .table_name = "orders",
-        .key = key,
-    };
+    return GetRouteParam{"commerce", "orders", key};
 }
 
 }  // namespace
@@ -101,7 +83,7 @@ TEST(RouteServiceTest, GetRouteRejectsInvalidParam) {
     ShardRoute route;
 
     Status status = service.get_route(
-        GetRouteParam{.db_name = "", .table_name = "orders", .key = "key"},
+        GetRouteParam{"", "orders", "key"},
         &route);
 
     EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);

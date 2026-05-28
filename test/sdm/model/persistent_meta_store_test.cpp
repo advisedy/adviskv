@@ -10,74 +10,41 @@ namespace adviskv::sdm {
 namespace {
 
 Table make_table(TableID table_id, const std::string& table_name) {
-    return Table{
-        .table_id = table_id,
-        .spec{
-            .table_name = table_name,
-            .db_id = 11,
-            .db_name = "commerce",
-            .shard_count = 2,
-            .replica_count = 2,
-            .resource_pool = "pool-a",
-            .operation_id = "create-table-" + std::to_string(table_id),
-        },
-        .state{
-            .desired = TableDesired::PRESENT,
-            .phase = TablePhase::CREATING,
-            .update_ts = 100,
-        },
-    };
+    TableState state{};
+    state.desired = TableDesired::PRESENT;
+    state.phase = TablePhase::CREATING;
+    state.update_ts = 100;
+    return Table{table_id,
+                 TableSpec{table_name, 11, "commerce", 2, 2, "pool-a",
+                           "create-table-" + std::to_string(table_id)},
+                 state};
 }
 
 Node make_node(const NodeID& id) {
-    return Node{
-        .id = id,
-        .spec{
-            .resource_pool = "pool-a",
-            .dc = "dc-a",
-            .status = NodeStatus::ONLINE,
-        },
-        .state{
-            .endpoint = Endpoint{.ip = "127.0.0.1", .port = 18080},
-            .last_heartbeat_ts = 200,
-        },
-    };
+    return Node{id,
+                NodeSpec{"pool-a", "dc-a", NodeStatus::ONLINE},
+                NodeState{Endpoint{"127.0.0.1", 18080}, 200},
+                NodeDerived{}};
 }
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
-    return Replica{
-        .replica_id = replica_id,
-        .spec{
-            .dc = "dc-a",
-            .assign_node_id = node_id,
-            .engine_type = EngineType::MAP,
-        },
-        .state{
-            .desired = ReplicaDesired::PRESENT,
-            .phase = ReplicaPhase::READY,
-            .observed_role = ReplicaRole::FOLLOWER,
-            .observed_endpoint = Endpoint{.ip = "127.0.0.1", .port = 18080},
-            .term = 7,
-        },
-    };
+    ReplicaState state{};
+    state.desired = ReplicaDesired::PRESENT;
+    state.phase = ReplicaPhase::READY;
+    state.observed_role = ReplicaRole::FOLLOWER;
+    state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
+    state.term = 7;
+    return Replica{replica_id,
+                   ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
+                   state};
 }
 
 ShardRoute make_route(const ShardID& shard_id) {
-    return ShardRoute{
-        .shard_id = shard_id,
-        .replicas =
-            {
-                RouteEntry{
-                    .replica_id =
-                        ReplicaID{shard_id.table_id, shard_id.shard_index, 0},
-                    .node_id = "node-a",
-                    .ip = "127.0.0.1",
-                    .port = 18080,
-                    .role = ReplicaRole::LEADER,
-                    .term = 7,
-                },
-            },
-    };
+    return ShardRoute{shard_id,
+                      {RouteEntry{ReplicaID{shard_id.table_id,
+                                            shard_id.shard_index, 0},
+                                  "node-a", "127.0.0.1", 18080,
+                                  ReplicaRole::LEADER, 7}}};
 }
 
 class FakeSdmPersistEngine : public ISdmPersistEngine {
@@ -143,7 +110,7 @@ TEST(PersistentMetaStoreTest, CommitWithPublishesMemoryAfterPersistSuccess) {
         store.upsert_replica(make_replica(ReplicaID{1001, 0, 0}, "node-a"))
             .ok());
     ASSERT_TRUE(
-        store.upsert_resource_pool(ResourcePool{.name = "pool-a"}).ok());
+        store.upsert_resource_pool(ResourcePool{"pool-a"}).ok());
     ASSERT_TRUE(store.upsert_shard_route(make_route(ShardID{1001, 0})).ok());
 
     EXPECT_EQ(fake->save_count, 5);

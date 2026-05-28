@@ -11,37 +11,22 @@ namespace {
 
 Node make_heartbeat_node(const NodeID& node_id, NodeStatus status,
                          int64_t last_heartbeat_ts, int32_t port) {
-    return Node{
-        .id = node_id,
-        .spec{
-            .resource_pool = "pool-a",
-            .dc = "dc-a",
-            .status = status,
-        },
-        .state{
-            .endpoint = Endpoint{.ip = "127.0.0.1", .port = port},
-            .last_heartbeat_ts = last_heartbeat_ts,
-        },
-    };
+    return Node{node_id,
+                NodeSpec{"pool-a", "dc-a", status},
+                NodeState{Endpoint{"127.0.0.1", port}, last_heartbeat_ts},
+                NodeDerived{}};
 }
 
 Replica make_replica(const NodeID& node_id, ReplicaIndex replica_index,
                      ReplicaPhase phase, int32_t port) {
-    return Replica{
-        .replica_id = ReplicaID{.table_id = 1001,
-                                .shard_index = 0,
-                                .replica_index = replica_index},
-        .spec{
-            .dc = "dc-a",
-            .assign_node_id = node_id,
-            .engine_type = EngineType::MAP,
-        },
-        .state{
-            .desired = ReplicaDesired::PRESENT,
-            .phase = phase,
-            .observed_endpoint = Endpoint{.ip = "127.0.0.1", .port = port},
-        },
-    };
+    ReplicaState state{};
+    state.desired = ReplicaDesired::PRESENT;
+    state.phase = phase;
+    state.observed_role = ReplicaRole::FOLLOWER;
+    state.observed_endpoint = Endpoint{"127.0.0.1", port};
+    return Replica{ReplicaID{1001, 0, replica_index},
+                   ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
+                   state};
 }
 
 class HeartBeatCheckTaskTmp : public HeartBeatCheckTask {

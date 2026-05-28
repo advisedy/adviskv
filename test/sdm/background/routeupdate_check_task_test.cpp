@@ -5,9 +5,8 @@
 
 #include "sdm/model/sdm_store.h"
 
-#define private public
 #include "sdm/background/routeupdate_check_task.h"
-#undef private
+
 
 namespace adviskv::sdm {
 namespace {
@@ -15,59 +14,42 @@ namespace {
 constexpr TableID TEST_TABLE_ID = 1001;
 constexpr ShardIndex TEST_SHARD_INDEX = 0;
 
+class RouteUpdateCheckTaskTmp : public RouteUpdateCheckTask {
+   public:
+    using RouteUpdateCheckTask::RouteUpdateCheckTask;
+    Status check_shard_route_tmp(const Table& table, ShardIndex shard_index) {
+        return check_shard_route(table, shard_index);
+    }
+};
+
 Table make_table() {
-    return Table{
-        .table_id = TEST_TABLE_ID,
-        .spec{
-            .table_name = "orders",
-            .db_id = 11,
-            .db_name = "commerce",
-            .shard_count = 1,
-            .replica_count = 3,
-            .resource_pool = "pool-a",
-            .operation_id = "create-1001",
-        },
-        .state{
-            .desired = TableDesired::PRESENT,
-            .phase = TablePhase::READY,
-        },
-    };
+    TableState state{};
+    state.desired = TableDesired::PRESENT;
+    state.phase = TablePhase::READY;
+    return Table{TEST_TABLE_ID,
+                 TableSpec{"orders", 11, "commerce", 1, 3, "pool-a",
+                           "create-1001"},
+                 state};
 }
 
 Node make_node(const NodeID& node_id, int32_t port) {
-    return Node{
-        .id = node_id,
-        .spec{
-            .resource_pool = "pool-a",
-            .dc = "dc-a",
-            .status = NodeStatus::ONLINE,
-        },
-        .state{
-            .endpoint = Endpoint{.ip = "127.0.0.1", .port = port},
-            .last_heartbeat_ts = 1,
-        },
-    };
+    return Node{node_id,
+                NodeSpec{"pool-a", "dc-a", NodeStatus::ONLINE},
+                NodeState{Endpoint{"127.0.0.1", port}, 1},
+                NodeDerived{}};
 }
 
 Replica make_replica(ReplicaIndex replica_index, const NodeID& node_id,
                      int32_t port, ReplicaRole role, Term term) {
-    return Replica{
-        .replica_id = ReplicaID{.table_id = TEST_TABLE_ID,
-                                .shard_index = TEST_SHARD_INDEX,
-                                .replica_index = replica_index},
-        .spec{
-            .dc = "dc-a",
-            .assign_node_id = node_id,
-            .engine_type = EngineType::MAP,
-        },
-        .state{
-            .desired = ReplicaDesired::PRESENT,
-            .phase = ReplicaPhase::READY,
-            .observed_role = role,
-            .observed_endpoint = Endpoint{.ip = "127.0.0.1", .port = port},
-            .term = term,
-        },
-    };
+    ReplicaState state{};
+    state.desired = ReplicaDesired::PRESENT;
+    state.phase = ReplicaPhase::READY;
+    state.observed_role = role;
+    state.observed_endpoint = Endpoint{"127.0.0.1", port};
+    state.term = term;
+    return Replica{ReplicaID{TEST_TABLE_ID, TEST_SHARD_INDEX, replica_index},
+                   ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
+                   state};
 }
 
 void put_nodes(SdmStore& store, int count) {
@@ -79,7 +61,7 @@ void put_nodes(SdmStore& store, int count) {
 }
 
 ShardID test_shard_id() {
-    return ShardID{.table_id = TEST_TABLE_ID, .shard_index = TEST_SHARD_INDEX};
+    return ShardID{TEST_TABLE_ID, TEST_SHARD_INDEX};
 }
 
 }  // namespace
@@ -100,19 +82,17 @@ TEST(RouteUpdateCheckTaskTest, DeleteShardRouteWhenLeaderCountLessThanOne) {
     ASSERT_TRUE(
         store
             .put_shard_route(ShardRoute{
-                .shard_id = test_shard_id(),
-                .replicas = {RouteEntry{
-                    .replica_id = ReplicaID{TEST_TABLE_ID, TEST_SHARD_INDEX, 0},
-                    .node_id = "node-0",
-                    .ip = "127.0.0.1",
-                    .port = 18080,
-                    .role = ReplicaRole::LEADER,
-                }},
+                test_shard_id(),
+                {RouteEntry{ReplicaID{TEST_TABLE_ID, TEST_SHARD_INDEX, 0},
+                            "node-0",
+                            "127.0.0.1",
+                            18080,
+                            ReplicaRole::LEADER}},
             })
             .ok());
 
-    RouteUpdateCheckTask task(&store);
-    Status status = task.check_shard_route(make_table(), TEST_SHARD_INDEX);
+    RouteUpdateCheckTaskTmp task(&store);
+    Status status = task.check_shard_route_tmp(make_table(), TEST_SHARD_INDEX);
     EXPECT_TRUE(status.fail());
     EXPECT_EQ(status.msg(), "leader count < 1");
 
@@ -138,8 +118,8 @@ TEST(RouteUpdateCheckTaskTest, PutShardRouteWhenLeaderCountEqualsOne) {
                                               ReplicaRole::FOLLOWER, 20))
                     .ok());
 
-    RouteUpdateCheckTask task(&store);
-    Status status = task.check_shard_route(make_table(), TEST_SHARD_INDEX);
+    RouteUpdateCheckTaskTmp task(&store);
+    Status status = task.check_shard_route_tmp(make_table(), TEST_SHARD_INDEX);
     ASSERT_TRUE(status.ok());
 
     ShardRouteOr route;
@@ -170,19 +150,17 @@ TEST(RouteUpdateCheckTaskTest, ReturnErrorWhenMultipleLeadersHaveSameTerm) {
     ASSERT_TRUE(
         store
             .put_shard_route(ShardRoute{
-                .shard_id = test_shard_id(),
-                .replicas = {RouteEntry{
-                    .replica_id = ReplicaID{TEST_TABLE_ID, TEST_SHARD_INDEX, 0},
-                    .node_id = "node-0",
-                    .ip = "127.0.0.1",
-                    .port = 18080,
-                    .role = ReplicaRole::LEADER,
-                }},
+                test_shard_id(),
+                {RouteEntry{ReplicaID{TEST_TABLE_ID, TEST_SHARD_INDEX, 0},
+                            "node-0",
+                            "127.0.0.1",
+                            18080,
+                            ReplicaRole::LEADER}},
             })
             .ok());
 
-    RouteUpdateCheckTask task(&store);
-    Status status = task.check_shard_route(make_table(), TEST_SHARD_INDEX);
+    RouteUpdateCheckTaskTmp task(&store);
+    Status status = task.check_shard_route_tmp(make_table(), TEST_SHARD_INDEX);
     EXPECT_TRUE(status.fail());
 
     ShardRouteOr route;
@@ -213,8 +191,8 @@ TEST(RouteUpdateCheckTaskTest,
                                               ReplicaRole::FOLLOWER, 30))
                     .ok());
 
-    RouteUpdateCheckTask task(&store);
-    Status status = task.check_shard_route(make_table(), TEST_SHARD_INDEX);
+    RouteUpdateCheckTaskTmp task(&store);
+    Status status = task.check_shard_route_tmp(make_table(), TEST_SHARD_INDEX);
     ASSERT_TRUE(status.ok());
 
     ShardRouteOr route;
