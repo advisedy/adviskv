@@ -381,4 +381,49 @@ grpc::Status StorageServiceImpl::InstallSnapshot(
     return grpc::Status::OK;
 }
 
+grpc::Status StorageServiceImpl::TestGetReplicaApplyState(
+    grpc::ServerContext* context,
+    const rpc::TestGetReplicaApplyStateRequest* request,
+    rpc::TestGetReplicaApplyStateResponse* response) {
+    if (!CONF_GET_BOOL("enable_test_api", "false")) {
+        fill_base_rsp(response, Status::ERROR("enable_test_api is false"));
+        return grpc::Status::OK;
+    }
+
+    UNUSED(context);
+
+    if (!replica_manager_) {
+        LOG_WARN("replica manager is nullptr");
+        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
+                                       "replica manager not found"});
+        return grpc::Status::OK;
+    }
+
+    ShardID shard_id{
+        request->table_id(),
+        request->shard_id(),
+    };
+    Replica* replica = replica_manager_->get_replica_by_shard(shard_id);
+    if (!replica) {
+        response->set_exists(false);
+        fill_base_rsp(response, Status::ERROR("replica not found"));
+        return grpc::Status::OK;
+    }
+
+    Replica::ApplyStateForTest res;
+    Status status = replica->get_apply_state_for_test(res);
+    if (status.fail()) {
+        fill_base_rsp(response, status);
+        return grpc::Status::OK;
+    }
+    fill_base_rsp(response, status);
+    response->set_exists(true);
+    response->set_role(to_pb_replica_role(replica->get_role()));
+    response->set_status(to_pb_replica_status(replica->get_status()));
+    response->set_current_term(res.current_term);
+    response->set_commit_index(res.commit_index);
+    response->set_last_applied(res.last_applied);
+    return grpc::Status::OK;
+}
+
 }  // namespace adviskv::storage

@@ -24,7 +24,7 @@ class ReplicaManager {
     Status delete_replica(const ReplicaID& replica_id);
     std::vector<Replica*> get_replicas() const;
     const std::string& get_data_dir() const;
-    void start_tick(); // 记得要调用这个，不然就没有tick了
+    void start_tick();  // 记得要调用这个，不然就没有tick了
     void recover();
 
    private:
@@ -34,9 +34,9 @@ class ReplicaManager {
     std::unordered_map<ShardID, ReplicaID, ShardIDHash> shard_primary_index_;
 
     std::unique_ptr<RaftTickTask>
-        raft_tick_task_; // 这个放最后面，到时候先析构他
+        raft_tick_task_;  // 这个放最后面，到时候先析构他
 
-    std::string data_dir_; // 这个是replica存放数据的目录
+    std::string data_dir_;  // 这个是replica存放数据的目录
     ReplicaMetaPersistEngine meta_persist_;
 };
 

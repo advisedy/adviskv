@@ -15,6 +15,8 @@
 
 namespace adviskv::storage {
 
+class ReplicaManager;
+
 class Replica {
    public:
     TableID get_table_id() const { return shard_id_.table_id; }
@@ -41,6 +43,13 @@ class Replica {
     Status handle_append_entries(const AppendEntriesParam& param,
                                  AppendEntriesResult& result);
     Status handle_install_snapshot(const InstallSnapshotParam& param);
+
+    struct ApplyStateForTest {
+        Term current_term;
+        LogIndex commit_index;
+        LogIndex last_applied;
+    };
+    Status get_apply_state_for_test(ApplyStateForTest& result) const;
 
    private:
     friend class ReplicaManager;

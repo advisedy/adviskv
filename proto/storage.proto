@@ -128,6 +128,21 @@ message InstallSnapshotResponse {
   int64 term = 2;
 }
 
+message TestGetReplicaApplyStateRequest {
+  int32 table_id = 1;
+  int32 shard_id = 2;
+}
+
+message TestGetReplicaApplyStateResponse {
+  adviskv.pb.BaseRsp base_rsp = 1;
+  bool exists = 2;
+  adviskv.pb.ReplicaRole role = 3;
+  adviskv.pb.ReplicaStatus status = 4;
+  int64 current_term = 5;
+  int64 commit_index = 6;
+  int64 last_applied = 7;
+}
+
 service StorageService {
   rpc Put(PutRequest) returns (PutResponse);
   rpc Get(GetRequest) returns (GetResponse);
@@ -140,4 +155,6 @@ service StorageService {
   rpc RequestVote(RequestVoteRequest) returns(RequestVoteResponse);
   rpc AppendEntries(AppendEntriesRequest) returns(AppendEntriesResponse);
   rpc InstallSnapshot(InstallSnapshotRequest) returns(InstallSnapshotResponse);
+
+  rpc TestGetReplicaApplyState(TestGetReplicaApplyStateRequest) returns (TestGetReplicaApplyStateResponse);
 }

@@ -33,9 +33,9 @@ struct RaftMeta {
     LogIndex commit_index{0};
     std::optional<ReplicaID> voted_for;
     bool operator==(const RaftMeta& other) const {
-        if(!(current_term == other.current_term)) return false;
-        if(!(commit_index == other.commit_index)) return false;
-        if(!(voted_for == other.voted_for)) return false;
+        if (!(current_term == other.current_term)) return false;
+        if (!(commit_index == other.commit_index)) return false;
+        if (!(voted_for == other.voted_for)) return false;
         return true;
     }
     DEFINE_OPERATOR_NOT_EQUAL(RaftMeta)
@@ -54,7 +54,6 @@ struct LogEntry {
                value == other.value;
     }
     DEFINE_OPERATOR_NOT_EQUAL(LogEntry)
-
 };
 
 struct PutParam {
@@ -151,5 +150,16 @@ struct RaftMessage {
     AppendEntriesParam append_param{};
     InstallSnapshotParam snapshot_param{};
 };
+
+// struct GetReplicaApplyStateParam {
+//     ShardID shard_id;
+// };
+
+// struct GetReplicaApplyStateResult {
+//     ShardID shard_id;
+//     Term current_term;
+//     LogIndex commit_index;
+//     LogIndex last_applied;
+// };
 
 }  // namespace adviskv::storage

@@ -18,7 +18,6 @@ class KVClient {
     Status put(const Key& key, const Value& value);
     Status get(const Key& key, Value* value);
     Status del(const Key& key);
-
    private:
     static bool should_invalidate_route(const Status& status);
     Status resolve_route(const RouteCacheKey& cache_key, RouteInfo* route);

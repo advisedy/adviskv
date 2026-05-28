@@ -338,8 +338,8 @@ Status Replica::check_self_leader_and_get_read_index(LogIndex& read_index) {
     // 我们需要检测一下自己是不是leader，并且需要发送给followers自己的心跳，主动发送一次
     std::vector<RaftMessage> messages;
     Term read_term;
-    RETURN_IF_INVALID_STATUS(
-        raft_node_->build_append_entries_for_read(messages, read_index, read_term))
+    RETURN_IF_INVALID_STATUS(raft_node_->build_append_entries_for_read(
+        messages, read_index, read_term))
 
     int success_cnt = 1;
     int limit = (messages.size() + 1) / 2 + 1;  // 达到limit就可以了
@@ -364,6 +364,13 @@ Status Replica::check_self_leader_and_get_read_index(LogIndex& read_index) {
         return Status::OK();
     }
     return Status::NOT_LEADER("failed to confirm leader with quorum");
+}
+
+Status Replica::get_apply_state_for_test(ApplyStateForTest& result) const {
+    result.current_term = current_term();
+    result.commit_index = raft_node_->commit_index();
+    result.last_applied = raft_node_->last_applied();
+    return Status::OK();
 }
 
 }  // namespace adviskv::storage

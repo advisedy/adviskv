@@ -25,7 +25,7 @@ class StorageServiceImpl final : public rpc::StorageService::Service {
     DEFINE_METHOD(RequestVote)
     DEFINE_METHOD(AppendEntries)
     DEFINE_METHOD(InstallSnapshot)
-
+    DEFINE_METHOD(TestGetReplicaApplyState)
 #undef DEFINE_METHOD
     // grpc::Status Put(grpc::ServerContext* context,
     //             const rpc::PutRequest* request,
