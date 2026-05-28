@@ -1,12 +1,12 @@
 #pragma once
 
-#include "e2e_assert.h"
-#include "e2e_kv_util.h"
+#include "e2e_case_util.h"
 #include "e2e_options.h"
 namespace adviskv::e2e {
 
-// 这个测试场景就是先写入key之后，然后崩溃，然后
-// 检验之前的持久化是否没有问题，并且接着写入key，检测一下是否没有问题。
+// 这个场景验证整集群重启后的持久化恢复。
+// 正常的创建db，table，写入key，然后
+// 全部都崩溃之后，检测是否可以继续操作
 inline bool run_restart_persistence_seed_case(const Options& options) {
     if (options.key_count <= 0) {
         return false;

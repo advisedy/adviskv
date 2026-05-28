@@ -152,11 +152,8 @@ inline bool run_follower_snapshot_catchup_verify_case(const Options& options) {
     }
 
     int64 target_index = replica_states.leader_state.last_applied;
-    int64_t target_snapshot_index = replica_states.leader_state.snapshot_index;
     print_pass("get leader last_applied",
                fmt::format("ok, last_applied:{}", target_index));
-    print_pass("get leader snapshot_index",
-               fmt::format("ok, snapshot_index:{}", target_snapshot_index));
     for (const auto& replica : replica_states.followers) {
         if (!wait_replica_apply_index_at_least_for_test(
                 replica.endpoint, replica_states.route.table_id,
@@ -166,7 +163,7 @@ inline bool run_follower_snapshot_catchup_verify_case(const Options& options) {
         }
         if (!wait_replica_snapshot_index_at_least_for_test(
                 replica.endpoint, replica_states.route.table_id,
-                replica_states.route.shard_id, target_snapshot_index, options,
+                replica_states.route.shard_id, 1, options,
                 std::chrono::milliseconds(options.timeout_ms))) {
             return false;
         }

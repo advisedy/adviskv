@@ -16,14 +16,9 @@
 #include "sdk/model.h"
 
 namespace adviskv::e2e::heavy {
-
-constexpr int32_t kSnapshotTriggerCount = 1050;
+//TODO 记得整改
 constexpr int32_t kWalTailCount = 16;
 constexpr auto kSnapshotWait = std::chrono::seconds(6);
-
-inline int32_t heavy_count(const Options& options) {
-    return std::max(options.key_count, kSnapshotTriggerCount);
-}
 
 inline Options with_key_count(const Options& options, int32_t key_count) {
     Options counted = options;
