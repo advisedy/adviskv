@@ -1,11 +1,13 @@
 #pragma once
 #include <fcntl.h>
+#include <fmt/format.h>
 #include <unistd.h>
 
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <random>
 #include <string>
@@ -16,6 +18,7 @@
 #include "common/crash_injection.h"
 #include "common/defer.h"
 #include "common/define.h"
+#include "common/framed_record_codec.h"
 #include "common/status.h"
 namespace adviskv {
 
@@ -150,6 +153,58 @@ inline Status fsync_dir(const std::string& dir_path) {
             fmt::format("failed to close dir after fsync: {}", dir_path));
     }
     dir_fd = -1;
+    return Status::OK();
+}
+
+// 这里我们只需要传递一个func，代表我们替换后的文件里面，我们具体怎么会操作它。
+// 这个函数会自动创建出来一个tmp文件，然后执行我们的func给这个tmp的fd
+template <typename Func>
+inline Status atomic_replace_file(std::filesystem::path path, Func func) {
+    namespace fs = std::filesystem;
+
+    if (!path.has_parent_path()) {
+        return Status::ERROR("this path is not has parent path");
+    }
+
+    try {
+        std::filesystem::create_directories(path.root_path());
+    } catch (const std::exception& e) {
+        return Status::ERROR(fmt::format("create dir:{} failed: {}",
+                                         path.parent_path(), e.what()));
+    }
+
+    fs::path tmp_path = (fs::path)(path.string() + ".tmp");
+    int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+
+    if (fd < 0) {
+        return Status{StatusCode::ERROR, "fd < 0"};
+    }
+    auto fd_guard = Defer([&fd]() {
+        if (fd != -1) {
+            ::close(fd);
+            fd = -1;
+        }
+    });
+
+    RETURN_IF_INVALID_STATUS(func(fd))
+
+    if (::fsync(fd) != 0) {
+        return Status::ERROR("failed to fsync tmp file");
+    }
+    if (::close(fd) != 0) {
+        fd = -1;
+        return Status::ERROR("failed to close tmp file");
+    }
+    fd = -1;
+
+    if (::rename(tmp_path.c_str(), path.c_str()) != 0) {
+        return Status::ERROR(
+            fmt::format("failed to rename tmp file to file:{}", path.string()));
+    }
+
+    fs::path parent_path = path.parent_path();
+    RETURN_IF_INVALID_STATUS(func::fsync_dir(parent_path.string()))
+
     return Status::OK();
 }
 

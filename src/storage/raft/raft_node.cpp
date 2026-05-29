@@ -163,6 +163,10 @@ std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
     if (persist_) {
         Status status = persist_->append_wal(std::move(entry));
         if (status.fail()) {
+            log_entries_.pop_back();
+            // TODO
+            // 但是发现这里如果失败了的话，那持久化的文件也应该是收到了损伤了，那按照我们的截取的思路，那后面的内容就都没有办法保留了。
+            // 这里以后我们再想办法处理吧.
             return {status, -1};
         }
     }

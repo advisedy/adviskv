@@ -146,7 +146,7 @@ Status PersistEngine::close() {
 Status PersistEngine::append_wal(const LogEntry& entry) {
     std::unique_lock lock{mutex_};
     RETURN_IF_INVALID_STATUS(write_wal_to_disk(wal_fd_, entry))
-    ::fsync(wal_fd_);
+    if (::fsync(wal_fd_) != 0) return Status::ERROR("fsync != 0");
     return Status::OK();
 }
 
@@ -155,7 +155,7 @@ Status PersistEngine::append_wal_batch(const std::vector<LogEntry>& entries) {
     for (const LogEntry& entry : entries) {
         RETURN_IF_INVALID_STATUS(write_wal_to_disk(wal_fd_, entry))
     }
-    ::fsync(wal_fd_);
+    if (::fsync(wal_fd_) != 0) return Status::ERROR("fsync != 0");
     return Status::OK();
 }
 

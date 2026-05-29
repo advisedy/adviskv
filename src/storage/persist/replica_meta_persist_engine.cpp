@@ -13,6 +13,7 @@
 #include "common/defer.h"
 #include "common/define.h"
 #include "common/framed_record_codec.h"
+#include "common/func.h"
 
 namespace adviskv::storage {
 namespace {
@@ -77,8 +78,6 @@ class ReplicaMetaCodec {
     }
 };
 
-using FramedReplicaMeta = FramedRecord<ReplicaMetaCodec>;
-
 }  // namespace
 
 ReplicaMetaPersistEngine::ReplicaMetaPersistEngine(std::string data_dir)
@@ -97,33 +96,12 @@ std::filesystem::path ReplicaMetaPersistEngine::meta_path(
 
 Status ReplicaMetaPersistEngine::save_replica_meta(
     const ReplicaMetaPayload& payload) const {
-    try {
-        std::filesystem::create_directories(
-            replica_dir(payload.init_param.replica_id));
-    } catch (const std::exception& e) {
-        return Status::ERROR(
-            fmt::format("create replica dir failed: {}", e.what()));
-    }
-
+    std::filesystem::path dir = replica_dir(payload.init_param.replica_id);
     std::filesystem::path path = meta_path(payload.init_param.replica_id);
-    int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0) {
-        return Status::ERROR(
-            fmt::format("open replica meta failed: {}", path.string()));
-    }
-    auto close_fd = Defer([&]() {
-        if (fd != -1) {
-            ::close(fd);
-            fd = -1;
-        }
-    });
 
-    RETURN_IF_INVALID_STATUS(FramedReplicaMeta::encode_to_fd(fd, payload))
-    if (::fsync(fd) != 0) {
-        return Status::ERROR(
-            fmt::format("fsync replica meta failed: {}", path.string()));
-    }
-    return Status::OK();
+    return func::atomic_replace_file(path, [&payload](int fd) {
+        return FramedRecord<ReplicaMetaCodec>::encode_to_fd(fd, payload);
+    });
 }
 
 Status ReplicaMetaPersistEngine::load_replica_meta(
@@ -140,7 +118,7 @@ Status ReplicaMetaPersistEngine::load_replica_meta(
         }
     });
 
-    RETURN_IF_INVALID_STATUS(FramedReplicaMeta::decode_from_fd(fd, payload))
+    RETURN_IF_INVALID_STATUS(FramedRecord<ReplicaMetaCodec>::decode_from_fd(fd, payload))
     payload.init_param.data_dir = data_dir_;
 
     return Status::OK();
@@ -182,7 +160,7 @@ ReplicaMetaPersistEngine::scan_replica_meta_files() const {
             paths.push_back(std::move(path));
         }
     }
-    std::sort(paths.begin(), paths.end()); // 这里sort一下，方便测试啥的。
+    std::sort(paths.begin(), paths.end());  // 这里sort一下，方便测试啥的。
     return paths;
 }
 
