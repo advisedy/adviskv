@@ -1,6 +1,8 @@
 #include "storage/persist/persist_engine.h"
 
+#include <fmt/base.h>
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 #include <cstdint>
 #include <filesystem>
@@ -12,6 +14,8 @@
 
 #include "common/buffer.h"
 #include "common/crc.h"
+#include "common/status.h"
+#include "common/type.h"
 #include "storage/model/param.h"
 #include "storage/raft/state_machine/kv_state_machine.h"
 #include "storage/raft/state_machine/state_machine.h"
@@ -112,6 +116,27 @@ class PersistEngineTest : public ::testing::Test {
         out.write(reinterpret_cast<const char*>(bytes.data()),
                   static_cast<std::streamsize>(bytes.size()));
         ASSERT_TRUE(out.good()) << path.string();
+    }
+
+    int run_snapshot_crash_runner(const char* crash_point) {
+        pid_t pid = ::fork();
+        // 父进程的返回值大于0，代表子进程的pid，子进程的返回值是0
+        if (pid == 0) {
+            ::setenv("ADVISKV_ENABLE_CRASH_POINT", crash_point, 1);
+            ::execl(ADVISKV_CRASH_RUNNER_PATH, ADVISKV_CRASH_RUNNER_PATH,
+                    base_dir_.c_str(), static_cast<char*>(nullptr));
+            ::_exit(127);
+        }
+
+        if (pid < 0) {
+            return -1;
+        }
+
+        int status = 0;
+        if (::waitpid(pid, &status, 0) < 0) {
+            return -1;
+        }
+        return status;
     }
 
     static inline int sequence_{0};
@@ -286,8 +311,8 @@ TEST_F(PersistEngineTest, RecoverLoadsSnapshotMetaAndWalTogether) {
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     const std::vector<LogEntry> wal_entries = {
-        make_entry(3, 21, WriteOpType::PUT, "hot", "cold"),
-        make_entry(3, 22, WriteOpType::DEL, "trash", ""),
+        make_entry(4, 14, WriteOpType::PUT, "hot", "cold"),
+        make_entry(4, 15, WriteOpType::DEL, "trash", ""),
     };
     KvStateMachine state_machine(EngineType::MAP);
     ASSERT_TRUE(
@@ -296,7 +321,7 @@ TEST_F(PersistEngineTest, RecoverLoadsSnapshotMetaAndWalTogether) {
     ASSERT_TRUE(
         state_machine.apply(make_entry(4, 13, WriteOpType::PUT, "beta", "2"))
             .ok());
-    const RaftMeta meta{11, 22, ReplicaID{101, 7, 0}};
+    const RaftMeta meta{11, 15, ReplicaID{101, 7, 0}};
 
     status = engine.append_wal_batch(wal_entries);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -570,6 +595,48 @@ TEST_F(PersistEngineTest, RecoverHandlesInvalidWalDataLenByCommitIndex) {
     EXPECT_EQ(result.wal_recovery.last_good_index, 1);
     EXPECT_EQ(result.wal_entries, std::vector<LogEntry>{committed});
     EXPECT_EQ(fs::file_size(wal_path()), valid_wal_size);
+}
+
+TEST_F(PersistEngineTest, test004) {
+    // 先让子进程去写几个WAL，然后让他走do_snapshot
+    //  然后我这边在重启recover，判断一下这个result的log_entries是否正常
+
+    PersistEngine engine = make_engine();
+    Status status = engine.init();
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+
+    const std::vector<LogEntry> entries = {
+        make_entry(1, 1, WriteOpType::PUT, "k1", "v1"),
+        make_entry(1, 2, WriteOpType::PUT, "k2", "v2"),
+        make_entry(2, 3, WriteOpType::DEL, "k1", ""),
+        make_entry(2, 4, WriteOpType::PUT, "k3", "v3"),
+    };
+
+    status = engine.append_wal_batch(entries);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    ASSERT_TRUE(engine.save_raft_meta(RaftMeta{2, 4, std::nullopt}).ok());
+    ASSERT_TRUE(engine.close().ok());
+
+    int child_status =
+        run_snapshot_crash_runner("do_snapshot.after_write_snapshot");
+    ASSERT_NE(child_status, -1);
+    ASSERT_TRUE(WIFEXITED(child_status));
+    ASSERT_EQ(WEXITSTATUS(child_status), 137);
+
+    // 开始重启
+    PersistEngine recovered = make_engine();
+    ASSERT_TRUE(recovered.init().ok());
+    PersistEngine::RecoverResult res;
+    ASSERT_TRUE(recovered.recover(res).ok());
+    ASSERT_NE(res.snapshot, nullptr);
+    ASSERT_EQ(res.snapshot->apply_index, 2);
+    ASSERT_EQ(res.snapshot->apply_term, 1);
+    ASSERT_EQ(res.wal_entries.size(), 2U);
+    EXPECT_EQ(res.wal_entries[0].index, 3);
+    EXPECT_EQ(res.wal_entries[1].index, 4);
+    EXPECT_EQ(res.wal_recovery.action, WalRecoveryAction::NONE);
+    EXPECT_EQ(res.wal_recovery.last_good_index, 4);
+    EXPECT_EQ(res.raft_meta.commit_index, 4);
 }
 
 }  // namespace

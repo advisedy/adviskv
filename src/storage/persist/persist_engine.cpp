@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "common/buffer.h"
+#include "common/crash_injection.h"
 #include "common/defer.h"
 #include "common/define.h"
 #include "common/framed_record_codec.h"
@@ -482,6 +483,7 @@ Status PersistEngine::do_snapshot(const StateMachine& state_machine) {
     RETURN_IF_INVALID_STATUS(func::fsync_dir(dir_path_))
 
     // 2) Then truncate WAL up to snapshot index
+    testhook::crash_point("do_snapshot.after_write_snapshot");
     RETURN_IF_INVALID_STATUS(truncate_wal(apply_index))
     return Status::OK();
 }
@@ -561,25 +563,32 @@ Status PersistEngine::recover(RecoverResult& result) {
     WalReadResult wal_read_result;
     RETURN_IF_INVALID_STATUS(read_wal_from_disk(wal_path_, wal_read_result))
 
-    const LogIndex snapshot_index =
+    LogIndex snapshot_index =
         result.snapshot ? result.snapshot->apply_index : 0;
 
-    const LogIndex local_last_good_index = std::max(
-        snapshot_index,
-        wal_read_result
-            .last_good_index);  // 有的时候wal_read_result.last_good_index
-                                // = 0， 但是有快照
+    // 这里要处理一下这个entries，需要把快照之前的给去掉
+    // 原因是因为，在快照落盘之后，截断WAL日志的落盘的之前，可能崩溃，那WAL的落盘文件就没有更改。
+    // 所以我们在读取的时候手动这里再截取一下
+    func::ad_erase_if(wal_read_result.entries,
+                      [snapshot_index](const LogEntry& entry) {
+                          return entry.index <= snapshot_index;
+                      });
 
-    {
-        // 这里要处理一下这个entries，需要把快照之前的给去掉
-        // 原因是因为，在快照落盘之后，截断WAL日志的落盘的之前，可能崩溃，那WAL的落盘文件就没有更改。
-        // 所以我们在读取的时候手动这里再截取一下
-        func::ad_erase_if(wal_read_result.entries,
-                          [snapshot_index](const LogEntry& entry) {
-                              return entry.index <= snapshot_index;
-                          });
+    bool wal_gap_after_snapshot = false;
+    if (!wal_read_result.entries.empty() &&
+        wal_read_result.entries.front().index != snapshot_index + 1) {
+        wal_gap_after_snapshot = true;
     }
-    result.wal_entries = std::move(wal_read_result.entries);
+
+    LogIndex local_last_good_index = snapshot_index;
+    if (!wal_gap_after_snapshot) {
+        if (!wal_read_result.entries.empty()) {
+            local_last_good_index = wal_read_result.entries.back().index;
+        }
+        result.wal_entries = std::move(wal_read_result.entries);
+    } else {
+        result.wal_entries.clear();
+    }
 
     result.wal_recovery.last_good_index = local_last_good_index;
     result.wal_recovery.last_good_offset = wal_read_result.last_good_offset;
@@ -587,8 +596,9 @@ Status PersistEngine::recover(RecoverResult& result) {
     result.wal_recovery.recovery_target_commit_index = original_commit_index;
 
     if (!wal_read_result.error) {
-        if (local_last_good_index <
-            original_commit_index) {  // 有可能读完了， 但是后面全少了
+        if (wal_gap_after_snapshot or
+            local_last_good_index <
+                original_commit_index) {  // 有可能读完了， 但是后面全少了
             LOG_WARN(
                 "wal is complete but behind committed index during recover, "
                 "last_good_index={}, commit_index={}",

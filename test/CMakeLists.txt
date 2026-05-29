@@ -77,6 +77,25 @@ add_adviskv_storage_gtest(persist_engine_test
     ${CMAKE_SOURCE_DIR}/test/storage/persist/persist_engine_test.cpp
 )
 
+target_compile_definitions(persist_engine_test PRIVATE
+    ADVISKV_CRASH_RUNNER_PATH="$<TARGET_FILE:snapshot_crash_runner>"
+)
+
+add_executable(snapshot_crash_runner
+    ${CMAKE_SOURCE_DIR}/test/storage/persist/snapshot_crash_runner.cpp
+)
+set_target_properties(snapshot_crash_runner PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/test"
+)
+target_link_libraries(snapshot_crash_runner PRIVATE
+    adviskv_storage_test_lib
+)
+target_include_directories(snapshot_crash_runner PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
+    ${PROJECT_BINARY_DIR}/generated
+)
+
 add_executable(wal_crash_runner
     ${CMAKE_SOURCE_DIR}/test/storage/persist/wal_crash_runner.cpp
 )

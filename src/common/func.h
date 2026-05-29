@@ -18,7 +18,6 @@
 #include "common/crash_injection.h"
 #include "common/defer.h"
 #include "common/define.h"
-#include "common/framed_record_codec.h"
 #include "common/status.h"
 namespace adviskv {
 
@@ -167,10 +166,10 @@ inline Status atomic_replace_file(std::filesystem::path path, Func func) {
     }
 
     try {
-        std::filesystem::create_directories(path.root_path());
+        std::filesystem::create_directories(path.parent_path());
     } catch (const std::exception& e) {
-        return Status::ERROR(fmt::format("create dir:{} failed: {}",
-                                         path.parent_path(), e.what()));
+        return Status::ERROR(fmt::format(
+            "create dir:{} failed: {}", path.parent_path().string(), e.what()));
     }
 
     fs::path tmp_path = (fs::path)(path.string() + ".tmp");
