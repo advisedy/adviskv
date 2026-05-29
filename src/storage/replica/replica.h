@@ -2,6 +2,8 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
+#include <shared_mutex>
 #include <vector>
 
 #include "common/define.h"
@@ -56,6 +58,20 @@ class Replica {
    private:
     friend class ReplicaManager;
 
+    class OperGuard {
+       public:
+        OperGuard() = default;
+        DISALLOW_COPY_AND_ASSIGN(OperGuard)
+        ALLOW_MOVE_AND_ASSIGN(OperGuard)
+
+       private:
+        friend class Replica;
+        explicit OperGuard(std::shared_lock<std::shared_mutex>&& life_lock)
+            : life_lock_(std::move(life_lock)) {}
+
+        std::shared_lock<std::shared_mutex> life_lock_;
+    };
+
     Status init(const ReplicaInitParam& param);
     Status recover();
     void shutdown();
@@ -68,6 +84,7 @@ class Replica {
     void flush_messages();
 
     // 把已经提交但是还没有apply的entry给apply到我们的engine
+    // 调用方必须已经持有state_machine_mutex_，内部没有吃锁，放到外部了。
     void apply_committed_entries();
 
     // 单条 apply
@@ -79,6 +96,9 @@ class Replica {
 
     // 给readIndex准备的
     Status check_self_leader_and_get_read_index(LogIndex& read_index);
+
+    Status ensure_running() const;
+    Status acquire_operation(OperGuard& guard) const;
 
     ShardID shard_id_;
     ReplicaID replica_id_;
@@ -98,6 +118,10 @@ class Replica {
 
     // 定时器（驱动 tick）
     // TimerPtr tick_timer_;
+
+    std::atomic<bool> stopping_{false};
+    mutable std::shared_mutex life_mutex_;
+    mutable std::mutex state_machine_mutex_;
 };
 
 using ReplicaPtr = std::shared_ptr<Replica>;

@@ -19,9 +19,9 @@
         return Status{StatusCode::INVALID_ARGUMENT, msg}; \
     }
 
-#define RETURN_IF_INVALID_STATUS(name) \
-    if (auto&& advis_status = name; advis_status.fail()) {                 \
-        return advis_status;                   \
+#define RETURN_IF_INVALID_STATUS(name)                     \
+    if (auto&& advis_status = name; advis_status.fail()) { \
+        return advis_status;                               \
     }
 
 #define RETURN_IF_INVALID_PARAM(param)                     \
@@ -57,6 +57,18 @@
 #define DISALLOW_COPY_AND_ASSIGN(type) \
     type(const type&) = delete;        \
     type& operator=(const type&) = delete;
+
+#define ALLOW_COPY_AND_ASSIGN(type) \
+    type(const type&) = default;    \
+    type& operator=(const type&) = default;
+
+#define DISALLOW_MOVE_AND_ASSIGN(type) \
+    type(type&&) = delete;             \
+    type& operator=(type&&) = delete;
+
+#define ALLOW_MOVE_AND_ASSIGN(type) \
+    type(type&&) = default;         \
+    type& operator=(type&&) = default;
 
 #define UNUSED(x) ((void)(x));
 #define IGNORE_RESULT(expr) ((void)(expr));

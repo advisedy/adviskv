@@ -44,6 +44,10 @@ Status Replica::init(const ReplicaInitParam& param) {
 
 Status Replica::put(const PutParam& param) {
     RETURN_IF_INVALID_PARAM(param)
+
+    OperGuard guard;
+    RETURN_IF_INVALID_STATUS(acquire_operation(guard))
+
     if (is_recovering()) {
         return Status::ERROR("replica is recovering");
     }
@@ -75,7 +79,10 @@ Status Replica::put(const PutParam& param) {
 
     // apply 已提交的日志到 engine
     // 这里推动raftnode里的apply_index是交给了replica外层去控制。
-    apply_committed_entries();
+    {
+        std::lock_guard lock(state_machine_mutex_);
+        apply_committed_entries();
+    }
 
     if (!raft_node_->is_leader()) {
         return Status{StatusCode::NOT_LEADER, "leader changed during propose"};
@@ -96,6 +103,9 @@ Status Replica::put(const PutParam& param) {
 }
 
 Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
+    OperGuard guard;
+    RETURN_IF_INVALID_STATUS(acquire_operation(guard))
+
     RETURN_IF_INVALID_STATUS(
         raft_node_->prepare_install_snapshot(param.term, param.snapshot_index))
     RETURN_IF_INVALID_STATUS(persist_->append_snapshot_chunk(param))
@@ -105,14 +115,16 @@ Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
     snap->apply_index = param.snapshot_index;
     snap->apply_term = param.snapshot_term;
 
-    RETURN_IF_INVALID_STATUS(persist_->finish_snapshot_receive(snap))
-    RETURN_IF_INVALID_STATUS(state_machine_->restore(
-        snap, [this](const KvVisitor& visitor) -> Status {
-            return persist_->for_each_snapshot_kv(visitor);
-        }))
-    raft_node_->install_snapshot(param.snapshot_index, param.snapshot_term,
-                                 param.term);
-    refresh_recovering_state();
+    RETURN_IF_INVALID_STATUS(persist_->finish_snapshot_receive(snap)) {
+        std::lock_guard lock(state_machine_mutex_);
+        RETURN_IF_INVALID_STATUS(state_machine_->restore(
+            snap, [this](const KvVisitor& visitor) -> Status {
+                return persist_->for_each_snapshot_kv(visitor);
+            }))
+        raft_node_->install_snapshot(param.snapshot_index, param.snapshot_term,
+                                     param.term);
+        refresh_recovering_state();
+    }
 
     return Status::OK();
 }
@@ -191,6 +203,11 @@ void Replica::apply_committed_entries() {
 // }
 
 Status Replica::get(const GetParam& param, Value& value) {
+    RETURN_IF_INVALID_PARAM(param)
+
+    OperGuard guard;
+    RETURN_IF_INVALID_STATUS(acquire_operation(guard))
+
     if (!state_machine_) {
         LOG_WARN(
             "state_machine is nullptr, replica: table_id = {}, shard_index = "
@@ -199,7 +216,6 @@ Status Replica::get(const GetParam& param, Value& value) {
         return Status{StatusCode::ERROR, "engine is nullptr"};
     }
 
-    RETURN_IF_INVALID_PARAM(param)
     if (is_recovering()) {
         return Status::ERROR("replica is recovering");
     }
@@ -208,8 +224,8 @@ Status Replica::get(const GetParam& param, Value& value) {
     LogIndex read_index;
     RETURN_IF_INVALID_STATUS(check_self_leader_and_get_read_index(read_index))
 
+    std::lock_guard lock(state_machine_mutex_);
     apply_committed_entries();
-
     if (state_machine_->apply_index() < read_index) {
         return Status::NOT_YET_COMMIT("state machine not yet apply");
     }
@@ -219,11 +235,16 @@ Status Replica::get(const GetParam& param, Value& value) {
         LOG_WARN("engine get is not ok, key = {}, msg = {}", param.key,
                  status.msg());
     }
+
     return status;
 }
 
 Status Replica::del(const DelParam& param) {
     RETURN_IF_INVALID_PARAM(param)
+
+    OperGuard guard;
+    RETURN_IF_INVALID_STATUS(acquire_operation(guard))
+
     if (is_recovering()) {
         return Status::ERROR("replica is recovering");
     }
@@ -233,7 +254,10 @@ Status Replica::del(const DelParam& param) {
     RETURN_IF_INVALID_STATUS(status)
 
     flush_messages();
-    apply_committed_entries();
+    {
+        std::lock_guard lock(state_machine_mutex_);
+        apply_committed_entries();
+    }
 
     if (!raft_node_->is_leader()) {
         return Status{StatusCode::NOT_LEADER, ""};
@@ -254,17 +278,26 @@ void Replica::refresh_recovering_state() {
 
 Status Replica::handle_request_vote(const RequestVoteParam& param,
                                     RequestVoteResult& result) {
+    OperGuard guard;
+    RETURN_IF_INVALID_STATUS(acquire_operation(guard))
+
     raft_node_->handle_request_vote(param, result);
     return Status::OK();
 }
 
 Status Replica::handle_append_entries(const AppendEntriesParam& param,
                                       AppendEntriesResult& result) {
+    OperGuard guard;
+    RETURN_IF_INVALID_STATUS(acquire_operation(guard))
+
     // 这里是作为follower那边的handle，会更新commit_idx
     raft_node_->handle_append_entries(param, result);
 
     // 收到 AppendEntries 后，可能有新的 committed entries 需要 apply
-    apply_committed_entries();
+    {
+        std::lock_guard lock(state_machine_mutex_);
+        apply_committed_entries();
+    }
 
     return Status::OK();
 }
@@ -277,6 +310,8 @@ void Replica::try_take_snapshot() {
     LogIndex last_apply_index = raft_node_->last_applied(),
              snapshot_index = raft_node_->snapshot_index();
     if (last_apply_index - snapshot_index < SNAPSHOT_LIMIT) return;
+
+    std::lock_guard lock(state_machine_mutex_);
     Status status = persist_->do_snapshot(*state_machine_);
     if (status.ok()) {
         // 持久化成功了，这边得截断wal日志了。
@@ -287,6 +322,9 @@ void Replica::try_take_snapshot() {
 }
 
 void Replica::on_tick() {
+    OperGuard guard;
+    if (acquire_operation(guard).fail()) return;
+
     raft_node_->tick();
     flush_messages();
 
@@ -294,7 +332,10 @@ void Replica::on_tick() {
     // 后来这边跑心跳的时候才有回应，这个时候就应该apply一下commmit_entry
     // 所以这个是专门为了raft_node是leader去发送心跳的时候准备的。
 
-    apply_committed_entries();
+    {
+        std::lock_guard lock(state_machine_mutex_);
+        apply_committed_entries();
+    }
 
     // 重新调度下一次 tick（Timer 是 one-shot 的）
     // if (tick_timer_) {
@@ -369,6 +410,9 @@ Status Replica::check_self_leader_and_get_read_index(LogIndex& read_index) {
 }
 
 Status Replica::get_replica_state_for_test(ReplicaStateForTest& result) const {
+    OperGuard guard;
+    RETURN_IF_INVALID_STATUS(acquire_operation(guard))
+
     result.current_term = current_term();
     result.commit_index = raft_node_->commit_index();
     result.last_applied = raft_node_->last_applied();
@@ -377,4 +421,25 @@ Status Replica::get_replica_state_for_test(ReplicaStateForTest& result) const {
     return Status::OK();
 }
 
+void Replica::shutdown() {
+    stopping_.store(true);
+    std::unique_lock lock(life_mutex_);
+}
+
+Status Replica::ensure_running() const {
+    if (stopping_.load()) {
+        return Status::ERROR("replica is not running");
+    }
+    return Status::OK();
+}
+
+Status Replica::acquire_operation(OperGuard& guard) const {
+    RETURN_IF_INVALID_STATUS(ensure_running())
+
+    std::shared_lock lock(life_mutex_);
+    RETURN_IF_INVALID_STATUS(ensure_running())
+
+    guard = OperGuard(std::move(lock));
+    return Status::OK();
+}
 }  // namespace adviskv::storage
