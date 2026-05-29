@@ -17,16 +17,17 @@
 
 namespace adviskv::storage {
 
-Replica* ReplicaManager::get_replica_by_id(const ReplicaID& replica_id) const {
+ReplicaPtr ReplicaManager::get_replica_by_id(
+    const ReplicaID& replica_id) const {
     std::shared_lock locker(mutex_);
     auto it = replica_map_.find(replica_id);
     if (it == replica_map_.end()) {
         return nullptr;
     }
-    return it->second.get();
+    return it->second;
 }
 
-Replica* ReplicaManager::get_replica_by_shard(const ShardID& shard_id) const {
+ReplicaPtr ReplicaManager::get_replica_by_shard(const ShardID& shard_id) const {
     std::shared_lock locker(mutex_);
 
     auto shard_it = shard_primary_index_.find(shard_id);
@@ -38,7 +39,7 @@ Replica* ReplicaManager::get_replica_by_shard(const ShardID& shard_id) const {
     if (replica_it == replica_map_.end()) {
         return nullptr;
     }
-    return replica_it->second.get();
+    return replica_it->second;
 }
 
 Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
@@ -60,7 +61,7 @@ Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
                         replica_id.table_id, replica_id.shard_index,
                         replica_id.replica_index)};
     }
-    
+
     if (shard_primary_index_.count(shard_id)) {
         return Status{StatusCode::ALREADY_EXIST,
                       fmt::format("shard already exists on current node, "
@@ -68,7 +69,7 @@ Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
                                   shard_id.table_id, shard_id.shard_index)};
     }
 
-    auto replica = std::make_unique<Replica>();
+    auto replica = std::make_shared<Replica>();
     RETURN_IF_INVALID_STATUS(replica->init(param))
 
     ReplicaMetaPayload payload;
@@ -82,22 +83,28 @@ Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
 
 Status ReplicaManager::delete_replica(const ReplicaID& replica_id) {
     std::unique_lock locker(mutex_);
-    auto it = replica_map_.find(replica_id);
-    if (it == replica_map_.end()) {
-        return meta_persist_.delete_replica_meta(replica_id);
+
+    if (auto it = replica_map_.find(replica_id); it != replica_map_.end()) {
+        it->second->shutdown();
+        ShardID shard_id = it->second->get_shard_id();
+        shard_primary_index_.erase(shard_id);
+        replica_map_.erase(it);
     }
-    ShardID shard_id = it->second->get_shard_id();
-    shard_primary_index_.erase(shard_id);
-    replica_map_.erase(it);
-    return meta_persist_.delete_replica_meta(replica_id);
+
+    // 这里是因为，如果我们之前replica_map上删除了，但是持久化没有删除成功，我们也是不会在replica_map上添加回来的、
+    // 毕竟replica删除是因为table被删除了，我们总不能继续保留这个replica_map的索引。
+    // 所以就可能出现，replica_map上没有，但是持久化数据上还存在相关残留数据的情况，那当我们再次调用的时候，
+    // 就再调用一次persist上的delete。
+    // 不然就再也没有可能去清掉残留数据的机会了。
+    return meta_persist_.delete_replica_data(replica_id);
 }
 
-std::vector<Replica*> ReplicaManager::get_replicas() const {
+std::vector<ReplicaPtr> ReplicaManager::get_replicas() const {
     std::shared_lock locker(mutex_);
-    std::vector<Replica*> replicas;
+    std::vector<ReplicaPtr> replicas;
     replicas.reserve(replica_map_.size());
     for (const auto& [_, replica] : replica_map_) {
-        replicas.push_back(replica.get());
+        replicas.emplace_back(replica);
     }
     return replicas;
 }
@@ -134,7 +141,7 @@ void ReplicaManager::recover() {
                 continue;
             }
 
-            auto replica = std::make_unique<Replica>();
+            auto replica = std::make_shared<Replica>();
             status = replica->init(param);
             if (status.fail()) {
                 LOG_WARN("init recovered replica failed, path={}, msg={}",

@@ -129,18 +129,19 @@ Status ReplicaMetaPersistEngine::load_replica_meta(
     return load_replica_meta(meta_path(replica_id), payload);
 }
 
-Status ReplicaMetaPersistEngine::delete_replica_meta(
+Status ReplicaMetaPersistEngine::delete_replica_data(
     const ReplicaID& replica_id) const {
-    std::filesystem::path path = meta_path(replica_id);
+    std::filesystem::path dir = replica_dir(replica_id);
     try {
-        if (!std::filesystem::exists(path)) {
+        if (!std::filesystem::exists(dir)) {
             return Status::OK();
         }
-        std::filesystem::remove(path);
+        std::filesystem::remove_all(dir);
+        RETURN_IF_INVALID_STATUS(func::fsync_dir(data_dir_))
         return Status::OK();
     } catch (const std::exception& e) {
         return Status::ERROR(
-            fmt::format("delete replica meta failed: {}", e.what()));
+            fmt::format("delete replica data failed: {}", e.what()));
     }
 }
 

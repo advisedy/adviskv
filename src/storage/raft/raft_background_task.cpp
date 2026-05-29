@@ -9,8 +9,8 @@ RaftTickTask::RaftTickTask(ReplicaManager* manager)
     : BackgroundTask(), manager_(manager) {}
 
 void RaftTickTask::run() {
-    std::vector<Replica*>&& replicas = manager_->get_replicas();
-    for (Replica* replica : replicas) {
+    std::vector<ReplicaPtr>&& replicas = manager_->get_replicas();
+    for (ReplicaPtr& replica : replicas) {
         if (!replica) continue;
         replica->on_tick();
     }

@@ -39,7 +39,7 @@ class ReplicaTest : public ::testing::Test {
         };
     }
 
-    Replica* add_single_replica(ReplicaManager& manager) const {
+    ReplicaPtr add_single_replica(ReplicaManager& manager) const {
         Status status = manager.add_replica(make_param());
         EXPECT_TRUE(status.ok()) << test::status_debug_string(status);
         if (!status.ok()) {
@@ -48,12 +48,13 @@ class ReplicaTest : public ::testing::Test {
         return manager.get_replica_by_id(replica_id_);
     }
 
-    Replica* wait_until_leader(ReplicaManager& manager,
-                               std::chrono::milliseconds timeout =
-                                   std::chrono::milliseconds(1500)) const {
+    ReplicaPtr wait_until_leader(
+        ReplicaManager& manager,
+        std::chrono::milliseconds timeout = std::chrono::milliseconds(1500))
+        const {
         const auto deadline = std::chrono::steady_clock::now() + timeout;
         while (std::chrono::steady_clock::now() < deadline) {
-            Replica* replica = manager.get_replica_by_id(replica_id_);
+            ReplicaPtr replica = manager.get_replica_by_id(replica_id_);
             if (replica && replica->get_role() == ReplicaRole::LEADER) {
                 return replica;
             }
@@ -76,7 +77,7 @@ class ReplicaTest : public ::testing::Test {
 // 通过流式InstallSnapshot安装快照后，replica应能选举为leader并读取快照中的数据
 TEST_F(ReplicaTest, HandleInstallSnapshotUpdatesReadableState) {
     ReplicaManager manager(base_dir_.string());
-    Replica* replica = add_single_replica(manager);
+    ReplicaPtr replica = add_single_replica(manager);
     ASSERT_NE(replica, nullptr);
 
     auto source_dir = base_dir_ / "source";
@@ -131,7 +132,7 @@ TEST_F(ReplicaTest, HandleInstallSnapshotUpdatesReadableState) {
 // 单节点replica选举为leader后，put写入的数据应能通过get读回
 TEST_F(ReplicaTest, SingleReplicaPutAndGetAfterElection) {
     ReplicaManager manager(base_dir_.string());
-    Replica* replica = add_single_replica(manager);
+    ReplicaPtr replica = add_single_replica(manager);
     ASSERT_NE(replica, nullptr);
 
     manager.start_tick();
@@ -152,7 +153,7 @@ TEST_F(ReplicaTest, SingleReplicaPutAndGetAfterElection) {
 // 这个测试不手动调用do_snapshot/truncate_log，覆盖Replica::try_take_snapshot的真实链路。
 TEST_F(ReplicaTest, TakesSnapshotNaturallyAfterEnoughAppliedLogs) {
     ReplicaManager manager(base_dir_.string());
-    Replica* replica = add_single_replica(manager);
+    ReplicaPtr replica = add_single_replica(manager);
     ASSERT_NE(replica, nullptr);
 
     manager.start_tick();
@@ -195,7 +196,7 @@ TEST_F(ReplicaTest, TakesSnapshotNaturallyAfterEnoughAppliedLogs) {
 TEST_F(ReplicaTest, RecoverRestoresDataFromPersistedState) {
     {
         ReplicaManager manager(base_dir_.string());
-        Replica* replica = add_single_replica(manager);
+        ReplicaPtr replica = add_single_replica(manager);
         ASSERT_NE(replica, nullptr);
 
         manager.start_tick();
@@ -208,7 +209,7 @@ TEST_F(ReplicaTest, RecoverRestoresDataFromPersistedState) {
     }
 
     ReplicaManager recovered_manager(base_dir_.string());
-    Replica* recovered_replica = add_single_replica(recovered_manager);
+    ReplicaPtr recovered_replica = add_single_replica(recovered_manager);
     ASSERT_NE(recovered_replica, nullptr);
 
     recovered_manager.recover();
@@ -251,7 +252,7 @@ TEST_F(ReplicaTest, WalCatchupRecoveryRejectsRequestsUntilEntriesApplied) {
     wal.close();
 
     ReplicaManager manager(base_dir_.string());
-    Replica* replica = add_single_replica(manager);
+    ReplicaPtr replica = add_single_replica(manager);
     ASSERT_NE(replica, nullptr);
 
     manager.recover();
@@ -315,7 +316,7 @@ TEST_F(ReplicaTest, SnapshotCatchupRecoveryFinishesWhenSnapshotCoversTarget) {
     wal.close();
 
     ReplicaManager manager(base_dir_.string());
-    Replica* replica = add_single_replica(manager);
+    ReplicaPtr replica = add_single_replica(manager);
     ASSERT_NE(replica, nullptr);
 
     manager.recover();

@@ -32,7 +32,7 @@ class ReplicaMetaPersistEngine {
                              ReplicaMetaPayload& payload) const;
     Status load_replica_meta(const ReplicaID& replica_id,
                              ReplicaMetaPayload& payload) const;
-    Status delete_replica_meta(const ReplicaID& replica_id) const;
+    Status delete_replica_data(const ReplicaID& replica_id) const;
     std::vector<std::filesystem::path> scan_replica_meta_files() const;
 
    private:

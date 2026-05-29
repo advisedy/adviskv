@@ -8,6 +8,7 @@
 #include "common/log.h"
 #include "common/status.h"
 #include "storage/model/param.h"
+#include "storage/replica/replica.h"
 
 namespace adviskv::storage {
 
@@ -116,7 +117,7 @@ rpc::HeartBeatRequest NodeAgent::make_heartbeat_request() const {
     request.set_resource_pool(conf_.resource_pool);
     request.set_dc(conf_.dc);
 
-    for (Replica* replica : replica_manager_->get_replicas()) {
+    for (ReplicaPtr& replica : replica_manager_->get_replicas()) {
         if (replica == nullptr) {
             continue;
         }

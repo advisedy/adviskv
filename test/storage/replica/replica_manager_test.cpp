@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "storage/model/param.h"
+#include "storage/replica/replica.h"
 #include "test/test_env.h"
 
 namespace fs = std::filesystem;
@@ -61,16 +62,16 @@ TEST_F(ReplicaManagerTest, AddReplicaIndexesByIdAndShard) {
     ASSERT_TRUE(status.ok())
         << static_cast<int>(status.code()) << " " << status.msg();
 
-    Replica* by_id = manager.get_replica_by_id(replica_id);
+    ReplicaPtr by_id = manager.get_replica_by_id(replica_id);
     ASSERT_NE(by_id, nullptr);
     EXPECT_EQ(by_id->get_replica_id(), replica_id);
 
-    Replica* by_shard = manager.get_replica_by_shard(
+    ReplicaPtr by_shard = manager.get_replica_by_shard(
         {replica_id.table_id, replica_id.shard_index});
     ASSERT_NE(by_shard, nullptr);
     EXPECT_EQ(by_shard->get_replica_id(), replica_id);
 
-    std::vector<Replica*> replicas = manager.get_replicas();
+    std::vector<ReplicaPtr> replicas = manager.get_replicas();
     ASSERT_EQ(replicas.size(), 1U);
     EXPECT_EQ(replicas[0]->get_replica_id(), replica_id);
 }
@@ -97,6 +98,11 @@ TEST_F(ReplicaManagerTest, DeleteReplicaRemovesIndexes) {
     ReplicaID replica_id{5, 2, 0};
 
     ASSERT_TRUE(manager.add_replica(make_param(replica_id)).ok());
+    fs::path replica_dir =
+        base_dir_ / (std::to_string(replica_id.table_id) + "-" +
+                     std::to_string(replica_id.shard_index));
+    ASSERT_TRUE(fs::exists(replica_dir));
+
     ASSERT_TRUE(manager.delete_replica(replica_id).ok());
 
     EXPECT_EQ(manager.get_replica_by_id(replica_id), nullptr);
@@ -104,6 +110,32 @@ TEST_F(ReplicaManagerTest, DeleteReplicaRemovesIndexes) {
                   {replica_id.table_id, replica_id.shard_index}),
               nullptr);
     EXPECT_TRUE(manager.get_replicas().empty());
+    EXPECT_FALSE(fs::exists(replica_dir));
+}
+
+// delete_replica后，即使调用方还持有旧ReplicaPtr，也不能继续进入该replica。
+TEST_F(ReplicaManagerTest, DeleteReplicaShutsDownExistingReferences) {
+    ReplicaManager manager(base_dir_.string());
+    ReplicaID replica_id{6, 2, 0};
+
+    ASSERT_TRUE(manager.add_replica(make_param(replica_id)).ok());
+    fs::path replica_dir =
+        base_dir_ / (std::to_string(replica_id.table_id) + "-" +
+                     std::to_string(replica_id.shard_index));
+    ASSERT_TRUE(fs::exists(replica_dir));
+
+    ReplicaPtr replica = manager.get_replica_by_id(replica_id);
+    ASSERT_NE(replica, nullptr);
+
+    ASSERT_TRUE(manager.delete_replica(replica_id).ok());
+    EXPECT_FALSE(fs::exists(replica_dir));
+
+    Status status = replica->put(PutParam{"after-delete", "value"});
+    EXPECT_EQ(status.code(), StatusCode::ERROR);
+
+    Replica::ReplicaStateForTest state{};
+    status = replica->get_replica_state_for_test(state);
+    EXPECT_EQ(status.code(), StatusCode::ERROR);
 }
 
 // recover应扫描磁盘上的replica_meta，并重建内存里的replica索引
@@ -118,11 +150,11 @@ TEST_F(ReplicaManagerTest, RecoverScansDiskAndRebuildsReplicaIndexes) {
     ReplicaManager recovered(base_dir_.string());
     recovered.recover();
 
-    Replica* by_id = recovered.get_replica_by_id(replica_id);
+    ReplicaPtr by_id = recovered.get_replica_by_id(replica_id);
     ASSERT_NE(by_id, nullptr);
     EXPECT_EQ(by_id->get_replica_id(), replica_id);
 
-    Replica* by_shard = recovered.get_replica_by_shard(
+    ReplicaPtr by_shard = recovered.get_replica_by_shard(
         ShardID{replica_id.table_id, replica_id.shard_index});
     ASSERT_NE(by_shard, nullptr);
     EXPECT_EQ(by_shard->get_replica_id(), replica_id);

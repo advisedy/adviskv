@@ -58,6 +58,7 @@ class Replica {
 
     Status init(const ReplicaInitParam& param);
     Status recover();
+    void shutdown();
 
     friend class RaftTickTask;
     // tick 回调（Timer 定时调用）
@@ -98,5 +99,7 @@ class Replica {
     // 定时器（驱动 tick）
     // TimerPtr tick_timer_;
 };
+
+using ReplicaPtr = std::shared_ptr<Replica>;
 
 }  // namespace adviskv::storage
