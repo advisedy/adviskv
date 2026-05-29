@@ -26,7 +26,7 @@ class StorageClient {
     static Status select_endpoint(const RouteInfo& route, Endpoint* endpoint);
     rpc::StorageService::Stub* make_stub(const Endpoint& endpoint) const;
 
-    const KVClientConf& conf_;
+    KVClientConf conf_;
     mutable std::mutex mutex_;
     mutable std::unordered_map<std::string,
                                std::unique_ptr<rpc::StorageService::Stub>>
