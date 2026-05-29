@@ -86,12 +86,12 @@ TEST_F(ReplicaTest, HandleInstallSnapshotUpdatesReadableState) {
     ASSERT_TRUE(source_persist.init().ok());
 
     KvStateMachine source_state(EngineType::MAP);
-    ASSERT_TRUE(source_state
-                    .apply(LogEntry{7, 5, WriteOpType::PUT, "hello", "world"})
-                    .ok());
-    ASSERT_TRUE(source_state
-                    .apply(LogEntry{7, 6, WriteOpType::PUT, "foo", "bar"})
-                    .ok());
+    ASSERT_TRUE(
+        source_state.apply(LogEntry{7, 5, WriteOpType::PUT, "hello", "world"})
+            .ok());
+    ASSERT_TRUE(
+        source_state.apply(LogEntry{7, 6, WriteOpType::PUT, "foo", "bar"})
+            .ok());
     ASSERT_TRUE(source_persist.do_snapshot(source_state).ok());
 
     uint64 offset = 0;
@@ -203,8 +203,7 @@ TEST_F(ReplicaTest, RecoverRestoresDataFromPersistedState) {
         ASSERT_NE(replica, nullptr);
         ASSERT_EQ(replica->get_role(), ReplicaRole::LEADER);
 
-        Status status =
-            replica->put(PutParam{"persisted", "v"});
+        Status status = replica->put(PutParam{"persisted", "v"});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     }
 
@@ -346,15 +345,9 @@ TEST_F(ReplicaTest, SnapshotCatchupRecoveryFinishesWhenSnapshotCoversTarget) {
         status = source_persist.read_snapshot_chunk(offset, 7, data, eof);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
-        status = replica->handle_install_snapshot(
-            InstallSnapshotParam{source_id,
-                                 replica_id_,
-                                 8,
-                                 source_state.apply_index(),
-                                 source_state.apply_term(),
-                                 offset,
-                                 data,
-                                 eof});
+        status = replica->handle_install_snapshot(InstallSnapshotParam{
+            source_id, replica_id_, 8, source_state.apply_index(),
+            source_state.apply_term(), offset, data, eof});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         if (eof) break;
         offset += data.size();

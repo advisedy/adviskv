@@ -19,6 +19,7 @@
 #include "common/defer.h"
 #include "common/define.h"
 #include "common/framed_record_codec.h"
+#include "common/func.h"
 #include "common/log.h"
 #include "common/status.h"
 #include "common/type.h"
@@ -559,7 +560,6 @@ Status PersistEngine::recover(RecoverResult& result) {
     const LogIndex original_commit_index = result.raft_meta.commit_index;
     WalReadResult wal_read_result;
     RETURN_IF_INVALID_STATUS(read_wal_from_disk(wal_path_, wal_read_result))
-    result.wal_entries = std::move(wal_read_result.entries);
 
     const LogIndex snapshot_index =
         result.snapshot ? result.snapshot->apply_index : 0;
@@ -569,6 +569,17 @@ Status PersistEngine::recover(RecoverResult& result) {
         wal_read_result
             .last_good_index);  // 有的时候wal_read_result.last_good_index
                                 // = 0， 但是有快照
+
+    {
+        // 这里要处理一下这个entries，需要把快照之前的给去掉
+        // 原因是因为，在快照落盘之后，截断WAL日志的落盘的之前，可能崩溃，那WAL的落盘文件就没有更改。
+        // 所以我们在读取的时候手动这里再截取一下
+        func::ad_erase_if(wal_read_result.entries,
+                          [snapshot_index](const LogEntry& entry) {
+                              return entry.index <= snapshot_index;
+                          });
+    }
+    result.wal_entries = std::move(wal_read_result.entries);
 
     result.wal_recovery.last_good_index = local_last_good_index;
     result.wal_recovery.last_good_offset = wal_read_result.last_good_offset;
