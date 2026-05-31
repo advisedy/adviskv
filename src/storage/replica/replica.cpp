@@ -96,6 +96,12 @@ Status Replica::put(const PutParam& param) {
         // 实真正的语义是希望让客户那边去重试，或者说是用Get自己去判断一下这个结果，
         // 我们这边的结果其实返回的应该是未知。
         //
+        // 至于发生的原因的话，有可能是follower那边的prev_log_index没有对齐，导致一次发送append_entries不够。
+        // 但是或者也有可能是因为自己的message被别的线程的PUT操作给吃掉，然后一起发送了，
+        // 那自己这边的flush_message就是空的，就会很快结束进入下一阶段，可能这个
+        // 时候commit_Idx还没有被别的线程给推进，所以就会此时这边的判断就还会小于
+        // commit_idx
+        // TODO 那这边以后想办法看要不要搞搞优化啥的
         return Status{StatusCode::NOT_YET_COMMIT, "this pyt is not yet commit"};
     }
 

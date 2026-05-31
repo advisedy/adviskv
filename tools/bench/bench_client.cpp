@@ -11,7 +11,7 @@
 #include <thread>
 #include <vector>
 
-#include "arg_parser.h"
+#include "common/arg_parser.h"
 #include "bench_options.h"
 #include "common/define.h"
 #include "common/metrics/latency_recorder.h"
@@ -45,7 +45,7 @@ struct BenchResult {
 };
 
 bool parse_args(int argc, char** argv, BenchOptions* options) {
-    tools::ArgParser parser;
+    ArgParser parser;
     parser.add_string("meta_host", options->meta_host);
     parser.add_int32("meta_port", options->meta_port);
     parser.add_string("sdm_host", options->sdm_host);
@@ -65,8 +65,6 @@ bool parse_args(int argc, char** argv, BenchOptions* options) {
     parser.add_int64("warmup_requests", options->warmup_requests);
     parser.add_int32("timeout_ms", options->timeout_ms);
     parser.add_int32("sdk_timeout_ms", options->sdk_timeout_ms);
-    parser.add_int32("route_cache_ttl_ms", options->route_cache_ttl_ms);
-    parser.add_int32("route_cache_capacity", options->route_cache_capacity);
     parser.add_string("output_json", options->output_json);
     return parser.parse(argc, argv);
 }
@@ -92,11 +90,9 @@ bool validate_options(const BenchOptions& options) {
     }
     if (options.meta_port <= 0 || options.sdm_port <= 0 ||
         options.timeout_ms <= 0 || options.shard_count <= 0 ||
-        options.replica_count < 0 || options.sdk_timeout_ms <= 0 ||
-        options.route_cache_ttl_ms < 0 || options.route_cache_capacity <= 0) {
+        options.replica_count < 0 || options.sdk_timeout_ms <= 0) {
         fmt::print(stderr,
-                   "ports, timeout, shard/replica counts, and route cache "
-                   "config invalid\n");
+                   "ports, timeout, and shard/replica counts config invalid\n");
         return false;
     }
     if (options.db.empty() || options.table.empty() || options.zone.empty() ||
@@ -128,8 +124,6 @@ e2e::Options to_e2e_options(const BenchOptions& options) {
     e2e_options.key_count = static_cast<int32_t>(options.key_count);
     e2e_options.timeout_ms = options.timeout_ms;
     e2e_options.sdk_timeout_ms = options.sdk_timeout_ms;
-    e2e_options.route_cache_ttl_ms = options.route_cache_ttl_ms;
-    e2e_options.route_cache_capacity = options.route_cache_capacity;
     e2e_options.sdk_log_level = sdk::LogLevel::WARN;
     e2e_options.enable_sdk_log_callback = false;
     return e2e_options;
@@ -157,9 +151,6 @@ sdk::KVClient make_client(const BenchOptions& options) {
     conf.sdm_port = options.sdm_port;
     conf.sdm_timeout_ms = options.sdk_timeout_ms;
     conf.storage_timeout_ms = options.sdk_timeout_ms;
-    conf.route_cache_ttl_ms = options.route_cache_ttl_ms;
-    conf.route_cache_capacity =
-        static_cast<size_t>(options.route_cache_capacity);
     conf.log.level = sdk::LogLevel::WARN;
     return sdk::KVClient(conf);
 }

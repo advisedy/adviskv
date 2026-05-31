@@ -20,7 +20,7 @@ class KVClient {
     Status del(const Key& key);
    private:
     static bool should_invalidate_route(const Status& status);
-    Status resolve_route(const RouteCacheKey& cache_key, RouteInfo* route);
+    Status resolve_route(const Key& key, RouteInfo* route);
 
     KVClientConf conf_;
     SdmRouteClient sdm_route_client_;

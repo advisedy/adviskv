@@ -31,8 +31,6 @@ struct BenchOptions {
 
     int32_t timeout_ms{60000};
     int32_t sdk_timeout_ms{3000};
-    int32_t route_cache_ttl_ms{8000};
-    int32_t route_cache_capacity{4096};
 
     std::string output_json;
 };

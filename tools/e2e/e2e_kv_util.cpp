@@ -79,26 +79,27 @@ sdk::KVClient make_kv_client(const Options& options) {
     conf.table_name = options.table;
     conf.sdm_host = options.sdm_host;
     conf.sdm_port = options.sdm_port;
-    conf.sdm_timeout_ms = 3000;
-    conf.storage_timeout_ms = 3000;
-    conf.route_cache_ttl_ms = 0;
-    conf.log.level = sdk::LogLevel::INFO;
-    conf.log.callback = [](sdk::LogLevel level, std::string_view message) {
-        switch (level) {
-            case sdk::LogLevel::DEBUG:
-                LOG_DEBUG("[adviskv_sdk] {}", message);
-                break;
-            case sdk::LogLevel::INFO:
-                LOG_INFO("[adviskv_sdk] {}", message);
-                break;
-            case sdk::LogLevel::WARN:
-                LOG_WARN("[adviskv_sdk] {}", message);
-                break;
-            case sdk::LogLevel::ERROR:
-                LOG_ERROR("[adviskv_sdk] {}", message);
-                break;
-        }
-    };
+    conf.sdm_timeout_ms = options.sdk_timeout_ms;
+    conf.storage_timeout_ms = options.sdk_timeout_ms;
+    conf.log.level = options.sdk_log_level;
+    if (options.enable_sdk_log_callback) {
+        conf.log.callback = [](sdk::LogLevel level, std::string_view message) {
+            switch (level) {
+                case sdk::LogLevel::DEBUG:
+                    LOG_DEBUG("[adviskv_sdk] {}", message);
+                    break;
+                case sdk::LogLevel::INFO:
+                    LOG_INFO("[adviskv_sdk] {}", message);
+                    break;
+                case sdk::LogLevel::WARN:
+                    LOG_WARN("[adviskv_sdk] {}", message);
+                    break;
+                case sdk::LogLevel::ERROR:
+                    LOG_ERROR("[adviskv_sdk] {}", message);
+                    break;
+            }
+        };
+    }
     return sdk::KVClient(conf);
 }
 

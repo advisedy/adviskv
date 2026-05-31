@@ -13,9 +13,8 @@ KVClient::KVClient(const KVClientConf& conf)
 Status KVClient::put(const Key& key, const Value& value) {
     RETURN_IF_INVALID_PARAM(conf_)
 
-    RouteCacheKey cache_key{conf_.db_name, conf_.table_name, key};
     RouteInfo route;
-    Status status = resolve_route(cache_key, &route);
+    Status status = resolve_route(key, &route);
     if (status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "put resolve route failed, db={}, table={}, key={}, "
@@ -27,14 +26,16 @@ Status KVClient::put(const Key& key, const Value& value) {
 
     status = storage_client_.put(route, key, value);
     if (!should_invalidate_route(status)) {
+        // 说明route是对的
         return status;
     }
 
+    // 说明route不对了，重新resolve一下
     ADVISKV_SDK_LOG(LogLevel::INFO,
                     "put invalidates route, db={}, table={}, key={}, "
                     "status={}",
                     conf_.db_name, conf_.table_name, key, status.to_string());
-    status = resolve_route(cache_key, &route);
+    status = resolve_route(key, &route);
     if (status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "put retry resolve route failed, db={}, table={}, "
@@ -56,9 +57,8 @@ Status KVClient::put(const Key& key, const Value& value) {
 Status KVClient::del(const Key& key) {
     RETURN_IF_INVALID_PARAM(conf_)
 
-    RouteCacheKey cache_key{conf_.db_name, conf_.table_name, key};
     RouteInfo route;
-    Status status = resolve_route(cache_key, &route);
+    Status status = resolve_route(key, &route);
     if (status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "delete resolve route failed, db={}, table={}, key={}, "
@@ -77,7 +77,7 @@ Status KVClient::del(const Key& key) {
                     "delete invalidates route, db={}, table={}, key={}, "
                     "status={}",
                     conf_.db_name, conf_.table_name, key, status.to_string());
-    status = resolve_route(cache_key, &route);
+    status = resolve_route(key, &route);
     if (status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "delete retry resolve route failed, db={}, table={}, "
@@ -101,9 +101,8 @@ Status KVClient::get(const Key& key, Value* value) {
     RETURN_IF_INVALID_PARAM(conf_)
     RETURN_IF_NULLPTR(value, "value should not be nullptr")
 
-    RouteCacheKey cache_key{conf_.db_name, conf_.table_name, key};
     RouteInfo route;
-    Status status = resolve_route(cache_key, &route);
+    Status status = resolve_route(key, &route);
     if (status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "get resolve route failed, db={}, table={}, key={}, "
@@ -121,7 +120,7 @@ Status KVClient::get(const Key& key, Value* value) {
     ADVISKV_SDK_LOG(LogLevel::INFO,
                     "get invalidates route, db={}, table={}, key={}, status={}",
                     conf_.db_name, conf_.table_name, key, status.to_string());
-    status = resolve_route(cache_key, &route);
+    status = resolve_route(key, &route);
     if (status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "get retry resolve route failed, db={}, table={}, "
@@ -146,11 +145,10 @@ bool KVClient::should_invalidate_route(const Status& status) {
            status.code() == StatusCode::ROUTE_NOT_FOUND;
 }
 
-Status KVClient::resolve_route(const RouteCacheKey& cache_key,
-                               RouteInfo* route) {
+Status KVClient::resolve_route(const Key& key, RouteInfo* route) {
     RETURN_IF_NULLPTR(route, "route should not be nullptr")
 
-    return sdm_route_client_.get_route(cache_key.key, route);
+    return sdm_route_client_.get_route(key, route);
 }
 
 }  // namespace adviskv::sdk

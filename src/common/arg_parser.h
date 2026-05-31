@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-namespace adviskv::tools {
+namespace adviskv {
 
 class ArgParser {
    public:
@@ -92,4 +92,4 @@ class ArgParser {
     std::vector<Option> options_;
 };
 
-}  // namespace adviskv::tools
+}  // namespace adviskv
