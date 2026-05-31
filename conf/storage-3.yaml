@@ -1,12 +1,12 @@
+# storage
 node_id: "storage-3"
 ip: "127.0.0.1"
-listen_host: "127.0.0.1"
 port: 50053
+listen_host: "127.0.0.1"
 resource_pool: "default"
 dc: "dc1"
 data_dir: "build/storage-3-data"
 heartbeat_interval_ms: 3000
-
 
 #log
 logger_name: "storage-3_log"
@@ -19,3 +19,9 @@ log_to_file: true
 #sdm
 manager_host: "127.0.0.1"
 manager_port: 50049
+
+# metrics
+metrics_http_enable: true
+metrics_http_host: "127.0.0.1"
+metrics_http_port: 51053
+metrics_http_path: "/metrics"

@@ -1,5 +1,28 @@
 include(GoogleTest)
 
+function(add_adviskv_common_gtest target_name)
+    add_executable(${target_name}
+        ${CMAKE_SOURCE_DIR}/test/test_main.cpp
+        ${ARGN}
+    )
+    set_target_properties(${target_name} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/test"
+    )
+    target_link_libraries(${target_name} PRIVATE
+        adviskv_common
+        GTest::gtest
+    )
+    target_include_directories(${target_name} PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/test
+        ${PROJECT_BINARY_DIR}/generated
+    )
+    gtest_discover_tests(${target_name}
+        DISCOVERY_TIMEOUT 30
+    )
+endfunction()
+
 function(add_adviskv_storage_gtest target_name)
     add_executable(${target_name}
         ${CMAKE_SOURCE_DIR}/test/test_main.cpp
@@ -68,6 +91,10 @@ function(add_adviskv_meta_gtest target_name)
         DISCOVERY_TIMEOUT 30
     )
 endfunction()
+
+add_adviskv_common_gtest(metrics_test
+    ${CMAKE_SOURCE_DIR}/test/common/metrics_test.cpp
+)
 
 add_adviskv_storage_gtest(map_engine_test
     ${CMAKE_SOURCE_DIR}/test/storage/engine/map_engine_test.cpp

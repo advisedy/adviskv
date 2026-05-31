@@ -7,6 +7,7 @@
 
 #include "common/confmgr.h"
 #include "common/log.h"
+#include "common/metrics/metrics.h"
 #include "common/path_util.h"
 #include "common/type.h"
 #include "storage/engine/map_engine.h"
@@ -18,9 +19,7 @@ namespace {
 
 void init_conf(char* conf_file) {
     auto& conf_mgr = adviskv::ConfMgr::get_instance();
-    conf_mgr.LoadFromFile(
-        adviskv::path_from_project_root(conf_file)
-            .string());
+    conf_mgr.LoadFromFile(adviskv::path_from_project_root(conf_file).string());
 }
 void init_logger() {
     adviskv::LogConfig config;
@@ -38,6 +37,24 @@ void init_logger() {
         config.log_level, config.log_to_console, config.log_to_file);
 }
 
+void init_metrics() {
+    adviskv::MetricsOptions options;
+    options.http_enable = CONF_GET_BOOL("metrics_http_enable", false);
+    options.http_host = CONF_GET_STR("metrics_http_host");
+    options.http_port = CONF_GET_INT("metrics_http_port");
+    options.http_path = CONF_GET_STR("metrics_http_path"));
+
+    adviskv::Status status = adviskv::AdvisMetrics::instance().init(options);
+    if (status.ok()) {
+        if (options.http_enable) {
+            LOG_INFO("metrics http server listening on {}:{}{}",
+                     options.http_host, options.http_port, options.http_path);
+        }
+        return;
+    }
+    LOG_WARN("metrics init failed: {}", status.msg());
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -48,6 +65,8 @@ int main(int argc, char* argv[]) {
     try {
         init_conf(argv[1]);
         init_logger();
+        init_metrics();
+
         LOG_INFO("init phase finish");
     } catch (const std::exception& e) {
         fmt::print(stderr, "Exception caught in main: {}\n", e.what());
@@ -56,8 +75,7 @@ int main(int argc, char* argv[]) {
     {
         using namespace adviskv::storage;
 
-        std::string data_dir =
-            adviskv::path_from_config("data_dir").string();
+        std::string data_dir = adviskv::path_from_config("data_dir").string();
         int32_t listen_port = CONF_GET_INT("port");
 
         auto replica_manager =
@@ -77,9 +95,6 @@ int main(int argc, char* argv[]) {
         agent_conf.manager_port = CONF_GET_INT("manager_port");
         agent_conf.heartbeat_interval_ms =
             CONF_GET_INT("heartbeat_interval_ms");
-        std::string listen_host = adviskv::ConfMgr::get_instance()
-                                      .Get<std::string>("listen_host",
-                                                        agent_conf.ip);
 
         auto service =
             std::make_unique<StorageServiceImpl>(std::move(replica_manager));
@@ -95,6 +110,10 @@ int main(int argc, char* argv[]) {
         } else {
             LOG_WARN("node agent setup failed: {}", agent_status.msg());
         }
+
+        std::string listen_host =
+            adviskv::ConfMgr::get_instance().Get<std::string>("listen_host",
+                                                              agent_conf.ip);
 
         grpc::ServerBuilder builder;
         builder.AddListeningPort(fmt::format("{}:{}", listen_host, listen_port),

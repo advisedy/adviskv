@@ -299,7 +299,7 @@ def run_e2e_client(*args: str) -> subprocess.CompletedProcess:
     env.setdefault("FORCE_COLOR", "1")
     command = [
         str(BIN_DIR / "e2e_client"),
-        str(CONF_DIR / "e2e_client.yaml"),
+        f"--conf={CONF_DIR / 'e2e_client.yaml'}",
         "--meta_host=127.0.0.1",
         "--meta_port=50048",
         "--sdm_host=127.0.0.1",

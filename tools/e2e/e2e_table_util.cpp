@@ -19,11 +19,17 @@ bool create_db(E2EContext* context, std::string* error) {
     grpc::ClientContext client_context;
     client_context.set_deadline(std::chrono::system_clock::now() +
                                 std::chrono::milliseconds(options.timeout_ms));
-    const grpc::Status status =
+    grpc::Status status =
         context->meta()->CreateDB(&client_context, request, &response);
-    return grpc_ok(status, "CreateDB", error) &&
-           base_rsp_ok(response.base_rsp().code(), response.base_rsp().msg(),
-                       "CreateDB", error);
+    if (!grpc_ok(status, "CreateDB", error)) {
+        return false;
+    }
+    int32_t code = response.base_rsp().code();
+    if (code == to_rpc_code(StatusCode::OK) ||
+        code == to_rpc_code(StatusCode::ALREADY_EXIST)) {
+        return true;
+    }
+    return base_rsp_ok(code, response.base_rsp().msg(), "CreateDB", error);
 }
 
 bool create_table(E2EContext* context, std::string* error) {
@@ -39,11 +45,17 @@ bool create_table(E2EContext* context, std::string* error) {
     grpc::ClientContext client_context;
     client_context.set_deadline(std::chrono::system_clock::now() +
                                 std::chrono::milliseconds(options.timeout_ms));
-    const grpc::Status status =
+    grpc::Status status =
         context->meta()->CreateTable(&client_context, request, &response);
-    return grpc_ok(status, "CreateTable", error) &&
-           base_rsp_ok(response.base_rsp().code(), response.base_rsp().msg(),
-                       "CreateTable", error);
+    if (!grpc_ok(status, "CreateTable", error)) {
+        return false;
+    }
+    int32_t code = response.base_rsp().code();
+    if (code == to_rpc_code(StatusCode::OK) ||
+        code == to_rpc_code(StatusCode::ALREADY_EXIST)) {
+        return true;
+    }
+    return base_rsp_ok(code, response.base_rsp().msg(), "CreateTable", error);
 }
 
 bool drop_table(E2EContext* context, std::string* error) {
