@@ -15,6 +15,7 @@
 #include "bench_options.h"
 #include "common/define.h"
 #include "common/metrics/latency_recorder.h"
+#include "common/metrics/metrics.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "e2e_context.h"
@@ -66,6 +67,10 @@ bool parse_args(int argc, char** argv, BenchOptions* options) {
     parser.add_int32("timeout_ms", options->timeout_ms);
     parser.add_int32("sdk_timeout_ms", options->sdk_timeout_ms);
     parser.add_string("output_json", options->output_json);
+    parser.add_string("metrics_http_host", options->metrics_http_host);
+    parser.add_int32("metrics_http_port", options->metrics_http_port);
+    parser.add_string("metrics_http_path", options->metrics_http_path);
+    parser.add_int32("metrics_hold_seconds", options->metrics_hold_seconds);
     return parser.parse(argc, argv);
 }
 
@@ -90,9 +95,11 @@ bool validate_options(const BenchOptions& options) {
     }
     if (options.meta_port <= 0 || options.sdm_port <= 0 ||
         options.timeout_ms <= 0 || options.shard_count <= 0 ||
-        options.replica_count < 0 || options.sdk_timeout_ms <= 0) {
+        options.replica_count < 0 || options.sdk_timeout_ms <= 0 ||
+        options.metrics_http_port < 0 || options.metrics_hold_seconds < 0) {
         fmt::print(stderr,
-                   "ports, timeout, and shard/replica counts config invalid\n");
+                   "ports, timeout, shard/replica counts, and metrics config "
+                   "invalid\n");
         return false;
     }
     if (options.db.empty() || options.table.empty() || options.zone.empty() ||
@@ -107,6 +114,37 @@ bool validate_options(const BenchOptions& options) {
         return false;
     }
     return true;
+}
+
+bool init_metrics(const BenchOptions& options) {
+    if (options.metrics_http_port == 0) {
+        return true;
+    }
+
+    MetricsOptions metrics_options;
+    metrics_options.http_enable = true;
+    metrics_options.http_host = options.metrics_http_host;
+    metrics_options.http_port = options.metrics_http_port;
+    metrics_options.http_path = options.metrics_http_path;
+
+    Status status = AdvisMetrics::get_instance().init(metrics_options);
+    if (status.fail()) {
+        fmt::print(stderr, "metrics init failed: {}\n", status.to_string());
+        return false;
+    }
+    fmt::print("[bench] metrics listening on {}:{}{}\n",
+               metrics_options.http_host, metrics_options.http_port,
+               metrics_options.http_path);
+    return true;
+}
+
+void record_stage_result(const std::string& stage, bool success) {
+    ADVISKV_METRICS_COUNTER("bench_stage_" + stage + "_done");
+    if (success) {
+        ADVISKV_METRICS_COUNTER("bench_stage_" + stage + "_success");
+    } else {
+        ADVISKV_METRICS_COUNTER("bench_stage_" + stage + "_failure");
+    }
 }
 
 e2e::Options to_e2e_options(const BenchOptions& options) {
@@ -156,22 +194,32 @@ sdk::KVClient make_client(const BenchOptions& options) {
 }
 
 bool prepare_bench_table(const BenchOptions& options) {
+    ADVISKV_METRICS_TIMER("bench_stage_prepare_table");
+    ADVISKV_METRICS_COUNTER("bench_stage_prepare_table_start");
+
     e2e::Options e2e_options = to_e2e_options(options);
     e2e::E2EContext context(e2e_options);
-    return e2e::prepare_table(&context);
+    const bool ok = e2e::prepare_table(&context);
+    record_stage_result("prepare_table", ok);
+    return ok;
 }
 
 bool prepare_read_dataset(const BenchOptions& options) {
+    ADVISKV_METRICS_TIMER("bench_stage_prepare_read_dataset");
+    ADVISKV_METRICS_COUNTER("bench_stage_prepare_read_dataset_start");
+
     sdk::KVClient client = make_client(options);
     for (int64_t i = 0; i < options.key_count; ++i) {
         Status status = client.put(make_key(i), make_value(options, i));
         if (status.fail()) {
+            record_stage_result("prepare_read_dataset", false);
             fmt::print(stderr, "prepare put failed, key={}, status={}\n",
                        make_key(i), status.to_string());
             return false;
         }
     }
     fmt::print("prepared readable dataset: keys={}\n", options.key_count);
+    record_stage_result("prepare_read_dataset", true);
     return true;
 }
 
@@ -211,6 +259,7 @@ void run_worker(const BenchOptions& options, std::atomic<int64_t>* next_request,
         }
 
         bool read_request = should_read(options, rng);
+
         auto start = Clock::now();
         Status status = execute_one(&client, options, request_id, read_request);
         if (!record_stats) {
@@ -234,6 +283,11 @@ BenchResult run_phase(const BenchOptions& options, int64_t request_count,
     if (request_count <= 0) {
         return BenchResult{};
     }
+    ADVISKV_METRICS_TIMER(record_stats ? "bench_stage_workload"
+                                       : "bench_stage_warmup");
+    ADVISKV_METRICS_COUNTER(record_stats ? "bench_stage_workload_start"
+                                         : "bench_stage_warmup_start");
+
     BenchStats stats;
     std::atomic<int64_t> next_request{0};
     std::vector<std::thread> workers;
@@ -264,6 +318,7 @@ BenchResult run_phase(const BenchOptions& options, int64_t request_count,
     result.failure_rate =
         to<double>(result.failure) / to<double>(request_count);
     result.latency = stats.latency.summary();
+    record_stage_result(record_stats ? "workload" : "warmup", true);
     return result;
 }
 
@@ -340,6 +395,10 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    if (!adviskv::bench::init_metrics(options)) {
+        return 1;
+    }
+
     if (!adviskv::bench::prepare_bench_table(options)) {
         return 1;
     }
@@ -360,8 +419,23 @@ int main(int argc, char** argv) {
     adviskv::bench::BenchResult result =
         adviskv::bench::run_phase(options, options.requests, true);
     adviskv::bench::print_result(options, result);
-    if (!adviskv::bench::write_json(options, result)) {
+    bool write_json_ok = false;
+    {
+        ADVISKV_METRICS_TIMER("bench_stage_write_json");
+        ADVISKV_METRICS_COUNTER("bench_stage_write_json_start");
+        write_json_ok = adviskv::bench::write_json(options, result);
+    }
+    if (!write_json_ok) {
+        adviskv::bench::record_stage_result("write_json", false);
         return 1;
+    }
+    adviskv::bench::record_stage_result("write_json", true);
+
+    if (options.metrics_hold_seconds > 0) {
+        fmt::print("[bench] hold for metrics scrape: seconds={}\n",
+                   options.metrics_hold_seconds);
+        std::this_thread::sleep_for(
+            std::chrono::seconds(options.metrics_hold_seconds));
     }
     return 0;
 }

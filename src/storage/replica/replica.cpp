@@ -1,9 +1,11 @@
 #include "storage/replica/replica.h"
 
 #include <memory>
+#include <mutex>
 
 #include "common/define.h"
 #include "common/log.h"
+#include "common/metrics/metrics.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
@@ -14,8 +16,11 @@
 #include "storage/raft/state_machine/state_machine.h"
 
 namespace adviskv::storage {
+namespace {
 
 static constexpr int SNAPSHOT_LIMIT = 1000;
+
+}  // namespace
 
 Status Replica::init(const ReplicaInitParam& param) {
     shard_id_ =
@@ -49,16 +54,26 @@ Status Replica::put(const PutParam& param) {
     RETURN_IF_INVALID_STATUS(acquire_operation(guard))
 
     if (is_recovering()) {
-        return Status::ERROR("replica is recovering");
+        return Status::IS_RECOVERING("replica is recovering");
     }
 
     // 提交给 RaftNode
-    auto [status, new_commit_idx] =
-        raft_node_->propose(WriteOpType::PUT, param.key, param.value);
+    LogIndex new_commit_idx = 0;
+    Status status;
+    {
+        ADVISKV_METRICS_TIMER("storage_replica_put_propose");
+        auto propose_result =
+            raft_node_->propose(WriteOpType::PUT, param.key, param.value);
+        status = propose_result.first;
+        new_commit_idx = propose_result.second;
+    }
     RETURN_IF_INVALID_STATUS(status)
 
     // 发送 RaftNode 产出的消息（同步 RPC）
-    flush_messages();
+    {
+        ADVISKV_METRICS_TIMER("storage_replica_put_flush_messages");
+        flush_messages();
+    }
 
     // (AI重新表述过的版本，自己的语言描述太烂了）：
     //
@@ -80,6 +95,7 @@ Status Replica::put(const PutParam& param) {
     // apply 已提交的日志到 engine
     // 这里推动raftnode里的apply_index是交给了replica外层去控制。
     {
+        ADVISKV_METRICS_TIMER("storage_replica_put_apply_committed");
         std::lock_guard lock(state_machine_mutex_);
         apply_committed_entries();
     }
@@ -102,44 +118,64 @@ Status Replica::put(const PutParam& param) {
         // 时候commit_Idx还没有被别的线程给推进，所以就会此时这边的判断就还会小于
         // commit_idx
         // TODO 那这边以后想办法看要不要搞搞优化啥的
-        return Status{StatusCode::NOT_YET_COMMIT, "this pyt is not yet commit"};
+        return Status{StatusCode::NOT_YET_COMMIT, "this put is not yet commit"};
     }
 
     return Status::OK();
 }
 
 Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
+    LOG_INFO(
+        "replica:{} is handling to install snapshot from replica:{}. The "
+        "snapshot index:{}, snapshot term:{}",
+        param.to_replica_id.to_string(), param.from_replica_id.to_string(),
+        param.snapshot_index, param.snapshot_term);
+
     OperGuard guard;
     RETURN_IF_INVALID_STATUS(acquire_operation(guard))
 
     RETURN_IF_INVALID_STATUS(
-        raft_node_->prepare_install_snapshot(param.term, param.snapshot_index))
-    RETURN_IF_INVALID_STATUS(persist_->append_snapshot_chunk(param))
-    if (!param.done) return Status::OK();
+        raft_node_->prepare_install_snapshot(param.term, param.snapshot_index));
 
-    SnapshotPtr snap = std::make_shared<Snapshot>();
-    snap->apply_index = param.snapshot_index;
-    snap->apply_term = param.snapshot_term;
+    SnapshotPtr snap;
+    {
+        std::lock_guard locker{persist_snapshot_mutex_};
+        RETURN_IF_INVALID_STATUS(persist_->append_snapshot_chunk(param))
+        if (!param.done) return Status::OK();
 
-    RETURN_IF_INVALID_STATUS(persist_->finish_snapshot_receive(snap)) {
-        std::lock_guard lock(state_machine_mutex_);
-        RETURN_IF_INVALID_STATUS(state_machine_->restore(
-            snap, [this](const KvVisitor& visitor) -> Status {
-                return persist_->for_each_snapshot_kv(visitor);
-            }))
-        raft_node_->install_snapshot(param.snapshot_index, param.snapshot_term,
-                                     param.term);
-        refresh_recovering_state();
+        snap = std::make_shared<Snapshot>();
+        snap->apply_index = param.snapshot_index;
+        snap->apply_term = param.snapshot_term;
+
+        RETURN_IF_INVALID_STATUS(persist_->finish_snapshot_receive(snap));
+        {
+            std::lock_guard lock(state_machine_mutex_);
+            RETURN_IF_INVALID_STATUS(state_machine_->restore(
+                snap, [this](const KvVisitor& visitor) -> Status {
+                    return persist_->for_each_snapshot_kv(visitor);
+                }))
+            raft_node_->install_snapshot(param.snapshot_index,
+                                         param.snapshot_term, param.term);
+            refresh_recovering_state();
+        }
     }
 
     return Status::OK();
 }
 
 void Replica::flush_messages() {
+    ADVISKV_METRICS_TIMER("storage_raft_flush_messages");
+    ADVISKV_METRICS_COUNTER("storage_raft_flush_messages_batch");
+
     auto messages = raft_node_->extract_messages();
+    ADVISKV_METRICS_COUNTER("storage_raft_flush_messages_message",
+                            static_cast<int64_t>(messages.size()));
     for (auto& msg : messages) {
         switch (msg.type) {
             case RaftMessageType::REQUEST_VOTE: {
+                ADVISKV_METRICS_TIMER(
+                    "storage_raft_flush_messages_request_vote");
+
                 RequestVoteResult result;
                 Status status = raft_sender_.send_request_vote(
                     msg.target, msg.vote_param, result);
@@ -159,16 +195,26 @@ void Replica::flush_messages() {
                 if (status.ok()) {
                     IGNORE_RESULT(raft_node_->handle_append_response(
                         msg.target.replica_id, result));
+                } else {
+                    LOG_WARN("storage raft append entries failed, status:{}",
+                             status.to_string());
                 }
                 break;
             }
             case RaftMessageType::INSTALL_SNAPSHOT: {
+                ADVISKV_METRICS_TIMER(
+                    "storage_raft_flush_messages_install_snapshot");
+
                 InstallSnapshotResult result;
                 Status status = raft_sender_.send_install_snapshot(
                     msg.target, msg.snapshot_param, *persist_, result);
                 if (status.ok()) {
                     raft_node_->handle_install_snapshot_response(
                         msg.target.replica_id, result);
+                } else {
+                    LOG_WARN(
+                        "storage raft send install snapshot failed, status:{}",
+                        status.to_string());
                 }
                 break;
             }
@@ -177,15 +223,22 @@ void Replica::flush_messages() {
 }
 
 void Replica::apply_committed_entries() {
+    ADVISKV_METRICS_TIMER("storage_replica_apply_committed_entries");
+    ADVISKV_METRICS_COUNTER("storage_replica_apply_committed_entries_request");
+
     auto entries = raft_node_->extract_committed_entries();
+    ADVISKV_METRICS_COUNTER("storage_replica_apply_entry",
+                            static_cast<int64_t>(entries.size()));
     for (const LogEntry& entry : entries) {
         // Status status = apply_log_entry(entry);
         Status status = state_machine_->apply(entry);
         if (status.fail()) {
+            ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_failure");
             LOG_WARN("apply_log_entry failed, index={}, msg={}", entry.index,
                      status.msg());
             return;
         }
+        ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_success");
         raft_node_->advance_last_applied(entry.index);
     }
     refresh_recovering_state();
@@ -223,7 +276,7 @@ Status Replica::get(const GetParam& param, Value& value) {
     }
 
     if (is_recovering()) {
-        return Status::ERROR("replica is recovering");
+        return Status::IS_RECOVERING("replica is recovering");
     }
     // TODO: ReadIndex 保证线性一致性 以后待定吧
 
@@ -252,7 +305,7 @@ Status Replica::del(const DelParam& param) {
     RETURN_IF_INVALID_STATUS(acquire_operation(guard))
 
     if (is_recovering()) {
-        return Status::ERROR("replica is recovering");
+        return Status::IS_RECOVERING("replica is recovering");
     }
 
     auto [status, new_commit_idx] =
@@ -319,6 +372,18 @@ void Replica::try_take_snapshot() {
 
     std::lock_guard lock(state_machine_mutex_);
     Status status = persist_->do_snapshot(*state_machine_);
+
+    // 现在这里的情况是，persist的执行快照有可能会失败，但是失败是有可能是因为truncate_wal里面的read_wal_from_disk里走到了：
+    //        if (has_prev_index && entry.index != prev_index + 1) {
+    // result.error = true;
+    // result.error_msg =
+    //     fmt::format("wal index is not continuous, prev={}, current={}",
+    //                 prev_index, entry.index);
+    // break;
+    // }
+    // 走到以上这块内容，但是我们没有办法回补，从而有bug
+    //
+
     if (status.ok()) {
         // 持久化成功了，这边得截断wal日志了。
         raft_node_->truncate_log(state_machine_->apply_index());

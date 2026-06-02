@@ -9,20 +9,34 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
+#include <limits>
 #include <sstream>
 #include <thread>
 #include <utility>
 #include <vector>
 
-#include "common/metrics/latency_recorder.h"
-
 namespace adviskv {
 namespace {
 
+struct HistogramSnapshot {
+    std::vector<std::pair<int64_t, int64_t>> buckets;
+    int64_t count{0};
+    int64_t sum_us{0};
+};
+
 struct MetricsSnapshot {
-    std::unordered_map<std::string, LatencyRecorder::LatencySummary> latencies;
+    std::unordered_map<std::string, HistogramSnapshot> latencies;
     std::unordered_map<std::string, int64_t> counters;
 };
+
+const std::vector<int64_t>& latency_buckets_us() {
+    static const std::vector<int64_t> buckets = {
+        100,    250,    500,    1000,   2000,   5000,  10000,
+        20000,  50000,  100000, 250000, 500000, 1000000,
+        std::numeric_limits<int64_t>::max(),
+    };
+    return buckets;
+}
 
 std::string http_response(const std::string& status,
                           const std::string& content_type,
@@ -48,13 +62,33 @@ void close_fd(int* fd) {
     }
 }
 
+std::string prometheus_bucket_label(int64_t upper_bound) {
+    if (upper_bound == std::numeric_limits<int64_t>::max()) {
+        return "+Inf";
+    }
+    return std::to_string(upper_bound);
+}
+
 }  // namespace
 
 class AdvisMetrics::Registry {
    public:
+    Registry() : bucket_bounds_(latency_buckets_us()) {}
+
     void record_latency(const std::string& name, int64_t latency_us) {
         std::lock_guard lock(mutex_);
-        latencies_[name].record(latency_us);
+        Histogram& histogram = latencies_[name];
+        if (histogram.bucket_counts.empty()) {
+            histogram.bucket_counts.assign(bucket_bounds_.size(), 0);
+        }
+        histogram.count += 1;
+        histogram.sum_us += latency_us;
+        for (size_t i = 0; i < bucket_bounds_.size(); ++i) {
+            if (latency_us <= bucket_bounds_[i]) {
+                histogram.bucket_counts[i] += 1;
+                break;
+            }
+        }
     }
 
     void record_counter(const std::string& name, int64_t delta) {
@@ -71,16 +105,38 @@ class AdvisMetrics::Registry {
     MetricsSnapshot snapshot() const {
         std::lock_guard lock(mutex_);
         MetricsSnapshot snapshot;
-        for (const auto& [name, recorder] : latencies_) {
-            snapshot.latencies[name] = recorder.summary();
+        for (const auto& [name, histogram] : latencies_) {
+            HistogramSnapshot histogram_snapshot;
+            histogram_snapshot.count = histogram.count;
+            histogram_snapshot.sum_us = histogram.sum_us;
+            histogram_snapshot.buckets.reserve(bucket_bounds_.size());
+
+            int64_t cumulative = 0;
+            for (size_t i = 0; i < bucket_bounds_.size(); ++i) {
+                int64_t count = 0;
+                if (i < histogram.bucket_counts.size()) {
+                    count = histogram.bucket_counts[i];
+                }
+                cumulative += count;
+                histogram_snapshot.buckets.emplace_back(bucket_bounds_[i],
+                                                        cumulative);
+            }
+            snapshot.latencies[name] = std::move(histogram_snapshot);
         }
         snapshot.counters = counters_;
         return snapshot;
     }
 
    private:
+    struct Histogram {
+        std::vector<int64_t> bucket_counts;
+        int64_t count{0};
+        int64_t sum_us{0};
+    };
+
+    const std::vector<int64_t>& bucket_bounds_;
     mutable std::mutex mutex_;
-    std::unordered_map<std::string, LatencyRecorder> latencies_;
+    std::unordered_map<std::string, Histogram> latencies_;
     std::unordered_map<std::string, int64_t> counters_;
 };
 
@@ -104,6 +160,9 @@ class AdvisMetrics::HttpServer {
                                    sizeof(reuse)))
 
         sockaddr_in addr{};
+#ifdef __APPLE__
+        addr.sin_len = sizeof(addr);
+#endif
         addr.sin_family = AF_INET;
         addr.sin_port = htons(static_cast<uint16_t>(options_.http_port));
         if (::inet_pton(AF_INET, options_.http_host.c_str(), &addr.sin_addr) !=
@@ -260,15 +319,17 @@ std::string AdvisMetrics::dump_prometheus() const {
     std::ostringstream out;
     for (const std::string& raw_name : latency_names) {
         const std::string metric_name = "adviskv_" + raw_name + "_latency_us";
-        const LatencyRecorder::LatencySummary& summary =
+        const HistogramSnapshot& histogram =
             snapshot.latencies.at(raw_name);
 
-        out << "# TYPE " << metric_name << " summary\n"
-            << metric_name << "_count " << summary.count << "\n"
-            << metric_name << "_sum " << summary.sum_us << "\n"
-            << metric_name << "{quantile=\"0.5\"} " << summary.p50_us << "\n"
-            << metric_name << "{quantile=\"0.95\"} " << summary.p95_us << "\n"
-            << metric_name << "{quantile=\"0.99\"} " << summary.p99_us << "\n";
+        out << "# TYPE " << metric_name << " histogram\n";
+        for (const auto& [upper_bound, cumulative_count] : histogram.buckets) {
+            out << metric_name << "_bucket{le=\""
+                << prometheus_bucket_label(upper_bound) << "\"} "
+                << cumulative_count << "\n";
+        }
+        out << metric_name << "_count " << histogram.count << "\n"
+            << metric_name << "_sum " << histogram.sum_us << "\n";
     }
 
     for (const std::string& raw_name : counter_names) {

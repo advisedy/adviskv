@@ -122,6 +122,7 @@ class Replica {
     std::atomic<bool> stopping_{false};
     mutable std::shared_mutex life_mutex_;
     mutable std::mutex state_machine_mutex_;
+    mutable std::mutex persist_snapshot_mutex_;
 };
 
 using ReplicaPtr = std::shared_ptr<Replica>;

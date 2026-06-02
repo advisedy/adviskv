@@ -7,6 +7,7 @@
 #include <chrono>
 
 #include "common/define.h"
+#include "common/metrics/metrics.h"
 #include "sdk/log.h"
 
 namespace adviskv::sdk {
@@ -54,9 +55,13 @@ rpc::StorageService::Stub* StorageClient::make_stub(
 
 Status StorageClient::put(const RouteInfo& route, const Key& key,
                           const Value& value) const {
+    ADVISKV_METRICS_TIMER("sdk_storage_put");
+    ADVISKV_METRICS_COUNTER("sdk_storage_put_request");
+
     Endpoint endpoint;
     Status status = select_endpoint(route, &endpoint);
     if (status.fail()) {
+        ADVISKV_METRICS_COUNTER("sdk_storage_put_select_endpoint_failure");
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "select storage endpoint for put failed, table_id={}, "
                         "shard_id={}, key={}, status={}",
@@ -66,7 +71,10 @@ Status StorageClient::put(const RouteInfo& route, const Key& key,
     }
 
     rpc::StorageService::Stub* stub = make_stub(endpoint);
-    RETURN_IF_NULLPTR(stub, "storage stub is nullptr")
+    if (stub == nullptr) {
+        ADVISKV_METRICS_COUNTER("sdk_storage_put_stub_missing");
+        return Status{StatusCode::INVALID_ARGUMENT, "storage stub is nullptr"};
+    }
 
     rpc::PutRequest request;
     request.set_table_id(route.table_id);
@@ -79,8 +87,13 @@ Status StorageClient::put(const RouteInfo& route, const Key& key,
     context.set_deadline(std::chrono::system_clock::now() +
                          std::chrono::milliseconds(conf_.storage_timeout_ms));
 
-    grpc::Status grpc_status = stub->Put(&context, request, &response);
+    grpc::Status grpc_status;
+    {
+        ADVISKV_METRICS_TIMER("sdk_storage_put_rpc");
+        grpc_status = stub->Put(&context, request, &response);
+    }
     if (!grpc_status.ok()) {
+        ADVISKV_METRICS_COUNTER("sdk_storage_put_rpc_failure");
         ADVISKV_SDK_LOG(LogLevel::ERROR,
                         "Storage Put RPC failed, endpoint={}:{}, table_id={}, "
                         "shard_id={}, key={}, grpc_code={}, msg={}",

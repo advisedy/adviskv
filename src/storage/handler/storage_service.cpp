@@ -7,6 +7,7 @@
 #include "common/define.h"
 #include "common/enum_convert.h"
 #include "common/log.h"
+#include "common/metrics/metrics.h"
 #include "common/path_util.h"
 #include "common/status.h"
 #include "common/type.h"
@@ -16,15 +17,49 @@
 #include "storage/replica/replica.h"
 
 namespace adviskv::storage {
+namespace {
+
+void record_storage_put_handler_result(const Status& status) {
+    if (status.ok()) {
+        ADVISKV_METRICS_COUNTER("storage_put_handler_success");
+        return;
+    }
+    ADVISKV_METRICS_COUNTER("storage_put_handler_failure");
+    switch (status.code()) {
+        case StatusCode::NOT_LEADER:
+            ADVISKV_METRICS_COUNTER("storage_put_handler_not_leader");
+            break;
+        case StatusCode::NOT_YET_COMMIT:
+            ADVISKV_METRICS_COUNTER("storage_put_handler_not_yet_commit");
+            break;
+        case StatusCode::REPLICA_NOT_FOUND:
+            ADVISKV_METRICS_COUNTER("storage_put_handler_replica_not_found");
+            break;
+        case StatusCode::REPLICA_MANAGER_NOT_FOUND:
+            ADVISKV_METRICS_COUNTER(
+                "storage_put_handler_replica_manager_not_found");
+            break;
+        default:
+            ADVISKV_METRICS_COUNTER("storage_put_handler_other_error");
+            break;
+    }
+}
+
+}  // namespace
 
 grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
                                      const rpc::PutRequest* request,
                                      rpc::PutResponse* response) {
+    ADVISKV_METRICS_TIMER("storage_put_handler");
+    ADVISKV_METRICS_COUNTER("storage_put_handler_request");
+
     UNUSED(context);
     if (!replica_manager_) {
+        Status status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
+                      "replica manager not found"};
+        record_storage_put_handler_result(status);
         LOG_WARN("replica manager is nullptr");
-        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
-                                       "replica manager not found"});
+        fill_base_rsp(response, status);
         return grpc::Status::OK;
     }
 
@@ -32,14 +67,16 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
     ReplicaPtr&& replica = replica_manager_->get_replica_by_shard(shard_id);
 
     if (!replica) {
+        Status status{StatusCode::REPLICA_NOT_FOUND, "replica not found"};
+        record_storage_put_handler_result(status);
         LOG_WARN("replica not found, table_id = {}, shard_id = {}",
                  request->table_id(), request->shard_id());
-        fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND,
-                                       "replica not found"});
+        fill_base_rsp(response, status);
         return grpc::Status::OK;
     }
     PutParam param{request->key(), request->value()};
     Status status = replica->put(param);
+    record_storage_put_handler_result(status);
 
     if (!status.ok()) {
         LOG_WARN(
@@ -251,9 +288,14 @@ grpc::Status StorageServiceImpl::RequestVote(
 grpc::Status StorageServiceImpl::AppendEntries(
     grpc::ServerContext* context, const rpc::AppendEntriesRequest* request,
     rpc::AppendEntriesResponse* response) {
+    ADVISKV_METRICS_TIMER("storage_raft_append_entries_handler");
+    ADVISKV_METRICS_COUNTER("storage_raft_append_entries_handler_request");
+
     UNUSED(context);
 
     if (!replica_manager_) {
+        ADVISKV_METRICS_COUNTER(
+            "storage_raft_append_entries_handler_replica_manager_not_found");
         LOG_WARN("replica manager is nullptr");
         fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
                                        "replica manager not found"});
@@ -264,6 +306,8 @@ grpc::Status StorageServiceImpl::AppendEntries(
 
     ReplicaPtr&& replica = replica_manager_->get_replica_by_id(replica_id);
     if (!replica) {
+        ADVISKV_METRICS_COUNTER(
+            "storage_raft_append_entries_handler_replica_not_found");
         fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND,
                                        "target replica not found"});
         return grpc::Status::OK;
@@ -290,9 +334,6 @@ grpc::Status StorageServiceImpl::AppendEntries(
 
     AppendEntriesResult result;
     Status status = replica->handle_append_entries(param, result);
-    if (status.fail()) {
-        return grpc::Status::OK;
-    }
     fill_base_rsp(response, status);
     response->set_success(result.success);
     response->set_term(result.term);
@@ -337,6 +378,12 @@ grpc::Status StorageServiceImpl::InstallSnapshot(
 
     fill_base_rsp(response, status);
     response->set_term(replica->current_term());
+
+    if (status.fail()) {
+        LOG_WARN("replica handle install snapshot failed, status:{}",
+                 status.to_string());
+    }
+
     return grpc::Status::OK;
 }
 

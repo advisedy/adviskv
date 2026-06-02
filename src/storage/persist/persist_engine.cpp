@@ -146,18 +146,43 @@ Status PersistEngine::close() {
 }
 
 Status PersistEngine::append_wal(const LogEntry& entry) {
+    ADVISKV_METRICS_TIMER("storage_persist_append_wal");
+    ADVISKV_METRICS_COUNTER("storage_persist_append_wal_request");
+
     std::unique_lock lock{mutex_};
-    RETURN_IF_INVALID_STATUS(write_wal_to_disk(wal_fd_, entry))
-    if (::fsync(wal_fd_) != 0) return Status::ERROR("fsync != 0");
+    Status status = write_wal_to_disk(wal_fd_, entry);
+    if (status.fail()) {
+        ADVISKV_METRICS_COUNTER("storage_persist_append_wal_failure");
+        return status;
+    }
+    if (::fsync(wal_fd_) != 0) {
+        ADVISKV_METRICS_COUNTER("storage_persist_append_wal_fsync_failure");
+        return Status::ERROR("fsync != 0");
+    }
+    ADVISKV_METRICS_COUNTER("storage_persist_append_wal_success");
     return Status::OK();
 }
 
 Status PersistEngine::append_wal_batch(const std::vector<LogEntry>& entries) {
+    ADVISKV_METRICS_TIMER("storage_persist_append_wal_batch");
+    ADVISKV_METRICS_COUNTER("storage_persist_append_wal_batch_request");
+    ADVISKV_METRICS_COUNTER("storage_persist_append_wal_batch_entry",
+                            static_cast<int64_t>(entries.size()));
+
     std::unique_lock lock{mutex_};
     for (const LogEntry& entry : entries) {
-        RETURN_IF_INVALID_STATUS(write_wal_to_disk(wal_fd_, entry))
+        Status status = write_wal_to_disk(wal_fd_, entry);
+        if (status.fail()) {
+            ADVISKV_METRICS_COUNTER("storage_persist_append_wal_batch_failure");
+            return status;
+        }
     }
-    if (::fsync(wal_fd_) != 0) return Status::ERROR("fsync != 0");
+    if (::fsync(wal_fd_) != 0) {
+        ADVISKV_METRICS_COUNTER(
+            "storage_persist_append_wal_batch_fsync_failure");
+        return Status::ERROR("fsync != 0");
+    }
+    ADVISKV_METRICS_COUNTER("storage_persist_append_wal_batch_success");
     return Status::OK();
 }
 

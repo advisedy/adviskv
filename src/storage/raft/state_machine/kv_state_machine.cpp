@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "common/define.h"
+#include "common/metrics/metrics.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/engine/map_engine.h"
@@ -10,6 +11,26 @@
 #include "storage/raft/state_machine/state_machine.h"
 
 namespace adviskv::storage {
+namespace {
+
+void record_state_machine_apply_op(WriteOpType op) {
+    switch (op) {
+        case WriteOpType::PUT:
+            ADVISKV_METRICS_COUNTER("storage_state_machine_apply_put");
+            break;
+        case WriteOpType::DEL:
+            ADVISKV_METRICS_COUNTER("storage_state_machine_apply_del");
+            break;
+        case WriteOpType::NONE:
+            ADVISKV_METRICS_COUNTER("storage_state_machine_apply_none");
+            break;
+        default:
+            ADVISKV_METRICS_COUNTER("storage_state_machine_apply_unknown");
+            break;
+    }
+}
+
+}  // namespace
 
 KvStateMachine::KvStateMachine(EngineType engine_type) {
     switch (engine_type) {
@@ -22,25 +43,39 @@ KvStateMachine::KvStateMachine(EngineType engine_type) {
 }
 
 Status KvStateMachine::apply(const LogEntry& entry) {
+    ADVISKV_METRICS_TIMER("storage_state_machine_apply");
+    ADVISKV_METRICS_COUNTER("storage_state_machine_apply_request");
+    record_state_machine_apply_op(entry.op_type);
+
     Status status{Status::OK()};
     switch (entry.op_type) {
         case WriteOpType::PUT: {
-            RETURN_IF_INVALID_STATUS(engine_->put(entry.key, entry.value))
+            status = engine_->put(entry.key, entry.value);
+            if (status.fail()) {
+                ADVISKV_METRICS_COUNTER("storage_state_machine_apply_failure");
+                return status;
+            }
             break;
         }
         case WriteOpType::DEL: {
-            RETURN_IF_INVALID_STATUS(engine_->del(entry.key))
+            status = engine_->del(entry.key);
+            if (status.fail()) {
+                ADVISKV_METRICS_COUNTER("storage_state_machine_apply_failure");
+                return status;
+            }
             break;
         }
         case WriteOpType::NONE: {
             break;
         }
         default: {
+            ADVISKV_METRICS_COUNTER("storage_state_machine_apply_failure");
             return Status{StatusCode::ERROR};
         }
     }
     apply_term_ = entry.term;
     apply_index_ = entry.index;
+    ADVISKV_METRICS_COUNTER("storage_state_machine_apply_success");
     return Status::OK();
 }
 Status KvStateMachine::restore(const SnapshotPtr& snap,

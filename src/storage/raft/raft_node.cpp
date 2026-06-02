@@ -9,6 +9,7 @@
 #include "common/define.h"
 #include "common/func.h"
 #include "common/log.h"
+#include "common/metrics/metrics.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
@@ -99,6 +100,7 @@ void RaftNode::become_candidate() {
     granted_vote_count_ = 1;
     role_ = ReplicaRole::CANDIDATE;
     // election_ticks_ = 0;
+    heartbeat_tick_trigger_.stop();
     election_tick_trigger_.reset(ELECTION_TIMEOUT);
 
     // 如果只有一个节点的话，就直接当选
@@ -301,11 +303,23 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
 // 这个是leadr发过来，raftnode作为follower/cacdidate做的handle
 void RaftNode::handle_append_entries(const AppendEntriesParam& param,
                                      AppendEntriesResult& result) {
+    ADVISKV_METRICS_TIMER("storage_raft_handle_append_entries");
+    ADVISKV_METRICS_COUNTER("storage_raft_handle_append_entries_request");
+    if (param.entries.empty()) {
+        ADVISKV_METRICS_COUNTER("storage_raft_handle_append_entries_heartbeat");
+    } else {
+        ADVISKV_METRICS_COUNTER("storage_raft_handle_append_entries_log");
+        ADVISKV_METRICS_COUNTER("storage_raft_handle_append_entries_entry",
+                                static_cast<int64_t>(param.entries.size()));
+    }
+
     std::lock_guard lock(mutex_);
     result.success = false;
     result.term = current_term_;
 
     if (param.term < current_term_) {
+        ADVISKV_METRICS_COUNTER(
+            "storage_raft_handle_append_entries_stale_term");
         return;
     }
 
@@ -321,9 +335,13 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     if (param.prev_log_index > 0) {
         if (param.prev_log_index < snapshot_index_) {
             // TODO突然发现自己怎么还留了一个这个地方啊？这里的话如果出现了这种情况的话，肯定会越来越糟糕的啊，很吓人，我靠，以后一定要处理一下。
+            ADVISKV_METRICS_COUNTER(
+                "storage_raft_handle_append_entries_prev_behind_snapshot");
             return;
         }
         if (get_term(param.prev_log_index) != param.prev_log_term) {
+            ADVISKV_METRICS_COUNTER(
+                "storage_raft_handle_append_entries_prev_mismatch");
             return;
         }
     }
@@ -355,7 +373,14 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
         }
 
         if (persist_ && !new_entries.empty()) {
-            persist_->append_wal_batch(new_entries);
+            Status status = persist_->append_wal_batch(new_entries);
+            if (status.ok()) {
+                ADVISKV_METRICS_COUNTER(
+                    "storage_raft_handle_append_entries_wal_batch_success");
+            } else {
+                ADVISKV_METRICS_COUNTER(
+                    "storage_raft_handle_append_entries_wal_batch_failure");
+            }
         }
     }
 
@@ -369,6 +394,7 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
 
     result.success = true;
     result.term = current_term_;
+    ADVISKV_METRICS_COUNTER("storage_raft_handle_append_entries_success");
 }
 
 void RaftNode::handle_vote_response(const ReplicaID& from,
@@ -427,24 +453,37 @@ void RaftNode::handle_vote_response(const ReplicaID& from,
 
 Status RaftNode::handle_append_response(const ReplicaID& from,
                                         const AppendEntriesResult& result) {
+    ADVISKV_METRICS_TIMER("storage_raft_handle_append_response");
+    ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_request");
+
     std::lock_guard lock(mutex_);
 
     if (result.term > current_term_) {
+        ADVISKV_METRICS_COUNTER(
+            "storage_raft_handle_append_response_higher_term");
         become_follower(result.term);
         return Status::NOT_LEADER("higher term");
     }
 
-    if (role_ != ReplicaRole::LEADER) return Status::NOT_LEADER();
+    if (role_ != ReplicaRole::LEADER) {
+        ADVISKV_METRICS_COUNTER(
+            "storage_raft_handle_append_response_not_leader");
+        return Status::NOT_LEADER();
+    }
 
     if (result.success) {
+        ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_success");
         // 复制成功，更新 match_index 和 next_index
         match_index_[from] = last_log_index_unlocked();
         next_index_[from] = last_log_index_unlocked() + 1;
         try_update_commit_index();
     } else {
+        ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_reject");
         // prev_log 对不上，往前回退
         auto it = next_index_.find(from);
         if (it != next_index_.end() && it->second > 1) {
+            ADVISKV_METRICS_COUNTER(
+                "storage_raft_handle_append_response_backoff");
             --it->second;
         }
     }
@@ -493,8 +532,8 @@ void RaftNode::become_leader() {
     LOG_INFO("become leader");
     role_ = ReplicaRole::LEADER;
     // heartbeat_ticks_ = election_ticks_ = 0;
-    election_tick_trigger_.reset(ELECTION_TIMEOUT);
-    heartbeat_tick_trigger_.clear();
+    election_tick_trigger_.stop();
+    heartbeat_tick_trigger_.reset(HEARTBEAT_INTERVAL);
 
     // TODO 为什么当上了leader之后需要把这些全都初始化呢？ 保留原来的值不行吗？
     for (const PeerMember& member : members_) {
@@ -524,6 +563,7 @@ void RaftNode::become_leader() {
 // raftnode 作为leader，需要更新自己的commit_idx
 // 当收到了follower们关于日志复制的回应时，就调用一下这个函数，去更新自己的commit_idx
 void RaftNode::try_update_commit_index() {
+    LogIndex old_commit_index = commit_index_;
     for (LogIndex idx = commit_index_ + 1; idx <= last_log_index_unlocked();
          ++idx) {
         // TODO 这里将来需要check一下这个term是否需要和当前的term一样吗？
@@ -547,7 +587,7 @@ void RaftNode::try_update_commit_index() {
                 it != match_index_.end()) {
                 if (it->second >= idx) success_cnt++;
             } else {
-                LOG_WARN("...");
+                LOG_WARN("...22222");
             }
         }
 
@@ -557,6 +597,12 @@ void RaftNode::try_update_commit_index() {
         }
     }
     save_raft_meta();
+    if (commit_index_ > old_commit_index) {
+        ADVISKV_METRICS_COUNTER("storage_raft_commit_index_advance");
+        ADVISKV_METRICS_COUNTER(
+            "storage_raft_committed_entry",
+            static_cast<int64_t>(commit_index_ - old_commit_index));
+    }
 }
 
 int64_t RaftNode::index_to_offset(LogIndex index) const {

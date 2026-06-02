@@ -260,9 +260,9 @@ TEST_F(ReplicaTest, WalCatchupRecoveryRejectsRequestsUntilEntriesApplied) {
 
     Value value;
     Status status = replica->get(GetParam{"k1"}, value);
-    EXPECT_EQ(status.code(), StatusCode::ERROR);
+    EXPECT_EQ(status.code(), StatusCode::IS_RECOVERING);
     status = replica->put(PutParam{"blocked", "value"});
-    EXPECT_EQ(status.code(), StatusCode::ERROR);
+    EXPECT_EQ(status.code(), StatusCode::IS_RECOVERING);
 
     AppendEntriesResult result;
     status = replica->handle_append_entries(

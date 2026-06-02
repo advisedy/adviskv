@@ -116,14 +116,13 @@ class FakeSdmService final : public rpc::ShardingManagerService::Service {
 
 class FakeSdmServer {
    public:
-    void start() {
+    bool start() {
         grpc::ServerBuilder builder;
         builder.AddListeningPort("127.0.0.1:0",
                                  grpc::InsecureServerCredentials(), &port_);
         builder.RegisterService(&service_);
         server_ = builder.BuildAndStart();
-        ASSERT_NE(server_, nullptr);
-        ASSERT_GT(port_, 0);
+        return server_ != nullptr && port_ > 0;
     }
 
     void stop() {
@@ -148,7 +147,10 @@ class NodeAgentTest : public ::testing::Test {
         base_dir_ =
             adviskv::test::make_unique_test_dir("node_agent", sequence_++);
         ASSERT_TRUE(fs::create_directories(base_dir_)) << base_dir_.string();
-        fake_sdm_.start();
+        if (!fake_sdm_.start()) {
+            GTEST_SKIP() << "local gRPC listener is unavailable in this "
+                            "environment";
+        }
     }
 
     void TearDown() override {
