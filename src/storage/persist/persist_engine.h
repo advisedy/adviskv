@@ -57,6 +57,7 @@ class PersistEngine {
     };
 
     Status write_wal_to_disk(int fd, const LogEntry& entry);
+    Status read_wal_batch_unlocked(std::vector<LogEntry>& entries) const;
     Status read_wal_from_disk(const std::string& path,
                                 WalReadResult& result) const;
     Status truncate_wal_to_offset(int64_t offset);

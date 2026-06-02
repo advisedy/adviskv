@@ -3,8 +3,11 @@
 #include <fmt/format.h>
 #include <grpcpp/create_channel.h>
 
+#include <mutex>
+
 #include "common/metrics/metrics.h"
 #include "common/status.h"
+#include "common/type.h"
 
 namespace adviskv::storage {
 
@@ -102,6 +105,21 @@ Status RaftSender::send_install_snapshot(const PeerMember& member,
                                          const InstallSnapshotParam& param,
                                          const PersistEngine& persist,
                                          InstallSnapshotResult& result) const {
+    {
+        std::lock_guard locker{in_flight_mutex_};
+        do {
+            if (auto it = in_flight_snapshots_.find(member.replica_id);
+                it != in_flight_snapshots_.end()) {
+                const InFlightSnapshot& snapshot = it->second;
+                if (snapshot.snapshot_index != param.snapshot_index) break;
+                if (snapshot.snapshot_term != param.snapshot_term) break;
+                return Status::ALREADY_EXIST("snapshot have been send");
+            }
+        } while (false);
+        in_flight_snapshots_[member.replica_id] = InFlightSnapshot{
+            member.replica_id, param.snapshot_index, param.snapshot_term};
+    }
+
     constexpr size_t kChunkSize = 1 << 20;
     uint64 offset = 0;
     rpc::StorageService::StubInterface* stub = stub_for(member);

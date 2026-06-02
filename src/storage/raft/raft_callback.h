@@ -45,6 +45,16 @@ class RaftSender {
     mutable std::unordered_map<
         std::string, std::unique_ptr<rpc::StorageService::StubInterface>>
         stub_pool_;
+
+    struct InFlightSnapshot {
+        ReplicaID target;
+        LogIndex snapshot_index;
+        Term snapshot_term;
+    };
+    mutable std::unordered_map<ReplicaID, InFlightSnapshot, ReplicaIDHash>
+        in_flight_snapshots_;
+
+    mutable std::mutex in_flight_mutex_;
 };
 
 }  // namespace adviskv::storage

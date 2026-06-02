@@ -22,6 +22,7 @@
 #include "common/framed_record_codec.h"
 #include "common/func.h"
 #include "common/log.h"
+#include "common/metrics/metrics.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
@@ -112,7 +113,7 @@ PersistEngine::PersistEngine(const std::string& data_dir,
 PersistEngine::~PersistEngine() {
     Status status = close();
     if (status.fail()) {
-        LOG_WARN("...");
+        LOG_WARN("...11111");
     }
 }
 
@@ -188,6 +189,11 @@ Status PersistEngine::append_wal_batch(const std::vector<LogEntry>& entries) {
 
 Status PersistEngine::read_wal_batch(std::vector<LogEntry>& entries) {
     std::unique_lock lock{mutex_};
+    return read_wal_batch_unlocked(entries);
+}
+
+Status PersistEngine::read_wal_batch_unlocked(
+    std::vector<LogEntry>& entries) const {
     WalReadResult result;
     RETURN_IF_INVALID_STATUS(read_wal_from_disk(wal_path_, result))
     entries = std::move(result.entries);
@@ -198,8 +204,11 @@ Status PersistEngine::read_wal_batch(std::vector<LogEntry>& entries) {
 }
 
 Status PersistEngine::truncate_wal(const LogIndex& snapshot_index) {
+    std::unique_lock lock{mutex_};
+
     std::vector<LogEntry> entries, remain;
-    RETURN_IF_INVALID_STATUS(read_wal_batch(entries))
+    RETURN_IF_INVALID_STATUS(read_wal_batch_unlocked(entries))
+
     for (LogEntry& entry : entries) {
         if (entry.index <= snapshot_index) continue;
         remain.push_back(std::move(entry));
