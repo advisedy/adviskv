@@ -33,6 +33,11 @@ struct BenchOptions {
     int32_t sdk_timeout_ms{3000};
 
     std::string output_json;
+
+    std::string metrics_http_host{"127.0.0.1"};
+    int32_t metrics_http_port{0};
+    std::string metrics_http_path{"/metrics"};
+    int32_t metrics_hold_seconds{0};
 };
 
 }  // namespace adviskv::bench

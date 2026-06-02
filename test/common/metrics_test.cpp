@@ -61,14 +61,14 @@ std::string http_get(const std::string& host, int port,
 }
 
 TEST(AdvisMetricsTest, DumpsPrometheusTextFormat) {
-    AdvisMetrics::instance().stop();
-    AdvisMetrics::instance().reset();
+    AdvisMetrics::get_instance().stop();
+    AdvisMetrics::get_instance().reset();
 
-    AdvisMetrics::instance().record_latency("storage_put_handler", 100);
-    AdvisMetrics::instance().record_latency("storage_put_handler", 300);
-    AdvisMetrics::instance().record_counter("storage_put_success", 2);
+    AdvisMetrics::get_instance().record_latency("storage_put_handler", 100);
+    AdvisMetrics::get_instance().record_latency("storage_put_handler", 300);
+    AdvisMetrics::get_instance().record_counter("storage_put_success", 2);
 
-    const std::string output = AdvisMetrics::instance().dump_prometheus();
+    const std::string output = AdvisMetrics::get_instance().dump_prometheus();
 
     EXPECT_NE(
         output.find("# TYPE adviskv_storage_put_handler_latency_us summary"),
@@ -88,9 +88,9 @@ TEST(AdvisMetricsTest, DumpsPrometheusTextFormat) {
 }
 
 TEST(AdvisMetricsTest, ServesPrometheusMetricsOverHttp) {
-    AdvisMetrics::instance().stop();
-    AdvisMetrics::instance().reset();
-    AdvisMetrics::instance().record_counter("storage_get_success", 7);
+    AdvisMetrics::get_instance().stop();
+    AdvisMetrics::get_instance().reset();
+    AdvisMetrics::get_instance().record_counter("storage_get_success", 7);
 
     MetricsOptions options;
     options.http_enable = true;
@@ -98,12 +98,12 @@ TEST(AdvisMetricsTest, ServesPrometheusMetricsOverHttp) {
     options.http_port = find_free_port();
     options.http_path = "/metrics";
 
-    ASSERT_TRUE(AdvisMetrics::instance().init(options).ok());
+    ASSERT_TRUE(AdvisMetrics::get_instance().init(options).ok());
 
     const std::string response =
         http_get(options.http_host, options.http_port, options.http_path);
 
-    AdvisMetrics::instance().stop();
+    AdvisMetrics::get_instance().stop();
 
     EXPECT_NE(response.find("HTTP/1.1 200 OK"), std::string::npos);
     EXPECT_NE(response.find("Content-Type: text/plain; version=0.0.4"),

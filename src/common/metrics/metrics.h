@@ -20,7 +20,7 @@ struct MetricsOptions {
 
 class AdvisMetrics {
    public:
-    static AdvisMetrics& instance();
+    static AdvisMetrics& get_instance();
 
     Status init(const MetricsOptions& options);
     void stop();
@@ -60,7 +60,7 @@ class ScopedMetricsTimer {
 #define ADVISKV_CONCAT_INNER(x, y) x##y
 #define ADVISKV_CONCAT(x, y) ADVISKV_CONCAT_INNER(x, y)
 #define ADVISKV_METRICS_COUNTER(...) \
-    ::adviskv::AdvisMetrics::instance().record_counter(__VA_ARGS__)
+    ::adviskv::AdvisMetrics::get_instance().record_counter(__VA_ARGS__)
 #define ADVISKV_METRICS_TIMER(name)                   \
     ::adviskv::ScopedMetricsTimer ADVISKV_CONCAT(     \
         adviskv_metrics_timer_, __LINE__)(name)

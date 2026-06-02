@@ -40,11 +40,17 @@ void init_logger() {
 void init_metrics() {
     adviskv::MetricsOptions options;
     options.http_enable = CONF_GET_BOOL("metrics_http_enable", false);
-    options.http_host = CONF_GET_STR("metrics_http_host");
-    options.http_port = CONF_GET_INT("metrics_http_port");
-    options.http_path = CONF_GET_STR("metrics_http_path"));
+    if (options.http_enable) {
+        options.http_host =
+            CONF_GET_STR("metrics_http_host", options.http_host);
+        options.http_port =
+            CONF_GET_INT("metrics_http_port", options.http_port);
+        options.http_path =
+            CONF_GET_STR("metrics_http_path", options.http_path);
+    }
 
-    adviskv::Status status = adviskv::AdvisMetrics::instance().init(options);
+    adviskv::Status status =
+        adviskv::AdvisMetrics::get_instance().init(options);
     if (status.ok()) {
         if (options.http_enable) {
             LOG_INFO("metrics http server listening on {}:{}{}",

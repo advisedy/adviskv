@@ -1,73 +1,28 @@
 import os
 import shutil
-import socket
 import subprocess
 import sys
 import textwrap
-import time
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+
+from scripts.local_cluster import (
+    BIN_DIR,
+    BUILD_DIR,
+    ROOT_DIR,
+    LocalCluster,
+    ServiceSpec,
+    build_targets,
+)
 
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-BUILD_DIR = ROOT_DIR / os.environ.get("BUILD_DIR", "build")
-BIN_DIR = BUILD_DIR / "bin"
 E2E_DIR = BUILD_DIR / "e2e_test"
 CONF_DIR = E2E_DIR / "conf"
 DATA_DIR = E2E_DIR / "data"
 LOG_DIR = E2E_DIR / "logs"
 
 
-@dataclass(frozen=True)
-class ServiceSpec:
-    name: str
-    command: list[str]
-    host: str
-    port: int
-
-
-class ProcessHandle:
-    def __init__(self, spec: ServiceSpec, process: subprocess.Popen, log_path: Path):
-        self.spec = spec
-        self.process = process
-        self.log_path = log_path
-
-    @property
-    def pid(self) -> int:
-        return self.process.pid
-
-
-def wait_port(host: str, port: int, timeout_s: float = 30.0) -> None:
-    deadline = time.monotonic() + timeout_s
-    last_error = None
-    while time.monotonic() < deadline:
-        try:
-            with socket.create_connection((host, port), timeout=0.5):
-                return
-        except OSError as exc:
-            last_error = exc
-            time.sleep(0.2)
-    raise TimeoutError(f"timed out waiting for {host}:{port}: {last_error}")
-
-
-def assert_port_free(host: str, port: int) -> None:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(0.2)
-        if sock.connect_ex((host, port)) == 0:
-            raise RuntimeError(
-                f"port is already in use: {host}:{port}; "
-                "run ./scripts/stop_cluster.sh before pytest e2e"
-            )
-
-
 def build_e2e_targets() -> None:
-    env = os.environ.copy()
-    env["BUILD_TARGETS"] = "sdm meta storage e2e_client"
-    subprocess.run([str(ROOT_DIR / "scripts" / "build.sh")],
-                   cwd=ROOT_DIR,
-                   env=env,
-                   check=True)
+    build_targets("sdm meta storage e2e_client")
 
 
 def clean_data_dirs() -> None:
@@ -151,10 +106,9 @@ def write_e2e_configs() -> None:
         )
 
 
-class AdvisKVCluster:
+class AdvisKVCluster(LocalCluster):
     def __init__(self):
-        self.processes: list[ProcessHandle] = []
-        self.specs = [
+        specs = [
             ServiceSpec(
                 "sdm",
                 [str(BIN_DIR / "sdm"), str(CONF_DIR / "sdm.yaml")],
@@ -186,112 +140,7 @@ class AdvisKVCluster:
                 50053,
             ),
         ]
-
-    def _spec_by_name(self, name: str) -> ServiceSpec:
-        for spec in self.specs:
-            if spec.name == name:
-                return spec
-        raise KeyError(f"unknown service: {name}")
-
-    def _handle_by_name(self, name: str) -> Optional[ProcessHandle]:
-        for handle in self.processes:
-            if handle.spec.name == name:
-                return handle
-        return None
-
-    def service_name_for_port(self, port: int) -> str:
-        for spec in self.specs:
-            if spec.port == port:
-                return spec.name
-        raise KeyError(f"unknown service port: {port}")
-
-    def start(self) -> None:
-        try:
-            for spec in self.specs:
-                assert_port_free(spec.host, spec.port)
-
-            for spec in self.specs:
-                self.start_service(spec.name)
-        except Exception:
-            self.stop()
-            raise
-
-    def start_service(self, name: str) -> None:
-        if self._handle_by_name(name) is not None:
-            raise RuntimeError(f"service already started: {name}")
-        spec = self._spec_by_name(name)
-        assert_port_free(spec.host, spec.port)
-
-        log_path = LOG_DIR / spec.name
-        process = subprocess.Popen(
-            spec.command,
-            cwd=ROOT_DIR,
-            text=True,
-        )
-        handle = ProcessHandle(spec, process, log_path)
-        self.processes.append(handle)
-        time.sleep(1.0)
-        if process.poll() is not None:
-            self.processes.remove(handle)
-            raise RuntimeError(
-                f"{spec.name} exited early with code "
-                f"{process.returncode}; log: {log_path}"
-            )
-        try:
-            wait_port(spec.host, spec.port)
-        except TimeoutError as exc:
-            raise RuntimeError(
-                f"{spec.name} did not listen on {spec.host}:"
-                f"{spec.port}; log: {log_path}"
-            ) from exc
-
-    def stop_service(self, name: str) -> None:
-        handle = self._handle_by_name(name)
-        if handle is None:
-            return
-        if handle.process.poll() is None:
-            handle.process.terminate()
-        try:
-            handle.process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            handle.process.kill()
-            handle.process.wait(timeout=5)
-        self.processes.remove(handle)
-
-    def kill_service(self, name: str) -> None:
-        handle = self._handle_by_name(name)
-        if handle is None:
-            return
-        if handle.process.poll() is None:
-            handle.process.kill()
-            handle.process.wait(timeout=5)
-        self.processes.remove(handle)
-
-    def stop(self) -> None:
-        for handle in reversed(self.processes):
-            if handle.process.poll() is None:
-                handle.process.terminate()
-        for handle in reversed(self.processes):
-            try:
-                handle.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                handle.process.kill()
-                handle.process.wait(timeout=5)
-        self.processes.clear()
-
-    def restart(self) -> None:
-        self.stop()
-        self.start()
-
-    def restart_service(self, name: str) -> None:
-        self.stop_service(name)
-        self.start_service(name)
-
-    def logs_summary(self) -> str:
-        lines = [f"logs dir: {LOG_DIR}"]
-        for handle in self.processes:
-            lines.append(f"{handle.spec.name}: {handle.log_path}")
-        return "\n".join(lines)
+        super().__init__(specs=specs, log_dir=LOG_DIR)
 
 
 def run_e2e_client(*args: str) -> subprocess.CompletedProcess:

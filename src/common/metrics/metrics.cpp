@@ -183,7 +183,7 @@ class AdvisMetrics::HttpServer {
         if (request_matches_path(request, options_.http_path)) {
             return http_response("200 OK",
                                  "text/plain; version=0.0.4; charset=utf-8",
-                                 AdvisMetrics::instance().dump_prometheus());
+                                 AdvisMetrics::get_instance().dump_prometheus());
         }
         return http_response("404 Not Found", "text/plain; charset=utf-8",
                              "not found\n");
@@ -195,7 +195,7 @@ class AdvisMetrics::HttpServer {
     int listen_fd_{-1};
 };
 
-AdvisMetrics& AdvisMetrics::instance() {
+AdvisMetrics& AdvisMetrics::get_instance() {
     static AdvisMetrics metrics;
     return metrics;
 }
@@ -288,7 +288,7 @@ ScopedMetricsTimer::~ScopedMetricsTimer() {
     const int64_t latency_us =
         std::chrono::duration_cast<std::chrono::microseconds>(end - start_)
             .count();
-    AdvisMetrics::instance().record_latency(name_, latency_us);
+    AdvisMetrics::get_instance().record_latency(name_, latency_us);
 }
 
 }  // namespace adviskv

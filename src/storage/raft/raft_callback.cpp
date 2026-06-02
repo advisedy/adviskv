@@ -1,14 +1,18 @@
 #include "storage/raft/raft_callback.h"
 
+#include <fmt/format.h>
 #include <grpcpp/create_channel.h>
+
+#include "common/metrics/metrics.h"
+#include "common/status.h"
 
 namespace adviskv::storage {
 
 RaftSender::RaftSender() = default;
 
 Status RaftSender::send_request_vote(const PeerMember& member,
-                                      const RequestVoteParam& param,
-                                      RequestVoteResult& result) const {
+                                     const RequestVoteParam& param,
+                                     RequestVoteResult& result) const {
     rpc::RequestVoteRequest request;
     request.mutable_from()->set_table_id(param.from_replica_id.table_id);
     request.mutable_from()->set_shard_index(param.from_replica_id.shard_index);
@@ -27,8 +31,10 @@ Status RaftSender::send_request_vote(const PeerMember& member,
     grpc::ClientContext context;
     grpc::Status grpc_status =
         stub_for(member)->RequestVote(&context, request, &response);
-    RETURN_IF_INVALID_CONDITION(grpc_status.ok(),
-                                grpc_status.error_message())
+    if (!grpc_status.ok()) {
+        return Status::RPC_ERROR(
+            fmt::format("grpc failed: {}", grpc_status.error_message()));
+    }
 
     result.term = response.term();
     result.vote_granted = response.vote_granted();
@@ -38,6 +44,16 @@ Status RaftSender::send_request_vote(const PeerMember& member,
 Status RaftSender::send_append_entries(const PeerMember& member,
                                        const AppendEntriesParam& param,
                                        AppendEntriesResult& result) const {
+    ADVISKV_METRICS_TIMER("storage_raft_append_entries_rpc");
+    ADVISKV_METRICS_COUNTER("storage_raft_append_entries_rpc_request");
+    if (param.entries.empty()) {
+        ADVISKV_METRICS_COUNTER("storage_raft_append_entries_rpc_heartbeat");
+    } else {
+        ADVISKV_METRICS_COUNTER("storage_raft_append_entries_rpc_log");
+        ADVISKV_METRICS_COUNTER("storage_raft_append_entries_rpc_entry",
+                                static_cast<int64_t>(param.entries.size()));
+    }
+
     rpc::AppendEntriesRequest request;
     request.mutable_from()->set_table_id(param.from_replica_id.table_id);
     request.mutable_from()->set_shard_index(param.from_replica_id.shard_index);
@@ -66,11 +82,19 @@ Status RaftSender::send_append_entries(const PeerMember& member,
     grpc::ClientContext context;
     grpc::Status grpc_status =
         stub_for(member)->AppendEntries(&context, request, &response);
-    RETURN_IF_INVALID_CONDITION(grpc_status.ok(),
-                                grpc_status.error_message())
+    if (!grpc_status.ok()) {
+        ADVISKV_METRICS_COUNTER("storage_raft_append_entries_rpc_failure");
+        return Status{StatusCode::RPC_ERROR, grpc_status.error_message()};
+    }
 
     result.term = response.term();
     result.success = response.success();
+    ADVISKV_METRICS_COUNTER("storage_raft_append_entries_rpc_success");
+    if (result.success) {
+        ADVISKV_METRICS_COUNTER("storage_raft_append_entries_rpc_accepted");
+    } else {
+        ADVISKV_METRICS_COUNTER("storage_raft_append_entries_rpc_rejected");
+    }
     return Status::OK();
 }
 
@@ -144,8 +168,8 @@ rpc::StorageService::StubInterface* RaftSender::stub_for(
         return it->second.get();
     }
 
-    auto channel = grpc::CreateChannel(target,
-                                       grpc::InsecureChannelCredentials());
+    auto channel =
+        grpc::CreateChannel(target, grpc::InsecureChannelCredentials());
     auto stub = rpc::StorageService::NewStub(channel);
     auto* raw = stub.get();
     stub_pool_[target] = std::move(stub);

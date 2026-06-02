@@ -323,7 +323,7 @@ void Replica::try_take_snapshot() {
         // 持久化成功了，这边得截断wal日志了。
         raft_node_->truncate_log(state_machine_->apply_index());
     } else {
-        LOG_WARN("...");
+        LOG_WARN("replica:try_take_snapshot: status:{}", status.to_string());
     }
 }
 
