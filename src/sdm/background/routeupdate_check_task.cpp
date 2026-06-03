@@ -59,6 +59,13 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
     Status status{Status::OK()};
     ShardID shard_id{table.table_id, shard_index};
 
+    auto clear_route_and_return = [&](const std::string& msg) -> Status {
+        RETURN_IF_INVALID_STATUS(sdm_store_->delete_shard_route(shard_id))
+        LOG_WARN("route not ready, table_id={}, shard_index={}, msg={}",
+                 shard_id.table_id, shard_id.shard_index, msg);
+        return Status::ROUTE_NOT_FOUND(msg);
+    };
+
     // 获取store里面shard里的replicas
     std::vector<Replica> replicas;
     status = sdm_store_->list_replicas_by_shard(shard_id, replicas);
@@ -101,30 +108,22 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
         }
     }
 
-    if (leader_entries.size() < 1U) {
-        RETURN_IF_INVALID_STATUS(sdm_store_->delete_shard_route(shard_id))
-
-        LOG_WARN(
-            "route not ready, leader_count={}, table_id={}, shard_index={}",
-            leader_entries.size(), shard_id.table_id, shard_id.shard_index);
-        return Status::ERROR("leader count < 1");
+    if (leader_entries.empty()) {
+        return clear_route_and_return("writable leader route is not ready");
     }
 
     if (leader_entries.size() > 1U) {
-        // 这边也再check一下关于leader的term是否会有一样的（raft正确就应该没问题）
-        for (int i = 1, siz = leader_entries.size(); i < siz; i++) {
-            if (leader_entries[i].term == leader_entries[i - 1].term) {
-                RETURN_IF_INVALID_STATUS(
-                    sdm_store_->delete_shard_route(shard_id))
-                return Status::ERROR("error : leader term same!!!!!!");
-            }
-        }
-
-        // 要把leader只选出来一个term最大的
         std::sort(leader_entries.begin(), leader_entries.end(),
                   [](const RouteEntry& lhs, const RouteEntry& rhs) {
                       return lhs.term > rhs.term;
                   });
+        if (leader_entries[0].term == leader_entries[1].term) {
+            return clear_route_and_return(
+                fmt::format("multiple leaders share max term, term={}",
+                            leader_entries[0].term));
+        }
+
+        // 要把leader只选出来一个term最大的
         for (int i = 1, siz = leader_entries.size(); i < siz; i++) {
             leader_entries[i].role = ReplicaRole::FOLLOWER;
         }

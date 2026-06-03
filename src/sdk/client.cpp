@@ -26,6 +26,23 @@ void record_delete_result(const Status& status) {
     ADVISKV_METRICS_COUNTER("sdk_delete_failure");
 }
 
+void record_get_result(const Status& status) {
+    if (status.ok()) {
+        ADVISKV_METRICS_COUNTER("sdk_get_success");
+        return;
+    }
+    ADVISKV_METRICS_COUNTER("sdk_get_failure");
+}
+
+void add_not_yet_commit_retry_hint(Status* status) {
+    if (status == nullptr || status->code() != StatusCode::NOT_YET_COMMIT) {
+        return;
+    }
+    status->set_msg(fmt::format(
+        "{}; retry later or confirm the result with a subsequent get",
+        status->msg()));
+}
+
 }  // namespace
 
 KVClient::KVClient(const KVClientConf& conf)
@@ -64,6 +81,7 @@ Status KVClient::put(const Key& key, const Value& value) {
     }
     if (!should_invalidate_route(status)) {
         // 说明route是对的
+        add_not_yet_commit_retry_hint(&status);
         return status;
     }
 
@@ -92,6 +110,7 @@ Status KVClient::put(const Key& key, const Value& value) {
     }
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("sdk_put_retry_failure");
+        add_not_yet_commit_retry_hint(&status);
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "put retry failed, db={}, table={}, key={}, status={}",
                         conf_.db_name, conf_.table_name, key,
@@ -134,6 +153,7 @@ Status KVClient::del(const Key& key) {
         status = storage_client_.del(route, key);
     }
     if (!should_invalidate_route(status)) {
+        add_not_yet_commit_retry_hint(&status);
         return status;
     }
 
@@ -161,6 +181,7 @@ Status KVClient::del(const Key& key) {
     }
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("sdk_delete_retry_failure");
+        add_not_yet_commit_retry_hint(&status);
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "delete retry failed, db={}, table={}, key={}, "
                         "status={}",
@@ -173,12 +194,26 @@ Status KVClient::del(const Key& key) {
 }
 
 Status KVClient::get(const Key& key, Value* value) {
-    RETURN_IF_INVALID_PARAM(conf_)
+    ADVISKV_METRICS_TIMER("sdk_get");
+    ADVISKV_METRICS_COUNTER("sdk_get_request");
+
     RETURN_IF_NULLPTR(value, "value should not be nullptr")
 
-    RouteInfo route;
-    Status status = resolve_route(key, &route);
+    Status status = Status::OK();
+    auto get_result_guard = Defer([&status]() { record_get_result(status); });
+
+    status = conf_.validate();
     if (status.fail()) {
+        return status;
+    }
+
+    RouteInfo route;
+    {
+        ADVISKV_METRICS_TIMER("sdk_get_route_resolve");
+        status = resolve_route(key, &route);
+    }
+    if (status.fail()) {
+        ADVISKV_METRICS_COUNTER("sdk_get_route_resolve_failure");
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "get resolve route failed, db={}, table={}, key={}, "
                         "status={}",
@@ -187,16 +222,24 @@ Status KVClient::get(const Key& key, Value* value) {
         return status;
     }
 
-    status = storage_client_.get(route, key, value);
+    {
+        ADVISKV_METRICS_TIMER("sdk_get_storage");
+        status = storage_client_.get(route, key, value);
+    }
     if (!should_invalidate_route(status)) {
         return status;
     }
 
+    ADVISKV_METRICS_COUNTER("sdk_get_route_invalidated");
     ADVISKV_SDK_LOG(LogLevel::INFO,
-                    "get invalidates route, db={}, table={}, key={}, status={}",
+                    "get re-resolves route, db={}, table={}, key={}, status={}",
                     conf_.db_name, conf_.table_name, key, status.to_string());
-    status = resolve_route(key, &route);
+    {
+        ADVISKV_METRICS_TIMER("sdk_get_retry_route_resolve");
+        status = resolve_route(key, &route);
+    }
     if (status.fail()) {
+        ADVISKV_METRICS_COUNTER("sdk_get_retry_route_resolve_failure");
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "get retry resolve route failed, db={}, table={}, "
                         "key={}, status={}",
@@ -204,12 +247,18 @@ Status KVClient::get(const Key& key, Value* value) {
                         status.to_string());
         return status;
     }
-    status = storage_client_.get(route, key, value);
+    {
+        ADVISKV_METRICS_TIMER("sdk_get_retry_storage");
+        status = storage_client_.get(route, key, value);
+    }
     if (status.fail()) {
+        ADVISKV_METRICS_COUNTER("sdk_get_retry_failure");
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "get retry failed, db={}, table={}, key={}, status={}",
                         conf_.db_name, conf_.table_name, key,
                         status.to_string());
+    } else {
+        ADVISKV_METRICS_COUNTER("sdk_get_retry_success");
     }
     return status;
 }

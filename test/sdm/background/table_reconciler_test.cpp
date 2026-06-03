@@ -166,6 +166,13 @@ void expect_table_phase_and_msg(SdmStore& store, TablePhase phase,
     EXPECT_NE(table.state.last_error_msg.find(msg), std::string::npos);
 }
 
+void put_route(SdmStore& store, std::vector<RouteEntry> replicas) {
+    ShardRoute route;
+    route.shard_id = ShardID{1001, 0};
+    route.replicas = std::move(replicas);
+    ASSERT_TRUE(store.put_shard_route(route).ok());
+}
+
 }  // namespace
 
 // 创建table的正常完整流程可以走完一遍
@@ -340,6 +347,54 @@ TEST(TableReconcilerTest, GetReplicaInfoFatalErrorMarksFailed) {
     std::vector<Replica> replicas = list_replicas_or_die(store);
     ASSERT_EQ(replicas.size(), 2U);
     EXPECT_EQ(replicas[0].state.phase, ReplicaPhase::ERROR);
+}
+
+// 即使 replica 都 READY 了，只要 route 里存在多个 leader，table 也不能进入 READY。
+TEST(TableReconcilerTest, TableDoesNotBecomeReadyWhenRouteHasMultipleLeaders) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    put_default_nodes(store);
+    place_default_table(store);
+
+    FakeStorageClient storage_client;
+    FakeNodeSelector selector(&store);
+    TestTableReconciler reconciler(&store, &storage_client, &selector);
+
+    ASSERT_TRUE(reconciler.reconcile_once().ok());
+    make_table_ready_in_storage(store, storage_client);
+    ASSERT_TRUE(reconciler.reconcile_once().ok());
+
+    put_route(store,
+              {RouteEntry{ReplicaID{1001, 0, 0}, "node-a", "127.0.0.1", 18080,
+                          ReplicaRole::LEADER, 5},
+               RouteEntry{ReplicaID{1001, 0, 1}, "node-b", "127.0.0.1", 18081,
+                          ReplicaRole::LEADER, 4}});
+
+    ASSERT_TRUE(reconciler.reconcile_once().ok());
+    EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::CREATING);
+}
+
+// 如果唯一 leader 的 endpoint 非法，那么这张表也不能对外视为 READY。
+TEST(TableReconcilerTest, TableDoesNotBecomeReadyWhenLeaderEndpointInvalid) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    put_default_nodes(store);
+    place_default_table(store);
+
+    FakeStorageClient storage_client;
+    FakeNodeSelector selector(&store);
+    TestTableReconciler reconciler(&store, &storage_client, &selector);
+
+    ASSERT_TRUE(reconciler.reconcile_once().ok());
+    make_table_ready_in_storage(store, storage_client);
+    ASSERT_TRUE(reconciler.reconcile_once().ok());
+
+    put_route(store,
+              {RouteEntry{ReplicaID{1001, 0, 0}, "node-a", "", 0,
+                          ReplicaRole::LEADER, 5},
+               RouteEntry{ReplicaID{1001, 0, 1}, "node-b", "127.0.0.1", 18081,
+                          ReplicaRole::FOLLOWER, 5}});
+
+    ASSERT_TRUE(reconciler.reconcile_once().ok());
+    EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::CREATING);
 }
 
 // 删除table的正常完整流程可以走完一遍

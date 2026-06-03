@@ -93,8 +93,9 @@ TEST(RouteUpdateCheckTaskTest, DeleteShardRouteWhenLeaderCountLessThanOne) {
 
     RouteUpdateCheckTaskTmp task(&store);
     Status status = task.check_shard_route_tmp(make_table(), TEST_SHARD_INDEX);
-    EXPECT_TRUE(status.fail());
-    EXPECT_EQ(status.msg(), "leader count < 1");
+    EXPECT_EQ(status.code(), StatusCode::ROUTE_NOT_FOUND);
+    EXPECT_NE(status.msg().find("writable leader route is not ready"),
+              std::string::npos);
 
     ShardRouteOr route;
     ASSERT_TRUE(store.get_shard_route(test_shard_id(), route).ok());
@@ -134,17 +135,21 @@ TEST(RouteUpdateCheckTaskTest, PutShardRouteWhenLeaderCountEqualsOne) {
     EXPECT_EQ(route->replicas[2].role, ReplicaRole::FOLLOWER);
 }
 
-// 检测一下，当leader的数量是大于一的时候，但是term是有多个相同的，
-// 这个时候会返回一个状态码error
-TEST(RouteUpdateCheckTaskTest, ReturnErrorWhenMultipleLeadersHaveSameTerm) {
+// 检测一下，当leader的数量是大于一的时候，但是最高 term 出现歧义，
+// 无论输入顺序怎样，route 都应该被清掉。
+TEST(RouteUpdateCheckTaskTest, ReturnRouteNotReadyWhenLeadersShareMaxTerm) {
     SdmStore store{SdmMetaStoreType::MEMORY};
-    put_nodes(store, 2);
+    put_nodes(store, 3);
     ASSERT_TRUE(store
                     .put_replica(make_replica(0, "node-0", 18080,
                                               ReplicaRole::LEADER, 30))
                     .ok());
     ASSERT_TRUE(store
                     .put_replica(make_replica(1, "node-1", 18081,
+                                              ReplicaRole::LEADER, 20))
+                    .ok());
+    ASSERT_TRUE(store
+                    .put_replica(make_replica(2, "node-2", 18082,
                                               ReplicaRole::LEADER, 30))
                     .ok());
     ASSERT_TRUE(
@@ -161,7 +166,7 @@ TEST(RouteUpdateCheckTaskTest, ReturnErrorWhenMultipleLeadersHaveSameTerm) {
 
     RouteUpdateCheckTaskTmp task(&store);
     Status status = task.check_shard_route_tmp(make_table(), TEST_SHARD_INDEX);
-    EXPECT_TRUE(status.fail());
+    EXPECT_EQ(status.code(), StatusCode::ROUTE_NOT_FOUND);
 
     ShardRouteOr route;
     ASSERT_TRUE(store.get_shard_route(test_shard_id(), route).ok());

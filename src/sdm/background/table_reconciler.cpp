@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <cassert>
 
-#include "common/defer.h"
 #include "common/define.h"
 #include "common/func.h"
 #include "common/log.h"
@@ -26,6 +25,16 @@ bool is_retryable_replica_metadata_error(const Status& status) {
         default:
             return false;
     }
+}
+
+bool has_exactly_one_writable_leader(const ShardRoute& route) {
+    const int leader_count =
+        std::count_if(route.replicas.begin(), route.replicas.end(),
+                      [](const RouteEntry& entry) {
+                          return entry.role == ReplicaRole::LEADER &&
+                                 !entry.ip.empty() && entry.port > 0;
+                      });
+    return leader_count == 1;
 }
 
 bool is_retryable_create_replica_error(const Status& status) {
@@ -524,14 +533,12 @@ bool TableReconciler::all_routes_ready(const Table& table) {
         ShardRouteOr route;
         ShardID current_shard_id{table.table_id, shard_index};
         Status status = store_->get_shard_route(current_shard_id, route);
-        if (status.fail() || route.is_empty() || route->replicas.empty())
+        if (status.fail() || route.is_empty() || route->replicas.empty()) {
             return false;
-        int leader_count = 0;
-        for (const RouteEntry& entry : route->replicas) {
-            leader_count += (entry.role == ReplicaRole::LEADER);
         }
-        if (leader_count < 1) return false;
-        // 对于大于等于1的情况，我们在route_updater那边判断，这里只是判断一下是否准备好了
+        if (!has_exactly_one_writable_leader(*route)) {
+            return false;
+        }
     }
     return true;
 }

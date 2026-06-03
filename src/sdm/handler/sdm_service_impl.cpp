@@ -158,7 +158,9 @@ grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context,
     Status status = route_service_->get_route(param, &route);
     fill_base_rsp(response, status);
     if (status.fail()) {
-        LOG_WARN("GetRoute: status:{}", status.to_string());
+        LOG_WARN(
+            "GetRoute failed, db={}, table={}, key={}, status={}",
+            param.db_name, param.table_name, param.key, status.to_string());
         return grpc::Status::OK;
     }
     if (!route.replicas.empty()) {
@@ -174,7 +176,10 @@ grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context,
             route_replica->set_role(role);
         }
     }
-    LOG_INFO("GetRoute: status:{}", status.to_string());
+    LOG_INFO(
+        "GetRoute ok, db={}, table={}, key={}, table_id={}, shard_id={}, replicas={}, status={}",
+        param.db_name, param.table_name, param.key, route.shard_id.table_id,
+        route.shard_id.shard_index, route.replicas.size(), status.to_string());
     return grpc::Status::OK;
 }
 
