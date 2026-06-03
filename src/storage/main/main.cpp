@@ -1,4 +1,5 @@
 #include <grpcpp/server.h>
+#include <grpcpp/server_builder.h>
 
 #include <cstdint>
 #include <cstring>

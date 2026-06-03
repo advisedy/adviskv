@@ -3,7 +3,8 @@ set(STORAGE_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_node.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_callback.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_sender.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raft/grpc_raft_rpc_transport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_background_task.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/state_machine/kv_state_machine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/map_engine.cpp

@@ -1,27 +1,20 @@
 #pragma once
 
-#include <grpcpp/grpcpp.h>
-
 #include <memory>
 #include <mutex>
-#include <string>
 #include <unordered_map>
 
-#include "common/define.h"
 #include "common/status.h"
-#include "storage.grpc.pb.h"
-#include "storage.pb.h"
 #include "storage/model/param.h"
 #include "storage/persist/persist_engine.h"
+#include "storage/raft/iraft_rpc_transport.h"
 
 namespace adviskv::storage {
-
-// using RequestVoteCallback =
-//     std::function<void(const Status&, const RequestVoteResult&)>;
 
 class RaftSender {
    public:
     explicit RaftSender(int32 timeout_ms = 1000);
+    RaftSender(std::unique_ptr<IRaftRpcTransport> transport, int32 timeout_ms);
 
     void set_timeout_ms(int32 timeout_ms);
 
@@ -39,15 +32,6 @@ class RaftSender {
                                  InstallSnapshotResult& result) const;
 
    private:
-    static std::string target_of(const PeerMember& member);
-    rpc::StorageService::StubInterface* stub_for(
-        const PeerMember& member) const;
-
-    mutable std::mutex mutex_;
-    mutable std::unordered_map<
-        std::string, std::unique_ptr<rpc::StorageService::StubInterface>>
-        stub_pool_;
-
     struct InFlightSnapshot {
         ReplicaID target;
         LogIndex snapshot_index;
@@ -57,6 +41,7 @@ class RaftSender {
         in_flight_snapshots_;
 
     mutable std::mutex in_flight_mutex_;
+    std::unique_ptr<IRaftRpcTransport> transport_;
     int32 timeout_ms_{1000};
 };
 

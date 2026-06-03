@@ -50,7 +50,7 @@ class ReplicaMetaPersistEngineTest : public ::testing::Test {
                 EngineType::MAP,
                 endpoint_,
                 members_,
-                base_dir_.string(),
+                ReplicaRuntimeOptions{base_dir_.string(), 4321},
             },
         };
     }
@@ -59,14 +59,8 @@ class ReplicaMetaPersistEngineTest : public ::testing::Test {
 
     Endpoint endpoint_{"127.0.0.1", 1000};
     std::vector<PeerMember> members_{
-        make_member(
-            "node-1",
-            ReplicaID{101, 7, 0},
-            "127.0.0.1", 1000),
-        make_member(
-            "node-2",
-            ReplicaID{101, 7, 1},
-            "127.0.0.1", 1001),
+        make_member("node-1", ReplicaID{101, 7, 0}, "127.0.0.1", 1000),
+        make_member("node-2", ReplicaID{101, 7, 1}, "127.0.0.1", 1001),
         make_member("node-3", replica_id_, "127.0.0.1", 1002),
     };
 
@@ -94,7 +88,8 @@ TEST_F(ReplicaMetaPersistEngineTest, SaveAndLoadReplicaMetaRoundTrip) {
         EXPECT_EQ(payload.init_param.local_endpoint,
                   save_payload.init_param.local_endpoint);
         EXPECT_EQ(payload.init_param.members, save_payload.init_param.members);
-        EXPECT_EQ(payload.init_param.data_dir, base_dir_.string());
+        EXPECT_TRUE(payload.init_param.runtime.data_dir.empty());
+        EXPECT_EQ(payload.init_param.runtime.raft_rpc_timeout_ms, 1000);
     }
 }
 
@@ -145,7 +140,7 @@ TEST_F(ReplicaMetaPersistEngineTest, LoadCorruptedReplicaMetaFails) {
     {
         std::ofstream out(meta_path(replica_id_), std::ios::binary);
         ASSERT_TRUE(out.is_open());
-        out << "corrupted replica meta"; // 覆盖写
+        out << "corrupted replica meta";  // 覆盖写
     }
 
     ReplicaMetaPersistEngine persist{base_dir_.string()};

@@ -11,7 +11,7 @@
 #include "common/type.h"
 #include "storage/model/param.h"
 #include "storage/persist/persist_engine.h"
-#include "storage/raft/raft_callback.h"
+#include "storage/raft/raft_sender.h"
 #include "storage/raft/raft_node.h"
 #include "storage/raft/state_machine/state_machine.h"
 

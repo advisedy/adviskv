@@ -169,6 +169,10 @@ add_adviskv_storage_gtest(raft_node_test
     ${CMAKE_SOURCE_DIR}/test/storage/raft/raft_node_test.cpp
 )
 
+add_adviskv_storage_gtest(raft_sender_test
+    ${CMAKE_SOURCE_DIR}/test/storage/raft/raft_sender_test.cpp
+)
+
 add_adviskv_storage_gtest(raft_cluster_test
     ${CMAKE_SOURCE_DIR}/test/storage/raft/raft_cluster_test.cpp
 )

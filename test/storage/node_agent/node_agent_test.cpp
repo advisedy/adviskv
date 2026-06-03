@@ -161,15 +161,8 @@ class NodeAgentTest : public ::testing::Test {
 
     NodeAgentConf valid_conf() const {
         return NodeAgentConf{
-            "node-1",
-            "127.0.0.1",
-            50050,
-            "default",
-            "dc1",
-            "127.0.0.1",
-            fake_sdm_.port(),
-            20,
-            10,
+            "node-1",    "127.0.0.1",      50050, "default", "dc1",
+            "127.0.0.1", fake_sdm_.port(), 20,    10,
         };
     }
 
@@ -181,7 +174,7 @@ class NodeAgentTest : public ::testing::Test {
             EngineType::MAP,
             endpoint,
             {PeerMember{"node-1", replica_id, endpoint}},
-            base_dir_.string(),
+            ReplicaRuntimeOptions{base_dir_.string(), 1000},
         };
     }
 

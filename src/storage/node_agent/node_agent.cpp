@@ -1,5 +1,7 @@
 #include "storage/node_agent/node_agent.h"
 
+#include <grpcpp/create_channel.h>
+
 #include <chrono>
 #include <thread>
 
@@ -7,7 +9,6 @@
 #include "common/enum_convert.h"
 #include "common/log.h"
 #include "common/status.h"
-#include "storage/model/param.h"
 #include "storage/replica/replica.h"
 
 namespace adviskv::storage {
