@@ -40,7 +40,7 @@ namespace adviskv {
     X(DB_META_CACHE_NOT_FOUND, 1002)                               \
     X(REPLICA_ERROR, 1003)                                         \
     X(NOT_LEADER, 2000)                                            \
-    X(NOT_YET_COMMIT, 2001) /*目前的写操作成功了，但是还没有提交*/ \
+    X(NOT_YET_COMMIT, 2001) /*请求已被leader接受，但返回时尚未确认提交，结果未决*/ \
     X(IS_RECOVERING, 2002)                                         \
     X(GET_EOF, 5000)      /*读到了eof*/                            \
     X(PARTIAL_READ, 5001) /*读取到一半遇到eof*/

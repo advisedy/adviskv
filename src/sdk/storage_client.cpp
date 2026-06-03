@@ -120,9 +120,13 @@ Status StorageClient::put(const RouteInfo& route, const Key& key,
 }
 
 Status StorageClient::del(const RouteInfo& route, const Key& key) const {
+    ADVISKV_METRICS_TIMER("sdk_storage_delete");
+    ADVISKV_METRICS_COUNTER("sdk_storage_delete_request");
+
     Endpoint endpoint;
     Status status = select_endpoint(route, &endpoint);
     if (status.fail()) {
+        ADVISKV_METRICS_COUNTER("sdk_storage_delete_select_endpoint_failure");
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "select storage endpoint for delete failed, "
                         "table_id={}, shard_id={}, key={}, status={}",
@@ -132,7 +136,10 @@ Status StorageClient::del(const RouteInfo& route, const Key& key) const {
     }
 
     rpc::StorageService::Stub* stub = make_stub(endpoint);
-    RETURN_IF_NULLPTR(stub, "storage stub is nullptr")
+    if (stub == nullptr) {
+        ADVISKV_METRICS_COUNTER("sdk_storage_delete_stub_missing");
+        return Status{StatusCode::INVALID_ARGUMENT, "storage stub is nullptr"};
+    }
 
     rpc::DeleteRequest request;
     request.set_table_id(route.table_id);
@@ -144,8 +151,13 @@ Status StorageClient::del(const RouteInfo& route, const Key& key) const {
     context.set_deadline(std::chrono::system_clock::now() +
                          std::chrono::milliseconds(conf_.storage_timeout_ms));
 
-    grpc::Status grpc_status = stub->Delete(&context, request, &response);
+    grpc::Status grpc_status;
+    {
+        ADVISKV_METRICS_TIMER("sdk_storage_delete_rpc");
+        grpc_status = stub->Delete(&context, request, &response);
+    }
     if (!grpc_status.ok()) {
+        ADVISKV_METRICS_COUNTER("sdk_storage_delete_rpc_failure");
         ADVISKV_SDK_LOG(LogLevel::ERROR,
                         "Storage Delete RPC failed, endpoint={}:{}, "
                         "table_id={}, shard_id={}, key={}, grpc_code={}, "

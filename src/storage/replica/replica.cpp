@@ -308,22 +308,43 @@ Status Replica::del(const DelParam& param) {
         return Status::IS_RECOVERING("replica is recovering");
     }
 
-    auto [status, new_commit_idx] =
-        raft_node_->propose(WriteOpType::DEL, param.key, "");
+    LogIndex new_commit_idx = 0;
+    Status status;
+    {
+        ADVISKV_METRICS_TIMER("storage_replica_delete_propose");
+        auto propose_result =
+            raft_node_->propose(WriteOpType::DEL, param.key, "");
+        status = propose_result.first;
+        new_commit_idx = propose_result.second;
+    }
     RETURN_IF_INVALID_STATUS(status)
 
-    flush_messages();
     {
+        ADVISKV_METRICS_TIMER("storage_replica_delete_flush_messages");
+        flush_messages();
+    }
+
+    // delete 与 put 的完成语义保持一致：只有当当前请求对应的日志在本次返回前
+    // 已经达到 committed 条件时，才返回 OK。
+    //
+    // 如果这轮 flush 之后 commit_index 仍然小于本次 propose 的目标 index，
+    // 说明当前 leader 已经接受了这条删除日志，但还没有办法在这个返回点确认它
+    // 已经被多数派提交。此时它后续可能提交成功，也可能在 leader 变化后失效，
+    // 因此对客户端而言属于“结果未决”，而不是普通失败。
+    {
+        ADVISKV_METRICS_TIMER("storage_replica_delete_apply_committed");
         std::lock_guard lock(state_machine_mutex_);
         apply_committed_entries();
     }
 
     if (!raft_node_->is_leader()) {
-        return Status{StatusCode::NOT_LEADER, ""};
+        return Status{StatusCode::NOT_LEADER,
+                      "leader changed during delete propose"};
     }
 
     if (raft_node_->commit_index() < new_commit_idx) {
-        return Status{StatusCode::NOT_YET_COMMIT, "delete is not yet commit"};
+        return Status{StatusCode::NOT_YET_COMMIT,
+                      "delete accepted by leader but commit is not yet confirmed"};
     }
 
     return Status::OK();

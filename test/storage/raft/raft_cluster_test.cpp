@@ -564,6 +564,74 @@ TEST_F(RaftClusterTest, MinorityLeaderCannotCommitNewEntry) {
     ASSERT_LT(cluster_.node_ptr(0)->commit_index(), uncommitted_idx);
 }
 
+// 对于写请求而言：如果当前 leader 已经接受了写入，但在这次返回前还没有达到多数派提交，
+// 那么客户端应看到的是 NOT_YET_COMMIT，而不是 OK。
+TEST_F(RaftClusterTest, PutReturnsNotYetCommitBeforeQuorumCommit) {
+    create_and_set_0_leader(5);
+    ASSERT_TRUE(tick_until_all_committed(1));
+    drop_all_messages();
+
+    int leader_idx = cluster_.leader_idx();
+    ASSERT_EQ(leader_idx, 0);
+
+    RaftNode* leader = cluster_.node_ptr(leader_idx);
+    ASSERT_NE(leader, nullptr);
+
+    LogIndex base_commit = leader->commit_index();
+    auto [status, target_idx] =
+        leader->propose(WriteOpType::PUT, "put-not-yet-commit", "v1");
+    ASSERT_TRUE(status.ok()) << status.to_string();
+    ASSERT_GT(target_idx, base_commit);
+
+    // 只把这条写复制给一个 follower，不足以形成多数派提交。
+    ASSERT_EQ(replicate_once(leader_idx, {1}), 1);
+    EXPECT_EQ(leader->commit_index(), base_commit);
+    EXPECT_LT(leader->commit_index(), target_idx);
+
+    // 这对应 Replica::put 的 NOT_YET_COMMIT 边界：leader 已接受，但提交尚未确认。
+    EXPECT_EQ(leader->commit_index() < target_idx, true);
+
+    // 继续复制到多数派，确认它后续可以真正提交。
+    replicate_until_committed(leader_idx, target_idx, {1, 2});
+    EXPECT_GE(leader->commit_index(), target_idx);
+}
+
+// Delete 与 Put 的完成语义保持一致：没有在返回前观察到 committed，不能返回 OK。
+TEST_F(RaftClusterTest, DeleteReturnsNotYetCommitBeforeQuorumCommit) {
+    create_and_set_0_leader(5);
+    ASSERT_TRUE(tick_until_all_committed(1));
+    drop_all_messages();
+
+    int leader_idx = cluster_.leader_idx();
+    ASSERT_EQ(leader_idx, 0);
+
+    RaftNode* leader = cluster_.node_ptr(leader_idx);
+    ASSERT_NE(leader, nullptr);
+
+    // 先写入一个已提交的 key，确保 delete 的目标对象存在。
+    auto [put_status, put_idx] =
+        leader->propose(WriteOpType::PUT, "delete-not-yet-commit", "v1");
+    ASSERT_TRUE(put_status.ok()) << put_status.to_string();
+    ASSERT_TRUE(tick_until_all_committed(put_idx));
+    drop_all_messages();
+
+    LogIndex base_commit = leader->commit_index();
+    auto [status, target_idx] =
+        leader->propose(WriteOpType::DEL, "delete-not-yet-commit", "");
+    ASSERT_TRUE(status.ok()) << status.to_string();
+    ASSERT_GT(target_idx, base_commit);
+
+    ASSERT_EQ(replicate_once(leader_idx, {1}), 1);
+    EXPECT_EQ(leader->commit_index(), base_commit);
+    EXPECT_LT(leader->commit_index(), target_idx);
+
+    // 这对应 Replica::del 的 NOT_YET_COMMIT 边界：删除已被 leader 接受，但提交尚未确认。
+    EXPECT_EQ(leader->commit_index() < target_idx, true);
+
+    replicate_until_committed(leader_idx, target_idx, {1, 2});
+    EXPECT_GE(leader->commit_index(), target_idx);
+}
+
 // 当leader宕机之后，选取新的leader，是否正常
 TEST_F(RaftClusterTest, LeaderCrash_NewLeaderElected_NoLogLoss) {
     create_and_stabilize(3);

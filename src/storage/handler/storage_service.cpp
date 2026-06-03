@@ -3,7 +3,12 @@
 #include <grpcpp/server_context.h>
 #include <grpcpp/support/status.h>
 
+#include <string_view>
+
+#include <fmt/format.h>
+
 #include "common/confmgr.h"
+#include "common/defer.h"
 #include "common/define.h"
 #include "common/enum_convert.h"
 #include "common/log.h"
@@ -13,34 +18,35 @@
 #include "common/type.h"
 #include "storage.pb.h"
 #include "storage/model/param.h"
-#include "storage/raft/state_machine/state_machine.h"
 #include "storage/replica/replica.h"
 
 namespace adviskv::storage {
 namespace {
 
-void record_storage_put_handler_result(const Status& status) {
+void record_storage_write_handler_result(std::string_view op_name,
+                                         const Status& status) {
+    const std::string prefix = fmt::format("storage_{}_handler", op_name);
     if (status.ok()) {
-        ADVISKV_METRICS_COUNTER("storage_put_handler_success");
+        ADVISKV_METRICS_COUNTER(prefix + "_success");
         return;
     }
-    ADVISKV_METRICS_COUNTER("storage_put_handler_failure");
+    ADVISKV_METRICS_COUNTER(prefix + "_failure");
     switch (status.code()) {
         case StatusCode::NOT_LEADER:
-            ADVISKV_METRICS_COUNTER("storage_put_handler_not_leader");
+            ADVISKV_METRICS_COUNTER(prefix + "_not_leader");
             break;
         case StatusCode::NOT_YET_COMMIT:
-            ADVISKV_METRICS_COUNTER("storage_put_handler_not_yet_commit");
+            ADVISKV_METRICS_COUNTER(prefix + "_not_yet_commit");
             break;
         case StatusCode::REPLICA_NOT_FOUND:
-            ADVISKV_METRICS_COUNTER("storage_put_handler_replica_not_found");
+            ADVISKV_METRICS_COUNTER(prefix + "_replica_not_found");
             break;
         case StatusCode::REPLICA_MANAGER_NOT_FOUND:
-            ADVISKV_METRICS_COUNTER(
-                "storage_put_handler_replica_manager_not_found");
+            ADVISKV_METRICS_COUNTER(prefix +
+                                    "_replica_manager_not_found");
             break;
         default:
-            ADVISKV_METRICS_COUNTER("storage_put_handler_other_error");
+            ADVISKV_METRICS_COUNTER(prefix + "_other_error");
             break;
     }
 }
@@ -54,10 +60,13 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
     ADVISKV_METRICS_COUNTER("storage_put_handler_request");
 
     UNUSED(context);
+    Status status = Status::OK();
+    auto record_result =
+        Defer([&status]() { record_storage_write_handler_result("put", status); });
+
     if (!replica_manager_) {
-        Status status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
-                      "replica manager not found"};
-        record_storage_put_handler_result(status);
+        status = Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
+                        "replica manager not found"};
         LOG_WARN("replica manager is nullptr");
         fill_base_rsp(response, status);
         return grpc::Status::OK;
@@ -67,16 +76,14 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
     ReplicaPtr&& replica = replica_manager_->get_replica_by_shard(shard_id);
 
     if (!replica) {
-        Status status{StatusCode::REPLICA_NOT_FOUND, "replica not found"};
-        record_storage_put_handler_result(status);
+        status = Status{StatusCode::REPLICA_NOT_FOUND, "replica not found"};
         LOG_WARN("replica not found, table_id = {}, shard_id = {}",
                  request->table_id(), request->shard_id());
         fill_base_rsp(response, status);
         return grpc::Status::OK;
     }
     PutParam param{request->key(), request->value()};
-    Status status = replica->put(param);
-    record_storage_put_handler_result(status);
+    status = replica->put(param);
 
     if (!status.ok()) {
         LOG_WARN(
@@ -136,23 +143,42 @@ grpc::Status StorageServiceImpl::Get(grpc::ServerContext* context,
 grpc::Status StorageServiceImpl::Delete(grpc::ServerContext* context,
                                         const rpc::DeleteRequest* request,
                                         rpc::DeleteResponse* response) {
+    ADVISKV_METRICS_TIMER("storage_delete_handler");
+    ADVISKV_METRICS_COUNTER("storage_delete_handler_request");
+
     UNUSED(context);
+    Status status = Status::OK();
+    auto record_result = Defer(
+        [&status]() { record_storage_write_handler_result("delete", status); });
 
     if (!replica_manager_) {
-        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
-                                       "replica manager not found"});
+        status = Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
+                        "replica manager not found"};
+        LOG_WARN("replica manager is nullptr");
+        fill_base_rsp(response, status);
         return grpc::Status::OK;
     }
 
     ShardID shard_id{request->table_id(), request->shard_id()};
     ReplicaPtr&& replica = replica_manager_->get_replica_by_shard(shard_id);
     if (!replica) {
-        fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND,
-                                       "replica not found"});
+        status = Status{StatusCode::REPLICA_NOT_FOUND, "replica not found"};
+        LOG_WARN("replica not found, table_id = {}, shard_id = {}",
+                 request->table_id(), request->shard_id());
+        fill_base_rsp(response, status);
         return grpc::Status::OK;
     }
 
-    Status status = replica->del(DelParam{request->key()});
+    status = replica->del(DelParam{request->key()});
+
+    if (!status.ok()) {
+        LOG_WARN(
+            "replica delete failed, table_id = {}, shard_id = {}, key = {}, "
+            "msg = {}",
+            request->table_id(), request->shard_id(), request->key(),
+            status.msg());
+    }
+
     fill_base_rsp(response, status);
     return grpc::Status::OK;
 }

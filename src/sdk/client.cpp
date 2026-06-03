@@ -18,6 +18,14 @@ void record_put_result(const Status& status) {
     ADVISKV_METRICS_COUNTER("sdk_put_failure");
 }
 
+void record_delete_result(const Status& status) {
+    if (status.ok()) {
+        ADVISKV_METRICS_COUNTER("sdk_delete_success");
+        return;
+    }
+    ADVISKV_METRICS_COUNTER("sdk_delete_failure");
+}
+
 }  // namespace
 
 KVClient::KVClient(const KVClientConf& conf)
@@ -95,11 +103,24 @@ Status KVClient::put(const Key& key, const Value& value) {
 }
 
 Status KVClient::del(const Key& key) {
-    RETURN_IF_INVALID_PARAM(conf_)
+    ADVISKV_METRICS_TIMER("sdk_delete");
+    ADVISKV_METRICS_COUNTER("sdk_delete_request");
+
+    Status status = Status::OK();
+    auto delete_result_guard = Defer([&status]() { record_delete_result(status); });
+
+    status = conf_.validate();
+    if (status.fail()) {
+        return status;
+    }
 
     RouteInfo route;
-    Status status = resolve_route(key, &route);
+    {
+        ADVISKV_METRICS_TIMER("sdk_delete_route_resolve");
+        status = resolve_route(key, &route);
+    }
     if (status.fail()) {
+        ADVISKV_METRICS_COUNTER("sdk_delete_route_resolve_failure");
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "delete resolve route failed, db={}, table={}, key={}, "
                         "status={}",
@@ -108,17 +129,25 @@ Status KVClient::del(const Key& key) {
         return status;
     }
 
-    status = storage_client_.del(route, key);
+    {
+        ADVISKV_METRICS_TIMER("sdk_delete_storage");
+        status = storage_client_.del(route, key);
+    }
     if (!should_invalidate_route(status)) {
         return status;
     }
 
+    ADVISKV_METRICS_COUNTER("sdk_delete_route_invalidated");
     ADVISKV_SDK_LOG(LogLevel::INFO,
                     "delete invalidates route, db={}, table={}, key={}, "
                     "status={}",
                     conf_.db_name, conf_.table_name, key, status.to_string());
-    status = resolve_route(key, &route);
+    {
+        ADVISKV_METRICS_TIMER("sdk_delete_retry_route_resolve");
+        status = resolve_route(key, &route);
+    }
     if (status.fail()) {
+        ADVISKV_METRICS_COUNTER("sdk_delete_retry_route_resolve_failure");
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "delete retry resolve route failed, db={}, table={}, "
                         "key={}, status={}",
@@ -126,13 +155,19 @@ Status KVClient::del(const Key& key) {
                         status.to_string());
         return status;
     }
-    status = storage_client_.del(route, key);
+    {
+        ADVISKV_METRICS_TIMER("sdk_delete_retry_storage");
+        status = storage_client_.del(route, key);
+    }
     if (status.fail()) {
+        ADVISKV_METRICS_COUNTER("sdk_delete_retry_failure");
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "delete retry failed, db={}, table={}, key={}, "
                         "status={}",
                         conf_.db_name, conf_.table_name, key,
                         status.to_string());
+    } else {
+        ADVISKV_METRICS_COUNTER("sdk_delete_retry_success");
     }
     return status;
 }
