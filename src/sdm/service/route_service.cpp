@@ -8,6 +8,7 @@
 
 #include "common/define.h"
 #include "common/log.h"
+#include "common/stable_hash.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "sdm/manager/meta_cache_manager.h"
@@ -75,9 +76,8 @@ Status RouteService::get_route(const GetRouteParam& param,
 
 ShardID RouteService::calc_shard_id(const Table& table, Key key) const {
     // TODO 将来得搞range
-    return ShardID{
-        table.table_id, static_cast<ShardIndex>(std::hash<Key>{}(key) %
-                                                table.spec.shard_count)};
+    return ShardID{table.table_id,
+                   stable_shard_index(key, table.spec.shard_count)};
 }
 
 }  // namespace adviskv::sdm

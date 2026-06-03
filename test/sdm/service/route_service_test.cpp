@@ -2,11 +2,9 @@
 
 #include <gtest/gtest.h>
 
-#include <functional>
-
+#include "common/stable_hash.h"
 #include "common/status.h"
 #include "sdm/model/sdm_store.h"
-
 namespace adviskv::sdm {
 namespace {
 
@@ -21,9 +19,8 @@ Table make_table() {
 }
 
 ShardID shard_for_key(const Table& table, const Key& key) {
-    return ShardID(
-        table.table_id,
-        static_cast<ShardIndex>(std::hash<Key>{}(key) % table.spec.shard_count));
+    return ShardID(table.table_id,
+                   stable_shard_index(key, table.spec.shard_count));
 }
 
 ShardRoute make_route(const ShardID& shard_id,
@@ -38,8 +35,9 @@ ShardRoute make_route(const ShardID& shard_id,
             ReplicaID{shard_id.table_id, shard_id.shard_index,
                       static_cast<ReplicaIndex>(i)},
             "node-" + std::to_string(i),
-            leader && !valid_leader_endpoint ? ""
-                                             : "127.0.0." + std::to_string(i + 1),
+            leader && !valid_leader_endpoint
+                ? ""
+                : "127.0.0." + std::to_string(i + 1),
             leader && !valid_leader_endpoint ? 0
                                              : static_cast<int32_t>(18080 + i),
             roles[i],
@@ -82,9 +80,8 @@ TEST(RouteServiceTest, GetRouteRejectsInvalidParam) {
     RouteService service(&store);
     ShardRoute route;
 
-    Status status = service.get_route(
-        GetRouteParam{"", "orders", "key"},
-        &route);
+    Status status =
+        service.get_route(GetRouteParam{"", "orders", "key"}, &route);
 
     EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
 }
