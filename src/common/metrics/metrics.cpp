@@ -12,9 +12,9 @@
 #include <limits>
 #include <sstream>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
-
 namespace adviskv {
 namespace {
 
@@ -31,9 +31,13 @@ struct MetricsSnapshot {
 
 const std::vector<int64_t>& latency_buckets_us() {
     static const std::vector<int64_t> buckets = {
-        100,    250,    500,    1000,   2000,   5000,  10000,
-        20000,  50000,  100000, 250000, 500000, 1000000,
-        std::numeric_limits<int64_t>::max(),
+        100,     250,
+        500,     1000,
+        2000,    5000,
+        10000,   20000,
+        50000,   100000,
+        250000,  500000,
+        1000000, std::numeric_limits<int64_t>::max(),
     };
     return buckets;
 }
@@ -240,9 +244,9 @@ class AdvisMetrics::HttpServer {
 
     std::string build_response(const std::string& request) const {
         if (request_matches_path(request, options_.http_path)) {
-            return http_response("200 OK",
-                                 "text/plain; version=0.0.4; charset=utf-8",
-                                 AdvisMetrics::get_instance().dump_prometheus());
+            return http_response(
+                "200 OK", "text/plain; version=0.0.4; charset=utf-8",
+                AdvisMetrics::get_instance().dump_prometheus());
         }
         return http_response("404 Not Found", "text/plain; charset=utf-8",
                              "not found\n");
@@ -319,8 +323,7 @@ std::string AdvisMetrics::dump_prometheus() const {
     std::ostringstream out;
     for (const std::string& raw_name : latency_names) {
         const std::string metric_name = "adviskv_" + raw_name + "_latency_us";
-        const HistogramSnapshot& histogram =
-            snapshot.latencies.at(raw_name);
+        const HistogramSnapshot& histogram = snapshot.latencies.at(raw_name);
 
         out << "# TYPE " << metric_name << " histogram\n";
         for (const auto& [upper_bound, cumulative_count] : histogram.buckets) {
