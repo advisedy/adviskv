@@ -71,7 +71,7 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
         fill_base_rsp(response, status);
         return grpc::Status::OK;
     }
-
+    // 通过table_id和shard_id，找到replica
     ShardID shard_id{request->table_id(), request->shard_id()};
     ReplicaPtr&& replica = replica_manager_->get_replica_by_shard(shard_id);
 
@@ -82,6 +82,8 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
         fill_base_rsp(response, status);
         return grpc::Status::OK;
     }
+
+    // replica内部执行put操作
     PutParam param{request->key(), request->value()};
     status = replica->put(param);
 

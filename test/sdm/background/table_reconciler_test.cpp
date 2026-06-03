@@ -11,6 +11,8 @@
 #include "sdm/background/routeupdate_check_task.h"
 #include "sdm/model/sdm_store.h"
 #include "sdm/selector/node_selector/node_selector.h"
+#include "sdm/service/heartbeat_service.h"
+#include "sdm/service/route_service.h"
 #include "sdm/service/table_service.h"
 
 namespace adviskv::sdm {
@@ -171,6 +173,32 @@ void put_route(SdmStore& store, std::vector<RouteEntry> replicas) {
     route.shard_id = ShardID{1001, 0};
     route.replicas = std::move(replicas);
     ASSERT_TRUE(store.put_shard_route(route).ok());
+}
+
+GetRouteParam make_get_route_param(const Key& key = "user-123") {
+    return GetRouteParam{"commerce", "orders", key};
+}
+
+void report_replica_heartbeat(SdmStore& store, const NodeID& node_id,
+                              int32_t port, ReplicaIndex replica_index,
+                              ReplicaRole role, ReplicaStatus status,
+                              Term term) {
+    HeartBeatService heartbeat_service(&store);
+    HeartBeatParam param;
+    param.node_id = node_id;
+    param.ip = "127.0.0.1";
+    param.port = port;
+    param.resoure_pool_name = "pool-a";
+    param.dc = "dc-a";
+    param.last_heartbeat_ts = 1000 + replica_index + term;
+    param.replica_list.push_back(HeartBeatReplicaInfo{
+        ShardID{1001, 0},
+        replica_index,
+        role,
+        status,
+        term,
+    });
+    ASSERT_TRUE(heartbeat_service.heartbeat(param).ok());
 }
 
 }  // namespace
@@ -395,6 +423,64 @@ TEST(TableReconcilerTest, TableDoesNotBecomeReadyWhenLeaderEndpointInvalid) {
 
     ASSERT_TRUE(reconciler.reconcile_once().ok());
     EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::CREATING);
+}
+
+// route 暂时因为无 leader 被撤掉之后，heartbeat 恢复 observed leader，
+// RouteUpdateCheckTask 应该重新发布 route，GetRoute 也应该恢复成功。
+TEST(TableReconcilerTest, RouteIsRepublishedAfterHeartbeatRecoversLeader) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    put_default_nodes(store);
+    place_default_table(store);
+
+    FakeStorageClient storage_client;
+    FakeNodeSelector selector(&store);
+    TestTableReconciler reconciler(&store, &storage_client, &selector);
+    reconcile_table_to_ready(store, storage_client, reconciler);
+
+    RouteService route_service(&store);
+    RouteUpdateCheckTask route_task(&store);
+    ShardRoute route;
+    Status status = route_service.get_route(make_get_route_param(), &route);
+    ASSERT_TRUE(status.ok()) << status.msg();
+    ASSERT_EQ(route.replicas.size(), 2U);
+    EXPECT_EQ(route.replicas[0].role, ReplicaRole::LEADER);
+
+    std::vector<Replica> replicas = list_replicas_or_die(store);
+    ASSERT_EQ(replicas.size(), 2U);
+    for (Replica& replica : replicas) {
+        replica.state.observed_role = ReplicaRole::FOLLOWER;
+        replica.state.term = 8;
+        ASSERT_TRUE(store.put_replica(replica).ok());
+    }
+
+    ASSERT_TRUE(route_task.update_once().ok());
+
+    ShardRouteOr route_after_loss;
+    ASSERT_TRUE(store.get_shard_route(ShardID{1001, 0}, route_after_loss).ok());
+    EXPECT_TRUE(route_after_loss.is_empty());
+    status = route_service.get_route(make_get_route_param(), &route);
+    EXPECT_EQ(status.code(), StatusCode::ROUTE_NOT_FOUND);
+
+    report_replica_heartbeat(store, "node-a", 18080, 0, ReplicaRole::LEADER,
+                             ReplicaStatus::READY, 11);
+    report_replica_heartbeat(store, "node-b", 18081, 1,
+                             ReplicaRole::FOLLOWER, ReplicaStatus::READY, 11);
+
+    ASSERT_TRUE(route_task.update_once().ok());
+
+    status = route_service.get_route(make_get_route_param(), &route);
+    ASSERT_TRUE(status.ok()) << status.msg();
+    ASSERT_EQ(route.replicas.size(), 2U);
+    EXPECT_EQ(route.replicas[0].replica_id.replica_index, 0);
+    EXPECT_EQ(route.replicas[0].role, ReplicaRole::LEADER);
+    EXPECT_EQ(route.replicas[0].term, 11);
+    EXPECT_EQ(route.replicas[0].ip, "127.0.0.1");
+    EXPECT_EQ(route.replicas[0].port, 18080);
+    EXPECT_EQ(route.replicas[1].replica_id.replica_index, 1);
+    EXPECT_EQ(route.replicas[1].role, ReplicaRole::FOLLOWER);
+
+    ASSERT_TRUE(reconciler.reconcile_once().ok());
+    EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::READY);
 }
 
 // 删除table的正常完整流程可以走完一遍

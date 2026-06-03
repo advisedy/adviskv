@@ -7,7 +7,6 @@
 
 #include "sdm/background/routeupdate_check_task.h"
 
-
 namespace adviskv::sdm {
 namespace {
 
@@ -215,6 +214,79 @@ TEST(RouteUpdateCheckTaskTest,
     EXPECT_EQ(route->replicas[2].role, ReplicaRole::FOLLOWER);
     EXPECT_EQ(route->replicas[3].replica_id.replica_index, 3);
     EXPECT_EQ(route->replicas[3].role, ReplicaRole::FOLLOWER);
+}
+
+// 已经发布出去的旧 route，如果当前没有 leader 了，应该先被删除；
+// 等 observed leader 恢复后，再重新发布新的合法 route。
+TEST(RouteUpdateCheckTaskTest,
+     DeleteStaleRouteAndRepublishAfterLeaderRecovery) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    put_nodes(store, 2);
+    ASSERT_TRUE(store
+                    .put_replica(make_replica(0, "node-0", 18080,
+                                              ReplicaRole::LEADER, 10))
+                    .ok());
+    ASSERT_TRUE(store
+                    .put_replica(make_replica(1, "node-1", 18081,
+                                              ReplicaRole::FOLLOWER, 10))
+                    .ok());
+    ASSERT_TRUE(
+        store
+            .put_shard_route(ShardRoute{
+                test_shard_id(),
+                {RouteEntry{ReplicaID{TEST_TABLE_ID, TEST_SHARD_INDEX, 0},
+                            "node-0",
+                            "127.0.0.1",
+                            18080,
+                            ReplicaRole::LEADER,
+                            10},
+                 RouteEntry{ReplicaID{TEST_TABLE_ID, TEST_SHARD_INDEX, 1},
+                            "node-1",
+                            "127.0.0.1",
+                            18081,
+                            ReplicaRole::FOLLOWER,
+                            10}},
+            })
+            .ok());
+
+    RouteUpdateCheckTaskTmp task(&store);
+    ASSERT_TRUE(store
+                    .put_replica(make_replica(0, "node-0", 18080,
+                                              ReplicaRole::FOLLOWER, 11))
+                    .ok());
+    ASSERT_TRUE(store
+                    .put_replica(make_replica(1, "node-1", 18081,
+                                              ReplicaRole::FOLLOWER, 11))
+                    .ok());
+
+    Status status = task.check_shard_route_tmp(make_table(), TEST_SHARD_INDEX);
+    EXPECT_EQ(status.code(), StatusCode::ROUTE_NOT_FOUND);
+
+    ShardRouteOr route;
+    ASSERT_TRUE(store.get_shard_route(test_shard_id(), route).ok());
+    EXPECT_TRUE(route.is_empty());
+
+    ASSERT_TRUE(store
+                    .put_replica(make_replica(0, "node-0", 18080,
+                                              ReplicaRole::FOLLOWER, 12))
+                    .ok());
+    ASSERT_TRUE(store
+                    .put_replica(make_replica(1, "node-1", 18081,
+                                              ReplicaRole::LEADER, 12))
+                    .ok());
+
+    status = task.check_shard_route_tmp(make_table(), TEST_SHARD_INDEX);
+    ASSERT_TRUE(status.ok());
+
+    ASSERT_TRUE(store.get_shard_route(test_shard_id(), route).ok());
+    ASSERT_FALSE(route.is_empty());
+    ASSERT_EQ(route->replicas.size(), 2U);
+    EXPECT_EQ(route->replicas[0].replica_id.replica_index, 1);
+    EXPECT_EQ(route->replicas[0].role, ReplicaRole::LEADER);
+    EXPECT_EQ(route->replicas[0].term, 12);
+    EXPECT_EQ(route->replicas[1].replica_id.replica_index, 0);
+    EXPECT_EQ(route->replicas[1].role, ReplicaRole::FOLLOWER);
+    EXPECT_EQ(route->replicas[1].term, 12);
 }
 
 }  // namespace adviskv::sdm
