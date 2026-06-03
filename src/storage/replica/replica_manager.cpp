@@ -43,6 +43,7 @@ ReplicaPtr ReplicaManager::get_replica_by_shard(const ShardID& shard_id) const {
 }
 
 Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
+    ReplicaInitParam filled_param = fill_param_runtime(param);
     const ReplicaID replica_id = param.replica_id;
     ShardID shard_id{replica_id.table_id, replica_id.shard_index};
     std::unique_lock locker(mutex_);
@@ -51,7 +52,7 @@ Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
         ReplicaMetaPayload old_payload;
         RETURN_IF_INVALID_STATUS(
             meta_persist_.load_replica_meta(replica_id, old_payload))
-        if (old_payload.init_param == param) {
+        if (old_payload.init_param.same_persisted_spec(param)) {
             return Status::OK();
         }
         return Status{
@@ -70,10 +71,10 @@ Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
     }
 
     auto replica = std::make_shared<Replica>();
-    RETURN_IF_INVALID_STATUS(replica->init(param))
+    RETURN_IF_INVALID_STATUS(replica->init(filled_param))
 
     ReplicaMetaPayload payload;
-    payload.init_param = param;
+    payload.init_param = filled_param;
     RETURN_IF_INVALID_STATUS(meta_persist_.save_replica_meta(payload))
 
     shard_primary_index_.insert({shard_id, replica_id});
@@ -118,7 +119,7 @@ void ReplicaManager::recover() {
     std::unique_lock locker(mutex_);
     {
         try {
-            std::filesystem::create_directories(data_dir_);
+            std::filesystem::create_directories(runtime_options_.data_dir);
         } catch (const std::filesystem::filesystem_error& e) {
             LOG_WARN("create replica manager data dir failed: {}", e.what());
         }
@@ -134,6 +135,7 @@ void ReplicaManager::recover() {
                 continue;
             }
             ReplicaInitParam& param = payload.init_param;
+            param = fill_param_runtime(param);
             ShardID shard_id{param.replica_id.table_id,
                              param.replica_id.shard_index};
             if (replica_map_.count(param.replica_id) ||
@@ -164,6 +166,14 @@ void ReplicaManager::recover() {
     LOG_INFO("all replicas recovered");
 }
 
-const std::string& ReplicaManager::get_data_dir() const { return data_dir_; }
+ReplicaInitParam ReplicaManager::fill_param_runtime(
+    ReplicaInitParam param) const {
+    param.runtime = runtime_options_;
+    return param;
+}
+
+const std::string& ReplicaManager::get_data_dir() const {
+    return runtime_options_.data_dir;
+}
 
 }  // namespace adviskv::storage

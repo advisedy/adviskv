@@ -7,6 +7,7 @@ resource_pool: "default"
 dc: "dc1"
 data_dir: "build/storage-1-data"
 heartbeat_interval_ms: 3000
+raft_rpc_timeout_ms: 1000
 
 #log
 logger_name: "storage-1_log"

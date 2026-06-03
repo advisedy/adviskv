@@ -35,7 +35,7 @@ class ReplicaTest : public ::testing::Test {
             EngineType::MAP,
             Endpoint{"127.0.0.1", 19090},
             {PeerMember{"node-1", replica_id_, Endpoint{"127.0.0.1", 19090}}},
-            base_dir_.string(),
+            ReplicaRuntimeOptions{base_dir_.string(), 1000},
         };
     }
 

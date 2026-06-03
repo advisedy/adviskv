@@ -73,20 +73,39 @@ struct DelParam {
     Status validate() const { return Status::OK(); }
 };
 
+struct ReplicaRuntimeOptions {
+    std::string data_dir;
+    int32_t raft_rpc_timeout_ms{1000};
+
+    bool operator==(const ReplicaRuntimeOptions& other) const {
+        return data_dir == other.data_dir &&
+               raft_rpc_timeout_ms == other.raft_rpc_timeout_ms;
+    }
+
+    DEFINE_OPERATOR_NOT_EQUAL(ReplicaRuntimeOptions)
+};
+
 struct ReplicaInitParam {
     ReplicaID replica_id;
     EngineType engine_type;
     Endpoint local_endpoint;
     std::vector<PeerMember> members;
-    std::string data_dir;  // 存放那些持久化数据的根目录
+    ReplicaRuntimeOptions runtime;
 
     bool operator==(const ReplicaInitParam& other) const {
         if (!(replica_id == other.replica_id)) return false;
         if (!(engine_type == other.engine_type)) return false;
         if (!(local_endpoint == other.local_endpoint)) return false;
         if (!(members == other.members)) return false;
-        if (!(data_dir == other.data_dir)) return false;
+        if (!(runtime == other.runtime)) return false;
         return true;
+    }
+
+    bool same_persisted_spec(const ReplicaInitParam& other) const {
+        return replica_id == other.replica_id &&
+               engine_type == other.engine_type &&
+               local_endpoint == other.local_endpoint &&
+               members == other.members;
     }
 
     DEFINE_OPERATOR_NOT_EQUAL(ReplicaInitParam)

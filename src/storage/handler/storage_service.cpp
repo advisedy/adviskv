@@ -213,7 +213,6 @@ grpc::Status StorageServiceImpl::CreateReplica(
         param.members.push_back(std::move(one));
     }
     param.local_endpoint = Endpoint{CONF_GET_STR("ip"), CONF_GET_INT("port")};
-    param.data_dir = adviskv::path_from_config("data_dir").string();
 
     Status status = replica_manager_->add_replica(param);
     fill_base_rsp(response, status);

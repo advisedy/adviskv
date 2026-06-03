@@ -28,13 +28,14 @@ class ReplicaManagerTest : public ::testing::Test {
         fs::remove_all(base_dir_, ec);
     }
 
-    ReplicaInitParam make_param(ReplicaID replica_id) const {
+    ReplicaInitParam make_param(ReplicaID replica_id,
+                                int32_t raft_rpc_timeout_ms = 1000) const {
         return ReplicaInitParam{
             replica_id,
             EngineType::MAP,
             Endpoint{"127.0.0.1", 18080},
             {PeerMember{"node-1", replica_id, Endpoint{"127.0.0.1", 18080}}},
-            base_dir_.string(),
+            ReplicaRuntimeOptions{base_dir_.string(), raft_rpc_timeout_ms},
         };
     }
 
@@ -90,6 +91,16 @@ TEST_F(ReplicaManagerTest, RejectsDuplicateReplicaAndDuplicateShard) {
     Status duplicate_shard_status =
         manager.add_replica(make_param(another_replica_same_shard));
     EXPECT_EQ(duplicate_shard_status.code(), StatusCode::ALREADY_EXIST);
+}
+
+TEST_F(ReplicaManagerTest, DuplicateReplicaIgnoresRuntimeOnlyDifferences) {
+    ReplicaManager manager(base_dir_.string());
+    ReplicaID replica_id{9, 1, 0};
+
+    ASSERT_TRUE(manager.add_replica(make_param(replica_id, 1000)).ok());
+
+    Status duplicate_id_status = manager.add_replica(make_param(replica_id, 250));
+    EXPECT_TRUE(duplicate_id_status.ok());
 }
 
 // delete_replica后应无法再按ID或shard查到该replica

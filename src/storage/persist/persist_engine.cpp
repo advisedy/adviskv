@@ -2,6 +2,7 @@
 
 #include <dirent.h>
 #include <fcntl.h>
+#include <fmt/format.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -118,6 +119,16 @@ PersistEngine::~PersistEngine() {
 }
 
 Status PersistEngine::init() {
+    if (data_dir_.empty()) {
+        return Status::INVALID_ARGUMENT(
+            "persist engine init error: data_dir is epmty");
+    }
+    if (ReplicaID& id = replica_id_;
+        id.replica_index == -1 or id.shard_index == -1 or id.table_id == -1) {
+        return Status::INVALID_ARGUMENT(
+            fmt::format("persist engine init error: replica_id:{} invalid",
+                        replica_id_.to_string()));
+    }
     dir_path_ = data_dir_ + "/" + std::to_string(replica_id_.table_id) + "-" +
                 std::to_string(replica_id_.shard_index);
     wal_path_ = dir_path_ + "/wal.log";
@@ -129,7 +140,7 @@ Status PersistEngine::init() {
         "snapshot_tmp_path_={}",
         dir_path_, wal_path_, raft_meta_path_, snapshot_path_,
         snapshot_tmp_path_);
-    mkdir(dir_path_.c_str(), 0755);
+    mkdir(dir_path_.c_str(), 0755); // TODO 改成create_dircation
 
     wal_fd_ = ::open(wal_path_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (wal_fd_ < 0) {

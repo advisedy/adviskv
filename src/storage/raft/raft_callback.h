@@ -21,7 +21,9 @@ namespace adviskv::storage {
 
 class RaftSender {
    public:
-    RaftSender();
+    explicit RaftSender(int32 timeout_ms = 1000);
+
+    void set_timeout_ms(int32 timeout_ms);
 
     Status send_request_vote(const PeerMember& member,
                              const RequestVoteParam& param,
@@ -55,6 +57,7 @@ class RaftSender {
         in_flight_snapshots_;
 
     mutable std::mutex in_flight_mutex_;
+    int32 timeout_ms_{1000};
 };
 
 }  // namespace adviskv::storage

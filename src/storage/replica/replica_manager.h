@@ -16,8 +16,12 @@ namespace adviskv::storage {
 
 class ReplicaManager {
    public:
-    ReplicaManager(std::string data_dir)
-        : data_dir_(std::move(data_dir)), meta_persist_(data_dir_) {}
+    explicit ReplicaManager(ReplicaRuntimeOptions runtime)
+        : runtime_options_(std::move(runtime)),
+          meta_persist_(runtime_options_.data_dir) {}
+    ReplicaManager(std::string data_dir, int32 raft_rpc_timeout_ms = 1000)
+        : ReplicaManager(ReplicaRuntimeOptions{std::move(data_dir),
+                                               raft_rpc_timeout_ms}) {}
     ReplicaPtr get_replica_by_id(const ReplicaID& replica_id) const;
     ReplicaPtr get_replica_by_shard(const ShardID& shard_id) const;
     Status add_replica(const ReplicaInitParam& param);
@@ -28,6 +32,8 @@ class ReplicaManager {
     void recover();
 
    private:
+    ReplicaInitParam fill_param_runtime(ReplicaInitParam param) const;
+
     mutable std::shared_mutex mutex_;
     std::unordered_map<ReplicaID, ReplicaPtr, ReplicaIDHash> replica_map_;
     std::unordered_map<ShardID, ReplicaID, ShardIDHash> shard_primary_index_;
@@ -35,7 +41,7 @@ class ReplicaManager {
     std::unique_ptr<RaftTickTask>
         raft_tick_task_;  // 这个放最后面，到时候先析构他
 
-    std::string data_dir_;  // 这个是replica存放数据的目录
+    ReplicaRuntimeOptions runtime_options_;
     ReplicaMetaPersistEngine meta_persist_;
 };
 

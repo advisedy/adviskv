@@ -28,13 +28,14 @@ Status Replica::init(const ReplicaInitParam& param) {
     replica_id_ = param.replica_id;
 
     persist_ =
-        std::make_unique<PersistEngine>(param.data_dir, param.replica_id);
+        std::make_unique<PersistEngine>(param.runtime.data_dir, param.replica_id);
     RETURN_IF_INVALID_STATUS(persist_->init())
 
     state_machine_ = std::make_unique<KvStateMachine>(param.engine_type);
 
     raft_node_ = std::make_unique<RaftNode>(param.replica_id, param.members,
                                             persist_.get());
+    raft_sender_.set_timeout_ms(param.runtime.raft_rpc_timeout_ms);
 
     // 创建定时器驱动 tick（统一的 tick timer，替代原来的 election + heartbeat
     // 两个 timer）

@@ -3,15 +3,28 @@
 #include <fmt/format.h>
 #include <grpcpp/create_channel.h>
 
+#include <chrono>
 #include <mutex>
 
+#include "common/defer.h"
+#include "common/define.h"
 #include "common/metrics/metrics.h"
 #include "common/status.h"
 #include "common/type.h"
 
 namespace adviskv::storage {
 
-RaftSender::RaftSender() = default;
+namespace {
+
+auto get_system_clock_now() { return std::chrono::system_clock::now(); }
+
+}  // namespace
+
+RaftSender::RaftSender(int32_t timeout_ms) { set_timeout_ms(timeout_ms); }
+
+void RaftSender::set_timeout_ms(int32_t timeout_ms) {
+    timeout_ms_ = timeout_ms > 0 ? timeout_ms : 1000;
+}
 
 Status RaftSender::send_request_vote(const PeerMember& member,
                                      const RequestVoteParam& param,
@@ -32,6 +45,8 @@ Status RaftSender::send_request_vote(const PeerMember& member,
 
     rpc::RequestVoteResponse response;
     grpc::ClientContext context;
+    context.set_deadline(get_system_clock_now() + Milliseconds(timeout_ms_));
+
     grpc::Status grpc_status =
         stub_for(member)->RequestVote(&context, request, &response);
     if (!grpc_status.ok()) {
@@ -83,6 +98,7 @@ Status RaftSender::send_append_entries(const PeerMember& member,
 
     rpc::AppendEntriesResponse response;
     grpc::ClientContext context;
+    context.set_deadline(get_system_clock_now() + Milliseconds(timeout_ms_));
     grpc::Status grpc_status =
         stub_for(member)->AppendEntries(&context, request, &response);
     if (!grpc_status.ok()) {
@@ -113,12 +129,16 @@ Status RaftSender::send_install_snapshot(const PeerMember& member,
                 const InFlightSnapshot& snapshot = it->second;
                 if (snapshot.snapshot_index != param.snapshot_index) break;
                 if (snapshot.snapshot_term != param.snapshot_term) break;
-                return Status::ALREADY_EXIST("snapshot have been send");
+                return Status::ALREADY_EXIST("snapshot is sending the same one");
             }
         } while (false);
         in_flight_snapshots_[member.replica_id] = InFlightSnapshot{
             member.replica_id, param.snapshot_index, param.snapshot_term};
     }
+    auto clear_in_flight = Defer([this, replica_id = member.replica_id]() {
+        std::lock_guard locker{in_flight_mutex_};
+        in_flight_snapshots_.erase(replica_id);
+    });
 
     constexpr size_t kChunkSize = 1 << 20;
     uint64 offset = 0;
@@ -152,6 +172,9 @@ Status RaftSender::send_install_snapshot(const PeerMember& member,
 
         rpc::InstallSnapshotResponse response;
         grpc::ClientContext context;
+        context.set_deadline(get_system_clock_now() +
+                             Milliseconds(timeout_ms_));
+
         grpc::Status grpc_status =
             stub->InstallSnapshot(&context, request, &response);
         RETURN_IF_INVALID_CONDITION(grpc_status.ok(),

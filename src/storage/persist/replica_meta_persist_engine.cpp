@@ -119,7 +119,6 @@ Status ReplicaMetaPersistEngine::load_replica_meta(
     });
 
     RETURN_IF_INVALID_STATUS(FramedRecord<ReplicaMetaCodec>::decode_from_fd(fd, payload))
-    payload.init_param.data_dir = data_dir_;
 
     return Status::OK();
 }
