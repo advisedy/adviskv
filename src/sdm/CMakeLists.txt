@@ -43,6 +43,14 @@ target_link_libraries(sdm PRIVATE
     adviskv_sdm_lib
 )
 
+add_executable(sdm_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/main/main.cpp
+)
+
+target_link_libraries(sdm_test PRIVATE
+    adviskv_sdm_test_lib
+)
+
 add_library(adviskv_sdm_lib
     ${SDM_LIB_SOURCES}
 )

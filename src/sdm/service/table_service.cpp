@@ -41,7 +41,13 @@ Status TableService::place_table(const PlaceTableParam& param) {
     table.state.desired = TableDesired::PRESENT;
     table.state.phase = TablePhase::CREATING;
     table.state.update_ts = func::get_current_ts_ms();
-    return store_->put_table(table);
+
+    testhook::crash_point("sdm.place_table.before_put_table");
+    status = store_->put_table(table);
+    if (status.ok()) {
+        testhook::crash_point("sdm.place_table.after_put_table");
+    }
+    return status;
 }
 
 Status TableService::drop_table(const DropTableParam& param) {

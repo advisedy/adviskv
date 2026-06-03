@@ -2,11 +2,11 @@
 
 #include <exception>
 #include <filesystem>
-#include <stdexcept>
 #include <string>
 
 #include "common/arg_parser.h"
 #include "cases/basic_kv_case.h"
+#include "cases/create_table_crash_recovery_case.h"
 #include "cases/follower_log_catchup_case.h"
 #include "cases/follower_snapshot_catchup_case.h"
 #include "cases/leader_failover_case.h"
@@ -77,6 +77,14 @@ bool run_case(const adviskv::e2e::Options& options) {
              adviskv::e2e::run_restart_persistence_seed_case)
     RUN_CASE("restart_persistence_verify",
              adviskv::e2e::run_restart_persistence_verify_case)
+    RUN_CASE("create_table_crash_before_persist_prepare",
+             adviskv::e2e::run_create_table_crash_before_persist_prepare_case)
+    RUN_CASE("create_table_crash_before_persist_verify",
+             adviskv::e2e::run_create_table_crash_before_persist_verify_case)
+    RUN_CASE("create_table_crash_after_persist_prepare",
+             adviskv::e2e::run_create_table_crash_after_persist_prepare_case)
+    RUN_CASE("create_table_crash_after_persist_verify",
+             adviskv::e2e::run_create_table_crash_after_persist_verify_case)
     RUN_CASE("leader_failover_seed",
              adviskv::e2e::run_leader_failover_seed_case)
     RUN_CASE("leader_failover_verify",

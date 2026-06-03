@@ -8,18 +8,27 @@ from .cluster import (
 )
 
 
+def _service_envs_from_request(request):
+    """Return optional per-service env overrides for indirectly parametrized tests."""
+    return getattr(request, "param", None)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def build_targets():
+    """Build e2e binaries once before the test session starts."""
     build_e2e_targets()
 
 
 @pytest.fixture()
-def cluster():
+def cluster(request):
+    """Start a fresh local AdvisKV cluster for one e2e test."""
     clean_data_dirs()
     write_e2e_configs()
-    cluster = AdvisKVCluster()
+
+    service_envs = _service_envs_from_request(request)
+    test_cluster = AdvisKVCluster(service_envs=service_envs)
     try:
-        cluster.start()
-        yield cluster
+        test_cluster.start()
+        yield test_cluster
     finally:
-        cluster.stop()
+        test_cluster.stop()
