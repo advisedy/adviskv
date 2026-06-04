@@ -19,30 +19,32 @@ namespace adviskv {
 5000 - 5999 持久化特有
 */
 
-#define ADVISKV_STATUS_CODE_LIST(X)                                \
-    X(OK, 0)                                                       \
-    X(ERROR, 1)                                                    \
-    X(KEY_NOT_FOUND, 2)                                            \
-    X(INVALID_ARGUMENT, 3)                                         \
-    X(DB_NOT_FOUND, 4)                                             \
-    X(TABLE_NOT_FOUND, 5)                                          \
-    X(REPLICA_NOT_FOUND, 6)                                        \
-    X(REPLICA_MANAGER_NOT_FOUND, 7)                                \
-    X(NOT_SUPPORTED, 8)                                            \
-    X(ALREADY_EXIST, 9)                                            \
-    X(NO_STUB, 10) /*rpc层面的,没有stub*/                          \
-    X(RPC_ERROR, 11)                                               \
-    X(RETRY_ERROR, 12)                                             \
-    X(RESOURCE_EXHAUSTED, 13)                                      \
-    X(NOT_INIT, 14)                                                \
-    X(ROUTE_NOT_FOUND, 1000)                                       \
-    X(TABLE_META_CACHE_NOT_FOUND, 1001)                            \
-    X(DB_META_CACHE_NOT_FOUND, 1002)                               \
-    X(REPLICA_ERROR, 1003)                                         \
-    X(NOT_LEADER, 2000)                                            \
-    X(NOT_YET_COMMIT, 2001) /*请求已被leader接受，但返回时尚未确认提交，结果未决*/ \
-    X(IS_RECOVERING, 2002)                                         \
-    X(GET_EOF, 5000)      /*读到了eof*/                            \
+#define ADVISKV_STATUS_CODE_LIST(X)                                            \
+    X(OK, 0)                                                                   \
+    X(ERROR, 1)                                                                \
+    X(KEY_NOT_FOUND, 2)                                                        \
+    X(INVALID_ARGUMENT, 3)                                                     \
+    X(DB_NOT_FOUND, 4)                                                         \
+    X(TABLE_NOT_FOUND, 5)                                                      \
+    X(REPLICA_NOT_FOUND, 6)                                                    \
+    X(REPLICA_MANAGER_NOT_FOUND, 7)                                            \
+    X(NOT_SUPPORTED, 8)                                                        \
+    X(ALREADY_EXIST, 9)                                                        \
+    X(NO_STUB, 10) /*rpc层面的,没有stub*/                                      \
+    X(RPC_ERROR, 11)                                                           \
+    X(RETRY_ERROR, 12)                                                         \
+    X(RESOURCE_EXHAUSTED, 13)                                                  \
+    X(NOT_INIT, 14)                                                            \
+    X(ROUTE_NOT_FOUND, 1000)                                                   \
+    X(TABLE_META_CACHE_NOT_FOUND, 1001)                                        \
+    X(DB_META_CACHE_NOT_FOUND, 1002)                                           \
+    X(REPLICA_ERROR, 1003)                                                     \
+    X(NOT_LEADER, 2000)                                                        \
+    X(NOT_YET_COMMIT,                                                          \
+      2001) /*请求已被leader接受，但返回时尚未确认提交，结果未决*/             \
+    X(IS_RECOVERING, 2002)                                                     \
+    X(UNKNOWN, 4000)      /*SDK 对外语义：请求结果未决，调用方应重试或读校验*/ \
+    X(GET_EOF, 5000)      /*读到了eof*/                                        \
     X(PARTIAL_READ, 5001) /*读取到一半遇到eof*/
 
 enum class StatusCode : int32_t {
@@ -122,7 +124,6 @@ class Status {
     StatusCode code_;
     std::string msg_;
 };
-
 
 using StatusOr = std::optional<Status>;
 

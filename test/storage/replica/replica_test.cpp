@@ -48,10 +48,9 @@ class ReplicaTest : public ::testing::Test {
         return manager.get_replica_by_id(replica_id_);
     }
 
-    ReplicaPtr wait_until_leader(
-        ReplicaManager& manager,
-        std::chrono::milliseconds timeout = std::chrono::milliseconds(1500))
-        const {
+    ReplicaPtr wait_until_leader(ReplicaManager& manager,
+                                 std::chrono::milliseconds timeout =
+                                     std::chrono::milliseconds(1500)) const {
         const auto deadline = std::chrono::steady_clock::now() + timeout;
         while (std::chrono::steady_clock::now() < deadline) {
             ReplicaPtr replica = manager.get_replica_by_id(replica_id_);
@@ -163,11 +162,11 @@ TEST_F(ReplicaTest, TakesSnapshotNaturallyAfterEnoughAppliedLogs) {
 
     for (int i = 0; i < 1000; ++i) {
         Status status = replica->put(PutParam{
-            .key = "snapshot-auto-" + std::to_string(i),
-            .value = "value-" + std::to_string(i),
+            "snapshot-auto-" + std::to_string(i),
+            "value-" + std::to_string(i),
         });
-        ASSERT_TRUE(status.ok()) << test::status_debug_string(status)
-                                 << ", index=" << i;
+        ASSERT_TRUE(status.ok())
+            << test::status_debug_string(status) << ", index=" << i;
     }
 
     const auto deadline =
@@ -186,8 +185,7 @@ TEST_F(ReplicaTest, TakesSnapshotNaturallyAfterEnoughAppliedLogs) {
     EXPECT_GE(state.last_applied, state.snapshot_index);
 
     Value value;
-    Status status =
-        replica->get(GetParam{.key = "snapshot-auto-999"}, value);
+    Status status = replica->get(GetParam{"snapshot-auto-999"}, value);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(value, "value-999");
 }

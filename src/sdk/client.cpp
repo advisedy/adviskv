@@ -34,12 +34,14 @@ void record_get_result(const Status& status) {
     ADVISKV_METRICS_COUNTER("sdk_get_failure");
 }
 
-void add_not_yet_commit_retry_hint(Status* status) {
+void convert_not_yet_commit_to_unknown(Status* status) {
     if (status == nullptr || status->code() != StatusCode::NOT_YET_COMMIT) {
         return;
     }
+    status->set_code(StatusCode::UNKNOWN);
     status->set_msg(fmt::format(
-        "{}; retry later or confirm the result with a subsequent get",
+        "request result is unknown: {}; retry later or confirm the result "
+        "with a subsequent get",
         status->msg()));
 }
 
@@ -81,7 +83,7 @@ Status KVClient::put(const Key& key, const Value& value) {
     }
     if (!should_invalidate_route(status)) {
         // 说明route是对的
-        add_not_yet_commit_retry_hint(&status);
+        convert_not_yet_commit_to_unknown(&status);
         return status;
     }
 
@@ -110,7 +112,7 @@ Status KVClient::put(const Key& key, const Value& value) {
     }
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("sdk_put_retry_failure");
-        add_not_yet_commit_retry_hint(&status);
+        convert_not_yet_commit_to_unknown(&status);
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "put retry failed, db={}, table={}, key={}, status={}",
                         conf_.db_name, conf_.table_name, key,
@@ -154,7 +156,7 @@ Status KVClient::del(const Key& key) {
         status = storage_client_.del(route, key);
     }
     if (!should_invalidate_route(status)) {
-        add_not_yet_commit_retry_hint(&status);
+        convert_not_yet_commit_to_unknown(&status);
         return status;
     }
 
@@ -182,7 +184,7 @@ Status KVClient::del(const Key& key) {
     }
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("sdk_delete_retry_failure");
-        add_not_yet_commit_retry_hint(&status);
+        convert_not_yet_commit_to_unknown(&status);
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "delete retry failed, db={}, table={}, key={}, "
                         "status={}",
@@ -228,6 +230,7 @@ Status KVClient::get(const Key& key, Value* value) {
         status = storage_client_.get(route, key, value);
     }
     if (!should_invalidate_route(status)) {
+        convert_not_yet_commit_to_unknown(&status);
         return status;
     }
 
@@ -254,6 +257,7 @@ Status KVClient::get(const Key& key, Value* value) {
     }
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("sdk_get_retry_failure");
+        convert_not_yet_commit_to_unknown(&status);
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "get retry failed, db={}, table={}, key={}, status={}",
                         conf_.db_name, conf_.table_name, key,
