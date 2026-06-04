@@ -564,8 +564,9 @@ TEST_F(RaftClusterTest, MinorityLeaderCannotCommitNewEntry) {
     ASSERT_LT(cluster_.node_ptr(0)->commit_index(), uncommitted_idx);
 }
 
-// 对于写请求而言：如果当前 leader 已经接受了写入，但在这次返回前还没有达到多数派提交，
-// 那么客户端应看到的是 NOT_YET_COMMIT，而不是 OK。
+// 对于写请求而言：如果当前 leader
+// 已经接受了写入，但在这次返回前还没有达到多数派提交， 那么客户端应看到的是
+// NOT_YET_COMMIT，而不是 OK。
 TEST_F(RaftClusterTest, PutReturnsNotYetCommitBeforeQuorumCommit) {
     create_and_set_0_leader(5);
     ASSERT_TRUE(tick_until_all_committed(1));
@@ -588,7 +589,8 @@ TEST_F(RaftClusterTest, PutReturnsNotYetCommitBeforeQuorumCommit) {
     EXPECT_EQ(leader->commit_index(), base_commit);
     EXPECT_LT(leader->commit_index(), target_idx);
 
-    // 这对应 Replica::put 的 NOT_YET_COMMIT 边界：leader 已接受，但提交尚未确认。
+    // 这对应 Replica::put 的 NOT_YET_COMMIT 边界：leader
+    // 已接受，但提交尚未确认。
     EXPECT_EQ(leader->commit_index() < target_idx, true);
 
     // 继续复制到多数派，确认它后续可以真正提交。
@@ -625,7 +627,8 @@ TEST_F(RaftClusterTest, DeleteReturnsNotYetCommitBeforeQuorumCommit) {
     EXPECT_EQ(leader->commit_index(), base_commit);
     EXPECT_LT(leader->commit_index(), target_idx);
 
-    // 这对应 Replica::del 的 NOT_YET_COMMIT 边界：删除已被 leader 接受，但提交尚未确认。
+    // 这对应 Replica::del 的 NOT_YET_COMMIT 边界：删除已被 leader
+    // 接受，但提交尚未确认。
     EXPECT_EQ(leader->commit_index() < target_idx, true);
 
     replicate_until_committed(leader_idx, target_idx, {1, 2});

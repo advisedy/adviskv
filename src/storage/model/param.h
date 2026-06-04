@@ -137,6 +137,7 @@ struct AppendEntriesParam {
 struct AppendEntriesResult {
     Term term;
     bool success;
+    LogIndex last_log_index;
 };
 
 struct InstallSnapshotParam {

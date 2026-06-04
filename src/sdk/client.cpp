@@ -126,7 +126,8 @@ Status KVClient::del(const Key& key) {
     ADVISKV_METRICS_COUNTER("sdk_delete_request");
 
     Status status = Status::OK();
-    auto delete_result_guard = Defer([&status]() { record_delete_result(status); });
+    auto delete_result_guard =
+        Defer([&status]() { record_delete_result(status); });
 
     status = conf_.validate();
     if (status.fail()) {

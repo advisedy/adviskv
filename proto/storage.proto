@@ -109,6 +109,7 @@ message AppendEntriesResponse{
   adviskv.pb.BaseRsp base_rsp = 1;
   int64 term = 2;
   bool success = 3;
+  int64 last_log_index = 4;
 }
 
 message InstallSnapshotRequest {

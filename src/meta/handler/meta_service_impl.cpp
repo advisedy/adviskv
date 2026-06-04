@@ -8,7 +8,6 @@
 
 #include "common/define.h"
 #include "common/status.h"
-#include "meta/catalog/catalog_manager.h"
 #include "meta/service/ddl_service.h"
 
 namespace adviskv::meta {

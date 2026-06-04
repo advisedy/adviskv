@@ -86,6 +86,7 @@ Status GrpcRaftRpcTransport::append_entries(const PeerMember& target,
 
     result.term = response.term();
     result.success = response.success();
+    result.last_log_index = response.last_log_index();
     return Status::OK();
 }
 

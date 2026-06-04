@@ -1,11 +1,10 @@
 #include "storage/handler/storage_service.h"
 
+#include <fmt/format.h>
 #include <grpcpp/server_context.h>
 #include <grpcpp/support/status.h>
 
 #include <string_view>
-
-#include <fmt/format.h>
 
 #include "common/confmgr.h"
 #include "common/defer.h"
@@ -42,8 +41,7 @@ void record_storage_write_handler_result(std::string_view op_name,
             ADVISKV_METRICS_COUNTER(prefix + "_replica_not_found");
             break;
         case StatusCode::REPLICA_MANAGER_NOT_FOUND:
-            ADVISKV_METRICS_COUNTER(prefix +
-                                    "_replica_manager_not_found");
+            ADVISKV_METRICS_COUNTER(prefix + "_replica_manager_not_found");
             break;
         default:
             ADVISKV_METRICS_COUNTER(prefix + "_other_error");
@@ -61,8 +59,8 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
 
     UNUSED(context);
     Status status = Status::OK();
-    auto record_result =
-        Defer([&status]() { record_storage_write_handler_result("put", status); });
+    auto record_result = Defer(
+        [&status]() { record_storage_write_handler_result("put", status); });
 
     if (!replica_manager_) {
         status = Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
@@ -364,7 +362,7 @@ grpc::Status StorageServiceImpl::AppendEntries(
     fill_base_rsp(response, status);
     response->set_success(result.success);
     response->set_term(result.term);
-
+    response->set_last_log_index(result.last_log_index);
     return grpc::Status::OK;
 }
 

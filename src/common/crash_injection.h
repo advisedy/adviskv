@@ -5,8 +5,6 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "common/log.h"
-
 namespace adviskv::testhook {
 
 inline bool crash_point_enabled(const char* name) {
@@ -23,7 +21,6 @@ inline bool crash_point_enabled(const char* name) {
 inline void crash_point(const char* name) {
 #ifdef ADVISKV_ENABLE_CRASH_TEST
     if (!name) {
-        LOG_DEBUG("crash point name is nullptr");
         return;
     }
     if (crash_point_enabled(name)) {

@@ -93,7 +93,7 @@ void RaftNode::tick() {
 
 void RaftNode::become_candidate() {
     if (recovering_) return;
-    LOG_INFO("start become cadidate");
+    LOG_INFO("replica:{} start become cadidate", self_id_.to_string());
     election_generation_++;
     current_term_++;
     voted_for_ = self_id_;
@@ -254,9 +254,8 @@ RaftMessage RaftNode::build_append_entries_message_unlocked(
 
 void RaftNode::handle_request_vote(const RequestVoteParam& param,
                                    RequestVoteResult& result) {
-    LOG_DEBUG("get request vote from {}.{}.{}", param.from_replica_id.table_id,
-              param.from_replica_id.shard_index,
-              param.from_replica_id.replica_index);
+    LOG_DEBUG("replica:{} get request vote from {}", self_id_.to_string(),
+              param.from_replica_id.to_string());
     std::lock_guard lock(mutex_);
     result.term = current_term_;
     result.vote_granted = false;
@@ -289,9 +288,9 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
 
     if (!voted_for_.has_value() ||
         voted_for_.value() == param.from_replica_id) {
-        LOG_DEBUG("vote to {}.{}.{}, current_term:{}",
-                  param.to_replica_id.table_id, param.to_replica_id.shard_index,
-                  param.to_replica_id.replica_index, current_term_);
+        LOG_DEBUG("replica:{} vote to {}, current_term:{}",
+                  self_id_.to_string(), param.to_replica_id.table_id,
+                  param.to_replica_id.to_string(), current_term_);
         result.vote_granted = true;
         voted_for_ = param.from_replica_id;
         // election_ticks_ = 0;
@@ -316,7 +315,7 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     std::lock_guard lock(mutex_);
     result.success = false;
     result.term = current_term_;
-
+    result.last_log_index = last_log_index_unlocked();
     if (param.term < current_term_) {
         ADVISKV_METRICS_COUNTER(
             "storage_raft_handle_append_entries_stale_term");
@@ -335,8 +334,12 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     if (param.prev_log_index > 0) {
         if (param.prev_log_index < snapshot_index_) {
             // TODO突然发现自己怎么还留了一个这个地方啊？这里的话如果出现了这种情况的话，肯定会越来越糟糕的啊，很吓人，我靠，以后一定要处理一下。
+            // 发现应该是不会出现这种情况的，这种情况在leader发送消息之前就会判断出来，然后发送快照，leader那边接受到快照之后也会重置一下follower的next_index，所以if这种情况不会发生
             ADVISKV_METRICS_COUNTER(
                 "storage_raft_handle_append_entries_prev_behind_snapshot");
+            LOG_WARN(
+                "raft node: follower receive append entries: "
+                "param.prev_log_index < snapshot_index_!!");
             return;
         }
         if (get_term(param.prev_log_index) != param.prev_log_term) {
@@ -399,13 +402,15 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
 
 void RaftNode::handle_vote_response(const ReplicaID& from,
                                     const RequestVoteResult& result) {
-    LOG_DEBUG("get vote response from {}.{}.{}", from.table_id,
-              from.shard_index, from.replica_index);
     UNUSED(from);
-    std::lock_guard lock(mutex_);
+
     // 已经不是 CANDIDATE 了，就直接忽略之前的发起内容
     if (role_ != ReplicaRole::CANDIDATE) return;
 
+    LOG_DEBUG("candidate replica:{} get vote response from replica:{}",
+              self_id_.to_string(), from.to_string());
+
+    std::lock_guard lock(mutex_);
     if (result.term > current_term_) {
         become_follower(result.term);
         return;
@@ -414,9 +419,10 @@ void RaftNode::handle_vote_response(const ReplicaID& from,
     if (!result.vote_granted) return;
 
     granted_vote_count_++;
-    LOG_DEBUG("get vote response from {}.{}.{}, self vote count++ to {}",
-              from.table_id, from.shard_index, from.replica_index,
-              granted_vote_count_);
+    LOG_DEBUG(
+        "candidate replica:{} get vote response from replica:{}, self vote "
+        "count++ to {}",
+        self_id_.to_string(), from.to_string(), granted_vote_count_);
 
     int limit = static_cast<int>(members_.size()) / 2 + 1;
     if (granted_vote_count_ >= limit) {
@@ -473,19 +479,35 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
 
     if (result.success) {
         ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_success");
+        LOG_DEBUG("leader replica:{} append enrties to replica:{} success.",
+                  self_id_.to_string(), from.to_string());
         // 复制成功，更新 match_index 和 next_index
         match_index_[from] = last_log_index_unlocked();
         next_index_[from] = last_log_index_unlocked() + 1;
         try_update_commit_index();
     } else {
         ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_reject");
-        // prev_log 对不上，往前回退
-        auto it = next_index_.find(from);
-        if (it != next_index_.end() && it->second > 1) {
+        // prev_log 对不上
+
+        LogIndex new_next =
+            std::min(result.last_log_index, last_log_index_unlocked()) + 1;
+
+        if (auto it = next_index_.find(from); it != next_index_.end()) {
             ADVISKV_METRICS_COUNTER(
                 "storage_raft_handle_append_response_backoff");
-            --it->second;
+            if (new_next >= it->second && it->second > 1) {
+                new_next = it->second - 1;  // 跳转无效，逐次回退
+            }
+            it->second = new_next;
+        } else {
+            LOG_WARN("next index not find {}", from.to_string());
+            next_index_[from] = new_next;
         }
+
+        LOG_DEBUG(
+            "leader replica:{} append enrties to replica:{} failed. set "
+            "next_index:{}",
+            self_id_.to_string(), from.to_string(), new_next);
     }
     return Status::OK();
 }
@@ -516,7 +538,10 @@ void RaftNode::advance_last_applied(LogIndex applied) {
 
 void RaftNode::become_follower(Term later_term) {
     assert(later_term >= current_term_);
-    LOG_INFO("become follower");
+
+    LOG_INFO("replica:{} become follower, new term:{}", self_id_.to_string(),
+             later_term);
+
     if (later_term > current_term_) {
         voted_for_.reset();
     }
@@ -529,7 +554,7 @@ void RaftNode::become_follower(Term later_term) {
 
 void RaftNode::become_leader() {
     if (recovering_) return;
-    LOG_INFO("become leader");
+    LOG_INFO("replica:{} become leader", self_id_.to_string());
     role_ = ReplicaRole::LEADER;
     // heartbeat_ticks_ = election_ticks_ = 0;
     election_tick_trigger_.stop();
@@ -593,6 +618,8 @@ void RaftNode::try_update_commit_index() {
 
         int limit_cnt = static_cast<int>(members_.size()) / 2 + 1;
         if (success_cnt >= limit_cnt) {
+            LOG_DEBUG("replica:{} commit_index pushed success. from {} to {}.",
+                      self_id_.to_string(), commit_index_, idx);
             commit_index_ = idx;
         }
     }
