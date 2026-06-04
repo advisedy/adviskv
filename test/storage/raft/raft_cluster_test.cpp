@@ -471,6 +471,13 @@ class RaftClusterTest : public ::testing::Test {
         return {node->snapshot_index_, node->snapshot_term_};
     }
 
+    void set_node_next_index(int node_idx, const ReplicaID& target,
+                             LogIndex val) {
+        RaftNode* node = cluster_.node_ptr(node_idx);
+        if (!node) return;
+        node->next_index_[target] = val;
+    }
+
     RaftCluster cluster_;
     static inline int next_table_id_{
         500};  // TODO 这里是在做什么？为何要static + inline
@@ -691,8 +698,7 @@ TEST_F(RaftClusterTest, HigherTermVoteRequestForcesLeaderStepDown) {
     ASSERT_EQ(cluster_.leader_idx(), 2);
 }
 
-// 检测当一些节点没有收到WAL的时候，最终是能够WAL同步的
-TEST_F(RaftClusterTest, test001) {
+TEST_F(RaftClusterTest, LaggingFollowersCatchUpCommittedLogs) {
     create_and_stabilize(5);
     cluster_.isolate(3);
     cluster_.isolate(4);
@@ -721,10 +727,7 @@ TEST_F(RaftClusterTest, test001) {
     ASSERT_EQ(cluster_.node_ptr(4)->commit_index(), last_idx);
 }
 
-// num: 5 然后leader:node0只发给了一个node1，然后宕机了
-// 然后另外三个又好了，
-// 然后这三个有一个当了leader，发送消息，把node1的log截断了。
-TEST_F(RaftClusterTest, test002) {
+TEST_F(RaftClusterTest, UncommittedOldLeaderLogsAreOverwrittenByNewLeader) {
     create_and_stabilize(5);
     RaftNode* old_leader = cluster_.leader_ptr();
     int old_leader_idx = cluster_.leader_idx();
@@ -1108,6 +1111,165 @@ TEST_F(RaftClusterTest, ReadIndexRequiresCommittedCurrentTermEntry) {
     EXPECT_EQ(read_index, cluster_.node_ptr(2)->commit_index());
     EXPECT_EQ(read_term, cluster_.node_ptr(2)->current_term());
     EXPECT_FALSE(read_messages.empty());
+}
+
+// 验证读一致性检查中，INSTALL_SNAPSHOT 消息也被计入 quorum。
+// 之前只处理 APPEND_ENTRIES，遇到 INSTALL_SNAPSHOT 直接 continue 跳过，
+// 导致我们会错误的返回一次NO_LEADER，然后等到心跳补上了快照之后才会OK
+TEST_F(RaftClusterTest, ReadIndexCountsInstallSnapshotMessage) {
+    create_and_set_0_leader(3);
+    ASSERT_TRUE(tick_until_all_committed(1));
+    ASSERT_EQ(cluster_.leader_idx(), 0);
+    drop_all_messages();
+
+    // 写入并提交，然后 leader 做 snapshot 截断
+    LogIndex last_idx = 0;
+    for (int i = 0; i < 5; i++) {
+        last_idx = propose_and_replicate_once(0, {1, 2}, WriteOpType::PUT,
+                                              "snap_read_" + std::to_string(i),
+                                              "v" + std::to_string(i));
+    }
+    ASSERT_EQ(cluster_.node_ptr(0)->commit_index(), last_idx);
+
+    cluster_.node_ptr(0)->advance_last_applied(last_idx);
+    ASSERT_TRUE(cluster_.node_ptr(0)->truncate_log(4).ok());
+    ASSERT_EQ(cluster_.node_ptr(0)->snapshot_index(), 4);
+
+    // 强制 node 2 的 next_index 降到 snapshot_index 以下，
+    // 模拟 follower 落后太多、leader 需要发快照的场景
+    set_node_next_index(0, cluster_.replica_id(2), 3);
+
+    std::vector<RaftMessage> messages;
+    LogIndex read_index = 0;
+    Term read_term = 0;
+    Status status = cluster_.node_ptr(0)->build_append_entries_for_read(
+        messages, read_index, read_term);
+    ASSERT_TRUE(status.ok()) << status.to_string();
+
+    // 验证同时存在 APPEND_ENTRIES 和 INSTALL_SNAPSHOT
+    bool has_snapshot = false;
+    bool has_append = false;
+    for (const auto& msg : messages) {
+        if (msg.type == RaftMessageType::INSTALL_SNAPSHOT) has_snapshot = true;
+        if (msg.type == RaftMessageType::APPEND_ENTRIES) has_append = true;
+    }
+
+    ASSERT_TRUE(has_snapshot);
+    ASSERT_TRUE(has_append);
+
+    // 模拟 Replica::check_self_leader_and_get_read_index 的计数逻辑
+    int success_cnt = 1;  // self
+
+    for (auto& msg : messages) {
+        int target = cluster_.find_node(msg.target.replica_id);
+        ASSERT_GE(target, 0);
+
+        if (msg.type == RaftMessageType::APPEND_ENTRIES) {
+            AppendEntriesResult res;
+            cluster_.node_ptr(target)->handle_append_entries(msg.append_param,
+                                                             res);
+            IGNORE_RESULT(cluster_.node_ptr(0)->handle_append_response(
+                msg.target.replica_id, res));
+            if (res.term == read_term) success_cnt++;
+        } else if (msg.type == RaftMessageType::INSTALL_SNAPSHOT) {
+            Status ps = cluster_.node_ptr(target)->prepare_install_snapshot(
+                msg.snapshot_param.term, msg.snapshot_param.snapshot_index);
+            InstallSnapshotResult res;
+            res.term = cluster_.node_ptr(target)->current_term();
+            res.success = ps.ok();
+            if (ps.ok()) {
+                cluster_.node_ptr(target)->install_snapshot(
+                    msg.snapshot_param.snapshot_index,
+                    msg.snapshot_param.snapshot_term, msg.snapshot_param.term);
+            }
+            cluster_.node_ptr(0)->handle_install_snapshot_response(
+                msg.target.replica_id, res);
+            if (res.term == read_term) success_cnt++;
+        }
+    }
+
+    EXPECT_GE(success_cnt, 3);
+}
+
+// 验证读一致性检查中，APPEND_ENTRIES 被 reject（success=false）但 term 匹配时，
+// 仍然计入 quorum。
+// 场景：A(term=1) 是 leader，B 先被隔离并落后；A 只把新日志复制给 C 并提交。
+// 随后恢复 B，让 B 发起一次真实但失败的选举：A 收到 B 的更高 term RequestVote
+// 后退为 follower，但因 B 日志落后拒绝投票。之后再次隔离 B，A 靠 C 重新
+// 当选(term=3)。此时记录的 next_index[B] 就会比B实际的多，所以会 res.success =
+// false
+TEST_F(RaftClusterTest, ReadIndexCountsRejectedAppendEntriesWithMatchingTerm) {
+    create_and_set_0_leader(3);
+    ASSERT_TRUE(tick_until_all_committed(1));
+    ASSERT_EQ(cluster_.leader_idx(), 0);
+    drop_all_messages();
+
+    // B 先被隔离并落后；A 只靠 self + C 提交一条 term=1 日志。
+    cluster_.isolate(1);
+    LogIndex idx =
+        propose_and_replicate_once(0, {2}, WriteOpType::PUT, "k1", "v1");
+    ASSERT_EQ(cluster_.node_ptr(0)->commit_index(), idx);
+    ASSERT_LT(cluster_.node_ptr(1)->last_log_index(), idx);
+    drop_all_messages();
+
+    // 恢复 B，让真实存在且日志落后的 B 发起选举。A 会因为更高 term 退为
+    // follower，但会因为 B 的日志不够新而拒绝投票，所以 B 不会当选。
+    cluster_.restore(1);
+    assert_not_elected_after_votes(1, {0});
+    ASSERT_EQ(cluster_.node_ptr(0)->current_term(), 2);
+
+    // 再次隔离 B，保证 A 重新当选和提交当前 term no-op 的过程只和 C 通信，
+    // B 不会被顺便追平。
+    cluster_.isolate(1);
+    elect_with_votes(0, {2});
+    ASSERT_EQ(cluster_.leader_idx(), 0);
+    drop_all_messages();
+
+    // 提交 A 的 no-op，确保 has_committed_current_term_entry 通过
+    replicate_until_committed(0, cluster_.node_ptr(0)->last_log_index(), {2});
+
+    // 恢复 B。B 仍然缺少 index=idx 的日志；等它收到 A 的 ReadIndex 探测时，
+    // 会先被 AppendEntries 的 term 推进到 read_term，再因为 prev_log 不存在而
+    // reject。
+    cluster_.restore(1);
+    ASSERT_LT(cluster_.node_ptr(1)->last_log_index(), idx);
+
+    // 隔离 C，quorum 只能靠 B
+    cluster_.isolate(2);
+
+    std::vector<RaftMessage> messages;
+    LogIndex read_index = 0;
+    Term read_term = 0;
+    Status status = cluster_.node_ptr(0)->build_append_entries_for_read(
+        messages, read_index, read_term);
+    ASSERT_TRUE(status.ok()) << status.to_string();
+
+    int success_cnt = 1;
+    int limit = static_cast<int>(messages.size() + 1) / 2 + 1;
+
+    for (auto& msg : messages) {
+        int target = cluster_.find_node(msg.target.replica_id);
+        ASSERT_GE(target, 0);
+        if (cluster_.is_isolate(target)) continue;
+
+        ASSERT_EQ(target, 1);
+        ASSERT_EQ(msg.type, RaftMessageType::APPEND_ENTRIES);
+        EXPECT_GT(msg.append_param.prev_log_index,
+                  cluster_.node_ptr(target)->last_log_index());
+        AppendEntriesResult res;
+        cluster_.node_ptr(target)->handle_append_entries(msg.append_param, res);
+
+        // B 缺少 prev_log_index 对应日志，所以 reject。
+        EXPECT_FALSE(res.success);
+        // 但 term 匹配 read_term
+        EXPECT_EQ(res.term, read_term);
+
+        IGNORE_RESULT(cluster_.node_ptr(0)->handle_append_response(
+            msg.target.replica_id, res));
+        if (res.term == read_term) success_cnt++;
+    }
+
+    EXPECT_GE(success_cnt, limit);
 }
 
 }  // namespace adviskv::storage
