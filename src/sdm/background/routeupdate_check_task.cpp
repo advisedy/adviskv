@@ -11,7 +11,6 @@
 #include "common/type.h"
 #include "sdm/model/i_sdm_metastore.h"
 #include "sdm/model/store.h"
-#include "sdm/selector/leader_selector/leader_selector.h"
 
 namespace adviskv::sdm {
 

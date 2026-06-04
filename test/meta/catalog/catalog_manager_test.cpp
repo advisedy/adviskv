@@ -72,10 +72,7 @@ TEST_F(CatalogManagerTest, CreateDbAndTableBasic) {
 
     TableMeta table_meta;
     ASSERT_TRUE(catalog
-                    .create_table(CreateTableMetaParam{"test_db",
-                                                       "users",
-                                                       4,
-                                                       3,
+                    .create_table(CreateTableMetaParam{"test_db", "users", 4, 3,
                                                        "pool-a"},
                                   &table_meta)
                     .ok());
@@ -94,11 +91,8 @@ TEST_F(CatalogManagerTest, CreateDbAndTableBasic) {
 
     TableMeta table_meta2;
     ASSERT_TRUE(catalog
-                    .create_table(CreateTableMetaParam{"test_db",
-                                                       "orders",
-                                                       8,
-                                                       2,
-                                                       "pool-b"},
+                    .create_table(CreateTableMetaParam{"test_db", "orders", 8,
+                                                       2, "pool-b"},
                                   &table_meta2)
                     .ok());
     EXPECT_EQ(table_meta2.table_id, 1);
@@ -177,11 +171,8 @@ TEST_F(CatalogManagerTest, CreateTableFailsDueToPersist_TableShouldNotExist) {
 
     TableMeta table_meta;
     ASSERT_TRUE(catalog
-                    .create_table(CreateTableMetaParam{"mydb",
-                                                       "existing_table",
-                                                       4,
-                                                       3,
-                                                       "pool-a"},
+                    .create_table(CreateTableMetaParam{"mydb", "existing_table",
+                                                       4, 3, "pool-a"},
                                   &table_meta)
                     .ok());
 
@@ -190,12 +181,9 @@ TEST_F(CatalogManagerTest, CreateTableFailsDueToPersist_TableShouldNotExist) {
     ASSERT_TRUE(faulty_catalog.init().ok());
 
     TableMeta fail_table_meta;
-    Status status = faulty_catalog.create_table(CreateTableMetaParam{"mydb",
-                                                                     "fail_table",
-                                                                     2,
-                                                                     1,
-                                                                     "pool-b"},
-                                                &fail_table_meta);
+    Status status = faulty_catalog.create_table(
+        CreateTableMetaParam{"mydb", "fail_table", 2, 1, "pool-b"},
+        &fail_table_meta);
     EXPECT_TRUE(status.fail());
 
     TableMeta check_meta;
@@ -219,30 +207,21 @@ TEST_F(CatalogManagerTest, ListTablesAndGetQueries) {
     ASSERT_TRUE(
         catalog.create_db(CreateDBMetaParam{"db2", "z2"}, nullptr).ok());
 
-    ASSERT_TRUE(catalog
-                    .create_table(CreateTableMetaParam{"db1",
-                                                       "table1",
-                                                       4,
-                                                       3,
-                                                       "pool-a"},
-                                  nullptr)
-                    .ok());
-    ASSERT_TRUE(catalog
-                    .create_table(CreateTableMetaParam{"db1",
-                                                       "table2",
-                                                       2,
-                                                       1,
-                                                       "pool-b"},
-                                  nullptr)
-                    .ok());
-    ASSERT_TRUE(catalog
-                    .create_table(CreateTableMetaParam{"db2",
-                                                       "table3",
-                                                       8,
-                                                       2,
-                                                       "pool-c"},
-                                  nullptr)
-                    .ok());
+    ASSERT_TRUE(
+        catalog
+            .create_table(CreateTableMetaParam{"db1", "table1", 4, 3, "pool-a"},
+                          nullptr)
+            .ok());
+    ASSERT_TRUE(
+        catalog
+            .create_table(CreateTableMetaParam{"db1", "table2", 2, 1, "pool-b"},
+                          nullptr)
+            .ok());
+    ASSERT_TRUE(
+        catalog
+            .create_table(CreateTableMetaParam{"db2", "table3", 8, 2, "pool-c"},
+                          nullptr)
+            .ok());
 
     DBMeta got_db1;
     ASSERT_TRUE(catalog.get_db("db1", &got_db1).ok());
@@ -301,37 +280,28 @@ TEST_F(CatalogManagerTest, PersistAndRecoverDataConsistency) {
         ASSERT_TRUE(catalog.init().ok());
 
         ASSERT_TRUE(
-            catalog
-                .create_db(CreateDBMetaParam{"db_alpha", "zone-a"}, nullptr)
+            catalog.create_db(CreateDBMetaParam{"db_alpha", "zone-a"}, nullptr)
                 .ok());
         ASSERT_TRUE(
             catalog.create_db(CreateDBMetaParam{"db_beta", "zone-b"}, nullptr)
                 .ok());
 
         ASSERT_TRUE(catalog
-                        .create_table(CreateTableMetaParam{"db_alpha",
-                                                           "users",
-                                                           4,
-                                                           3,
-                                                           "pool-a"},
+                        .create_table(CreateTableMetaParam{"db_alpha", "users",
+                                                           4, 3, "pool-a"},
                                       nullptr)
                         .ok());
         ASSERT_TRUE(catalog
-                        .create_table(CreateTableMetaParam{"db_alpha",
-                                                           "orders",
-                                                           8,
-                                                           2,
-                                                           "pool-b"},
+                        .create_table(CreateTableMetaParam{"db_alpha", "orders",
+                                                           8, 2, "pool-b"},
                                       nullptr)
                         .ok());
-        ASSERT_TRUE(catalog
-                        .create_table(CreateTableMetaParam{"db_beta",
-                                                           "products",
-                                                           2,
-                                                           1,
-                                                           "pool-c"},
-                                      nullptr)
-                        .ok());
+        ASSERT_TRUE(
+            catalog
+                .create_table(
+                    CreateTableMetaParam{"db_beta", "products", 2, 1, "pool-c"},
+                    nullptr)
+                .ok());
     }
 
     {
@@ -386,20 +356,17 @@ TEST_F(CatalogManagerTest, PersistAndRecoverDataConsistency) {
 
         DBMeta new_db;
         ASSERT_TRUE(
-            catalog
-                .create_db(CreateDBMetaParam{"db_gamma", "zone-c"}, &new_db)
+            catalog.create_db(CreateDBMetaParam{"db_gamma", "zone-c"}, &new_db)
                 .ok());
         EXPECT_EQ(new_db.db_id, 2);
 
         TableMeta new_table;
-        ASSERT_TRUE(catalog
-                        .create_table(CreateTableMetaParam{"db_gamma",
-                                                           "new_table",
-                                                           1,
-                                                           1,
-                                                           "pool-d"},
-                                      &new_table)
-                        .ok());
+        ASSERT_TRUE(
+            catalog
+                .create_table(CreateTableMetaParam{"db_gamma", "new_table", 1,
+                                                   1, "pool-d"},
+                              &new_table)
+                .ok());
         EXPECT_EQ(new_table.table_id, 3);
     }
 }
@@ -418,11 +385,8 @@ TEST_F(CatalogManagerTest, DeletedTableRecreateSameNameUsesNewTableId) {
 
     TableMeta old_table;
     ASSERT_TRUE(catalog
-                    .create_table(CreateTableMetaParam{"commerce",
-                                                       "orders",
-                                                       4,
-                                                       3,
-                                                       "pool-a"},
+                    .create_table(CreateTableMetaParam{"commerce", "orders", 4,
+                                                       3, "pool-a"},
                                   &old_table)
                     .ok());
     ASSERT_EQ(old_table.table_id, 0);
@@ -443,11 +407,8 @@ TEST_F(CatalogManagerTest, DeletedTableRecreateSameNameUsesNewTableId) {
 
     TableMeta new_table;
     ASSERT_TRUE(catalog
-                    .create_table(CreateTableMetaParam{"commerce",
-                                                       "orders",
-                                                       8,
-                                                       2,
-                                                       "pool-b"},
+                    .create_table(CreateTableMetaParam{"commerce", "orders", 8,
+                                                       2, "pool-b"},
                                   &new_table)
                     .ok());
     EXPECT_EQ(new_table.table_id, 1);
@@ -461,9 +422,8 @@ TEST_F(CatalogManagerTest, DeletedTableRecreateSameNameUsesNewTableId) {
     EXPECT_EQ(by_id.table_id, old_table.table_id);
     EXPECT_EQ(by_id.state, TableState::DELETED);
 }
-
 // 关于table删除后的持久化
-TEST_F(CatalogManagerTest, test001) {
+TEST_F(CatalogManagerTest, RecoverDeletedTableKeepsIdLookupAndClearsNameIndex) {
     auto dir = make_sub_dir("recover_deleted");
     {
         MetaPersistEngine engine(dir.string());
@@ -476,11 +436,8 @@ TEST_F(CatalogManagerTest, test001) {
                 .ok());
         TableMeta old_table;
         ASSERT_TRUE(catalog
-                        .create_table(CreateTableMetaParam{"commerce",
-                                                           "orders",
-                                                           4,
-                                                           3,
-                                                           "pool-a"},
+                        .create_table(CreateTableMetaParam{"commerce", "orders",
+                                                           4, 3, "pool-a"},
                                       &old_table)
                         .ok());
         ASSERT_TRUE(
@@ -524,11 +481,8 @@ TEST_F(CatalogManagerTest, RecoverSkipsDeletedNameIndexAndKeepsIdLookup) {
                 .ok());
         TableMeta old_table;
         ASSERT_TRUE(catalog
-                        .create_table(CreateTableMetaParam{"commerce",
-                                                           "orders",
-                                                           4,
-                                                           3,
-                                                           "pool-a"},
+                        .create_table(CreateTableMetaParam{"commerce", "orders",
+                                                           4, 3, "pool-a"},
                                       &old_table)
                         .ok());
         ASSERT_TRUE(
@@ -536,11 +490,8 @@ TEST_F(CatalogManagerTest, RecoverSkipsDeletedNameIndexAndKeepsIdLookup) {
                 .ok());
         TableMeta new_table;
         ASSERT_TRUE(catalog
-                        .create_table(CreateTableMetaParam{"commerce",
-                                                           "orders",
-                                                           8,
-                                                           2,
-                                                           "pool-b"},
+                        .create_table(CreateTableMetaParam{"commerce", "orders",
+                                                           8, 2, "pool-b"},
                                       &new_table)
                         .ok());
         ASSERT_EQ(new_table.table_id, 1);

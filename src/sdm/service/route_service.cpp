@@ -11,14 +11,10 @@
 #include "common/stable_hash.h"
 #include "common/status.h"
 #include "common/type.h"
-#include "sdm/manager/meta_cache_manager.h"
-#include "sdm/manager/route_manager.h"
 #include "sdm/model/sdm_store.h"
 #include "sdm/model/store.h"
 
 namespace adviskv::sdm {
-// RouteService::RouteService()explicit RouteService(RouteManager*
-// route_manager);{
 
 RouteService::RouteService(SdmStore* sdm_store) : sdm_store_(sdm_store) {}
 

@@ -9,7 +9,6 @@
 #include "common/func.h"
 #include "common/status.h"
 #include "common/type.h"
-#include "sdm/manager/node_manager.h"
 #include "sdm/model/store.h"
 
 namespace adviskv::sdm {

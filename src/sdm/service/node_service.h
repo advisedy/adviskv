@@ -1,6 +1,5 @@
 #pragma once
 #include "common/status.h"
-#include "sdm/manager/node_manager.h"
 #include "sdm/model/sdm_store.h"
 #include "sdm/model/service_param.h"
 
@@ -13,7 +12,6 @@ class NodeService {
     Status register_node(const RegisterNodeParam& param);
 
    private:
-    // NodeManager* node_manager_;
     SdmStore* sdm_store_;
 };
 

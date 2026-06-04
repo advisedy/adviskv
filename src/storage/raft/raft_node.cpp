@@ -808,6 +808,9 @@ bool RaftNode::has_committed_current_term_entry_unlocked() const {
     return false;
 }
 
+// 其实由于我们get操作会专门发送一次，所以导致同样的append_entires
+// 可能会多次发送
+// ，但是无伤大雅，handle_append_entries里面会判断出来new_entries是空的
 Status RaftNode::build_append_entries_for_read(
     std::vector<RaftMessage>& messages, LogIndex& read_index, Term& read_term) {
     std::lock_guard lock(mutex_);

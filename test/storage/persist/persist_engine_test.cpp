@@ -597,7 +597,7 @@ TEST_F(PersistEngineTest, RecoverHandlesInvalidWalDataLenByCommitIndex) {
     EXPECT_EQ(fs::file_size(wal_path()), valid_wal_size);
 }
 
-TEST_F(PersistEngineTest, test004) {
+TEST_F(PersistEngineTest, RecoverSnapshotAndWalAfterCrashDuringSnapshotWrite) {
     // 先让子进程去写几个WAL，然后让他走do_snapshot
     //  然后我这边在重启recover，判断一下这个result的log_entries是否正常
 
