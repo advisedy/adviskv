@@ -10,8 +10,8 @@
 #include "common/type.h"
 #include "storage/model/param.h"
 #include "storage/persist/persist_engine.h"
-#include "storage/raft/raft_sender.h"
 #include "storage/raft/raft_node.h"
+#include "storage/raft/raft_sender.h"
 #include "storage/raft/state_machine/kv_state_machine.h"
 #include "storage/raft/state_machine/state_machine.h"
 
@@ -27,8 +27,8 @@ Status Replica::init(const ReplicaInitParam& param) {
         ShardID{param.replica_id.table_id, param.replica_id.shard_index};
     replica_id_ = param.replica_id;
 
-    persist_ =
-        std::make_unique<PersistEngine>(param.runtime.data_dir, param.replica_id);
+    persist_ = std::make_unique<PersistEngine>(param.runtime.data_dir,
+                                               param.replica_id);
     RETURN_IF_INVALID_STATUS(persist_->init())
 
     state_machine_ = std::make_unique<KvStateMachine>(param.engine_type);
@@ -344,8 +344,9 @@ Status Replica::del(const DelParam& param) {
     }
 
     if (raft_node_->commit_index() < new_commit_idx) {
-        return Status{StatusCode::NOT_YET_COMMIT,
-                      "delete accepted by leader but commit is not yet confirmed"};
+        return Status{
+            StatusCode::NOT_YET_COMMIT,
+            "delete accepted by leader but commit is not yet confirmed"};
     }
 
     return Status::OK();
@@ -478,22 +479,39 @@ Status Replica::check_self_leader_and_get_read_index(LogIndex& read_index) {
         messages, read_index, read_term))
 
     int success_cnt = 1;
-    int limit = (messages.size() + 1) / 2 + 1;  // 达到limit就可以了
+    int limit = to<int>(messages.size() + 1) / 2 + 1;
+    // 达到limit就可以了 // 这里就是要message_size
+    // +1，review代码的时候差点绕进去了，这个是msg，得再加上自己
 
     for (const RaftMessage& msg : messages) {
-        if (msg.type != RaftMessageType::APPEND_ENTRIES) {
-            continue;
+        // if (msg.type != RaftMessageType::APPEND_ENTRIES) {
+        //     continue;
+        // }
+
+        if (msg.type == RaftMessageType::APPEND_ENTRIES) {
+            AppendEntriesResult res;
+            Status status = raft_sender_.send_append_entries(
+                msg.target, msg.append_param, res);
+            if (status.fail()) continue;
+
+            // 这个handle如果失败了，就说明自己不是leader
+            RETURN_IF_INVALID_STATUS(
+                raft_node_->handle_append_response(msg.target.replica_id, res));
+            if (res.term == read_term)
+                success_cnt++;  // 这里不用写关于判断res.success，
+            // 因为我们只是需要确认leader这个身份，success可能是fail，因为prev没对齐
+        } else if (msg.type == RaftMessageType::INSTALL_SNAPSHOT) {
+            InstallSnapshotResult res;
+            Status status = raft_sender_.send_install_snapshot(
+                msg.target, msg.snapshot_param, *persist_, res);
+            if (status.fail()) continue;
+            raft_node_->handle_install_snapshot_response(msg.target.replica_id,
+                                                         res);
+            if (res.term == read_term) success_cnt++;
+        } else {
+            LOG_WARN("replica:{} check self leader, but have request vote msg!",
+                     replica_id_.to_string());
         }
-
-        AppendEntriesResult res;
-        Status status =
-            raft_sender_.send_append_entries(msg.target, msg.append_param, res);
-        if (status.fail()) continue;
-
-        // 这个handle如果失败了，就说明自己不是leader
-        RETURN_IF_INVALID_STATUS(
-            raft_node_->handle_append_response(msg.target.replica_id, res))
-        if (res.success and res.term == read_term) success_cnt++;
     }
 
     if (success_cnt >= limit) {

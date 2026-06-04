@@ -226,3 +226,51 @@ def test_follower_snapshot_catchup_case(cluster: AdvisKVCluster):
         key_count=1050,
         verify_timeout_ms=SNAPSHOT_TIMEOUT_MS,
     )
+
+
+def test_sdm_crash_recovery_case(cluster: AdvisKVCluster):
+    """SDM 崩溃后重启，验证数据持久化：创建 DB/table 写入数据 → kill SDM → 重启 SDM → 验证数据可读。"""
+    run_case_and_get_output(
+        cluster,
+        case="sdm_crash_seed",
+        db="pytest_sdm_crash_db",
+        table="pytest_sdm_crash_table",
+        key_count=16,
+    )
+
+    cluster.kill_service("sdm")
+    cluster.assert_service_stopped("sdm")
+    cluster.start_service("sdm")
+
+    run_case_and_get_output(
+        cluster,
+        case="sdm_crash_verify",
+        db="pytest_sdm_crash_db",
+        table="pytest_sdm_crash_table",
+        key_count=16,
+        timeout_ms=VERIFY_TIMEOUT_MS,
+    )
+
+
+def test_meta_crash_recovery_case(cluster: AdvisKVCluster):
+    """Meta 崩溃后重启，验证数据持久化：创建 DB/table 写入数据 → kill Meta → 重启 Meta → 验证数据可读。"""
+    run_case_and_get_output(
+        cluster,
+        case="meta_crash_seed",
+        db="pytest_meta_crash_db",
+        table="pytest_meta_crash_table",
+        key_count=16,
+    )
+
+    cluster.kill_service("meta")
+    cluster.assert_service_stopped("meta")
+    cluster.start_service("meta")
+
+    run_case_and_get_output(
+        cluster,
+        case="meta_crash_verify",
+        db="pytest_meta_crash_db",
+        table="pytest_meta_crash_table",
+        key_count=16,
+        timeout_ms=VERIFY_TIMEOUT_MS,
+    )

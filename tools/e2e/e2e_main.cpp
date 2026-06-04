@@ -10,7 +10,9 @@
 #include "cases/follower_log_catchup_case.h"
 #include "cases/follower_snapshot_catchup_case.h"
 #include "cases/leader_failover_case.h"
+#include "cases/meta_crash_recovery_case.h"
 #include "cases/restart_persistence_case.h"
+#include "cases/sdm_crash_recovery_case.h"
 #include "common/confmgr.h"
 #include "common/log.h"
 #include "common/path_util.h"
@@ -101,6 +103,10 @@ bool run_case(const adviskv::e2e::Options& options) {
              adviskv::e2e::run_follower_snapshot_catchup_write_gap_case)
     RUN_CASE("follower_snapshot_catchup_verify",
              adviskv::e2e::run_follower_snapshot_catchup_verify_case)
+    RUN_CASE("sdm_crash_seed", adviskv::e2e::run_sdm_crash_seed_case)
+    RUN_CASE("sdm_crash_verify", adviskv::e2e::run_sdm_crash_verify_case)
+    RUN_CASE("meta_crash_seed", adviskv::e2e::run_meta_crash_seed_case)
+    RUN_CASE("meta_crash_verify", adviskv::e2e::run_meta_crash_verify_case)
     adviskv::e2e::print_fail(
         "select case", fmt::format("unknown case '{}'", options.case_name));
     return false;
