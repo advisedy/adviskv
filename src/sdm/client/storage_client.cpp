@@ -7,7 +7,6 @@
 
 #include "common.pb.h"
 #include "common/define.h"
-#include "common/log.h"
 #include "common/status.h"
 #include "sdm/model/store.h"
 #include "sdm/utility/enum_convert.h"
@@ -143,16 +142,16 @@ Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
 
     const auto& replica = response.replica();
 
-    ReplicaRole role{ReplicaRole::FOLLOWER};
-    IGNORE_RESULT(convert_pb_to_replica_role(replica.role(), role))
-
-    ReplicaStatus status{ReplicaStatus::ADDING};
-    IGNORE_RESULT(convert_pb_to_replica_status(replica.status(), status))
-
     out.replica_id = ReplicaID{replica.table_id(), replica.shard_id(),
                                replica.replica_id()};
+    ReplicaRole role{ReplicaRole::FOLLOWER};
+    IGNORE_RESULT(convert_pb_to_replica_role(replica.role(), role))
     out.role = role;
-    out.status = status;
+    ReplicaPhase phase{ReplicaPhase::PENDING};
+    RETURN_IF_INVALID_CONDITION(convert_pb_replica_status_to_phase(replica.status(),
+                                                                   phase),
+                                "replica status is not valid")
+    out.status = phase;
     out.endpoint = Endpoint{replica.endpoint().ip(), replica.endpoint().port()};
     out.term = replica.term();
 

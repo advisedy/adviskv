@@ -319,7 +319,7 @@ TEST_F(ReplicaTest, SnapshotCatchupRecoveryFinishesWhenSnapshotCoversTarget) {
 
     manager.recover();
     ASSERT_TRUE(replica->is_recovering());
-    EXPECT_EQ(replica->get_status(), ReplicaStatus::ADDING);
+    EXPECT_EQ(replica->get_status(), storage::ReplicaStatus::RECOVERING);
 
     auto source_dir = base_dir_ / "snapshot_source";
     ASSERT_TRUE(fs::create_directories(source_dir)) << source_dir.string();
@@ -353,7 +353,7 @@ TEST_F(ReplicaTest, SnapshotCatchupRecoveryFinishesWhenSnapshotCoversTarget) {
     }
 
     EXPECT_FALSE(replica->is_recovering());
-    EXPECT_EQ(replica->get_status(), ReplicaStatus::READY);
+    EXPECT_EQ(replica->get_status(), storage::ReplicaStatus::READY);
 
     manager.start_tick();
     replica = wait_until_leader(manager);

@@ -12,7 +12,6 @@
 #include "common/status.h"
 #include "common/type.h"
 #include "sdm/model/store.h"
-#include "sdm/utility/enum_convert.h"
 
 namespace adviskv::sdm {
 
@@ -429,9 +428,7 @@ Status TableReconciler::refresh_storage_replica_info(Table& table) {
             */
             replica.state.observed_role = info.role;
             replica.state.observed_endpoint = info.endpoint;
-            RETURN_IF_INVALID_CONDITION(convert_replica_status_to_phase(
-                                            info.status, replica.state.phase),
-                                        "replica status is not valid")
+            replica.state.phase = info.status;
             replica.state.update_ts = func::get_current_ts_ms();
             replica.state.last_error_msg.clear();
             replica.state.term = info.term;

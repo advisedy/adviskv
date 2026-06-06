@@ -44,7 +44,7 @@ Status Replica::init(const ReplicaInitParam& param) {
     //                                           [this]() { this->on_tick(); });
     //     tick_timer_->reset(MILLISECONDS(20));
     // }
-
+    status_.store(ReplicaStatus::READY);
     return Status::OK();
 }
 
@@ -355,7 +355,8 @@ Status Replica::del(const DelParam& param) {
 void Replica::refresh_recovering_state() {
     if (!raft_node_) return;
     raft_node_->maybe_finish_recovering();
-    recovering_.store(raft_node_->is_recovering());
+    status_.store(raft_node_->is_recovering() ? ReplicaStatus::RECOVERING
+                                              : ReplicaStatus::READY);
 }
 
 Status Replica::handle_request_vote(const RequestVoteParam& param,
@@ -439,6 +440,7 @@ void Replica::on_tick() {
 }
 
 Status Replica::recover() {
+    status_.store(ReplicaStatus::INITIALIZING);
     PersistEngine::RecoverResult result;
     RETURN_IF_INVALID_STATUS(persist_->recover(result))
 
@@ -454,7 +456,7 @@ Status Replica::recover() {
     raft_node_->update_raft_meta(result.raft_meta);
     raft_node_->update_log_entries(result.wal_entries);
     if (result.wal_recovery.action == WalRecoveryAction::NEED_RAFT_CATCHUP) {
-        recovering_.store(true);
+        status_.store(ReplicaStatus::RECOVERING);
         raft_node_->enter_recovering(
             result.wal_recovery.recovery_target_commit_index);
     }

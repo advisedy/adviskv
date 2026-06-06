@@ -4,12 +4,14 @@
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include <string>
 #include <vector>
 
 #include "common/define.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
+#include "storage/model/replica_status.h"
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/raft_sender.h"
 #include "storage/raft/raft_node.h"
@@ -30,12 +32,10 @@ class Replica {
     Term current_term() const {
         return raft_node_ ? raft_node_->current_term() : 0;
     }
-    ReplicaStatus get_status() const {
-        return (raft_node_ && state_machine_ && persist_ && !is_recovering())
-                   ? ReplicaStatus::READY
-                   : ReplicaStatus::ADDING;
+    ReplicaStatus get_status() const { return status_.load(); }
+    bool is_recovering() const {
+        return get_status() == ReplicaStatus::RECOVERING;
     }
-    bool is_recovering() const { return recovering_.load(); }
 
     Status put(const PutParam& param);
     Status get(const GetParam& param, Value& value);
@@ -114,7 +114,7 @@ class Replica {
     // 通信
     RaftSender raft_sender_;
 
-    std::atomic<bool> recovering_{false};
+    std::atomic<ReplicaStatus> status_{ReplicaStatus::INITIALIZING};
 
     // 定时器（驱动 tick）
     // TimerPtr tick_timer_;

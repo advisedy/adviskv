@@ -154,7 +154,6 @@ class RaftNode {
         std::lock_guard lock(mutex_);
         return recovering_;
     }
-
     void maybe_finish_recovering();
 
     // 读一致性准备心跳
@@ -165,7 +164,7 @@ class RaftNode {
     LogIndex last_log_index_unlocked() const;
     Term last_log_term_unlocked() const;
 
-    void save_raft_meta() const;
+    Status save_raft_meta() const;
 
     int64_t index_to_offset(LogIndex index) const;
     LogIndex offset_to_index(int64_t offset) const;

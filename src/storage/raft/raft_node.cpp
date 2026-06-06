@@ -295,7 +295,9 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
         voted_for_ = param.from_replica_id;
         // election_ticks_ = 0;
         election_tick_trigger_.reset(ELECTION_TIMEOUT);
-        save_raft_meta();
+        if (save_raft_meta().fail()) {
+            // TODO
+        }
     }
 }
 
@@ -391,7 +393,9 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     if (param.leader_commit > commit_index_) {
         commit_index_ =
             std::min(param.leader_commit, last_log_index_unlocked());
-        save_raft_meta();
+        if (save_raft_meta().fail()) {
+            // TODO
+        }
     }
     maybe_finish_recovering_unlocked();
 
@@ -463,7 +467,6 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
     ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_request");
 
     std::lock_guard lock(mutex_);
-
     if (result.term > current_term_) {
         ADVISKV_METRICS_COUNTER(
             "storage_raft_handle_append_response_higher_term");
@@ -547,7 +550,9 @@ void RaftNode::become_follower(Term later_term) {
     }
     current_term_ = later_term;
     role_ = ReplicaRole::FOLLOWER;
-    save_raft_meta();
+    if (save_raft_meta().fail()) {
+        // TODO
+    }
     // election_ticks_ = 0;
     election_tick_trigger_.reset(ELECTION_TIMEOUT);
 }
@@ -623,7 +628,9 @@ void RaftNode::try_update_commit_index() {
             commit_index_ = idx;
         }
     }
-    save_raft_meta();
+    if (save_raft_meta().fail()) {
+        // TODO
+    }
     if (commit_index_ > old_commit_index) {
         ADVISKV_METRICS_COUNTER("storage_raft_commit_index_advance");
         ADVISKV_METRICS_COUNTER(
@@ -655,14 +662,14 @@ Term RaftNode::get_term(LogIndex index) const {
 }
 
 // persist 去 持久化raft_meta
-void RaftNode::save_raft_meta() const {
-    if (!persist_) return;
+Status RaftNode::save_raft_meta() const {
+    if (!persist_) return Status::NOT_INIT("persist is nullptr");
 
     RaftMeta raft_meta;
     raft_meta.current_term = current_term_;
     raft_meta.commit_index = commit_index_;
     raft_meta.voted_for = voted_for_;
-    persist_->save_raft_meta(raft_meta);
+    return persist_->save_raft_meta(raft_meta);
 }
 
 // void try_take_snapshot();
@@ -708,7 +715,9 @@ void RaftNode::install_snapshot(LogIndex new_snapshot_index,
         last_applied_ = snapshot_index_;
     }
 
-    save_raft_meta();
+    if (save_raft_meta().fail()) {
+        // TODO
+    }
     maybe_finish_recovering_unlocked();
 }
 

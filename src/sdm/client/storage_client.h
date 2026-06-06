@@ -16,7 +16,9 @@ namespace adviskv::sdm {
 struct StorageReplicaInfo {
     ReplicaID replica_id;
     ReplicaRole role{ReplicaRole::FOLLOWER};
-    ReplicaStatus status{ReplicaStatus::ADDING};
+    ReplicaPhase status{
+        ReplicaPhase::CREATING};  // 代表对应的storage侧的replica
+                                  // status转化到sdm的phase, 这里已经转化了
     Endpoint endpoint;
     Term term;
 };

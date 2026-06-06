@@ -51,8 +51,7 @@ bool get_replica_state_for_test(const Endpoint& endpoint, TableID table_id,
 
     state->exists = response.exists();
     IGNORE_RESULT(convert_pb_to_replica_role(response.role(), state->role));
-    IGNORE_RESULT(
-        convert_pb_to_replica_status(response.status(), state->status));
+    state->status = response.status();
     state->current_term = response.current_term();
     state->commit_index = response.commit_index();
     state->last_applied = response.last_applied();

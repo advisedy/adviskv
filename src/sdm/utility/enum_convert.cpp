@@ -32,12 +32,13 @@ bool convert_node_status_to_pb(NodeStatus in, pb::NodeStatus& out) {
     return true;
 }
 
-bool convert_replica_status_to_phase(ReplicaStatus in, ReplicaPhase& out) {
+bool convert_pb_replica_status_to_phase(pb::ReplicaStatus in, ReplicaPhase& out) {
     switch (in) {
-        SWITCH_TYPE_EQUAL2(out, ReplicaStatus, ADDING, ReplicaPhase, CREATING)
-        SWITCH_TYPE_EQUAL(out, ReplicaStatus, ReplicaPhase, READY)
-        SWITCH_TYPE_EQUAL(out, ReplicaStatus, ReplicaPhase, LOST)
-        SWITCH_TYPE_EQUAL(out, ReplicaStatus, ReplicaPhase, ERROR)
+        SWITCH_TYPE_EQUAL2(out, pb::ReplicaStatus, ADDING, ReplicaPhase,
+                           CREATING)
+        SWITCH_TYPE_EQUAL(out, pb::ReplicaStatus, ReplicaPhase, READY)
+        SWITCH_TYPE_EQUAL(out, pb::ReplicaStatus, ReplicaPhase, LOST)
+        SWITCH_TYPE_EQUAL(out, pb::ReplicaStatus, ReplicaPhase, ERROR)
         default:
             return false;
     }

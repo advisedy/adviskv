@@ -232,7 +232,7 @@ struct HeartBeatReplicaInfo {
     ShardID shard_id;
     ReplicaIndex replica_index;
     ReplicaRole role;
-    ReplicaStatus status;
+    ReplicaPhase status;
     Term term;  // 用来帮助判断leader，term高的优先被认定是leader
 };
 

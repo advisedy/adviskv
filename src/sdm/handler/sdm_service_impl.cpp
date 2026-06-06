@@ -104,14 +104,19 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
         ReplicaRole role;
         CONVERT_PB_TO_REPLICA_ROLE(replica_info.role(), role)
 
-        ReplicaStatus status;
-        CONVERT_PB_TO_REPLICA_STATUS(replica_info.status(), status)
+        ReplicaPhase phase;
+        if (!convert_pb_replica_status_to_phase(replica_info.status(), phase)) {
+            fill_base_rsp(response,
+                          Status{StatusCode::INVALID_ARGUMENT,
+                                 "replica status is not valid"});
+            return grpc::Status::OK;
+        }
 
         HeartBeatReplicaInfo one;
         one.shard_id = ShardID{replica_info.table_id(), replica_info.shard_id()};
         one.replica_index = replica_info.replica_index();
         one.role = role;
-        one.status = status;
+        one.status = phase;
         one.term = replica_info.term();
         replica_info_list.emplace_back(std::move(one));
     }
