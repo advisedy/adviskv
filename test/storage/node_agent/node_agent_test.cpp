@@ -228,7 +228,8 @@ TEST_F(NodeAgentTest, StartRegistersNodeAndSendsPeriodicHeartbeat) {
     EXPECT_EQ(heartbeat.replica_info_list(0).table_id(), 101);
     EXPECT_EQ(heartbeat.replica_info_list(0).shard_id(), 7);
     EXPECT_EQ(heartbeat.replica_info_list(0).replica_index(), 0);
-    EXPECT_EQ(heartbeat.replica_info_list(0).role(), pb::ReplicaRole::FOLLOWER);
+    EXPECT_EQ(heartbeat.replica_info_list(0).role(),
+              pb::RaftRole::RAFT_ROLE_FOLLOWER);
     EXPECT_EQ(heartbeat.replica_info_list(0).status(),
               pb::ReplicaStatus::READY);
 }

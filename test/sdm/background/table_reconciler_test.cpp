@@ -448,7 +448,7 @@ TEST(TableReconcilerTest, RouteIsRepublishedAfterHeartbeatRecoversLeader) {
     std::vector<Replica> replicas = list_replicas_or_die(store);
     ASSERT_EQ(replicas.size(), 2U);
     for (Replica& replica : replicas) {
-        replica.state.observed_role = ReplicaRole::FOLLOWER;
+        replica.state.observed_raft_role = ReplicaRole::FOLLOWER;
         replica.state.term = 8;
         ASSERT_TRUE(store.put_replica(replica).ok());
     }

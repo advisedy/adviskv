@@ -19,7 +19,7 @@ Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
     ReplicaState state{};
     state.desired = ReplicaDesired::PRESENT;
     state.phase = ReplicaPhase::CREATING;
-    state.observed_role = ReplicaRole::FOLLOWER;
+    state.observed_raft_role = ReplicaRole::FOLLOWER;
     state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
     state.term = 1;
     return Replica{replica_id,
@@ -64,7 +64,7 @@ TEST(HeartBeatServiceTest, HeartbeatUpdatesNodeAndAssignedReplicas) {
     ASSERT_TRUE(store.get_replica(ReplicaID{1001, 0, 0}, replica).ok());
     ASSERT_FALSE(replica.is_empty());
     EXPECT_EQ(replica->state.phase, ReplicaPhase::READY);
-    EXPECT_EQ(replica->state.observed_role, ReplicaRole::LEADER);
+    EXPECT_EQ(replica->state.observed_raft_role, ReplicaRole::LEADER);
     EXPECT_EQ(replica->state.observed_endpoint.ip, "10.0.0.1");
     EXPECT_EQ(replica->state.observed_endpoint.port, 19090);
     EXPECT_EQ(replica->state.term, 7);
@@ -101,7 +101,7 @@ TEST(HeartBeatServiceTest, HeartbeatIgnoresMissingAndOtherNodeReplicas) {
     ASSERT_TRUE(store.get_replica(ReplicaID{1001, 0, 1}, other).ok());
     ASSERT_FALSE(other.is_empty());
     EXPECT_EQ(other->state.phase, ReplicaPhase::CREATING);
-    EXPECT_EQ(other->state.observed_role, ReplicaRole::FOLLOWER);
+    EXPECT_EQ(other->state.observed_raft_role, ReplicaRole::FOLLOWER);
     EXPECT_EQ(other->state.term, 1);
 }
 

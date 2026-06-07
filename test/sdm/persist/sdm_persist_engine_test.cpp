@@ -52,7 +52,7 @@ class SdmPersistEngineTest : public ::testing::Test {
         ReplicaState replica_state{};
         replica_state.desired = ReplicaDesired::PRESENT;
         replica_state.phase = ReplicaPhase::READY;
-        replica_state.observed_role = ReplicaRole::LEADER;
+        replica_state.observed_raft_role = ReplicaRole::LEADER;
         replica_state.observed_endpoint = Endpoint{"127.0.0.1", 9000};
         replica_state.update_ts = 300;
         replica_state.term = 4;
@@ -105,7 +105,7 @@ class SdmPersistEngineTest : public ::testing::Test {
         ReplicaState replica_state{};
         replica_state.desired = ReplicaDesired::ABSENT;
         replica_state.phase = ReplicaPhase::DELETING;
-        replica_state.observed_role = ReplicaRole::FOLLOWER;
+        replica_state.observed_raft_role = ReplicaRole::FOLLOWER;
         replica_state.observed_endpoint = Endpoint{"127.0.0.2", 9100};
         replica_state.last_error_msg = "replica draining";
         replica_state.update_ts = 3000;
@@ -208,8 +208,8 @@ class SdmPersistEngineTest : public ::testing::Test {
             EXPECT_EQ(actual_replica.state.desired,
                       expected_replica.state.desired);
             EXPECT_EQ(actual_replica.state.phase, expected_replica.state.phase);
-            EXPECT_EQ(actual_replica.state.observed_role,
-                      expected_replica.state.observed_role);
+            EXPECT_EQ(actual_replica.state.observed_raft_role,
+                      expected_replica.state.observed_raft_role);
             EXPECT_EQ(actual_replica.state.observed_endpoint,
                       expected_replica.state.observed_endpoint);
             EXPECT_EQ(actual_replica.state.last_error_msg,

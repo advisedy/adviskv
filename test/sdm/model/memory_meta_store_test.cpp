@@ -34,7 +34,7 @@ Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id,
     ReplicaState state{};
     state.desired = ReplicaDesired::PRESENT;
     state.phase = ReplicaPhase::READY;
-    state.observed_role = role;
+    state.observed_raft_role = role;
     state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
     state.term = 7;
     return Replica{replica_id,
@@ -213,7 +213,7 @@ TEST(MemoryMetaStoreTest, ReplicaUpsertBatchGetListAndDeleteWork) {
     ASSERT_TRUE(store.get_replica(replica_a.replica_id, out).ok());
     ASSERT_TRUE(out != nullptr);
     EXPECT_EQ(out->spec.assign_node_id, "node-d");
-    EXPECT_EQ(out->state.observed_role, ReplicaRole::LEADER);
+    EXPECT_EQ(out->state.observed_raft_role, ReplicaRole::LEADER);
 
     std::vector<ReplicaPtr> replicas;
     ASSERT_TRUE(store.list_replicas(replicas).ok());

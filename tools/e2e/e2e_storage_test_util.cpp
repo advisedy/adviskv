@@ -8,7 +8,7 @@
 #include <thread>
 
 #include "common/define.h"
-#include "common/enum_convert.h"
+#include "common/proto/raft_role_proto.h"
 #include "e2e_assert.h"
 #include "e2e_route_util.h"
 #include "storage.grpc.pb.h"
@@ -50,7 +50,10 @@ bool get_replica_state_for_test(const Endpoint& endpoint, TableID table_id,
     }
 
     state->exists = response.exists();
-    IGNORE_RESULT(convert_pb_to_replica_role(response.role(), state->role));
+    if (!decode_pb_raft_role(response.role(), state->role)) {
+        *error = "replica role is not valid";
+        return false;
+    }
     state->status = response.status();
     state->current_term = response.current_term();
     state->commit_index = response.commit_index();
@@ -75,10 +78,10 @@ bool get_route_replica_states_for_test(E2EContext* context, const Key& key,
 
     bool leader_found = false;
     for (const sdk::RouteReplica& replica : states->route.replicas) {
-        if (replica.role == sdk::RouteReplicaRole::LEADER) {
+        if (replica.role == ReplicaRole::LEADER) {
             states->leader = replica;
             leader_found = true;
-        } else if (replica.role == sdk::RouteReplicaRole::FOLLOWER) {
+        } else {
             states->followers.push_back(replica);
         }
     }

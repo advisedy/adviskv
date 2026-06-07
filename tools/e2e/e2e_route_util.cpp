@@ -5,25 +5,10 @@
 #include <chrono>
 #include <utility>
 
+#include "common/proto/raft_role_proto.h"
 #include "e2e_assert.h"
 
 namespace adviskv::e2e {
-
-namespace {
-
-// TODO 这个回头可以放到convert文件里面，不在这放着
-sdk::RouteReplicaRole from_pb_role(pb::ReplicaRole role) {
-    switch (role) {
-        case pb::ReplicaRole::LEADER:
-            return sdk::RouteReplicaRole::LEADER;
-        case pb::ReplicaRole::FOLLOWER:
-            return sdk::RouteReplicaRole::FOLLOWER;
-        default:
-            return sdk::RouteReplicaRole::UNKNOWN;
-    }
-}
-
-}  // namespace
 
 bool get_route(E2EContext* context, const Key& key, sdk::RouteInfo* route,
                std::string* error) {
@@ -62,7 +47,10 @@ bool get_route(E2EContext* context, const Key& key, sdk::RouteInfo* route,
         sdk::RouteReplica out;
         out.endpoint =
             Endpoint{replica.endpoint().ip(), replica.endpoint().port()};
-        out.role = from_pb_role(replica.role());
+        if (!decode_pb_raft_role(replica.role(), out.role)) {
+            *error = "route replica role is not valid";
+            return false;
+        }
         route->replicas.push_back(std::move(out));
     }
     return true;
@@ -81,7 +69,7 @@ bool wait_route_has_leader(E2EContext* context, const Key& key,
                 return CheckResult::fail(error);
             }
             for (const sdk::RouteReplica& replica : route.replicas) {
-                if (replica.role == sdk::RouteReplicaRole::LEADER) {
+                if (replica.role == ReplicaRole::LEADER) {
                     if (leader != nullptr) {
                         *leader = replica;
                     }

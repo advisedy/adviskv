@@ -43,7 +43,7 @@ Replica make_replica(ReplicaIndex replica_index, const NodeID& node_id,
     ReplicaState state{};
     state.desired = ReplicaDesired::PRESENT;
     state.phase = ReplicaPhase::READY;
-    state.observed_role = role;
+    state.observed_raft_role = role;
     state.observed_endpoint = Endpoint{"127.0.0.1", port};
     state.term = term;
     return Replica{ReplicaID{TEST_TABLE_ID, TEST_SHARD_INDEX, replica_index},

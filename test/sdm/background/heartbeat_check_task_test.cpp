@@ -22,7 +22,7 @@ Replica make_replica(const NodeID& node_id, ReplicaIndex replica_index,
     ReplicaState state{};
     state.desired = ReplicaDesired::PRESENT;
     state.phase = phase;
-    state.observed_role = ReplicaRole::FOLLOWER;
+    state.observed_raft_role = ReplicaRole::FOLLOWER;
     state.observed_endpoint = Endpoint{"127.0.0.1", port};
     return Replica{ReplicaID{1001, 0, replica_index},
                    ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},

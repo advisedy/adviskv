@@ -40,14 +40,16 @@ inline bool print_route_replicas(E2EContext* context, const std::string& key) {
 
     for (const sdk::RouteReplica& replica : route.replicas) {
         const char* role = "UNKNOWN";
-        if (replica.role == sdk::RouteReplicaRole::LEADER) {
+        if (replica.role == ReplicaRole::LEADER) {
             role = "LEADER";
-        } else if (replica.role == sdk::RouteReplicaRole::FOLLOWER) {
+        } else if (replica.role == ReplicaRole::FOLLOWER) {
             role = "FOLLOWER";
+        } else if (replica.role == ReplicaRole::CANDIDATE) {
+            role = "CANDIDATE";
         }
         fmt::print("[ ROUTE_REPLICA ] {}:{} role={}\n", replica.endpoint.ip,
                    replica.endpoint.port, role);
-        if (replica.role == sdk::RouteReplicaRole::LEADER) {
+        if (replica.role == ReplicaRole::LEADER) {
             fmt::print("[ ROUTE_LEADER ] {}:{}\n", replica.endpoint.ip,
                        replica.endpoint.port);
         }
