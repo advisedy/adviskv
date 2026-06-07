@@ -6,6 +6,8 @@ set(SDM_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/service/table_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/service/heartbeat_service.cpp
 
+    ${CMAKE_CURRENT_SOURCE_DIR}/proto/node_status_proto.cpp
+
     ${CMAKE_CURRENT_SOURCE_DIR}/selector/node_selector/node_selector.cpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/utility/enum_convert.cpp
@@ -74,4 +76,3 @@ target_include_directories(adviskv_sdm_test_lib PUBLIC
 target_compile_definitions(adviskv_sdm_test_lib PRIVATE
     ADVISKV_ENABLE_CRASH_TEST
 )
-
