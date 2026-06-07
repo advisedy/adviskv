@@ -7,9 +7,11 @@ message BaseRsp {
     string msg = 2;
 }
 
-enum ReplicaRole {
-  LEADER = 0;
-  FOLLOWER = 1;
+enum RaftRole {
+  RAFT_ROLE_UNSPECIFIED = 0;
+  RAFT_ROLE_FOLLOWER = 1;
+  RAFT_ROLE_LEADER = 2;
+  RAFT_ROLE_CANDIDATE = 3;
 }
 
 enum ReplicaStatus {
@@ -37,7 +39,7 @@ message ReplicaInfo {
   int32 shard_id = 2;
   int32 replica_id = 3;
   string node_id = 4;
-  ReplicaRole role = 5;
+  RaftRole role = 5;
   ReplicaStatus status = 6;
   Endpoint endpoint = 7;
   int64 term = 8;

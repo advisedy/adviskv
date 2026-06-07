@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "common/define.h"
+#include "common/model/replica_role.h"
 
 namespace adviskv {
 
@@ -100,8 +101,6 @@ enum class EngineType : int8 {
     ROCKSDB = 1,
 };
 
-enum class ReplicaRole : int8 { FOLLOWER = 0, LEADER = 1, CANDIDATE = 2 };
-
 struct Endpoint {
     std::string ip;
     int32_t port;
@@ -132,5 +131,4 @@ struct PeerMember {
 
     DEFINE_OPERATOR_NOT_EQUAL(PeerMember)
 };
-
 }  // namespace adviskv

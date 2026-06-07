@@ -7,26 +7,12 @@
 #include <chrono>
 
 #include "common/define.h"
+#include "common/proto/raft_role_proto.h"
 #include "sdk/config.h"
 #include "sdk/log.h"
 #include "sdk/model.h"
 
 namespace adviskv::sdk {
-
-namespace {
-
-RouteReplicaRole from_pb_role(pb::ReplicaRole role) {
-    switch (role) {
-        case pb::ReplicaRole::LEADER:
-            return RouteReplicaRole::LEADER;
-        case pb::ReplicaRole::FOLLOWER:
-            return RouteReplicaRole::FOLLOWER;
-        default:
-            return RouteReplicaRole::UNKNOWN;
-    }
-}
-
-}  // namespace
 
 SdmRouteClient::SdmRouteClient(const KVClientConf& conf) : conf_(conf) {
     const std::string target =
@@ -85,7 +71,10 @@ Status SdmRouteClient::get_route(const Key& key, RouteInfo* route) const {
         RouteReplica route_replica;
         route_replica.endpoint =
             Endpoint{replica.endpoint().ip(), replica.endpoint().port()};
-        route_replica.role = from_pb_role(replica.role());
+        ReplicaRole role = ReplicaRole::FOLLOWER;
+        RETURN_IF_INVALID_CONDITION(decode_pb_raft_role(replica.role(), role),
+                                    "route replica role is not valid")
+        route_replica.role = role;
         route->replicas.push_back(std::move(route_replica));
     }
 
@@ -99,7 +88,7 @@ Status SdmRouteClient::get_route(const Key& key, RouteInfo* route) const {
         }
         ADVISKV_SDK_LOG(LogLevel::INFO, "get route ok, route: {}", route_res);
     }
-
+    
     return Status::OK();
 }
 

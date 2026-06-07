@@ -232,7 +232,7 @@ class SdmMetaCodec {
         }
         buf.write(static_cast<int32>(replica.state.desired));
         buf.write(static_cast<int32>(replica.state.phase));
-        buf.write(static_cast<int32>(replica.state.observed_role));
+        buf.write(static_cast<int32>(replica.state.observed_raft_role));
         encode_endpoint(replica.state.observed_endpoint, buf);
         buf.write(replica.state.last_error_msg);
         buf.write(replica.state.update_ts);
@@ -270,9 +270,12 @@ class SdmMetaCodec {
         RETURN_IF_INVALID_READ(buf, phase)
         replica.state.phase = static_cast<ReplicaPhase>(phase);
 
-        int32 observed_role{0};
-        RETURN_IF_INVALID_READ(buf, observed_role)
-        replica.state.observed_role = static_cast<ReplicaRole>(observed_role);
+        int32 observed_raft_role{0};
+        RETURN_IF_INVALID_READ(buf, observed_raft_role)
+        RETURN_IF_INVALID_CONDITION(
+            decode_replica_role(observed_raft_role,
+                                replica.state.observed_raft_role),
+            "invalid observed_raft_role")
 
         RETURN_IF_INVALID_STATUS(
             decode_endpoint(buf, replica.state.observed_endpoint))
@@ -314,7 +317,8 @@ class SdmMetaCodec {
 
             int32 role{0};
             RETURN_IF_INVALID_READ(buf, role)
-            entry.role = static_cast<ReplicaRole>(role);
+            RETURN_IF_INVALID_CONDITION(decode_replica_role(role, entry.role),
+                                        "invalid route entry role")
             RETURN_IF_INVALID_READ(buf, entry.term)
 
             route.replicas.push_back(std::move(entry));

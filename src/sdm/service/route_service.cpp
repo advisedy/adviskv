@@ -60,6 +60,8 @@ Status RouteService::get_route(const GetRouteParam& param,
             route_res.append(" replica: " + one.replica_id.to_string() + ", ");
             if (one.role == ReplicaRole::LEADER) {
                 route_res.append("role: leader.");
+            } else if (one.role == ReplicaRole::CANDIDATE) {
+                route_res.append("role: candidate.");
             } else {
                 route_res.append("role: follower.");
             }

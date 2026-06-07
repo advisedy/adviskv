@@ -58,7 +58,7 @@ Status HeartBeatService::apply_reported_replicas(const HeartBeatParam& param) {
             continue;
         }
 
-        replica->state.observed_role = info.role;
+        replica->state.observed_raft_role = info.role;
         replica->state.observed_endpoint = Endpoint{param.ip, param.port};
         replica->state.phase = info.status;
         replica->state.update_ts = func::get_current_ts_ms();
@@ -66,7 +66,7 @@ Status HeartBeatService::apply_reported_replicas(const HeartBeatParam& param) {
         status = sdm_store_->put_replica(*replica);
         RETURN_IF_INVALID_STATUS(status)
 
-        if (replica->state.observed_role == ReplicaRole::LEADER) {
+        if (replica->state.observed_raft_role == ReplicaRole::LEADER) {
             LOG_DEBUG("HeartBeatSerive: replica_id:{} is leader",
                       replica->replica_id.to_string());
         }

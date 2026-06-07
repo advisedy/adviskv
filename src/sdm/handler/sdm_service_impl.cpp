@@ -9,6 +9,7 @@
 #include "common/define.h"
 #include "common/func.h"
 #include "common/log.h"
+#include "common/proto/raft_role_proto.h"
 #include "common/status.h"
 #include "sdm.pb.h"
 #include "sdm/model/service_param.h"
@@ -101,8 +102,13 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
     UNUSED(context);
     std::vector<HeartBeatReplicaInfo> replica_info_list;
     for (const auto& replica_info : request->replica_info_list()) {
-        ReplicaRole role;
-        CONVERT_PB_TO_REPLICA_ROLE(replica_info.role(), role)
+        ReplicaRole role = ReplicaRole::FOLLOWER;
+        if (!decode_pb_raft_role(replica_info.role(), role)) {
+            fill_base_rsp(response,
+                          Status{StatusCode::INVALID_ARGUMENT,
+                                 "replica role is not valid"});
+            return grpc::Status::OK;
+        }
 
         ReplicaPhase phase;
         if (!convert_pb_replica_status_to_phase(replica_info.status(), phase)) {
@@ -176,9 +182,7 @@ grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context,
             auto* endpoint = route_replica->mutable_endpoint();
             endpoint->set_ip(replica.ip);
             endpoint->set_port(replica.port);
-            pb::ReplicaRole role{pb::ReplicaRole::FOLLOWER};
-            IGNORE_RESULT(convert_replica_role_to_pb(replica.role, role))
-            route_replica->set_role(role);
+            route_replica->set_role(to_pb_raft_role(replica.role));
         }
     }
     LOG_INFO(

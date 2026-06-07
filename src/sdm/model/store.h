@@ -54,7 +54,7 @@ struct ReplicaSpec {
 struct ReplicaState {
     ReplicaDesired desired{ReplicaDesired::PRESENT};
     ReplicaPhase phase{ReplicaPhase::PENDING};
-    ReplicaRole observed_role{ReplicaRole::FOLLOWER};
+    ReplicaRole observed_raft_role{ReplicaRole::FOLLOWER};
     Endpoint observed_endpoint;
     std::string last_error_msg;
     int64 update_ts{0};

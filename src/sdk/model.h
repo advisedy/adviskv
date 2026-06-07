@@ -7,15 +7,9 @@
 
 namespace adviskv::sdk {
 
-enum class RouteReplicaRole : int8 {
-    LEADER = 0,
-    FOLLOWER = 1,
-    UNKNOWN = 2,
-};
-
 struct RouteReplica {
     Endpoint endpoint;
-    RouteReplicaRole role{RouteReplicaRole::UNKNOWN};
+    ReplicaRole role{ReplicaRole::FOLLOWER};
 };
 
 struct RouteInfo {
@@ -23,5 +17,4 @@ struct RouteInfo {
     ShardIndex shard_id{-1};
     std::vector<RouteReplica> replicas;
 };
-
 }  // namespace adviskv::sdk

@@ -113,7 +113,7 @@ Status TableReconciler::build_replicas(Table& table, ShardIndex shard_index,
         replica.spec.members = members;
         replica.state.desired = ReplicaDesired::PRESENT;
         replica.state.phase = ReplicaPhase::PENDING;
-        replica.state.observed_role = ReplicaRole::FOLLOWER;
+        replica.state.observed_raft_role = ReplicaRole::FOLLOWER;
         replica.state.observed_endpoint = node.state.endpoint;
         replica.state.update_ts = func::get_current_ts_ms();
         replica.state.term = 0;
@@ -421,12 +421,12 @@ Status TableReconciler::refresh_storage_replica_info(Table& table) {
             /*
                 ReplicaDesired desired{ReplicaDesired::PRESENT};
                 ReplicaPhase phase{ReplicaPhase::PENDING};
-                ReplicaRole observed_role{ReplicaRole::FOLLOWER};
+                ReplicaRole observed_raft_role{ReplicaRole::FOLLOWER};
                 Endpoint observed_endpoint;
                 std::string last_error_msg;
                 int64_t update_ts{0};
             */
-            replica.state.observed_role = info.role;
+            replica.state.observed_raft_role = info.raft_role;
             replica.state.observed_endpoint = info.endpoint;
             replica.state.phase = info.status;
             replica.state.update_ts = func::get_current_ts_ms();

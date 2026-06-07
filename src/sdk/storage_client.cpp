@@ -23,7 +23,7 @@ Status StorageClient::select_endpoint(const RouteInfo& route,
                                 "route replicas should not empty")
 
     for (const RouteReplica& replica : route.replicas) {
-        if (replica.role != RouteReplicaRole::LEADER) {
+        if (replica.role != ReplicaRole::LEADER) {
             continue;
         }
         RETURN_IF_INVALID_CONDITION(!replica.endpoint.ip.empty(),
