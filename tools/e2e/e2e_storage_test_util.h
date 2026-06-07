@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "common.pb.h"
+#include "common/model/storage_replica_status.h"
 #include "common/type.h"
 #include "e2e_options.h"
 #include "sdk/model.h"
@@ -16,7 +17,7 @@ class E2EContext;
 struct ReplicaState {
     bool exists = false;
     ReplicaRole role = ReplicaRole::FOLLOWER;
-    pb::ReplicaStatus status = pb::ReplicaStatus::ADDING;
+    StorageReplicaStatus status = StorageReplicaStatus::INITIALIZING;
     Term current_term = 0;
     int64 commit_index = 0;
     int64_t last_applied = 0;

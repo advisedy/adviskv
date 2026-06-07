@@ -6,11 +6,7 @@ set(SDM_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/service/table_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/service/heartbeat_service.cpp
 
-    ${CMAKE_CURRENT_SOURCE_DIR}/proto/node_status_proto.cpp
-
     ${CMAKE_CURRENT_SOURCE_DIR}/selector/node_selector/node_selector.cpp
-
-    ${CMAKE_CURRENT_SOURCE_DIR}/utility/enum_convert.cpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/model/i_sdm_metastore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/model/sdm_store.cpp
@@ -20,6 +16,7 @@ set(SDM_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/background/heartbeat_check_task.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/background/routeupdate_check_task.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/background/table_reconciler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/reconcile/replica_phase_projection.cpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/client/storage_client.cpp
 

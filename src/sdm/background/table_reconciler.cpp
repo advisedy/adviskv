@@ -12,6 +12,7 @@
 #include "common/status.h"
 #include "common/type.h"
 #include "sdm/model/store.h"
+#include "sdm/reconcile/replica_phase_projection.h"
 
 namespace adviskv::sdm {
 
@@ -428,7 +429,8 @@ Status TableReconciler::refresh_storage_replica_info(Table& table) {
             */
             replica.state.observed_raft_role = info.raft_role;
             replica.state.observed_endpoint = info.endpoint;
-            replica.state.phase = info.status;
+            replica.state.phase = project_phase_from_storage_status(
+                replica.state.desired, info.storage_status);
             replica.state.update_ts = func::get_current_ts_ms();
             replica.state.last_error_msg.clear();
             replica.state.term = info.term;

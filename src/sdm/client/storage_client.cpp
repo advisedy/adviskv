@@ -8,9 +8,9 @@
 #include "common.pb.h"
 #include "common/define.h"
 #include "common/proto/raft_role_proto.h"
+#include "common/proto/storage_replica_status_proto.h"
 #include "common/status.h"
 #include "sdm/model/store.h"
-#include "sdm/utility/enum_convert.h"
 
 namespace adviskv::sdm {
 
@@ -149,11 +149,11 @@ Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
     RETURN_IF_INVALID_CONDITION(decode_pb_raft_role(replica.role(), role),
                                 "replica role is not valid")
     out.raft_role = role;
-    ReplicaPhase phase{ReplicaPhase::PENDING};
-    RETURN_IF_INVALID_CONDITION(convert_pb_replica_status_to_phase(replica.status(),
-                                                                   phase),
-                                "replica status is not valid")
-    out.status = phase;
+    StorageReplicaStatus storage_status = StorageReplicaStatus::INITIALIZING;
+    RETURN_IF_INVALID_CONDITION(
+        decode_pb_storage_replica_status(replica.status(), storage_status),
+        "replica storage status is not valid")
+    out.storage_status = storage_status;
     out.endpoint = Endpoint{replica.endpoint().ip(), replica.endpoint().port()};
     out.term = replica.term();
     return Status::OK();

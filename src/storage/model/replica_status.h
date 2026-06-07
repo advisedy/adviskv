@@ -1,14 +1,9 @@
 #pragma once
 
-#include <cstdint>
+#include "common/model/storage_replica_status.h"
 
 namespace adviskv::storage {
 
-enum class ReplicaStatus : int8_t {
-    INITIALIZING = 0,
-    RECOVERING = 1,
-    READY = 2,
-    FAULTED = 3,
-};
+using ReplicaStatus = ::adviskv::StorageReplicaStatus;
 
 }  // namespace adviskv::storage

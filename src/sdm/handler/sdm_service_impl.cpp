@@ -10,11 +10,12 @@
 #include "common/func.h"
 #include "common/log.h"
 #include "common/proto/raft_role_proto.h"
+#include "common/proto/storage_replica_status_proto.h"
 #include "common/status.h"
 #include "sdm.pb.h"
 #include "sdm/model/service_param.h"
 #include "sdm/model/store.h"
-#include "sdm/utility/enum_convert.h"
+#include "sdm/proto/table_status_proto.h"
 
 namespace adviskv::sdm {
 
@@ -75,8 +76,8 @@ grpc::Status SdmServiceImpl::GetTableStatus(
     fill_base_rsp(response, status);
     if (status.ok()) {
         response->set_table_id(table.table_id);
-        response->set_desired(static_cast<int32_t>(table.state.desired));
-        response->set_phase(static_cast<int32_t>(table.state.phase));
+        response->set_desired(to_pb_sdm_table_desired(table.state.desired));
+        response->set_phase(to_pb_sdm_table_phase(table.state.phase));
         response->set_last_error_msg(table.state.last_error_msg);
         response->set_operation_id(table.spec.operation_id);
     }
@@ -97,8 +98,6 @@ grpc::Status SdmServiceImpl::PlaceDB(grpc::ServerContext* context,
 grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
                                        const rpc::HeartBeatRequest* request,
                                        rpc::HeartBeatResponse* response) {
-    // NodeStatus node_status;
-    // CONVERT_PB_TO_NODE_STATUS(request->node_status(), node_status)
     UNUSED(context);
     std::vector<HeartBeatReplicaInfo> replica_info_list;
     for (const auto& replica_info : request->replica_info_list()) {
@@ -110,8 +109,10 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
             return grpc::Status::OK;
         }
 
-        ReplicaPhase phase;
-        if (!convert_pb_replica_status_to_phase(replica_info.status(), phase)) {
+        StorageReplicaStatus storage_status =
+            StorageReplicaStatus::INITIALIZING;
+        if (!decode_pb_storage_replica_status(replica_info.status(),
+                                              storage_status)) {
             fill_base_rsp(response,
                           Status{StatusCode::INVALID_ARGUMENT,
                                  "replica status is not valid"});
@@ -122,7 +123,7 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
         one.shard_id = ShardID{replica_info.table_id(), replica_info.shard_id()};
         one.replica_index = replica_info.replica_index();
         one.role = role;
-        one.status = phase;
+        one.storage_status = storage_status;
         one.term = replica_info.term();
         replica_info_list.emplace_back(std::move(one));
     }

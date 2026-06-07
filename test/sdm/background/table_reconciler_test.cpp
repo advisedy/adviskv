@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "common/model/storage_replica_status.h"
 #include "common/status.h"
 #include "sdm/background/routeupdate_check_task.h"
 #include "sdm/model/sdm_store.h"
@@ -134,7 +135,7 @@ void make_table_ready_in_storage(SdmStore& store, FakeStorageClient& storage) {
             replica.replica_id,
             replica.replica_id.replica_index == 0 ? ReplicaRole::LEADER
                                                   : ReplicaRole::FOLLOWER,
-            ReplicaPhase::READY,
+            StorageReplicaStatus::READY,
             replica.state.observed_endpoint,
             1,
         });
@@ -181,7 +182,7 @@ GetRouteParam make_get_route_param(const Key& key = "user-123") {
 
 void report_replica_heartbeat(SdmStore& store, const NodeID& node_id,
                               int32_t port, ReplicaIndex replica_index,
-                              ReplicaRole role, ReplicaPhase status,
+                              ReplicaRole role, StorageReplicaStatus status,
                               Term term) {
     HeartBeatService heartbeat_service(&store);
     HeartBeatParam param;
@@ -462,9 +463,9 @@ TEST(TableReconcilerTest, RouteIsRepublishedAfterHeartbeatRecoversLeader) {
     EXPECT_EQ(status.code(), StatusCode::ROUTE_NOT_FOUND);
 
     report_replica_heartbeat(store, "node-a", 18080, 0, ReplicaRole::LEADER,
-                             ReplicaPhase::READY, 11);
+                             StorageReplicaStatus::READY, 11);
     report_replica_heartbeat(store, "node-b", 18081, 1,
-                             ReplicaRole::FOLLOWER, ReplicaPhase::READY,
+                             ReplicaRole::FOLLOWER, StorageReplicaStatus::READY,
                              11);
 
     ASSERT_TRUE(route_task.update_once().ok());

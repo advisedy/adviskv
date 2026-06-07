@@ -6,9 +6,9 @@
 #include <thread>
 
 #include "common/define.h"
-#include "common/enum_convert.h"
 #include "common/log.h"
 #include "common/proto/raft_role_proto.h"
+#include "common/proto/storage_replica_status_proto.h"
 #include "common/status.h"
 #include "storage/replica/replica.h"
 
@@ -129,7 +129,7 @@ rpc::HeartBeatRequest NodeAgent::make_heartbeat_request() const {
         info->set_shard_id(replica_id.shard_index);
         info->set_replica_index(replica_id.replica_index);
         info->set_role(to_pb_raft_role(replica->get_role()));
-        info->set_status(to_pb_replica_status(replica->get_status()));
+        info->set_status(to_pb_storage_replica_status(replica->get_status()));
         info->set_term(replica->current_term());
     }
     return request;

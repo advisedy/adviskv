@@ -9,11 +9,11 @@
 #include "common/confmgr.h"
 #include "common/defer.h"
 #include "common/define.h"
-#include "common/enum_convert.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
 #include "common/path_util.h"
 #include "common/proto/raft_role_proto.h"
+#include "common/proto/storage_replica_status_proto.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage.pb.h"
@@ -263,7 +263,7 @@ grpc::Status StorageServiceImpl::GetReplicaInfo(
     info->set_shard_id(replica->get_replica_id().shard_index);
     info->set_replica_id(replica->get_replica_id().replica_index);
     info->set_role(to_pb_raft_role(replica->get_role()));
-    info->set_status(to_pb_replica_status(replica->get_status()));
+    info->set_status(to_pb_storage_replica_status(replica->get_status()));
     info->set_term(replica->current_term());
     auto* endpoint = info->mutable_endpoint();
     endpoint->set_ip(CONF_GET_STR("ip"));
@@ -451,7 +451,7 @@ grpc::Status StorageServiceImpl::TestGetReplicaState(
     fill_base_rsp(response, status);
     response->set_exists(true);
     response->set_role(to_pb_raft_role(replica->get_role()));
-    response->set_status(to_pb_replica_status(replica->get_status()));
+    response->set_status(to_pb_storage_replica_status(replica->get_status()));
     response->set_current_term(res.current_term);
     response->set_commit_index(res.commit_index);
     response->set_last_applied(res.last_applied);

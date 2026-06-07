@@ -9,6 +9,7 @@
 
 #include "common/define.h"
 #include "common/proto/raft_role_proto.h"
+#include "common/proto/storage_replica_status_proto.h"
 #include "e2e_assert.h"
 #include "e2e_route_util.h"
 #include "storage.grpc.pb.h"
@@ -54,7 +55,10 @@ bool get_replica_state_for_test(const Endpoint& endpoint, TableID table_id,
         *error = "replica role is not valid";
         return false;
     }
-    state->status = response.status();
+    if (!decode_pb_storage_replica_status(response.status(), state->status)) {
+        *error = "replica storage status is not valid";
+        return false;
+    }
     state->current_term = response.current_term();
     state->commit_index = response.commit_index();
     state->last_applied = response.last_applied();

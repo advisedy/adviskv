@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "common/model/storage_replica_status.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "sdm/model/service_param.h"
@@ -16,9 +17,8 @@ namespace adviskv::sdm {
 struct StorageReplicaInfo {
     ReplicaID replica_id;
     ReplicaRole raft_role{ReplicaRole::FOLLOWER};
-    ReplicaPhase status{
-        ReplicaPhase::CREATING};  // 代表对应的storage侧的replica
-                                  // status转化到sdm的phase, 这里已经转化了
+    StorageReplicaStatus storage_status{
+        StorageReplicaStatus::INITIALIZING};
     Endpoint endpoint;
     Term term;
 };

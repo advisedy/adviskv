@@ -5,6 +5,7 @@
 #include "common/log.h"
 #include "common/type.h"
 #include "sdm/model/service_param.h"
+#include "sdm/reconcile/replica_phase_projection.h"
 namespace adviskv::sdm {
 
 HeartBeatService::HeartBeatService(SdmStore* sdm_store)
@@ -60,7 +61,8 @@ Status HeartBeatService::apply_reported_replicas(const HeartBeatParam& param) {
 
         replica->state.observed_raft_role = info.role;
         replica->state.observed_endpoint = Endpoint{param.ip, param.port};
-        replica->state.phase = info.status;
+        replica->state.phase = project_phase_from_storage_status(
+            replica->state.desired, info.storage_status);
         replica->state.update_ts = func::get_current_ts_ms();
         replica->state.term = info.term;
         status = sdm_store_->put_replica(*replica);

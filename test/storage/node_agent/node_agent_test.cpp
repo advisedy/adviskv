@@ -230,8 +230,9 @@ TEST_F(NodeAgentTest, StartRegistersNodeAndSendsPeriodicHeartbeat) {
     EXPECT_EQ(heartbeat.replica_info_list(0).replica_index(), 0);
     EXPECT_EQ(heartbeat.replica_info_list(0).role(),
               pb::RaftRole::RAFT_ROLE_FOLLOWER);
-    EXPECT_EQ(heartbeat.replica_info_list(0).status(),
-              pb::ReplicaStatus::READY);
+    EXPECT_EQ(
+        heartbeat.replica_info_list(0).status(),
+        pb::StorageReplicaStatus::STORAGE_REPLICA_STATUS_READY);
 }
 
 }  // namespace

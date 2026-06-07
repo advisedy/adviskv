@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "common/define.h"
+#include "common/model/storage_replica_status.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "sdm/model/store.h"
@@ -232,7 +233,7 @@ struct HeartBeatReplicaInfo {
     ShardID shard_id;
     ReplicaIndex replica_index;
     ReplicaRole role;
-    ReplicaPhase status;
+    StorageReplicaStatus storage_status;
     Term term;  // 用来帮助判断leader，term高的优先被认定是leader
 };
 
