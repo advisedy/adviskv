@@ -12,8 +12,8 @@ namespace adviskv::meta {
 
 namespace {
 
-bool is_sdm_phase(const SdmTableStatus& status, sdm::TablePhase phase) {
-    return status.phase == static_cast<int32_t>(phase);
+bool is_sdm_phase(const SdmTableStatus& status, SdmTablePhase phase) {
+    return status.phase == phase;
 }
 
 std::string fallback_msg(const std::string& msg, const char* fallback) {
@@ -72,13 +72,13 @@ struct AddTablePolicy {
         if (status.fail()) {
             return ReconcileAction::ERROR;
         }
-        if (is_sdm_phase(sdm_status, sdm::TablePhase::READY)) {
+        if (is_sdm_phase(sdm_status, SdmTablePhase::READY)) {
             return ReconcileAction::DONE;
         }
-        if (is_sdm_phase(sdm_status, sdm::TablePhase::FAILED)) {
+        if (is_sdm_phase(sdm_status, SdmTablePhase::FAILED)) {
             return ReconcileAction::FAILED;
         }
-        if (is_sdm_phase(sdm_status, sdm::TablePhase::CREATING)) {
+        if (is_sdm_phase(sdm_status, SdmTablePhase::CREATING)) {
             return ReconcileAction::WAIT;
         }
         return ReconcileAction::RESUBMIT;
@@ -107,13 +107,13 @@ struct DropTablePolicy {
         if (status.fail()) {
             return ReconcileAction::ERROR;
         }
-        if (is_sdm_phase(sdm_status, sdm::TablePhase::DELETED)) {
+        if (is_sdm_phase(sdm_status, SdmTablePhase::DELETED)) {
             return ReconcileAction::DONE;
         }
-        if (is_sdm_phase(sdm_status, sdm::TablePhase::FAILED)) {
+        if (is_sdm_phase(sdm_status, SdmTablePhase::FAILED)) {
             return ReconcileAction::FAILED;
         }
-        if (is_sdm_phase(sdm_status, sdm::TablePhase::DELETING)) {
+        if (is_sdm_phase(sdm_status, SdmTablePhase::DELETING)) {
             return ReconcileAction::WAIT;
         }
         return ReconcileAction::RESUBMIT;

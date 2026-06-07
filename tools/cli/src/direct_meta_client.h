@@ -6,6 +6,7 @@
 #include "common/define.h"
 #include "common/status.h"
 #include "common/type.h"
+#include "meta/catalog/meta_types.h"
 #include "meta.grpc.pb.h"
 
 namespace adviskv::cli {
@@ -29,7 +30,7 @@ struct TableInfo {
     TableID table_id{-1};
     int32_t shard_count{0};
     int32_t replica_count{0};
-    int32 table_state{0};
+    meta::TableState table_state{meta::TableState::ADDING};
     std::string last_error_msg;
 };
 

@@ -9,6 +9,7 @@
 #include "common/status.h"
 #include "meta/catalog/catalog_manager.h"
 #include "meta/persist/meta_persist_engine.h"
+#include "meta/proto/table_state_proto.h"
 #include "meta/service/sdm_client.h"
 #include "sdm/model/store.h"
 
@@ -117,12 +118,12 @@ class TableDdlReconcilerTest : public ::testing::Test {
         return table;
     }
 
-    SdmTableStatus sdm_status(sdm::TablePhase phase,
+    SdmTableStatus sdm_status(SdmTablePhase phase,
                               const std::string& error_msg = "") {
         SdmTableStatus status{};
         status.table_id = 0;
-        status.desired = 0;
-        status.phase = static_cast<int32_t>(phase);
+        status.desired = SdmTableDesired::PRESENT;
+        status.phase = phase;
         status.last_error_msg = error_msg;
         return status;
     }
@@ -158,7 +159,7 @@ TEST_F(TableDdlReconcilerTest, AddingTableCreatingInSdmKeepsAdding) {
     Fixture fixture{make_sub_dir("adding_creating")};
     TableMeta table = create_table(fixture.catalog, TableState::ADDING);
     FakeSdmClient client;
-    client.table_status_result = sdm_status(sdm::TablePhase::CREATING);
+    client.table_status_result = sdm_status(SdmTablePhase::CREATING);
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();
@@ -176,7 +177,7 @@ TEST_F(TableDdlReconcilerTest, AddingTableReadyInSdmMarksNormal) {
     Fixture fixture{make_sub_dir("adding_ready")};
     TableMeta table = create_table(fixture.catalog, TableState::ADDING);
     FakeSdmClient client;
-    client.table_status_result = sdm_status(sdm::TablePhase::READY);
+    client.table_status_result = sdm_status(SdmTablePhase::READY);
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();
@@ -193,7 +194,7 @@ TEST_F(TableDdlReconcilerTest, AddingTableFailedInSdmMarksFailedWithError) {
     TableMeta table = create_table(fixture.catalog, TableState::ADDING);
     FakeSdmClient client;
     client.table_status_result =
-        sdm_status(sdm::TablePhase::FAILED, "sdm placement failed");
+        sdm_status(SdmTablePhase::FAILED, "sdm placement failed");
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();
@@ -242,7 +243,7 @@ TEST_F(TableDdlReconcilerTest, DroppingTableDeletingInSdmKeepsDropping) {
     Fixture fixture{make_sub_dir("dropping_deleting")};
     TableMeta table = create_table(fixture.catalog, TableState::DROPPING);
     FakeSdmClient client;
-    client.table_status_result = sdm_status(sdm::TablePhase::DELETING);
+    client.table_status_result = sdm_status(SdmTablePhase::DELETING);
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();
@@ -258,7 +259,7 @@ TEST_F(TableDdlReconcilerTest, DroppingTableDeletedInSdmMarksDeleted) {
     Fixture fixture{make_sub_dir("dropping_deleted")};
     TableMeta table = create_table(fixture.catalog, TableState::DROPPING);
     FakeSdmClient client;
-    client.table_status_result = sdm_status(sdm::TablePhase::DELETED);
+    client.table_status_result = sdm_status(SdmTablePhase::DELETED);
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();
@@ -273,7 +274,7 @@ TEST_F(TableDdlReconcilerTest, DroppingTableReadyInSdmResubmitsDropTable) {
     Fixture fixture{make_sub_dir("dropping_ready")};
     TableMeta table = create_table(fixture.catalog, TableState::DROPPING);
     FakeSdmClient client;
-    client.table_status_result = sdm_status(sdm::TablePhase::READY);
+    client.table_status_result = sdm_status(SdmTablePhase::READY);
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();
@@ -291,7 +292,7 @@ TEST_F(TableDdlReconcilerTest, DroppingTableFailedInSdmMarksFailedWithError) {
     TableMeta table = create_table(fixture.catalog, TableState::DROPPING);
     FakeSdmClient client;
     client.table_status_result =
-        sdm_status(sdm::TablePhase::FAILED, "sdm drop failed");
+        sdm_status(SdmTablePhase::FAILED, "sdm drop failed");
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();

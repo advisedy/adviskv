@@ -3,6 +3,7 @@
 #include <grpcpp/support/status.h>
 
 #include "common/status.h"
+#include "sdm/proto/table_status_proto.h"
 #include "sdm.pb.h"
 
 namespace adviskv::meta {
@@ -64,8 +65,13 @@ Status SdmClient::get_table_status(const TableMeta& table_meta,
     if (!table_status) return Status::OK();
 
     table_status->table_id = response.table_id();
-    table_status->desired = response.desired();
-    table_status->phase = response.phase();
+    RETURN_IF_INVALID_CONDITION(
+        sdm::decode_pb_sdm_table_desired(response.desired(),
+                                         table_status->desired),
+        "sdm table desired is not valid")
+    RETURN_IF_INVALID_CONDITION(
+        sdm::decode_pb_sdm_table_phase(response.phase(), table_status->phase),
+        "sdm table phase is not valid")
     table_status->last_error_msg = response.last_error_msg();
     table_status->operation_id = response.operation_id();
 

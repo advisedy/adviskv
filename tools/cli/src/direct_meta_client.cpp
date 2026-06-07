@@ -7,6 +7,7 @@
 #include <chrono>
 
 #include "common/define.h"
+#include "meta/proto/table_state_proto.h"
 
 namespace adviskv::cli {
 
@@ -116,7 +117,10 @@ Status DirectMetaClient::get_table(const std::string& db_name,
     table_info->table_id = response.table_id();
     table_info->shard_count = response.shard_count();
     table_info->replica_count = response.replica_count();
-    table_info->table_state = response.table_state();
+    RETURN_IF_INVALID_CONDITION(
+        meta::decode_pb_meta_table_state(response.table_state(),
+                                         table_info->table_state),
+        "table_state is not valid")
     table_info->last_error_msg = response.last_error_msg();
     return Status::OK();
 }

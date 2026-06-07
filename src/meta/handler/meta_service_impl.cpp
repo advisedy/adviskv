@@ -9,6 +9,7 @@
 #include "common/define.h"
 #include "common/status.h"
 #include "meta/service/ddl_service.h"
+#include "meta/proto/table_state_proto.h"
 
 namespace adviskv::meta {
 
@@ -49,7 +50,7 @@ grpc::Status MetaServiceImpl::CreateTable(
         return grpc::Status::OK;
     }
     response->set_table_id(table_meta.table_id);
-    response->set_table_state(static_cast<int32_t>(table_meta.state));
+    response->set_table_state(to_pb_meta_table_state(table_meta.state));
     response->set_operation_id(table_meta.operation_id);
     return grpc::Status::OK;
 }
@@ -69,7 +70,7 @@ grpc::Status MetaServiceImpl::DropTable(
         return grpc::Status::OK;
     }
     response->set_table_id(table_meta.table_id);
-    response->set_table_state(static_cast<int32_t>(table_meta.state));
+    response->set_table_state(to_pb_meta_table_state(table_meta.state));
     response->set_operation_id(table_meta.operation_id);
     return grpc::Status::OK;
 }
@@ -95,7 +96,7 @@ grpc::Status MetaServiceImpl::GetTable(grpc::ServerContext *context,
     response->set_table_id(table_meta.table_id);
     response->set_replica_count(table_meta.replica_count);
     response->set_shard_count(table_meta.shard_count);
-    response->set_table_state(static_cast<int32>(table_meta.state));
+    response->set_table_state(to_pb_meta_table_state(table_meta.state));
     response->set_last_error_msg(table_meta.last_error_msg);
     response->set_operation_id(table_meta.operation_id);
     return grpc::Status::OK;

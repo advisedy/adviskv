@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 
+#include "common/model/sdm_table_status.h"
 #include "common/status.h"
 #include "meta/catalog/meta_types.h"
 #include "sdm.grpc.pb.h"
@@ -13,8 +14,8 @@ namespace adviskv::meta {
 
 struct SdmTableStatus {
     int32_t table_id{-1};
-    int32_t desired{0};
-    int32_t phase{0};
+    SdmTableDesired desired{SdmTableDesired::PRESENT};
+    SdmTablePhase phase{SdmTablePhase::CREATING};
     std::string last_error_msg;
     std::string operation_id;
 };

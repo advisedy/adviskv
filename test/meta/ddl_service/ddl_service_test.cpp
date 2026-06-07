@@ -9,6 +9,7 @@
 #include "common/status.h"
 #include "meta/catalog/catalog_manager.h"
 #include "meta/persist/meta_persist_engine.h"
+#include "meta/proto/table_state_proto.h"
 #include "meta/service/sdm_client.h"
 
 namespace adviskv::meta {

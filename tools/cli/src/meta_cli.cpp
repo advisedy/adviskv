@@ -182,7 +182,9 @@ int main(int argc, char* argv[]) {
                 fmt::print("OK db_id={} table_id={} shard_count={} "
                            "replica_count={} table_state={} last_error_msg={}\n",
                            table_info.db_id, table_info.table_id,
-                           table_info.shard_count, table_info.replica_count, table_info.table_state, table_info.last_error_msg);
+                           table_info.shard_count, table_info.replica_count,
+                           static_cast<int32_t>(table_info.table_state),
+                           table_info.last_error_msg);
             } else {
                 print_status(status);
             }

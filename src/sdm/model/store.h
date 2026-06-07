@@ -7,6 +7,7 @@
 #include "common/define.h"
 #include "common/optional.h"
 #include "common/type.h"
+#include "sdm/model/table_status.h"
 
 namespace adviskv::sdm {
 
@@ -104,19 +105,6 @@ struct Node {
 using NodePtr = std::shared_ptr<Node>;
 //////////////////////////////
 // table
-
-enum class TableDesired : int32 {
-    PRESENT = 1,
-    ABSENT = 2,
-};
-
-enum class TablePhase : int32 {
-    CREATING = 1,
-    READY = 2,
-    DELETING = 3,
-    DELETED = 4,
-    FAILED = 5,
-};
 
 struct TableSpec {
     std::string table_name;

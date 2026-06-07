@@ -100,9 +100,11 @@ bool wait_table_normal(E2EContext* context) {
                     "GetTable code={}, msg={}", response.base_rsp().code(),
                     response.base_rsp().msg()));
             }
-            if (response.table_state() != (int32)meta::TableState::NORMAL) {
+            if (response.table_state() !=
+                pb::MetaTableState::META_TABLE_STATE_NORMAL) {
                 return CheckResult::fail(fmt::format(
-                    "table_state={}, last_error={}", response.table_state(),
+                    "table_state={}, last_error={}",
+                    static_cast<int32_t>(response.table_state()),
                     response.last_error_msg()));
             }
             return CheckResult::pass(
@@ -137,12 +139,14 @@ bool wait_table_deleted(E2EContext* context) {
                 to_rpc_code(StatusCode::TABLE_NOT_FOUND)) {
                 return CheckResult::pass(response.base_rsp().msg());
             }
-            if (response.table_state() == (int32)meta::TableState::DELETED) {
+            if (response.table_state() ==
+                pb::MetaTableState::META_TABLE_STATE_DELETED) {
                 return CheckResult::pass("table state is DELETED");
             }
             return CheckResult::fail(
                 fmt::format("GetTable code={}, table_state={}, msg={}",
-                            response.base_rsp().code(), response.table_state(),
+                            response.base_rsp().code(),
+                            static_cast<int32_t>(response.table_state()),
                             response.base_rsp().msg()));
         },
         &last_error);

@@ -67,8 +67,8 @@ message GetTableStatusRequest{
 message GetTableStatusResponse{
     adviskv.pb.BaseRsp base_rsp = 1;
     int32 table_id = 2;
-    int32 desired = 3;
-    int32 phase = 4;
+    adviskv.pb.SdmTableDesired desired = 3;
+    adviskv.pb.SdmTablePhase phase = 4;
     string last_error_msg = 5;
     string operation_id = 6;
 }
