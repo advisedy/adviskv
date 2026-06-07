@@ -10,12 +10,12 @@
 #include "common/func.h"
 #include "common/log.h"
 #include "common/proto/raft_role_proto.h"
+#include "common/proto/sdm_table_status_proto.h"
 #include "common/proto/storage_replica_status_proto.h"
 #include "common/status.h"
 #include "sdm.pb.h"
 #include "sdm/model/service_param.h"
 #include "sdm/model/store.h"
-#include "sdm/proto/table_status_proto.h"
 
 namespace adviskv::sdm {
 
@@ -103,9 +103,8 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
     for (const auto& replica_info : request->replica_info_list()) {
         ReplicaRole role = ReplicaRole::FOLLOWER;
         if (!decode_pb_raft_role(replica_info.role(), role)) {
-            fill_base_rsp(response,
-                          Status{StatusCode::INVALID_ARGUMENT,
-                                 "replica role is not valid"});
+            fill_base_rsp(response, Status{StatusCode::INVALID_ARGUMENT,
+                                           "replica role is not valid"});
             return grpc::Status::OK;
         }
 
@@ -113,14 +112,14 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
             StorageReplicaStatus::INITIALIZING;
         if (!decode_pb_storage_replica_status(replica_info.status(),
                                               storage_status)) {
-            fill_base_rsp(response,
-                          Status{StatusCode::INVALID_ARGUMENT,
-                                 "replica status is not valid"});
+            fill_base_rsp(response, Status{StatusCode::INVALID_ARGUMENT,
+                                           "replica status is not valid"});
             return grpc::Status::OK;
         }
 
         HeartBeatReplicaInfo one;
-        one.shard_id = ShardID{replica_info.table_id(), replica_info.shard_id()};
+        one.shard_id =
+            ShardID{replica_info.table_id(), replica_info.shard_id()};
         one.replica_index = replica_info.replica_index();
         one.role = role;
         one.storage_status = storage_status;
@@ -170,9 +169,9 @@ grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context,
     Status status = route_service_->get_route(param, &route);
     fill_base_rsp(response, status);
     if (status.fail()) {
-        LOG_WARN(
-            "GetRoute failed, db={}, table={}, key={}, status={}",
-            param.db_name, param.table_name, param.key, status.to_string());
+        LOG_WARN("GetRoute failed, db={}, table={}, key={}, status={}",
+                 param.db_name, param.table_name, param.key,
+                 status.to_string());
         return grpc::Status::OK;
     }
     if (!route.replicas.empty()) {
@@ -187,7 +186,8 @@ grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context,
         }
     }
     LOG_INFO(
-        "GetRoute ok, db={}, table={}, key={}, table_id={}, shard_id={}, replicas={}, status={}",
+        "GetRoute ok, db={}, table={}, key={}, table_id={}, shard_id={}, "
+        "replicas={}, status={}",
         param.db_name, param.table_name, param.key, route.shard_id.table_id,
         route.shard_id.shard_index, route.replicas.size(), status.to_string());
     return grpc::Status::OK;

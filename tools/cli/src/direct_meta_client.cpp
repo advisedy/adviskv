@@ -42,10 +42,7 @@ Status DirectMetaClient::create_db(const std::string& db_name,
                         static_cast<int>(grpc_status.error_code()),
                         grpc_status.error_message()));
     }
-    if (response.base_rsp().code() != to_rpc_code(StatusCode::OK)) {
-        return Status{static_cast<StatusCode>(response.base_rsp().code()),
-                      response.base_rsp().msg()};
-    }
+    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
     *db_id = response.db_id();
     return Status::OK();
 }
@@ -78,10 +75,7 @@ Status DirectMetaClient::create_table(const std::string& db_name,
                         static_cast<int>(grpc_status.error_code()),
                         grpc_status.error_message()));
     }
-    if (response.base_rsp().code() != to_rpc_code(StatusCode::OK)) {
-        return Status{static_cast<StatusCode>(response.base_rsp().code()),
-                      response.base_rsp().msg()};
-    }
+    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
     *table_id = response.table_id();
     return Status::OK();
 }
@@ -109,10 +103,7 @@ Status DirectMetaClient::get_table(const std::string& db_name,
                         static_cast<int>(grpc_status.error_code()),
                         grpc_status.error_message()));
     }
-    if (response.base_rsp().code() != to_rpc_code(StatusCode::OK)) {
-        return Status{static_cast<StatusCode>(response.base_rsp().code()),
-                      response.base_rsp().msg()};
-    }
+    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
     table_info->db_id = response.db_id();
     table_info->table_id = response.table_id();
     table_info->shard_count = response.shard_count();

@@ -67,10 +67,7 @@ Status StorageClient::create_replica(const CreateReplicaParam& param) {
                         param.endpoint.ip, param.endpoint.port,
                         grpc_status.error_message()));
     }
-    if (response.base_rsp().code() != 0) {
-        return Status{static_cast<StatusCode>(response.base_rsp().code()),
-                      response.base_rsp().msg()};
-    }
+    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
     return Status::OK();
 }
 
@@ -100,10 +97,7 @@ Status StorageClient::delete_replica(const DeleteReplicaParam& param) {
                         param.endpoint.ip, param.endpoint.port,
                         grpc_status.error_message()));
     }
-    if (response.base_rsp().code() != 0) {
-        return Status{static_cast<StatusCode>(response.base_rsp().code()),
-                      response.base_rsp().msg()};
-    }
+    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
     return Status::OK();
 }
 
@@ -134,10 +128,7 @@ Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
                         param.endpoint.ip, param.endpoint.port,
                         grpc_status.error_message()));
     }
-    if (response.base_rsp().code() != 0) {
-        return Status{static_cast<StatusCode>(response.base_rsp().code()),
-                      response.base_rsp().msg()};
-    }
+    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
     exists = response.exists();
     if (!response.exists()) return Status::OK();
 

@@ -49,15 +49,15 @@ Status SdmRouteClient::get_route(const Key& key, RouteInfo* route) const {
                         grpc_status.error_message()));
     }
 
-    if (response.base_rsp().code() != to_rpc_code(StatusCode::OK)) {
+    if (Status status = decode_base_rsp_status(response.base_rsp());
+        status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "GetRoute returns non-ok, sdm={}:{}, db={}, table={}, "
                         "key={}, code={}, msg={}",
                         conf_.sdm_host, conf_.sdm_port, conf_.db_name,
                         conf_.table_name, key, response.base_rsp().code(),
                         response.base_rsp().msg());
-        return Status{static_cast<StatusCode>(response.base_rsp().code()),
-                      response.base_rsp().msg()};
+        return status;
     }
 
     RETURN_IF_INVALID_CONDITION(response.replicas_size() > 0,
@@ -88,7 +88,7 @@ Status SdmRouteClient::get_route(const Key& key, RouteInfo* route) const {
         }
         ADVISKV_SDK_LOG(LogLevel::INFO, "get route ok, route: {}", route_res);
     }
-    
+
     return Status::OK();
 }
 

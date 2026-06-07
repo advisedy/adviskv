@@ -52,10 +52,7 @@ Status DirectStorageClient::put(const StorageCliTarget& target, const Key& key,
                         static_cast<int>(grpc_status.error_code()),
                         grpc_status.error_message()));
     }
-    if (response.base_rsp().code() != to_rpc_code(StatusCode::OK)) {
-        return Status{static_cast<StatusCode>(response.base_rsp().code()),
-                      response.base_rsp().msg()};
-    }
+    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
     return Status::OK();
 }
 
@@ -84,10 +81,7 @@ Status DirectStorageClient::get(const StorageCliTarget& target, const Key& key,
                         static_cast<int>(grpc_status.error_code()),
                         grpc_status.error_message()));
     }
-    if (response.base_rsp().code() != to_rpc_code(StatusCode::OK)) {
-        return Status{static_cast<StatusCode>(response.base_rsp().code()),
-                      response.base_rsp().msg()};
-    }
+    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
     *value = response.value();
     return Status::OK();
 }

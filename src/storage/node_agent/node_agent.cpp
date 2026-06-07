@@ -88,8 +88,7 @@ Status NodeAgent::heartbeat_once() {
     grpc::ClientContext context;
     grpc::Status grpc_status = stub_->HeartBeat(&context, request, &response);
     RETURN_IF_INVALID_CONDITION(grpc_status.ok(), grpc_status.error_message())
-    RETURN_IF_INVALID_CONDITION(response.base_rsp().code() == 0,
-                                response.base_rsp().msg())
+    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
     return Status::OK();
 }
 
@@ -106,8 +105,7 @@ Status NodeAgent::register_node() {
     grpc::Status grpc_status =
         stub_->RegisterNode(&context, request, &response);
     RETURN_IF_INVALID_CONDITION(grpc_status.ok(), grpc_status.error_message())
-    RETURN_IF_INVALID_CONDITION(response.base_rsp().code() == 0,
-                                response.base_rsp().msg())
+    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
     return Status::OK();
 }
 

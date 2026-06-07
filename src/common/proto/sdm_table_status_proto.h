@@ -1,9 +1,10 @@
 #pragma once
 
 #include "common.pb.h"
+#include "common/define.h"
 #include "common/model/sdm_table_status.h"
 
-namespace adviskv::sdm {
+namespace adviskv {
 
 inline bool decode_pb_sdm_table_desired(pb::SdmTableDesired in,
                                         SdmTableDesired& out) {
@@ -37,11 +38,12 @@ inline bool encode_pb_sdm_table_desired(SdmTableDesired in,
 inline pb::SdmTableDesired to_pb_sdm_table_desired(SdmTableDesired desired) {
     pb::SdmTableDesired out =
         pb::SdmTableDesired::SDM_TABLE_DESIRED_UNSPECIFIED;
-    (void)encode_pb_sdm_table_desired(desired, out);
+    IGNORE_RESULT(encode_pb_sdm_table_desired(desired, out));
     return out;
 }
 
-inline bool decode_pb_sdm_table_phase(pb::SdmTablePhase in, SdmTablePhase& out) {
+inline bool decode_pb_sdm_table_phase(pb::SdmTablePhase in,
+                                      SdmTablePhase& out) {
     switch (in) {
         case pb::SdmTablePhase::SDM_TABLE_PHASE_CREATING:
             out = SdmTablePhase::CREATING;
@@ -64,7 +66,8 @@ inline bool decode_pb_sdm_table_phase(pb::SdmTablePhase in, SdmTablePhase& out) 
     }
 }
 
-inline bool encode_pb_sdm_table_phase(SdmTablePhase in, pb::SdmTablePhase& out) {
+inline bool encode_pb_sdm_table_phase(SdmTablePhase in,
+                                      pb::SdmTablePhase& out) {
     switch (in) {
         case SdmTablePhase::CREATING:
             out = pb::SdmTablePhase::SDM_TABLE_PHASE_CREATING;
@@ -88,8 +91,8 @@ inline bool encode_pb_sdm_table_phase(SdmTablePhase in, pb::SdmTablePhase& out) 
 
 inline pb::SdmTablePhase to_pb_sdm_table_phase(SdmTablePhase phase) {
     pb::SdmTablePhase out = pb::SdmTablePhase::SDM_TABLE_PHASE_UNSPECIFIED;
-    (void)encode_pb_sdm_table_phase(phase, out);
+    IGNORE_RESULT(encode_pb_sdm_table_phase(phase, out));
     return out;
 }
 
-}  // namespace adviskv::sdm
+}  // namespace adviskv
