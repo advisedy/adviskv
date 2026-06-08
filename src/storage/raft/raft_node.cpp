@@ -70,7 +70,7 @@ bool RaftNode::later_than_other(Term other_term, LogIndex other_index) const {
 
 void RaftNode::tick() {
     std::lock_guard lock(mutex_);
-    if (health_.is_equad_code(RaftNodeHealth::RECOVERING())) return;
+    if (health_.is_equal_code(RaftNodeHealth::RECOVERING())) return;
 
     if (role_ == ReplicaRole::LEADER) {
         heartbeat_tick_trigger_.tick();
@@ -96,7 +96,7 @@ void RaftNode::tick() {
 }
 
 void RaftNode::become_candidate() {
-    if (health_.is_equad_code(RaftNodeHealth::RECOVERING())) return;
+    if (health_.is_equal_code(RaftNodeHealth::RECOVERING())) return;
     LOG_INFO("replica:{} start become cadidate", self_id_.to_string());
     election_generation_++;
     current_term_++;
@@ -149,7 +149,7 @@ std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
                                               const Value& value) {
     std::lock_guard lock(mutex_);  // ← 加锁
 
-    if (health_.is_equad_code(RaftNodeHealth::RECOVERING())) {
+    if (health_.is_equal_code(RaftNodeHealth::RECOVERING())) {
         return {Status::IS_RECOVERING("raft node is recovering"), -1};
     }
 
@@ -276,7 +276,7 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
         result.term = current_term_;
     }
 
-    if (health_.is_equad_code(RaftNodeHealth::RECOVERING())) {
+    if (health_.is_equal_code(RaftNodeHealth::RECOVERING())) {
         result.term = current_term_;
         return;
     }
@@ -562,7 +562,7 @@ void RaftNode::become_follower(Term later_term) {
 }
 
 void RaftNode::become_leader() {
-    if (health_.is_equad_code(RaftNodeHealth::RECOVERING())) return;
+    if (health_.is_equal_code(RaftNodeHealth::RECOVERING())) return;
 
     LOG_INFO("replica:{} become leader", self_id_.to_string());
     role_ = ReplicaRole::LEADER;
@@ -776,7 +776,7 @@ void RaftNode::update_log_entries(const std::vector<LogEntry>& entries) {
 
 void RaftNode::enter_recovering(LogIndex target_commit_index) {
     std::lock_guard lock(mutex_);
-    health_ = RaftNodeHealth::READY();
+    health_ = RaftNodeHealth::RECOVERING();
     recovery_target_commit_index_ = target_commit_index;
     role_ = ReplicaRole::FOLLOWER;
     election_tick_trigger_.stop();
@@ -790,7 +790,7 @@ void RaftNode::maybe_finish_recovering() {
 }
 
 void RaftNode::maybe_finish_recovering_unlocked() {
-    if (health_.is_equad_code(RaftNodeHealth::RECOVERING())) return;
+    if (!health_.is_equal_code(RaftNodeHealth::RECOVERING())) return;
 
     bool snapshot_covers_target =
         snapshot_index_ >= recovery_target_commit_index_;
@@ -828,7 +828,7 @@ bool RaftNode::has_committed_current_term_entry_unlocked() const {
 Status RaftNode::build_append_entries_for_read(
     std::vector<RaftMessage>& messages, LogIndex& read_index, Term& read_term) {
     std::lock_guard lock(mutex_);
-    if (health_.is_equad_code(RaftNodeHealth::RECOVERING())) {
+    if (health_.is_equal_code(RaftNodeHealth::RECOVERING())) {
         return Status::IS_RECOVERING("recovering");
     }
     if (role_ != ReplicaRole::LEADER) return Status::NOT_LEADER("not leader");

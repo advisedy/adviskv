@@ -80,7 +80,7 @@ struct RaftNodeHealth {
     RaftNodeHealthCode code_;
     Status status_{Status::OK()};
 
-    bool is_equad_code(const RaftNodeHealth& one) const {
+    bool is_equal_code(const RaftNodeHealth& one) const {
         return code_ == one.code_;
     }
 };
@@ -185,17 +185,17 @@ class RaftNode {
 
     bool is_recovering() const {
         std::lock_guard lock(mutex_);
-        return health_.is_equad_code(RaftNodeHealth::RECOVERING());
+        return health_.is_equal_code(RaftNodeHealth::RECOVERING());
     }
 
     bool is_faulted() const {
         std::lock_guard lock(mutex_);
-        return health_.is_equad_code(RaftNodeHealth::FAULTED());
+        return health_.is_equal_code(RaftNodeHealth::FAULTED());
     }
 
     bool is_ready() const {
         std::lock_guard lock(mutex_);
-        return health_.is_equad_code(RaftNodeHealth::READY());
+        return health_.is_equal_code(RaftNodeHealth::READY());
     }
 
     void maybe_finish_recovering();
