@@ -82,7 +82,7 @@ TEST_F(RaftNodeTest, test_2) {
     {
         RaftMeta meta;
         persist.load_raft_meta(meta);
-        RaftMeta real_meta{1, 2, replica_id_};
+        RaftMeta real_meta{1, replica_id_};
         ASSERT_EQ(meta, real_meta);
     }
 }
@@ -97,7 +97,7 @@ TEST_F(RaftNodeTest, RecoveringBlocksElectionVoteAndProposeUntilCatchUp) {
     };
     RaftNode node{replica_id_, members, nullptr};
 
-    node.enter_recovering(2);
+    node.enter_recovering();
     ASSERT_TRUE(node.is_recovering());
 
     for (int i = 1; i <= 30; i++) {
@@ -130,11 +130,11 @@ TEST_F(RaftNodeTest, RecoveringBlocksElectionVoteAndProposeUntilCatchUp) {
     ASSERT_FALSE(node.is_recovering());
 }
 
-// 进入recovering后，install_snapshot覆盖recovery_target_commit_index时应退出recovering
+// 进入recovering后，收到有效install_snapshot时应退出recovering
 TEST_F(RaftNodeTest, RecoveringFinishesWhenSnapshotCoversTarget) {
     RaftNode node{replica_id_, members_, nullptr};
 
-    node.enter_recovering(5);
+    node.enter_recovering();
     ASSERT_TRUE(node.is_recovering());
 
     node.install_snapshot(5, 2, 2);

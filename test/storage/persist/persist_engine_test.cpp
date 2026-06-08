@@ -180,7 +180,7 @@ TEST_F(PersistEngineTest, SaveAndLoadRaftMeta) {
     Status status = engine.init();
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
-    RaftMeta expected{9, 17, ReplicaID{9, 2, 1}};
+    RaftMeta expected{9, ReplicaID{9, 2, 1}};
 
     status = engine.save_raft_meta(expected);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -189,7 +189,6 @@ TEST_F(PersistEngineTest, SaveAndLoadRaftMeta) {
     status = engine.load_raft_meta(actual);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(actual.current_term, expected.current_term);
-    EXPECT_EQ(actual.commit_index, expected.commit_index);
     ASSERT_TRUE(actual.voted_for.has_value());
     EXPECT_EQ(actual.voted_for.value(), expected.voted_for.value());
 }
@@ -321,7 +320,7 @@ TEST_F(PersistEngineTest, RecoverLoadsSnapshotMetaAndWalTogether) {
     ASSERT_TRUE(
         state_machine.apply(make_entry(4, 13, WriteOpType::PUT, "beta", "2"))
             .ok());
-    const RaftMeta meta{11, 15, ReplicaID{101, 7, 0}};
+    const RaftMeta meta{11, ReplicaID{101, 7, 0}};
 
     status = engine.append_wal_batch(wal_entries);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -349,12 +348,12 @@ TEST_F(PersistEngineTest, RecoverLoadsSnapshotMetaAndWalTogether) {
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(loaded_kvs, (std::vector<KV>{{"alpha", "1"}, {"beta", "2"}}));
     EXPECT_EQ(result.raft_meta.current_term, meta.current_term);
-    EXPECT_EQ(result.raft_meta.commit_index, meta.commit_index);
     ASSERT_TRUE(result.raft_meta.voted_for.has_value());
     EXPECT_EQ(result.raft_meta.voted_for.value(), meta.voted_for.value());
     ASSERT_EQ(result.wal_entries.size(), wal_entries.size());
     EXPECT_EQ(result.wal_entries[0].key, wal_entries[0].key);
     EXPECT_EQ(result.wal_entries[1].index, wal_entries[1].index);
+    EXPECT_FALSE(result.need_recover);
 }
 
 // 检测关于recover的场景下: 对于一个正常的信息是否可以判断recover正确
@@ -369,7 +368,7 @@ TEST_F(PersistEngineTest, RecoverLoadsCompleteWalWithoutRepair) {
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal_batch(entries);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{1, 2, std::nullopt});
+        status = engine.save_raft_meta(RaftMeta{1, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -383,14 +382,12 @@ TEST_F(PersistEngineTest, RecoverLoadsCompleteWalWithoutRepair) {
     status = recovered_engine.recover(result);
 
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-    EXPECT_EQ(result.wal_recovery.action, WalRecoveryAction::NONE);
-    EXPECT_EQ(result.wal_recovery.last_good_index, 2);
+    EXPECT_FALSE(result.need_recover);
     EXPECT_EQ(result.wal_entries, entries);
     EXPECT_EQ(fs::file_size(wal_path()), wal_size_before);
 }
 
-// 写2条已提交entry后追加半条partial
-// record，recover应截断partial部分，返回TRUNCATED_UNCOMMITTED
+// 写2条entry后追加半条partial record，recover应保留可信前缀并进入recovering
 TEST_F(PersistEngineTest, RecoverTruncatesUncommittedPartialWalTail) {
     const std::vector<LogEntry> entries = {
         make_entry(1, 1, WriteOpType::PUT, "tail-1", "v1"),
@@ -402,7 +399,7 @@ TEST_F(PersistEngineTest, RecoverTruncatesUncommittedPartialWalTail) {
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal_batch(entries);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{1, 2, std::nullopt});
+        status = engine.save_raft_meta(RaftMeta{1, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -421,9 +418,7 @@ TEST_F(PersistEngineTest, RecoverTruncatesUncommittedPartialWalTail) {
     status = recovered_engine.recover(result);
 
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-    EXPECT_EQ(result.wal_recovery.action,
-              WalRecoveryAction::TRUNCATED_UNCOMMITTED);
-    EXPECT_EQ(result.wal_recovery.last_good_index, 2);
+    EXPECT_TRUE(result.need_recover);
     EXPECT_EQ(result.wal_entries, entries);
     EXPECT_EQ(fs::file_size(wal_path()), valid_wal_size);
 
@@ -433,7 +428,7 @@ TEST_F(PersistEngineTest, RecoverTruncatesUncommittedPartialWalTail) {
     EXPECT_EQ(reread, entries);
 }
 
-// 写1条已提交entry后追加1条CRC错误的未提交entry，recover应截断CRC错误部分，返回TRUNCATED_UNCOMMITTED
+// 写1条entry后追加1条CRC错误entry，recover应保留可信前缀并进入recovering
 TEST_F(PersistEngineTest, RecoverTruncatesUncommittedCrcMismatch) {
     const LogEntry committed =
         make_entry(1, 1, WriteOpType::PUT, "crc-1", "v1");
@@ -443,7 +438,7 @@ TEST_F(PersistEngineTest, RecoverTruncatesUncommittedCrcMismatch) {
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal(committed);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{1, 1, std::nullopt});
+        status = engine.save_raft_meta(RaftMeta{1, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -459,14 +454,12 @@ TEST_F(PersistEngineTest, RecoverTruncatesUncommittedCrcMismatch) {
     status = recovered_engine.recover(result);
 
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-    EXPECT_EQ(result.wal_recovery.action,
-              WalRecoveryAction::TRUNCATED_UNCOMMITTED);
-    EXPECT_EQ(result.wal_recovery.last_good_index, 1);
+    EXPECT_TRUE(result.need_recover);
     EXPECT_EQ(result.wal_entries, std::vector<LogEntry>{committed});
     EXPECT_EQ(fs::file_size(wal_path()), valid_wal_size);
 }
 
-// commit_index=3但WAL在index=2处CRC损坏，recover应截断损坏部分，降低commit_index，返回NEED_RAFT_CATCHUP
+// WAL在index=2处CRC损坏，recover应保留损坏前的可信前缀并进入recovering
 TEST_F(PersistEngineTest, RecoverTruncatesCommittedCorruptionForRaftCatchUp) {
     const LogEntry entry1 =
         make_entry(1, 1, WriteOpType::PUT, "committed-1", "v1");
@@ -480,7 +473,7 @@ TEST_F(PersistEngineTest, RecoverTruncatesCommittedCorruptionForRaftCatchUp) {
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal(entry1);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{1, 3, std::nullopt});
+        status = engine.save_raft_meta(RaftMeta{1, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -497,10 +490,7 @@ TEST_F(PersistEngineTest, RecoverTruncatesCommittedCorruptionForRaftCatchUp) {
     status = recovered_engine.recover(result);
 
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-    EXPECT_EQ(result.wal_recovery.action, WalRecoveryAction::NEED_RAFT_CATCHUP);
-    EXPECT_EQ(result.wal_recovery.last_good_index, 1);
-    EXPECT_EQ(result.wal_recovery.original_commit_index, 3);
-    EXPECT_EQ(result.raft_meta.commit_index, 1);
+    EXPECT_TRUE(result.need_recover);
     ASSERT_EQ(result.wal_entries.size(), 1U);
     EXPECT_EQ(result.wal_entries[0], entry1);
     EXPECT_EQ(fs::file_size(wal_path()), first_record_size);
@@ -511,7 +501,8 @@ TEST_F(PersistEngineTest, RecoverTruncatesCommittedCorruptionForRaftCatchUp) {
     EXPECT_EQ(reread, std::vector<LogEntry>{entry1});
 }
 
-// 第一次recover截断损坏WAL后模拟recovering中宕机，第二次recover时WAL完整但落后commit，仍应返回NEED_RAFT_CATCHUP
+// 第一次recover修复损坏WAL后，第二次recover看到的是已修复的可信WAL。
+// 当前设计不持久化recovering marker，因此第二次recover不会继续返回need_recover。
 TEST_F(PersistEngineTest, RecoverContinuesCatchUpAfterCrashDuringRecovering) {
     const LogEntry entry1 =
         make_entry(1, 1, WriteOpType::PUT, "recovering-crash-1", "v1");
@@ -523,7 +514,7 @@ TEST_F(PersistEngineTest, RecoverContinuesCatchUpAfterCrashDuringRecovering) {
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal(entry1);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{1, 2, std::nullopt});
+        status = engine.save_raft_meta(RaftMeta{1, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -539,10 +530,7 @@ TEST_F(PersistEngineTest, RecoverContinuesCatchUpAfterCrashDuringRecovering) {
         PersistEngine::RecoverResult result;
         status = first_recover.recover(result);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        EXPECT_EQ(result.wal_recovery.action,
-                  WalRecoveryAction::NEED_RAFT_CATCHUP);
-        EXPECT_EQ(result.wal_recovery.recovery_target_commit_index, 2);
-        EXPECT_EQ(result.raft_meta.commit_index, 1);
+        EXPECT_TRUE(result.need_recover);
         EXPECT_EQ(fs::file_size(wal_path()), first_record_size);
         status = first_recover.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -554,16 +542,12 @@ TEST_F(PersistEngineTest, RecoverContinuesCatchUpAfterCrashDuringRecovering) {
     PersistEngine::RecoverResult result;
     status = second_recover.recover(result);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-    EXPECT_EQ(result.wal_recovery.action, WalRecoveryAction::NEED_RAFT_CATCHUP);
-    EXPECT_EQ(result.wal_recovery.last_good_index, 1);
-    EXPECT_EQ(result.wal_recovery.original_commit_index, 2);
-    EXPECT_EQ(result.wal_recovery.recovery_target_commit_index, 2);
-    EXPECT_EQ(result.raft_meta.commit_index, 1);
+    EXPECT_FALSE(result.need_recover);
     EXPECT_EQ(result.wal_entries, std::vector<LogEntry>{entry1});
     EXPECT_EQ(fs::file_size(wal_path()), first_record_size);
 }
 
-// 写1条已提交entry后追加非法data_len(-1)，recover应截断非法部分，返回TRUNCATED_UNCOMMITTED
+// 写1条entry后追加非法data_len(-1)，recover应保留可信前缀并进入recovering
 TEST_F(PersistEngineTest, RecoverHandlesInvalidWalDataLenByCommitIndex) {
     const LogEntry committed =
         make_entry(1, 1, WriteOpType::PUT, "len-1", "v1");
@@ -573,7 +557,7 @@ TEST_F(PersistEngineTest, RecoverHandlesInvalidWalDataLenByCommitIndex) {
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.append_wal(committed);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{1, 1, std::nullopt});
+        status = engine.save_raft_meta(RaftMeta{1, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -590,9 +574,7 @@ TEST_F(PersistEngineTest, RecoverHandlesInvalidWalDataLenByCommitIndex) {
     status = recovered_engine.recover(result);
 
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-    EXPECT_EQ(result.wal_recovery.action,
-              WalRecoveryAction::TRUNCATED_UNCOMMITTED);
-    EXPECT_EQ(result.wal_recovery.last_good_index, 1);
+    EXPECT_TRUE(result.need_recover);
     EXPECT_EQ(result.wal_entries, std::vector<LogEntry>{committed});
     EXPECT_EQ(fs::file_size(wal_path()), valid_wal_size);
 }
@@ -614,7 +596,7 @@ TEST_F(PersistEngineTest, RecoverSnapshotAndWalAfterCrashDuringSnapshotWrite) {
 
     status = engine.append_wal_batch(entries);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-    ASSERT_TRUE(engine.save_raft_meta(RaftMeta{2, 4, std::nullopt}).ok());
+    ASSERT_TRUE(engine.save_raft_meta(RaftMeta{2, std::nullopt}).ok());
     ASSERT_TRUE(engine.close().ok());
 
     int child_status =
@@ -634,9 +616,59 @@ TEST_F(PersistEngineTest, RecoverSnapshotAndWalAfterCrashDuringSnapshotWrite) {
     ASSERT_EQ(res.wal_entries.size(), 2U);
     EXPECT_EQ(res.wal_entries[0].index, 3);
     EXPECT_EQ(res.wal_entries[1].index, 4);
-    EXPECT_EQ(res.wal_recovery.action, WalRecoveryAction::NONE);
-    EXPECT_EQ(res.wal_recovery.last_good_index, 4);
-    EXPECT_EQ(res.raft_meta.commit_index, 4);
+    EXPECT_FALSE(res.need_recover);
+
+    std::vector<LogEntry> reread;
+    status = recovered.read_wal_batch(reread);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    ASSERT_EQ(reread.size(), 2U);
+    EXPECT_EQ(reread[0].index, 3);
+    EXPECT_EQ(reread[1].index, 4);
+}
+//TODO check
+TEST_F(PersistEngineTest,
+       RecoverRewritesWalWhenSnapshotPrefixAndCorruptionCoexist) {
+    const std::vector<LogEntry> entries = {
+        make_entry(1, 1, WriteOpType::PUT, "snap-1", "v1"),
+        make_entry(1, 2, WriteOpType::PUT, "snap-2", "v2"),
+    };
+
+    {
+        PersistEngine engine = make_engine();
+        Status status = engine.init();
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+        status = engine.append_wal_batch(entries);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+
+        KvStateMachine state_machine(EngineType::MAP);
+        for (const LogEntry& entry : entries) {
+            status = state_machine.apply(entry);
+            ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+        }
+        status = engine.do_snapshot(state_machine);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+        ASSERT_TRUE(engine.close().ok());
+    }
+
+    append_raw_bytes(wal_path(), encode_wal_record(entries[0]));
+    append_raw_bytes(wal_path(), encode_wal_record(entries[1]));
+    append_raw_bytes(wal_path(), encode_wal_record_with_bad_crc(make_entry(
+                                     1, 3, WriteOpType::PUT, "bad", "bad")));
+
+    PersistEngine recovered = make_engine();
+    Status status = recovered.init();
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+
+    PersistEngine::RecoverResult result;
+    status = recovered.recover(result);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    EXPECT_TRUE(result.need_recover);
+    EXPECT_TRUE(result.wal_entries.empty());
+
+    std::vector<LogEntry> reread;
+    status = recovered.read_wal_batch(reread);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    EXPECT_TRUE(reread.empty());
 }
 
 }  // namespace

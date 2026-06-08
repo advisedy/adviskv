@@ -242,7 +242,6 @@ void Replica::apply_committed_entries() {
         ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_success");
         raft_node_->advance_last_applied(entry.index);
     }
-    refresh_recovering_state();
 }
 
 // Status Replica::apply_log_entry(const LogEntry& entry) {
@@ -354,9 +353,12 @@ Status Replica::del(const DelParam& param) {
 
 void Replica::refresh_recovering_state() {
     if (!raft_node_) return;
-    raft_node_->maybe_finish_recovering();
-    status_.store(raft_node_->is_recovering() ? ReplicaStatus::RECOVERING
-                                              : ReplicaStatus::READY);
+    if (raft_node_->is_faulted()) {
+        LOG_WARN("raft node is faulted");
+        return;
+    }
+    if (!raft_node_->is_ready()) return;
+    status_.store(ReplicaStatus::READY);
 }
 
 Status Replica::handle_request_vote(const RequestVoteParam& param,
@@ -380,7 +382,9 @@ Status Replica::handle_append_entries(const AppendEntriesParam& param,
     {
         std::lock_guard lock(state_machine_mutex_);
         apply_committed_entries();
+        refresh_recovering_state();
     }
+
 
     return Status::OK();
 }
@@ -442,7 +446,11 @@ void Replica::on_tick() {
 Status Replica::recover() {
     status_.store(ReplicaStatus::INITIALIZING);
     PersistEngine::RecoverResult result;
-    RETURN_IF_INVALID_STATUS(persist_->recover(result))
+    if(Status status = persist_->recover(result); status.fail()){
+        //TODO 这里直接进入FAULTED状态吧
+        LOG_WARN("replica's persist recover failed. msg:{}", status.msg());
+        return status;
+    }
 
     if (result.snapshot) {
         RETURN_IF_INVALID_STATUS(state_machine_->restore(
@@ -455,10 +463,9 @@ Status Replica::recover() {
 
     raft_node_->update_raft_meta(result.raft_meta);
     raft_node_->update_log_entries(result.wal_entries);
-    if (result.wal_recovery.action == WalRecoveryAction::NEED_RAFT_CATCHUP) {
+    if (result.need_recover) {
         status_.store(ReplicaStatus::RECOVERING);
-        raft_node_->enter_recovering(
-            result.wal_recovery.recovery_target_commit_index);
+        raft_node_->enter_recovering();
     }
     refresh_recovering_state();
     return Status::OK();

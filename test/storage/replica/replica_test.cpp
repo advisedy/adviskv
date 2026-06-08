@@ -235,7 +235,7 @@ TEST_F(ReplicaTest, WalCatchupRecoveryRejectsRequestsUntilEntriesApplied) {
             make_entry(1, 2, WriteOpType::PUT, "k2", "v2"),
         });
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = persist.save_raft_meta(RaftMeta{1, 3, std::nullopt});
+        status = persist.save_raft_meta(RaftMeta{1, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         ASSERT_TRUE(persist.close().ok());
     }
@@ -299,7 +299,7 @@ TEST_F(ReplicaTest, SnapshotCatchupRecoveryFinishesWhenSnapshotCoversTarget) {
             make_entry(1, 2, WriteOpType::PUT, "k2", "v2"),
         });
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = persist.save_raft_meta(RaftMeta{1, 6, std::nullopt});
+        status = persist.save_raft_meta(RaftMeta{1, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         ASSERT_TRUE(persist.close().ok());
     }

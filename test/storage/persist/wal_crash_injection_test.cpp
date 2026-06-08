@@ -45,7 +45,7 @@ class WalCrashInjectionTest : public ::testing::Test {
         });
         ASSERT_TRUE(status.ok()) << adviskv::test::status_debug_string(status);
 
-        status = persist.save_raft_meta(RaftMeta{1, 2, std::nullopt});
+        status = persist.save_raft_meta(RaftMeta{1, std::nullopt});
         ASSERT_TRUE(status.ok()) << adviskv::test::status_debug_string(status);
         ASSERT_TRUE(persist.close().ok());
     }
@@ -83,9 +83,7 @@ class WalCrashInjectionTest : public ::testing::Test {
         ASSERT_EQ(result.wal_entries.size(), 2U);
         EXPECT_EQ(result.wal_entries[0].index, 1);
         EXPECT_EQ(result.wal_entries[1].index, 2);
-        EXPECT_EQ(result.wal_recovery.action,
-                  WalRecoveryAction::TRUNCATED_UNCOMMITTED);
-        EXPECT_EQ(result.wal_recovery.last_good_index, 2);
+        EXPECT_TRUE(result.need_recover);
 
         std::vector<LogEntry> entries_after_repair;
         status = recovered.read_wal_batch(entries_after_repair);
@@ -106,8 +104,7 @@ class WalCrashInjectionTest : public ::testing::Test {
         EXPECT_EQ(result.wal_entries[0].index, 1);
         EXPECT_EQ(result.wal_entries[1].index, 2);
         EXPECT_EQ(result.wal_entries[2].index, 3);
-        EXPECT_EQ(result.wal_recovery.action, WalRecoveryAction::NONE);
-        EXPECT_EQ(result.wal_recovery.last_good_index, 3);
+        EXPECT_FALSE(result.need_recover);
 
         std::vector<LogEntry> entries_after_repair;
         status = recovered.read_wal_batch(entries_after_repair);

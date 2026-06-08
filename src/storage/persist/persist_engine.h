@@ -22,8 +22,7 @@ class PersistEngine {
     Status append_wal_batch(const std::vector<LogEntry>& entries);
     Status read_wal_batch(std::vector<LogEntry>& entries);
 
-    // 和下面的truncate_wal_to_offset区分一下，这个是代码业务层这边调用的，用来截取到内存里的wal
-    // 而truncate_wal_to_offset是用来截取磁盘里的wal的
+    // Rewrite WAL so only entries after snapshot_index remain on disk.
     Status truncate_wal(const LogIndex& snapshot_index);
 
     Status save_raft_meta(const RaftMeta& meta);
@@ -42,7 +41,7 @@ class PersistEngine {
         SnapshotPtr snapshot;
         RaftMeta raft_meta;
         std::vector<LogEntry> wal_entries;
-        WalRecoveryInfo wal_recovery;
+        bool need_recover{false};
     };
     Status recover(RecoverResult& result);
 
@@ -50,7 +49,6 @@ class PersistEngine {
     struct WalReadResult {
         std::vector<LogEntry> entries;
         bool error{false};
-        LogIndex last_good_index{0};
         int64_t last_good_offset{0};
         std::string error_msg;
     };
@@ -59,7 +57,8 @@ class PersistEngine {
     Status read_wal_batch_unlocked(std::vector<LogEntry>& entries) const;
     Status read_wal_from_disk(const std::string& path,
                               WalReadResult& result) const;
-    Status truncate_wal_to_offset(int64_t offset);
+    Status rewrite_wal_unlocked(const std::vector<LogEntry>& entries);
+    Status truncate_wal_unlocked(const LogIndex& snapshot_index);
     Status read_snapshot_header(int fd, Snapshot* snapshot,
                                 int32& kv_count) const;
 

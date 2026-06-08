@@ -13,27 +13,11 @@ using LogIndex = int64_t;
 
 enum class WriteOpType : int32_t { PUT = 0, DEL = 1, NONE = 2 };
 
-enum class WalRecoveryAction : int32_t {
-    NONE = 0,
-    TRUNCATED_UNCOMMITTED = 1,
-    NEED_RAFT_CATCHUP = 2,
-};
-
-struct WalRecoveryInfo {
-    WalRecoveryAction action{WalRecoveryAction::NONE};
-    LogIndex last_good_index{0};
-    int64_t last_good_offset{0};
-    LogIndex original_commit_index{0};
-    LogIndex recovery_target_commit_index{0};
-};
-
 struct RaftMeta {
     Term current_term;
-    LogIndex commit_index{0};
     std::optional<ReplicaID> voted_for;
     bool operator==(const RaftMeta& other) const {
         if (!(current_term == other.current_term)) return false;
-        if (!(commit_index == other.commit_index)) return false;
         if (!(voted_for == other.voted_for)) return false;
         return true;
     }

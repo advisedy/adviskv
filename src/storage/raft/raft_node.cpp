@@ -389,6 +389,9 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
             } else {
                 ADVISKV_METRICS_COUNTER(
                     "storage_raft_handle_append_entries_wal_batch_failure");
+                // TODO 处理好失败状态
+                LOG_WARN("storage raft handle append entires wal batch failed!");
+                return;
             }
         }
     }
@@ -401,7 +404,7 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
             // TODO
         }
     }
-    maybe_finish_recovering_unlocked();
+    finish_recovering_unlocked();
 
     result.success = true;
     result.term = current_term_;
@@ -592,7 +595,6 @@ void RaftNode::become_leader() {
     if (members_.size() == 1) {
         try_update_commit_index();
     }
-    maybe_finish_recovering_unlocked();
 }
 
 // raftnode 作为leader，需要更新自己的commit_idx
@@ -672,7 +674,6 @@ Status RaftNode::save_raft_meta() const {
 
     RaftMeta raft_meta;
     raft_meta.current_term = current_term_;
-    raft_meta.commit_index = commit_index_;
     raft_meta.voted_for = voted_for_;
     return persist_->save_raft_meta(raft_meta);
 }
@@ -723,7 +724,7 @@ void RaftNode::install_snapshot(LogIndex new_snapshot_index,
     if (save_raft_meta().fail()) {
         // TODO
     }
-    maybe_finish_recovering_unlocked();
+    finish_recovering_unlocked();
 }
 
 void RaftNode::handle_install_snapshot_response(
@@ -740,7 +741,6 @@ void RaftNode::handle_install_snapshot_response(
 
     next_index_[from] = snapshot_index_ + 1;
     match_index_[from] = snapshot_index_;
-    maybe_finish_recovering_unlocked();
 }
 
 Status RaftNode::prepare_install_snapshot(Term leader_term,
@@ -764,7 +764,6 @@ Status RaftNode::prepare_install_snapshot(Term leader_term,
 
 void RaftNode::update_raft_meta(const RaftMeta& meta) {
     std::lock_guard lock(mutex_);
-    commit_index_ = meta.commit_index;
     current_term_ = meta.current_term;
     voted_for_ = meta.voted_for;
 }
@@ -774,34 +773,24 @@ void RaftNode::update_log_entries(const std::vector<LogEntry>& entries) {
     log_entries_ = entries;
 }
 
-void RaftNode::enter_recovering(LogIndex target_commit_index) {
+void RaftNode::enter_recovering() {
     std::lock_guard lock(mutex_);
     health_ = RaftNodeHealth::RECOVERING();
-    recovery_target_commit_index_ = target_commit_index;
     role_ = ReplicaRole::FOLLOWER;
     election_tick_trigger_.stop();
     heartbeat_tick_trigger_.stop();
-    maybe_finish_recovering_unlocked();
 }
 
-void RaftNode::maybe_finish_recovering() {
+void RaftNode::finish_recovering() {
     std::lock_guard lock(mutex_);
-    maybe_finish_recovering_unlocked();
+    finish_recovering_unlocked();
 }
 
-void RaftNode::maybe_finish_recovering_unlocked() {
+void RaftNode::finish_recovering_unlocked() {
     if (!health_.is_equal_code(RaftNodeHealth::RECOVERING())) return;
 
-    bool snapshot_covers_target =
-        snapshot_index_ >= recovery_target_commit_index_;
-    bool log_covers_target =
-        last_log_index_unlocked() >= recovery_target_commit_index_;
-    if (commit_index_ >= recovery_target_commit_index_ &&
-        (snapshot_covers_target || log_covers_target)) {
-        health_ = RaftNodeHealth::READY();
-        recovery_target_commit_index_ = 0;
-        election_tick_trigger_.reset(ELECTION_TIMEOUT);
-    }
+    health_ = RaftNodeHealth::READY();
+    election_tick_trigger_.reset(ELECTION_TIMEOUT);
 }
 
 // 判判断当前这个term，这个leader是否已经提交过entry了

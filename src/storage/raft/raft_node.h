@@ -55,7 +55,8 @@ class TickTrigger {
     TickFunc func_;
 };
 
-struct RaftNodeHealth {
+class RaftNodeHealth {
+   public:
 #define ADVISKV_RAFT_HEALTH_CODE_LIST(X) \
     X(INITIALIZING, 0)                   \
     X(READY, 1)                          \
@@ -77,12 +78,16 @@ struct RaftNodeHealth {
 
 #undef ADVISKV_RAFT_HEALTH_CODE_LIST
 
-    RaftNodeHealthCode code_;
-    Status status_{Status::OK()};
+    RaftNodeHealth(RaftNodeHealthCode code)
+        : code_(code), status_(Status::OK()) {}
 
     bool is_equal_code(const RaftNodeHealth& one) const {
         return code_ == one.code_;
     }
+
+   private:
+    RaftNodeHealthCode code_;
+    Status status_{Status::OK()};
 };
 
 class PersistEngine;
@@ -181,7 +186,7 @@ class RaftNode {
 
     void update_log_entries(const std::vector<LogEntry>& entries);
 
-    void enter_recovering(LogIndex target_commit_index);
+    void enter_recovering();
 
     bool is_recovering() const {
         std::lock_guard lock(mutex_);
@@ -198,7 +203,7 @@ class RaftNode {
         return health_.is_equal_code(RaftNodeHealth::READY());
     }
 
-    void maybe_finish_recovering();
+    void finish_recovering();
 
     // 读一致性准备心跳
     Status build_append_entries_for_read(std::vector<RaftMessage>& messages,
@@ -221,7 +226,7 @@ class RaftNode {
 
     void try_update_commit_index();
     bool later_than_other(Term other_term, LogIndex other_index) const;
-    void maybe_finish_recovering_unlocked();
+    void finish_recovering_unlocked();
     bool has_committed_current_term_entry_unlocked() const;
     RaftMessage build_append_entries_message_unlocked(const PeerMember& member,
                                                       LogIndex next_index);
@@ -262,7 +267,6 @@ class RaftNode {
     LogIndex snapshot_index_{0};
     Term snapshot_term_{0};
 
-    LogIndex recovery_target_commit_index_{0};
     mutable std::mutex mutex_;
 
     RaftNodeHealth health_{RaftNodeHealth::INITIALIZING()};

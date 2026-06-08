@@ -980,7 +980,7 @@ TEST_F(RaftClusterTest, RecoveringFollowerCatchesUpByAppendEntries) {
     ASSERT_EQ(target_idx, 2);
     ASSERT_EQ(cluster_.node_ptr(0)->commit_index(), target_idx);
 
-    cluster_.node_ptr(1)->enter_recovering(target_idx);
+    cluster_.node_ptr(1)->enter_recovering();
     ASSERT_TRUE(cluster_.node_ptr(1)->is_recovering());
 
     // 检测他不会成为candidate的
@@ -1020,7 +1020,7 @@ TEST_F(RaftClusterTest, RecoveringLeaderStepsDownAndNewLeaderElected) {
     ASSERT_EQ(cluster_.leader_idx(), 0);
     drop_all_messages();
 
-    cluster_.node_ptr(0)->enter_recovering(2);
+    cluster_.node_ptr(0)->enter_recovering();
     ASSERT_TRUE(cluster_.node_ptr(0)->is_recovering());
     ASSERT_EQ(cluster_.node_ptr(0)->role(), ReplicaRole::FOLLOWER);
     ASSERT_EQ(cluster_.leader_idx(), -1);

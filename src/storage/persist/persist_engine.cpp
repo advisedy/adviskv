@@ -78,7 +78,6 @@ class RaftMetaCodec {
 
     void encode_payload(const ObjectType& meta, EncodeBuffer& buf) const {
         buf.write(meta.current_term);
-        buf.write(meta.commit_index);
         buf.write<bool>(meta.voted_for.has_value());
         if (meta.voted_for.has_value()) {
             const ReplicaID& replica_id = meta.voted_for.value();
@@ -91,7 +90,6 @@ class RaftMetaCodec {
     Status decode_payload(DecodeBuffer& buf, ObjectType& meta) const {
         meta = {};
         RETURN_IF_INVALID_READ(buf, meta.current_term)
-        RETURN_IF_INVALID_READ(buf, meta.commit_index)
         bool has_voted_for{false};
         RETURN_IF_INVALID_READ(buf, has_voted_for)
         if (has_voted_for) {
@@ -216,7 +214,10 @@ Status PersistEngine::read_wal_batch_unlocked(
 
 Status PersistEngine::truncate_wal(const LogIndex& snapshot_index) {
     std::unique_lock lock{mutex_};
+    return truncate_wal_unlocked(snapshot_index);
+}
 
+Status PersistEngine::truncate_wal_unlocked(const LogIndex& snapshot_index) {
     std::vector<LogEntry> entries, remain;
     RETURN_IF_INVALID_STATUS(read_wal_batch_unlocked(entries))
 
@@ -225,6 +226,11 @@ Status PersistEngine::truncate_wal(const LogIndex& snapshot_index) {
         remain.push_back(std::move(entry));
     }
 
+    return rewrite_wal_unlocked(remain);
+}
+
+Status PersistEngine::rewrite_wal_unlocked(
+    const std::vector<LogEntry>& entries) {
     std::string tmp_path = wal_path_ + ".tmp";
     int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd < 0) {
@@ -237,7 +243,7 @@ Status PersistEngine::truncate_wal(const LogIndex& snapshot_index) {
         }
     });
 
-    for (const LogEntry& entry : remain) {
+    for (const LogEntry& entry : entries) {
         RETURN_IF_INVALID_STATUS(write_wal_to_disk(fd, entry))
     }
 
@@ -266,34 +272,6 @@ Status PersistEngine::truncate_wal(const LogIndex& snapshot_index) {
     wal_fd_ = ::open(wal_path_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (wal_fd_ < 0) {
         return Status::ERROR("truncate wal error");
-    }
-
-    return Status::OK();
-}
-
-Status PersistEngine::truncate_wal_to_offset(int64_t offset) {
-    if (offset < 0) {
-        return Status::ERROR("wal truncate offset is negative");
-    }
-
-    if (wal_fd_ < 0) {
-        wal_fd_ =
-            ::open(wal_path_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
-        if (wal_fd_ < 0) {
-            return Status::ERROR("failed to open wal for truncate");
-        }
-    }
-
-    if (::fsync(wal_fd_) != 0) {
-        return Status::ERROR("failed to fsync wal before truncate");
-    }
-
-    if (::ftruncate(wal_fd_, static_cast<off_t>(offset)) != 0) {
-        return Status::ERROR("failed to truncate wal to offset");
-    }
-
-    if (::fsync(wal_fd_) != 0) {
-        return Status::ERROR("failed to fsync truncated wal");
     }
 
     return Status::OK();
@@ -596,15 +574,15 @@ Status PersistEngine::recover(RecoverResult& result) {
     std::unique_lock lock{mutex_};
     result = {};
 
-    {
+    {  // 填充snapshot
         result.snapshot = std::make_shared<Snapshot>();
-        Status status = load_snapshot_meta(result.snapshot);
-        RETURN_IF_INVALID_STATUS(status)
+        RETURN_IF_INVALID_STATUS(load_snapshot_meta(result.snapshot))
     }
 
+    // 填充raft_meta
     RETURN_IF_INVALID_STATUS(load_raft_meta(result.raft_meta))
 
-    const LogIndex original_commit_index = result.raft_meta.commit_index;
+    // 读取WAL
     WalReadResult wal_read_result;
     RETURN_IF_INVALID_STATUS(read_wal_from_disk(wal_path_, wal_read_result))
 
@@ -619,59 +597,35 @@ Status PersistEngine::recover(RecoverResult& result) {
                           return entry.index <= snapshot_index;
                       });
 
-    bool wal_gap_after_snapshot = false;
     if (!wal_read_result.entries.empty() &&
         wal_read_result.entries.front().index != snapshot_index + 1) {
-        wal_gap_after_snapshot = true;
-    }
-
-    LogIndex local_last_good_index = snapshot_index;
-    if (!wal_gap_after_snapshot) {
-        if (!wal_read_result.entries.empty()) {
-            local_last_good_index = wal_read_result.entries.back().index;
-        }
-        result.wal_entries = std::move(wal_read_result.entries);
-    } else {
+        // 说明WAL的内容和快照对不上，这种情况需要把快照之后的WAL都清掉
+        // 否则下次recover还会读到同样的gap。
         result.wal_entries.clear();
-    }
-
-    result.wal_recovery.last_good_index = local_last_good_index;
-    result.wal_recovery.last_good_offset = wal_read_result.last_good_offset;
-    result.wal_recovery.original_commit_index = original_commit_index;
-    result.wal_recovery.recovery_target_commit_index = original_commit_index;
-
-    if (!wal_read_result.error) {
-        if (wal_gap_after_snapshot or
-            local_last_good_index <
-                original_commit_index) {  // 有可能读完了， 但是后面全少了
-            LOG_WARN(
-                "wal is complete but behind committed index during recover, "
-                "last_good_index={}, commit_index={}",
-                local_last_good_index, original_commit_index);
-            result.wal_recovery.action = WalRecoveryAction::NEED_RAFT_CATCHUP;
-            result.raft_meta.commit_index = local_last_good_index;
-        } else {
-            // 这里是正常路线，没有问题
-            result.wal_recovery.action = WalRecoveryAction::NONE;
-        }
+        result.need_recover = true;
+        LOG_WARN(
+            "wal gap after snapshot during recover, snapshot_index={}, "
+            "first_wal_index={}",
+            snapshot_index, wal_read_result.entries.front().index);
+        RETURN_IF_INVALID_STATUS(rewrite_wal_unlocked(result.wal_entries))
         return Status::OK();
     }
 
-    LOG_WARN(
-        "wal corrupted during recover, reason={}, last_good_index={}, "
-        "last_good_offset={}, commit_index={}",
-        wal_read_result.error_msg, local_last_good_index,
-        wal_read_result.last_good_offset, original_commit_index);
+    result.wal_entries = std::move(wal_read_result.entries);
 
-    RETURN_IF_INVALID_STATUS(
-        truncate_wal_to_offset(wal_read_result.last_good_offset))
-
-    if (local_last_good_index >= original_commit_index) {
-        result.wal_recovery.action = WalRecoveryAction::TRUNCATED_UNCOMMITTED;
-    } else {
-        result.wal_recovery.action = WalRecoveryAction::NEED_RAFT_CATCHUP;
-        result.raft_meta.commit_index = local_last_good_index;
+    if (wal_read_result.error) {
+        result.need_recover = true;
+        LOG_WARN(
+            "wal corrupted during recover, reason={}",
+            wal_read_result.error_msg);
+        RETURN_IF_INVALID_STATUS(rewrite_wal_unlocked(result.wal_entries))
+        return Status::OK();
     }
+
+    // 即使WAL本身完整，也可能在snapshot发布后、WAL重写前崩溃。
+    // 这里用snapshot index重写WAL，丢弃已经被snapshot覆盖的前缀。
+    RETURN_IF_INVALID_STATUS(truncate_wal_unlocked(snapshot_index))
+    LOG_DEBUG("persist engine recover ok.");
     return Status::OK();
 }
 
@@ -733,7 +687,6 @@ Status PersistEngine::read_wal_from_disk(const std::string& path,
         result.entries.push_back(std::move(entry));
         prev_index = result.entries.back().index;
         has_prev_index = true;
-        result.last_good_index = prev_index;
         result.last_good_offset = record_start_offset + consumed_bytes;
     }
     return Status::OK();
