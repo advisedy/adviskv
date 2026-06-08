@@ -1,12 +1,13 @@
 #pragma once
 
-#include "common/define.h"
 #include <cassert>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
+
+#include "common/define.h"
 namespace adviskv::sdm {
 
 template <typename T>
@@ -77,8 +78,6 @@ using ReadKeyLockGuard =
 
 #define KEY_CONCACT_INNER(x, y) x##y
 #define KEY_CONCACT(x, y) KEY_CONCACT_INNER(x, y)
-
-
 
 // 提供给外部的，这边直接设置好要锁的对象类型和这个名字就可以了。
 #define WRITE_KEY_LOCK_GUARD(type, key)                     \

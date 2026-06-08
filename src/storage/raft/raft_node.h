@@ -8,6 +8,8 @@
 #include <utility>
 #include <vector>
 
+#include "common/define.h"
+#include "common/model/storage_replica_status.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
@@ -51,6 +53,36 @@ class TickTrigger {
     int32_t cur_cnt_{0};
     int32_t limit_cnt_;
     TickFunc func_;
+};
+
+struct RaftNodeHealth {
+#define ADVISKV_RAFT_HEALTH_CODE_LIST(X) \
+    X(INITIALIZING, 0)                   \
+    X(READY, 1)                          \
+    X(RECOVERING, 2)                     \
+    X(FAULTED, 3)
+
+    enum class RaftNodeHealthCode {
+#define X(name, code) name = code,
+        ADVISKV_RAFT_HEALTH_CODE_LIST(X)
+#undef X
+    };
+
+#define X(name, code)                                    \
+    static RaftNodeHealth name() {                       \
+        return RaftNodeHealth{RaftNodeHealthCode::name}; \
+    }
+    ADVISKV_RAFT_HEALTH_CODE_LIST(X)
+#undef X
+
+#undef ADVISKV_RAFT_HEALTH_CODE_LIST
+
+    RaftNodeHealthCode code_;
+    Status status_{Status::OK()};
+
+    bool is_equad_code(const RaftNodeHealth& one) const {
+        return code_ == one.code_;
+    }
 };
 
 class PersistEngine;
@@ -150,10 +182,22 @@ class RaftNode {
     void update_log_entries(const std::vector<LogEntry>& entries);
 
     void enter_recovering(LogIndex target_commit_index);
+
     bool is_recovering() const {
         std::lock_guard lock(mutex_);
-        return recovering_;
+        return health_.is_equad_code(RaftNodeHealth::RECOVERING());
     }
+
+    bool is_faulted() const {
+        std::lock_guard lock(mutex_);
+        return health_.is_equad_code(RaftNodeHealth::FAULTED());
+    }
+
+    bool is_ready() const {
+        std::lock_guard lock(mutex_);
+        return health_.is_equad_code(RaftNodeHealth::READY());
+    }
+
     void maybe_finish_recovering();
 
     // 读一致性准备心跳
@@ -205,7 +249,7 @@ class RaftNode {
     std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> next_index_;
     std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> match_index_;
 
-    // tick 计数器（替代 Timer）
+    // tick 计数器（替代 Timer
     // int32_t election_ticks_{0};
     // int32_t heartbeat_ticks_{0};
     TickTrigger election_tick_trigger_;
@@ -217,9 +261,11 @@ class RaftNode {
     PersistEngine* persist_;
     LogIndex snapshot_index_{0};
     Term snapshot_term_{0};
-    bool recovering_{false};
+
     LogIndex recovery_target_commit_index_{0};
     mutable std::mutex mutex_;
+
+    RaftNodeHealth health_{RaftNodeHealth::INITIALIZING()};
 
     friend class RaftClusterTest;
 };

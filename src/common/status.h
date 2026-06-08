@@ -44,7 +44,7 @@ namespace adviskv {
     X(NOT_YET_COMMIT,                                                          \
       2001) /*请求已被leader接受，但返回时尚未确认提交，结果未决*/             \
     X(IS_RECOVERING, 2002)                                                     \
-    X(UNKNOWN, 4000)      /*SDK 对外语义：请求结果未决，调用方应重试或读校验*/ \
+    X(UNKNOWN, 4000)      /*SDK 对外语义：请求结果未知，调用方应重试或读校验*/ \
     X(GET_EOF, 5000)      /*读到了eof*/                                        \
     X(PARTIAL_READ, 5001) /*读取到一半遇到eof*/
 

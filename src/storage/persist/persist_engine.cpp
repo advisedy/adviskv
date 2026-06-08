@@ -140,7 +140,7 @@ Status PersistEngine::init() {
         "snapshot_tmp_path_={}",
         dir_path_, wal_path_, raft_meta_path_, snapshot_path_,
         snapshot_tmp_path_);
-    mkdir(dir_path_.c_str(), 0755); // TODO 改成create_dircation
+    mkdir(dir_path_.c_str(), 0755);  // TODO 改成create_dircation
 
     wal_fd_ = ::open(wal_path_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (wal_fd_ < 0) {

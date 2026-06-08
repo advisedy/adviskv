@@ -35,8 +35,7 @@ Status NodeAgent::init(const NodeAgentConf& conf,
 Status NodeAgent::start() {
     RETURN_IF_INVALID_CONDITION(initialized_, "node agent not initialized")
 
-    Status status = prepare();
-    RETURN_IF_INVALID_STATUS(status)
+    RETURN_IF_INVALID_STATUS(prepare())
 
     BackgroundTask::start(Milliseconds(conf_.heartbeat_interval_ms));
 

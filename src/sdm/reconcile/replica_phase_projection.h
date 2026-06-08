@@ -6,7 +6,6 @@
 namespace adviskv::sdm {
 
 ReplicaPhase project_phase_from_storage_status(
-    ReplicaDesired desired,
-    StorageReplicaStatus storage_status);
+    ReplicaDesired desired, StorageReplicaStatus storage_status);
 
 }  // namespace adviskv::sdm

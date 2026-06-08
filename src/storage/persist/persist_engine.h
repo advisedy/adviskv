@@ -10,7 +10,6 @@
 #include "storage/raft/state_machine/state_machine.h"
 namespace adviskv::storage {
 
-
 class PersistEngine {
    public:
     PersistEngine(const std::string& data_dir, const ReplicaID& replica_id);
@@ -59,11 +58,10 @@ class PersistEngine {
     Status write_wal_to_disk(int fd, const LogEntry& entry);
     Status read_wal_batch_unlocked(std::vector<LogEntry>& entries) const;
     Status read_wal_from_disk(const std::string& path,
-                                WalReadResult& result) const;
+                              WalReadResult& result) const;
     Status truncate_wal_to_offset(int64_t offset);
     Status read_snapshot_header(int fd, Snapshot* snapshot,
                                 int32& kv_count) const;
-
 
     std::string wal_path_;
     std::string raft_meta_path_;

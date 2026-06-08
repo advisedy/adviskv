@@ -1,7 +1,7 @@
 #pragma once
 
-#include <memory>
 #include <functional>
+#include <memory>
 
 #include "common/type.h"
 #include "storage/engine/kv_engine.h"
@@ -31,8 +31,8 @@ class KvStateMachine : public StateMachine {
     LogIndex apply_term() const override;
     Status get(const Key& key, Value& value) const override;
 
-    Status for_each_kv(
-        const std::function<Status(const Key&, const Value&)>& fn) const override;
+    Status for_each_kv(const std::function<Status(const Key&, const Value&)>&
+                           fn) const override;
 
     KVEngine* engine() { return engine_.get(); }
 

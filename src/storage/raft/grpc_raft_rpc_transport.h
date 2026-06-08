@@ -14,14 +14,12 @@ namespace adviskv::storage {
 
 class GrpcRaftRpcTransport final : public IRaftRpcTransport {
    public:
-    Status request_vote(const PeerMember& target,
-                        const RequestVoteParam& param,
+    Status request_vote(const PeerMember& target, const RequestVoteParam& param,
                         int32_t timeout_ms,
                         RequestVoteResult& result) const override;
 
     Status append_entries(const PeerMember& target,
-                          const AppendEntriesParam& param,
-                          int32_t timeout_ms,
+                          const AppendEntriesParam& param, int32_t timeout_ms,
                           AppendEntriesResult& result) const override;
 
     Status install_snapshot_chunk(const PeerMember& target,

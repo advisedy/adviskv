@@ -17,8 +17,7 @@ namespace adviskv::sdm {
 struct StorageReplicaInfo {
     ReplicaID replica_id;
     ReplicaRole raft_role{ReplicaRole::FOLLOWER};
-    StorageReplicaStatus storage_status{
-        StorageReplicaStatus::INITIALIZING};
+    StorageReplicaStatus storage_status{StorageReplicaStatus::INITIALIZING};
     Endpoint endpoint;
     Term term;
 };

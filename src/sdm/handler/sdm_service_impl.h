@@ -17,8 +17,10 @@ namespace adviskv::sdm {
 
 class SdmServiceImpl final : public rpc::ShardingManagerService::Service {
    public:
-    explicit SdmServiceImpl(TableService* table_service, NodeService* node_service,
-                            HeartBeatService* heartbeat_service, RouteService* route_service);
+    explicit SdmServiceImpl(TableService* table_service,
+                            NodeService* node_service,
+                            HeartBeatService* heartbeat_service,
+                            RouteService* route_service);
 
 #define DEFINE_METHOD(method_name)                                 \
     grpc::Status method_name(grpc::ServerContext* context,         \

@@ -88,10 +88,10 @@ Status KvStateMachine::restore(const SnapshotPtr& snap,
     }
 
     engine_->clear();
-    RETURN_IF_INVALID_STATUS(for_each_kv([this](const Key& key,
-                                                const Value& value) -> Status {
-        return engine_->put(key, value);
-    }))
+    RETURN_IF_INVALID_STATUS(
+        for_each_kv([this](const Key& key, const Value& value) -> Status {
+            return engine_->put(key, value);
+        }))
 
     apply_index_ = snap->apply_index;
     apply_term_ = snap->apply_term;

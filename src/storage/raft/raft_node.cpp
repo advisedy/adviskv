@@ -3,17 +3,19 @@
 #include <algorithm>
 #include <cassert>
 #include <mutex>
-#include <random>
 #include <utility>
+#include <vector>
 
 #include "common/define.h"
 #include "common/func.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
+#include "common/model/replica_role.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
 #include "storage/persist/persist_engine.h"
+#include "storage/replica/replica.h"
 namespace adviskv::storage {
 
 static constexpr int32_t HEARTBEAT_INTERVAL = 3;
@@ -35,6 +37,8 @@ RaftNode::RaftNode(const ReplicaID& self_id,
             match_index_[member.replica_id] = 0;
         }
     }
+
+    health_ = RaftNodeHealth::READY();
 }
 
 LogIndex RaftNode::last_log_index_unlocked() const {
@@ -66,7 +70,7 @@ bool RaftNode::later_than_other(Term other_term, LogIndex other_index) const {
 
 void RaftNode::tick() {
     std::lock_guard lock(mutex_);
-    if (recovering_) return;
+    if (health_.is_equad_code(RaftNodeHealth::RECOVERING())) return;
 
     if (role_ == ReplicaRole::LEADER) {
         heartbeat_tick_trigger_.tick();
@@ -92,7 +96,7 @@ void RaftNode::tick() {
 }
 
 void RaftNode::become_candidate() {
-    if (recovering_) return;
+    if (health_.is_equad_code(RaftNodeHealth::RECOVERING())) return;
     LOG_INFO("replica:{} start become cadidate", self_id_.to_string());
     election_generation_++;
     current_term_++;
@@ -145,7 +149,7 @@ std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
                                               const Value& value) {
     std::lock_guard lock(mutex_);  // ← 加锁
 
-    if (recovering_) {
+    if (health_.is_equad_code(RaftNodeHealth::RECOVERING())) {
         return {Status::IS_RECOVERING("raft node is recovering"), -1};
     }
 
@@ -272,7 +276,7 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
         result.term = current_term_;
     }
 
-    if (recovering_) {
+    if (health_.is_equad_code(RaftNodeHealth::RECOVERING())) {
         result.term = current_term_;
         return;
     }
@@ -558,7 +562,8 @@ void RaftNode::become_follower(Term later_term) {
 }
 
 void RaftNode::become_leader() {
-    if (recovering_) return;
+    if (health_.is_equad_code(RaftNodeHealth::RECOVERING())) return;
+
     LOG_INFO("replica:{} become leader", self_id_.to_string());
     role_ = ReplicaRole::LEADER;
     // heartbeat_ticks_ = election_ticks_ = 0;
@@ -771,7 +776,7 @@ void RaftNode::update_log_entries(const std::vector<LogEntry>& entries) {
 
 void RaftNode::enter_recovering(LogIndex target_commit_index) {
     std::lock_guard lock(mutex_);
-    recovering_ = true;
+    health_ = RaftNodeHealth::READY();
     recovery_target_commit_index_ = target_commit_index;
     role_ = ReplicaRole::FOLLOWER;
     election_tick_trigger_.stop();
@@ -785,7 +790,7 @@ void RaftNode::maybe_finish_recovering() {
 }
 
 void RaftNode::maybe_finish_recovering_unlocked() {
-    if (!recovering_) return;
+    if (health_.is_equad_code(RaftNodeHealth::RECOVERING())) return;
 
     bool snapshot_covers_target =
         snapshot_index_ >= recovery_target_commit_index_;
@@ -793,7 +798,7 @@ void RaftNode::maybe_finish_recovering_unlocked() {
         last_log_index_unlocked() >= recovery_target_commit_index_;
     if (commit_index_ >= recovery_target_commit_index_ &&
         (snapshot_covers_target || log_covers_target)) {
-        recovering_ = false;
+        health_ = RaftNodeHealth::READY();
         recovery_target_commit_index_ = 0;
         election_tick_trigger_.reset(ELECTION_TIMEOUT);
     }
@@ -823,7 +828,9 @@ bool RaftNode::has_committed_current_term_entry_unlocked() const {
 Status RaftNode::build_append_entries_for_read(
     std::vector<RaftMessage>& messages, LogIndex& read_index, Term& read_term) {
     std::lock_guard lock(mutex_);
-    if (recovering_) return Status::IS_RECOVERING("recovering");
+    if (health_.is_equad_code(RaftNodeHealth::RECOVERING())) {
+        return Status::IS_RECOVERING("recovering");
+    }
     if (role_ != ReplicaRole::LEADER) return Status::NOT_LEADER("not leader");
     if (!has_committed_current_term_entry_unlocked()) {
         return Status::NOT_YET_COMMIT("current term entry is not committed");

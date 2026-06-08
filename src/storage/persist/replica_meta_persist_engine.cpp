@@ -118,7 +118,8 @@ Status ReplicaMetaPersistEngine::load_replica_meta(
         }
     });
 
-    RETURN_IF_INVALID_STATUS(FramedRecord<ReplicaMetaCodec>::decode_from_fd(fd, payload))
+    RETURN_IF_INVALID_STATUS(
+        FramedRecord<ReplicaMetaCodec>::decode_from_fd(fd, payload))
 
     return Status::OK();
 }

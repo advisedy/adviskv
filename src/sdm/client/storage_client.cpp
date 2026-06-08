@@ -134,8 +134,8 @@ Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
 
     const auto& replica = response.replica();
 
-    out.replica_id = ReplicaID{replica.table_id(), replica.shard_id(),
-                               replica.replica_id()};
+    out.replica_id =
+        ReplicaID{replica.table_id(), replica.shard_id(), replica.replica_id()};
     ReplicaRole role = ReplicaRole::FOLLOWER;
     RETURN_IF_INVALID_CONDITION(decode_pb_raft_role(replica.role(), role),
                                 "replica role is not valid")
