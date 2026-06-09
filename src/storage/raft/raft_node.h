@@ -220,9 +220,13 @@ class RaftNode {
 
     Term get_term(LogIndex index) const;
 
+    Status ensure_not_faulted_unlocked() const;
+    Status ensure_ready_unlocked() const;
+
     void become_follower(Term later_term);
     void become_leader();
     void become_candidate();
+    void enter_faulted_unlocked(const Status& reason);
 
     void try_update_commit_index();
     bool later_than_other(Term other_term, LogIndex other_index) const;

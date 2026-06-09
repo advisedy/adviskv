@@ -70,7 +70,7 @@ bool RaftNode::later_than_other(Term other_term, LogIndex other_index) const {
 
 void RaftNode::tick() {
     std::lock_guard lock(mutex_);
-    if (health_.is_equal_code(RaftNodeHealth::RECOVERING())) return;
+    if (ensure_ready_unlocked().fail()) return;
 
     if (role_ == ReplicaRole::LEADER) {
         heartbeat_tick_trigger_.tick();
@@ -96,13 +96,17 @@ void RaftNode::tick() {
 }
 
 void RaftNode::become_candidate() {
-    if (health_.is_equal_code(RaftNodeHealth::RECOVERING())) return;
+    if (ensure_ready_unlocked().fail()) return;
     LOG_INFO("replica:{} start become cadidate", self_id_.to_string());
     election_generation_++;
     current_term_++;
     voted_for_ = self_id_;
     granted_vote_count_ = 1;
     role_ = ReplicaRole::CANDIDATE;
+    if (Status status = save_raft_meta(); status.fail()) {
+        enter_faulted_unlocked(status);
+        return;
+    }
     // election_ticks_ = 0;
     heartbeat_tick_trigger_.stop();
     election_tick_trigger_.reset(ELECTION_TIMEOUT);
@@ -149,9 +153,8 @@ std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
                                               const Value& value) {
     std::lock_guard lock(mutex_);  // ← 加锁
 
-    if (health_.is_equal_code(RaftNodeHealth::RECOVERING())) {
-        return {Status::IS_RECOVERING("raft node is recovering"), -1};
-    }
+    Status ready_status = ensure_ready_unlocked();
+    if (ready_status.fail()) return {ready_status, -1};
 
     if (role_ != ReplicaRole::LEADER) {
         return {Status{StatusCode::NOT_LEADER, "not leader"}, -1};
@@ -198,6 +201,7 @@ std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
 所以每一次广播之后，我们的pending_message就会更新。
 */
 void RaftNode::broadcast_append_entries() {
+    if (ensure_ready_unlocked().fail()) return;
     if (role_ != ReplicaRole::LEADER) return;
 
     for (const PeerMember& member : members_) {
@@ -264,6 +268,10 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
     result.term = current_term_;
     result.vote_granted = false;
 
+    if (ensure_not_faulted_unlocked().fail()) {
+        return;
+    }
+
     if (param.term < current_term_) {
         return;
     }
@@ -322,6 +330,11 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     result.success = false;
     result.term = current_term_;
     result.last_log_index = last_log_index_unlocked();
+
+    if (ensure_not_faulted_unlocked().fail()) {
+        return;
+    }
+
     if (param.term < current_term_) {
         ADVISKV_METRICS_COUNTER(
             "storage_raft_handle_append_entries_stale_term");
@@ -415,13 +428,15 @@ void RaftNode::handle_vote_response(const ReplicaID& from,
                                     const RequestVoteResult& result) {
     UNUSED(from);
 
+    std::lock_guard lock(mutex_);
+    if (ensure_ready_unlocked().fail()) return;
+
     // 已经不是 CANDIDATE 了，就直接忽略之前的发起内容
     if (role_ != ReplicaRole::CANDIDATE) return;
 
     LOG_DEBUG("candidate replica:{} get vote response from replica:{}",
               self_id_.to_string(), from.to_string());
 
-    std::lock_guard lock(mutex_);
     if (result.term > current_term_) {
         become_follower(result.term);
         return;
@@ -474,6 +489,8 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
     ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_request");
 
     std::lock_guard lock(mutex_);
+    RETURN_IF_INVALID_STATUS(ensure_ready_unlocked())
+
     if (result.term > current_term_) {
         ADVISKV_METRICS_COUNTER(
             "storage_raft_handle_append_response_higher_term");
@@ -565,7 +582,7 @@ void RaftNode::become_follower(Term later_term) {
 }
 
 void RaftNode::become_leader() {
-    if (health_.is_equal_code(RaftNodeHealth::RECOVERING())) return;
+    if (ensure_ready_unlocked().fail()) return;
 
     LOG_INFO("replica:{} become leader", self_id_.to_string());
     role_ = ReplicaRole::LEADER;
@@ -600,6 +617,8 @@ void RaftNode::become_leader() {
 // raftnode 作为leader，需要更新自己的commit_idx
 // 当收到了follower们关于日志复制的回应时，就调用一下这个函数，去更新自己的commit_idx
 void RaftNode::try_update_commit_index() {
+    if (ensure_ready_unlocked().fail()) return;
+
     LogIndex old_commit_index = commit_index_;
     for (LogIndex idx = commit_index_ + 1; idx <= last_log_index_unlocked();
          ++idx) {
@@ -635,9 +654,6 @@ void RaftNode::try_update_commit_index() {
             commit_index_ = idx;
         }
     }
-    if (save_raft_meta().fail()) {
-        // TODO
-    }
     if (commit_index_ > old_commit_index) {
         ADVISKV_METRICS_COUNTER("storage_raft_commit_index_advance");
         ADVISKV_METRICS_COUNTER(
@@ -666,6 +682,38 @@ Term RaftNode::get_term(LogIndex index) const {
         return 0;
     }
     return log_entries_[offset].term;
+}
+
+Status RaftNode::ensure_not_faulted_unlocked() const {
+    if (health_.is_equal_code(RaftNodeHealth::FAULTED())) {
+        return Status::ERROR("raft node is faulted");
+    }
+    return Status::OK();
+}
+
+Status RaftNode::ensure_ready_unlocked() const {
+    Status status = ensure_not_faulted_unlocked();
+    if (status.fail()) return status;
+
+    if (health_.is_equal_code(RaftNodeHealth::RECOVERING())) {
+        return Status::IS_RECOVERING("raft node is recovering");
+    }
+    if (!health_.is_equal_code(RaftNodeHealth::READY())) {
+        return Status::NOT_INIT("raft node is not ready");
+    }
+    return Status::OK();
+}
+
+void RaftNode::enter_faulted_unlocked(const Status& status) {
+    if (health_.is_equal_code(RaftNodeHealth::FAULTED())) return;
+
+    LOG_WARN("raft node:{} enter faulted, reason={}", self_id_.to_string(),
+             status.to_string());
+    health_ = RaftNodeHealth::FAULTED();
+    role_ = ReplicaRole::FOLLOWER;
+    election_tick_trigger_.stop();
+    heartbeat_tick_trigger_.stop();
+    pending_messages_.clear();
 }
 
 // persist 去 持久化raft_meta
@@ -704,6 +752,7 @@ Status RaftNode::truncate_log(LogIndex new_snapshot_index) {
 void RaftNode::install_snapshot(LogIndex new_snapshot_index,
                                 Term new_snapshot_term, Term leader_term) {
     std::lock_guard lock(mutex_);
+    if (ensure_not_faulted_unlocked().fail()) return;
 
     if (leader_term > current_term_) {
         current_term_ = leader_term;
@@ -730,6 +779,7 @@ void RaftNode::install_snapshot(LogIndex new_snapshot_index,
 void RaftNode::handle_install_snapshot_response(
     const ReplicaID& from, const InstallSnapshotResult& result) {
     std::lock_guard lock(mutex_);
+    if (ensure_ready_unlocked().fail()) return;
     if (role_ != ReplicaRole::LEADER) return;
 
     if (result.term > current_term_) {
@@ -746,6 +796,7 @@ void RaftNode::handle_install_snapshot_response(
 Status RaftNode::prepare_install_snapshot(Term leader_term,
                                           LogIndex new_snapshot_index) {
     std::lock_guard lock(mutex_);
+    RETURN_IF_INVALID_STATUS(ensure_not_faulted_unlocked())
 
     if (leader_term < current_term_) {  // 发送过来的leader的term低
         return Status::ERROR("stale install snapshot term");
@@ -775,6 +826,8 @@ void RaftNode::update_log_entries(const std::vector<LogEntry>& entries) {
 
 void RaftNode::enter_recovering() {
     std::lock_guard lock(mutex_);
+    if (health_.is_equal_code(RaftNodeHealth::FAULTED())) return;
+
     health_ = RaftNodeHealth::RECOVERING();
     role_ = ReplicaRole::FOLLOWER;
     election_tick_trigger_.stop();
@@ -817,9 +870,8 @@ bool RaftNode::has_committed_current_term_entry_unlocked() const {
 Status RaftNode::build_append_entries_for_read(
     std::vector<RaftMessage>& messages, LogIndex& read_index, Term& read_term) {
     std::lock_guard lock(mutex_);
-    if (health_.is_equal_code(RaftNodeHealth::RECOVERING())) {
-        return Status::IS_RECOVERING("recovering");
-    }
+    RETURN_IF_INVALID_STATUS(ensure_ready_unlocked())
+
     if (role_ != ReplicaRole::LEADER) return Status::NOT_LEADER("not leader");
     if (!has_committed_current_term_entry_unlocked()) {
         return Status::NOT_YET_COMMIT("current term entry is not committed");
