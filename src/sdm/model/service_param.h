@@ -31,7 +31,7 @@ struct PlaceTableParam {
                                     "operation_id should not empty")
         RETURN_IF_INVALID_CONDITION(replica_count > 0,
                                     "replica_count should be greater than 0")
-        RETURN_IF_INVALID_CONDITION(shard_count >= 0,
+        RETURN_IF_INVALID_CONDITION(shard_count > 0,
                                     "shard_count should be greater than 0")
         return Status::OK();
     }
@@ -84,18 +84,6 @@ struct ShardPlacement {
 
 struct TablePlacementResult {
     std::vector<ShardPlacement> shards;
-};
-
-struct PlaceDBParam {
-    int32_t db_id{-1};
-    std::string db_name;
-    std::string zone;
-    Status validate() const {
-        RETURN_IF_INVALID_CONDITION(!db_name.empty(),
-                                    "db_name should not empty")
-        RETURN_IF_INVALID_CONDITION(db_id != -1, "db_id should not is -1")
-        return Status::OK();
-    }
 };
 
 // storage client
@@ -249,7 +237,7 @@ struct HeartBeatParam {
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(!node_id.empty(), "node need id");
         RETURN_IF_INVALID_CONDITION(!ip.empty(), "ip should not empty");
-        RETURN_IF_INVALID_CONDITION(port != -1, "port should not empty");
+        RETURN_IF_INVALID_CONDITION(port > 0, "port should not empty");
         RETURN_IF_INVALID_CONDITION(!resoure_pool_name.empty(),
                                     "resource_pool should not empty");
         RETURN_IF_INVALID_CONDITION(!dc.empty(), "dc should not empty");

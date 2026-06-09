@@ -89,25 +89,4 @@ Status SdmClient::call_drop_table(const TableMeta& table_meta) {
     return Status::OK();
 }
 
-Status SdmClient::call_place_db(const DBMeta& db_meta) {
-    rpc::PlaceDBRequest request;
-    request.set_db_id(db_meta.db_id);
-    request.set_db_name(db_meta.db_name);
-    request.set_zone(db_meta.zone);
-    rpc::PlaceDBResponse response;
-    grpc::ClientContext context;
-    grpc::Status status = stub_->PlaceDB(&context, request, &response);
-
-    if (!status.ok()) {
-        return Status{
-            StatusCode::ERROR,
-            fmt::format("call sdm place_db failed, grpc code = {}, msg = {}",
-                        static_cast<int>(status.error_code()),
-                        status.error_message())};
-    }
-
-    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
-    return Status::OK();
-}
-
 }  // namespace adviskv::meta

@@ -30,12 +30,6 @@ class FakeSdmClient : public ISdmClient {
         return drop_table_status;
     }
 
-    Status call_place_db(const DBMeta& db_meta) override {
-        ++place_db_calls;
-        last_place_db = db_meta;
-        return place_db_status;
-    }
-
     Status get_table_status(const TableMeta& table_meta,
                             SdmTableStatus* table_status) override {
         ++get_table_status_calls;
@@ -48,19 +42,16 @@ class FakeSdmClient : public ISdmClient {
 
     Status place_table_status{Status::OK()};
     Status drop_table_status{Status::OK()};
-    Status place_db_status{Status::OK()};
     Status get_table_status_status{Status::OK()};
     SdmTableStatus table_status_result;
 
     int place_table_calls{0};
     int drop_table_calls{0};
-    int place_db_calls{0};
     int get_table_status_calls{0};
 
     TableMeta last_place_table;
     TableMeta last_drop_table;
     TableMeta last_get_table;
-    DBMeta last_place_db;
 };
 
 class TestableTableDdlReconciler : public TableDdlReconciler {

@@ -30,7 +30,6 @@ class SdmServiceImpl final : public rpc::ShardingManagerService::Service {
     DEFINE_METHOD(PlaceTable)
     DEFINE_METHOD(DropTable)
     DEFINE_METHOD(GetTableStatus)
-    DEFINE_METHOD(PlaceDB)
     DEFINE_METHOD(HeartBeat)
     DEFINE_METHOD(RegisterNode)
     DEFINE_METHOD(GetRoute)

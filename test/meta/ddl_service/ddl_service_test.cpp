@@ -29,12 +29,6 @@ class FakeSdmClient : public ISdmClient {
         return drop_table_status;
     }
 
-    Status call_place_db(const DBMeta& db_meta) override {
-        ++place_db_calls;
-        last_place_db = db_meta;
-        return place_db_status;
-    }
-
     Status get_table_status(const TableMeta& table_meta,
                             SdmTableStatus* table_status) override {
         ++get_table_status_calls;
@@ -47,19 +41,16 @@ class FakeSdmClient : public ISdmClient {
 
     Status place_table_status{Status::OK()};
     Status drop_table_status{Status::OK()};
-    Status place_db_status{Status::OK()};
     Status get_table_status_status{Status::OK()};
     SdmTableStatus table_status_result;
 
     int place_table_calls{0};
     int drop_table_calls{0};
-    int place_db_calls{0};
     int get_table_status_calls{0};
 
     TableMeta last_place_table;
     TableMeta last_drop_table;
     TableMeta last_get_table;
-    DBMeta last_place_db;
 };
 
 class DdlServiceTest : public ::testing::Test {
@@ -117,35 +108,18 @@ class DdlServiceTest : public ::testing::Test {
     const std::string resource_pool_{"pool-a"};
 };
 
-// 测试创建db之后，没有sdm_client，导致db被删除，检验返回码，然后查询db是否存在。
-TEST_F(DdlServiceTest, CreateDbWithoutSdmClientRollsBackCatalog) {
+// DB 是 Meta 侧 namespace，创建 DB 不依赖 SDM。
+TEST_F(DdlServiceTest, CreateDbWithoutSdmClientPersistsCatalog) {
     Fixture fixture{make_sub_dir("create_db_without_sdm")};
     DdlService service{&fixture.catalog, nullptr};
 
     DBMeta db;
     Status status = service.create_db(create_db_param(), &db);
 
-    EXPECT_EQ(status.code(), StatusCode::ERROR);
+    ASSERT_TRUE(status.ok()) << status.to_string();
     DBMeta stored;
-    EXPECT_EQ(fixture.catalog.get_db(db_name_, &stored).code(),
-              StatusCode::DB_NOT_FOUND);
-}
-
-// 测试创建db之后，sdm_client那边返回fail，导致db被删除，检验返回码，然后查询db是否存在。
-TEST_F(DdlServiceTest, CreateDbSdmFailureRollsBackCatalog) {
-    Fixture fixture{make_sub_dir("create_db_sdm_failure")};
-    FakeSdmClient client;
-    client.place_db_status = Status::ERROR("place db failed");
-    DdlService service{&fixture.catalog, &client};
-
-    DBMeta db;
-    Status status = service.create_db(create_db_param(), &db);
-
-    EXPECT_EQ(status.code(), StatusCode::ERROR);
-    EXPECT_EQ(client.place_db_calls, 1);
-    DBMeta stored;
-    EXPECT_EQ(fixture.catalog.get_db(db_name_, &stored).code(),
-              StatusCode::DB_NOT_FOUND);
+    ASSERT_TRUE(fixture.catalog.get_db(db_name_, &stored).ok());
+    EXPECT_EQ(stored, db);
 }
 
 // 测试创建db一切正常，然后查询db是否存在。
@@ -157,8 +131,9 @@ TEST_F(DdlServiceTest, CreateDbSuccessPersistsCatalog) {
     DBMeta db;
     ASSERT_TRUE(service.create_db(create_db_param(), &db).ok());
 
-    EXPECT_EQ(client.place_db_calls, 1);
-    EXPECT_EQ(client.last_place_db.db_name, db_name_);
+    EXPECT_EQ(client.place_table_calls, 0);
+    EXPECT_EQ(client.drop_table_calls, 0);
+    EXPECT_EQ(client.get_table_status_calls, 0);
 
     DBMeta stored;
     ASSERT_TRUE(fixture.catalog.get_db(db_name_, &stored).ok());

@@ -85,16 +85,6 @@ grpc::Status SdmServiceImpl::GetTableStatus(
     return grpc::Status::OK;
 }
 
-grpc::Status SdmServiceImpl::PlaceDB(grpc::ServerContext* context,
-                                     const rpc::PlaceDBRequest* request,
-                                     rpc::PlaceDBResponse* response) {
-    UNUSED(context);
-    UNUSED(request);
-    UNUSED(response);
-
-    return grpc::Status::OK;
-}
-
 grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
                                        const rpc::HeartBeatRequest* request,
                                        rpc::HeartBeatResponse* response) {

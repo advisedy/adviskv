@@ -134,36 +134,7 @@ Status DdlService::create_db(const CreateDBParam& param, DBMeta* db_meta) {
     meta_param.db_name = param.db_name;
     meta_param.zone = param.zone;
 
-    DBMeta created_db_meta;
-    Status status = catalog_manager_->create_db(meta_param, &created_db_meta);
-
-    RETURN_IF_INVALID_STATUS(status)
-
-    if (!sdm_client_) {
-        Status rollback_status =
-            catalog_manager_->delete_db(created_db_meta.db_id);
-        RETURN_IF_INVALID_STATUS(rollback_status)
-        return Status{StatusCode::ERROR, "sdm_client is nullptr"};
-    }
-
-    status = sdm_client_->call_place_db(created_db_meta);
-    if (status.fail()) {
-        Status rollback_status =
-            catalog_manager_->delete_db(created_db_meta.db_id);
-        if (rollback_status.fail()) {
-            return Status{
-                StatusCode::ERROR,
-                fmt::format("call sdm place_db failed: {}; rollback db "
-                            "failed: {}",
-                            status.to_string(), rollback_status.to_string())};
-        }
-        return status;
-    }
-
-    if (db_meta != nullptr) {
-        *db_meta = created_db_meta;
-    }
-    return Status::OK();
+    return catalog_manager_->create_db(meta_param, db_meta);
 }
 
 Status DdlService::get_table(const GetTableParam& param,
