@@ -9,6 +9,7 @@
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
+#include "storage/model/replica_status.h"
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/raft_node.h"
 #include "storage/raft/raft_sender.h"
@@ -37,14 +38,7 @@ Status Replica::init(const ReplicaInitParam& param) {
                                             persist_.get());
     raft_sender_.set_timeout_ms(param.runtime.raft_rpc_timeout_ms);
 
-    // 创建定时器驱动 tick（统一的 tick timer，替代原来的 election + heartbeat
-    // 两个 timer）
-    // if (param.scheduler) {
-    //     tick_timer_ = std::make_shared<Timer>(param.scheduler,
-    //                                           [this]() { this->on_tick(); });
-    //     tick_timer_->reset(MILLISECONDS(20));
-    // }
-    status_.store(ReplicaStatus::READY);
+    enter_local_state_running();
     return Status::OK();
 }
 
@@ -54,7 +48,7 @@ Status Replica::put(const PutParam& param) {
     OperGuard guard;
     RETURN_IF_INVALID_STATUS(acquire_operation(guard))
 
-    if (is_recovering()) {
+    if (raft_node_->is_recovering()) {
         return Status::IS_RECOVERING("replica is recovering");
     }
 
@@ -141,23 +135,25 @@ Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
     SnapshotPtr snap;
     {
         std::lock_guard locker{persist_snapshot_mutex_};
-        RETURN_IF_INVALID_STATUS(persist_->append_snapshot_chunk(param))
+        RETURN_IF_INVALID_STATUS(
+            fault_if_fail(persist_->append_snapshot_chunk(param)))
         if (!param.done) return Status::OK();
 
         snap = std::make_shared<Snapshot>();
         snap->apply_index = param.snapshot_index;
         snap->apply_term = param.snapshot_term;
 
-        RETURN_IF_INVALID_STATUS(persist_->finish_snapshot_receive(snap));
+        RETURN_IF_INVALID_STATUS(
+            fault_if_fail(persist_->finish_snapshot_receive(snap)));
         {
             std::lock_guard lock(state_machine_mutex_);
-            RETURN_IF_INVALID_STATUS(state_machine_->restore(
+            RETURN_IF_INVALID_STATUS(fault_if_fail(state_machine_->restore(
                 snap, [this](const KvVisitor& visitor) -> Status {
                     return persist_->for_each_snapshot_kv(visitor);
-                }))
+                })))
             raft_node_->install_snapshot(param.snapshot_index,
                                          param.snapshot_term, param.term);
-            refresh_recovering_state();
+            // refresh_recovering_state();
         }
     }
 
@@ -237,6 +233,7 @@ void Replica::apply_committed_entries() {
             ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_failure");
             LOG_WARN("apply_log_entry failed, index={}, msg={}", entry.index,
                      status.msg());
+            enter_local_state_faulted();
             return;
         }
         ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_success");
@@ -272,10 +269,11 @@ Status Replica::get(const GetParam& param, Value& value) {
             "state_machine is nullptr, replica: table_id = {}, shard_index = "
             "{}",
             shard_id_.table_id, shard_id_.shard_index);
+        enter_local_state_faulted();
         return Status{StatusCode::ERROR, "engine is nullptr"};
     }
 
-    if (is_recovering()) {
+    if (raft_node_->is_recovering()) {
         return Status::IS_RECOVERING("replica is recovering");
     }
     // TODO: ReadIndex 保证线性一致性 以后待定吧
@@ -293,6 +291,9 @@ Status Replica::get(const GetParam& param, Value& value) {
     if (status.fail()) {
         LOG_WARN("engine get is not ok, key = {}, msg = {}", param.key,
                  status.msg());
+        if (status.code() != StatusCode::KEY_NOT_FOUND) {
+            enter_local_state_faulted();
+        }
     }
 
     return status;
@@ -304,7 +305,7 @@ Status Replica::del(const DelParam& param) {
     OperGuard guard;
     RETURN_IF_INVALID_STATUS(acquire_operation(guard))
 
-    if (is_recovering()) {
+    if (raft_node_->is_recovering()) {
         return Status::IS_RECOVERING("replica is recovering");
     }
 
@@ -351,15 +352,15 @@ Status Replica::del(const DelParam& param) {
     return Status::OK();
 }
 
-void Replica::refresh_recovering_state() {
-    if (!raft_node_) return;
-    if (raft_node_->is_faulted()) {
-        LOG_WARN("raft node is faulted");
-        return;
-    }
-    if (!raft_node_->is_ready()) return;
-    status_.store(ReplicaStatus::READY);
-}
+// void Replica::refresh_recovering_state() {
+//     if (!raft_node_) return;
+//     if (raft_node_->is_faulted()) {
+//         LOG_WARN("raft node is faulted");
+//         return;
+//     }
+//     if (!raft_node_->is_ready()) return;
+//     local_state_.store(ReplicaLocalState::RUNNING);
+// }
 
 Status Replica::handle_request_vote(const RequestVoteParam& param,
                                     RequestVoteResult& result) {
@@ -382,9 +383,8 @@ Status Replica::handle_append_entries(const AppendEntriesParam& param,
     {
         std::lock_guard lock(state_machine_mutex_);
         apply_committed_entries();
-        refresh_recovering_state();
+        // refresh_recovering_state();
     }
-
 
     return Status::OK();
 }
@@ -417,6 +417,7 @@ void Replica::try_take_snapshot() {
         raft_node_->truncate_log(state_machine_->apply_index());
     } else {
         LOG_WARN("replica:try_take_snapshot: status:{}", status.to_string());
+        enter_local_state_faulted();
     }
 }
 
@@ -444,19 +445,20 @@ void Replica::on_tick() {
 }
 
 Status Replica::recover() {
-    status_.store(ReplicaStatus::INITIALIZING);
+    // status_.store(ReplicaStatus::INITIALIZING);
     PersistEngine::RecoverResult result;
-    if(Status status = persist_->recover(result); status.fail()){
-        //TODO 这里直接进入FAULTED状态吧
+    if (Status status = persist_->recover(result); status.fail()) {
+        // TODO 这里直接进入FAULTED状态吧
         LOG_WARN("replica's persist recover failed. msg:{}", status.msg());
+        enter_local_state_faulted();
         return status;
     }
 
     if (result.snapshot) {
-        RETURN_IF_INVALID_STATUS(state_machine_->restore(
+        RETURN_IF_INVALID_STATUS(fault_if_fail(state_machine_->restore(
             result.snapshot, [this](const KvVisitor& visitor) -> Status {
                 return persist_->for_each_snapshot_kv(visitor);
-            }))
+            })))
         raft_node_->install_snapshot(result.snapshot->apply_index,
                                      result.snapshot->apply_term, 0);
     }
@@ -464,10 +466,9 @@ Status Replica::recover() {
     raft_node_->update_raft_meta(result.raft_meta);
     raft_node_->update_log_entries(result.wal_entries);
     if (result.need_recover) {
-        status_.store(ReplicaStatus::RECOVERING);
+        // status_.store(ReplicaStatus::RECOVERING);
         raft_node_->enter_recovering();
     }
-    refresh_recovering_state();
     return Status::OK();
 }
 
@@ -562,4 +563,27 @@ Status Replica::acquire_operation(OperGuard& guard) const {
     guard = OperGuard(std::move(lock));
     return Status::OK();
 }
+ReplicaStatus Replica::get_status() const {
+    if (stopping_.load()) {
+        return ReplicaStatus::FAULTED;
+    }
+
+    switch (local_state_) {
+        case LocalState::STARTING:
+            return ReplicaStatus::INITIALIZING;
+        case LocalState::FAULTED:
+            return ReplicaStatus::FAULTED;
+
+        case LocalState::RUNNING:
+        default:
+            break;
+    }
+    if (!raft_node_) return ReplicaStatus::INITIALIZING;
+    if (raft_node_->is_faulted()) return ReplicaStatus::FAULTED;
+    if (raft_node_->is_recovering()) return ReplicaStatus::RECOVERING;
+    if (raft_node_->is_ready()) return ReplicaStatus::READY;
+
+    return ReplicaStatus::INITIALIZING;
+}
+
 }  // namespace adviskv::storage

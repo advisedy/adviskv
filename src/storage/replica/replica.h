@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "common/define.h"
+#include "common/log.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
@@ -32,8 +33,12 @@ class Replica {
     Term current_term() const {
         return raft_node_ ? raft_node_->current_term() : 0;
     }
-    ReplicaStatus get_status() const { return status_.load(); }
+
+    // 这个是返回给外部的ReplicaStatus的， 内部使用LocalState
+    ReplicaStatus get_status() const;
+
     bool is_recovering() const {
+        return raft_node_->is_recovering();
         return get_status() == ReplicaStatus::RECOVERING;
     }
 
@@ -46,6 +51,8 @@ class Replica {
                                  AppendEntriesResult& result);
     Status handle_install_snapshot(const InstallSnapshotParam& param);
 
+    ///////////
+    // 专门给测试开了个接口
     struct ReplicaStateForTest {
         Term current_term;
         LogIndex commit_index;
@@ -54,23 +61,10 @@ class Replica {
         Term snapshot_term;
     };
     Status get_replica_state_for_test(ReplicaStateForTest& result) const;
+    ///////////
 
    private:
     friend class ReplicaManager;
-
-    class OperGuard {
-       public:
-        OperGuard() = default;
-        DISALLOW_COPY_AND_ASSIGN(OperGuard)
-        ALLOW_MOVE_AND_ASSIGN(OperGuard)
-
-       private:
-        friend class Replica;
-        explicit OperGuard(std::shared_lock<std::shared_mutex>&& life_lock)
-            : life_lock_(std::move(life_lock)) {}
-
-        std::shared_lock<std::shared_mutex> life_lock_;
-    };
 
     Status init(const ReplicaInitParam& param);
     Status recover();
@@ -90,7 +84,7 @@ class Replica {
     // 单条 apply
     // Status apply_log_entry(const LogEntry& entry);
 
-    void refresh_recovering_state();
+    // void refresh_recovering_state();
 
     void try_take_snapshot();
 
@@ -98,12 +92,45 @@ class Replica {
     Status check_self_leader_and_get_read_index(LogIndex& read_index);
 
     Status ensure_running() const;
+
+    void enter_local_state_faulted() {
+        local_state_.store(LocalState::FAULTED);
+    }
+    void enter_local_state_starting() {
+        local_state_.store(LocalState::STARTING);
+    }
+    void enter_local_state_running() {
+        local_state_.store(LocalState::RUNNING);
+    }
+
+    Status fault_if_fail(Status status) {
+        if (status.fail()) {
+            LOG_WARN("replica enter fualted: Status:{}", status.to_string());
+            enter_local_state_faulted();
+        }
+        return status;
+    }
+
+    class OperGuard {
+       public:
+        OperGuard() = default;
+        DISALLOW_COPY_AND_ASSIGN(OperGuard)
+        ALLOW_MOVE_AND_ASSIGN(OperGuard)
+
+       private:
+        friend class Replica;
+        explicit OperGuard(std::shared_lock<std::shared_mutex>&& life_lock)
+            : life_lock_(std::move(life_lock)) {}
+
+        std::shared_lock<std::shared_mutex> life_lock_;
+    };
     Status acquire_operation(OperGuard& guard) const;
 
     ShardID shard_id_;
     ReplicaID replica_id_;
 
     std::unique_ptr<StateMachine> state_machine_;
+
     // raft
     // replica算是给raft_node包了一层，会帮忙处理RPC的事情和状态机落实的事情
     // 让raft_node专心走协议的事情
@@ -114,7 +141,13 @@ class Replica {
     // 通信
     RaftSender raft_sender_;
 
-    std::atomic<ReplicaStatus> status_{ReplicaStatus::INITIALIZING};
+    enum class ReplicaLocalState {
+        STARTING = 0,  // 代表目前还无法和外界正常服务
+        RUNNING = 1,   // 可以和外界存在正常服务，不保证所有正常服务都OK
+        FAULTED = 2,   // 错误，得需要重启才可以好。
+    };
+    using LocalState = ReplicaLocalState;
+    std::atomic<LocalState> local_state_{LocalState::STARTING};
 
     // 定时器（驱动 tick）
     // TimerPtr tick_timer_;

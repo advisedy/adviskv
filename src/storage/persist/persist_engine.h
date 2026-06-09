@@ -22,7 +22,8 @@ class PersistEngine {
     Status append_wal_batch(const std::vector<LogEntry>& entries);
     Status read_wal_batch(std::vector<LogEntry>& entries);
 
-    // Rewrite WAL so only entries after snapshot_index remain on disk.
+    // 和下面的truncate_wal_to_offset区分一下，这个是代码业务层这边调用的，用来截取到内存里的wal
+    // 而truncate_wal_to_offset是用来截取磁盘里的wal的
     Status truncate_wal(const LogIndex& snapshot_index);
 
     Status save_raft_meta(const RaftMeta& meta);
