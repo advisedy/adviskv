@@ -28,13 +28,6 @@ void RaftSender::set_timeout_ms(int32_t timeout_ms) {
 Status RaftSender::send_request_vote(const PeerMember& member,
                                      const RequestVoteParam& param,
                                      RequestVoteResult& result) const {
-    // struct RequestVoteParam {
-    //     ReplicaID from_replica_id;
-    //     ReplicaID to_replica_id;
-    //     Term term;
-    //     LogIndex last_log_index;
-    //     Term last_log_term;
-    // };
     LOG_DEBUG(
         "candidate replica:{} send request vote to replica:{}, msg:[term:{}, "
         "last_log_index:{}, last_log_term:{} ]",
@@ -56,21 +49,6 @@ Status RaftSender::send_append_entries(const PeerMember& member,
         ADVISKV_METRICS_COUNTER("storage_raft_append_entries_rpc_entry",
                                 static_cast<int64_t>(param.entries.size()));
     }
-    // struct AppendEntriesParam {
-    //     ReplicaID from_replica_id;
-    //     ReplicaID to_replica_id;
-    //     Term term;
-    //     std::vector<LogEntry> entries;  // 这次想要追加的日志
-    //     LogIndex prev_log_index;        // 代表公共的最后的那个index
-    //     Term prev_log_term;
-    //     LogIndex leader_commit;
-    // };
-    // struct LogEntry {
-    //     Term term{0};
-    //     LogIndex index{0};
-    //     WriteOpType op_type;
-    //     Key key;
-    //     Value value;
     LOG_DEBUG(
         "leader replica:{} sned append entires to replica:{}, msg:[term:{}, "
         "prev_log_index:{}, prev_log_term:{}, leader_commit:{}, "

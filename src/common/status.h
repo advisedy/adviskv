@@ -53,32 +53,6 @@ enum class StatusCode : int32_t {
 #define X(name, code) name = code,
     ADVISKV_STATUS_CODE_LIST(X)
 #undef X
-    // // 共用
-    // OK = 0,
-    // ERROR = 1,
-    // KEY_NOT_FOUND = 2,
-    // INVALID_ARGUMENT = 3,
-    // DB_NOT_FOUND = 4,
-    // TABLE_NOT_FOUND = 5,
-    // REPLICA_NOT_FOUND = 6,
-    // REPLICA_MANAGER_NOT_FOUND = 7,
-    // NOT_SUPPORTED = 8,
-    // ALREADY_EXIST = 9,
-
-    // // sdm 特有
-    // ROUTE_NOT_FOUND = 1000,
-    // TABLE_META_CACHE_NOT_FOUND = 1001,
-    // DB_META_CACHE_NOT_FOUND = 1002,
-
-    // // storage 特有
-    // NOT_LEADER = 2000,
-    // NOT_YET_COMMIT = 2001,
-    // // meta 特有
-
-    // // sdk 特有
-
-    // // 持久化特有
-    // GET_EOF = 5000,
 };
 
 class Status {
@@ -114,12 +88,6 @@ class Status {
     }
     ADVISKV_STATUS_CODE_LIST(X)
 #undef X
-
-    // static Status OK() { return Status(); }
-
-    // static Status ERROR(const std::string& msg) {
-    //     return Status{StatusCode::ERROR, msg};
-    // }
 
    private:
     StatusCode code_;

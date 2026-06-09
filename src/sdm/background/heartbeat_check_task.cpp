@@ -104,21 +104,6 @@ Status HeartBeatCheckTask::mark_node_offline(Node& node) {
     LOG_INFO("mark node offline: id:{}, ip:{}, port:{}", node.id,
              node.state.endpoint.ip, node.state.endpoint.port);
     node.spec.status = NodeStatus::OFFLINE;
-    //  应该在这里更新sdm_store那边的node2replicas的缓存
-
-    // for (const ReplicaKey& replica_key : node.replicas) {
-    //     // 更换逻辑，直接在store里面删除replica，会在CapacityChecker那边补上
-    //     status = sdm_store_->del_replica(replica_key);
-    //     RETURN_IF_INVALID_STATUS(status)
-
-    //     // ReplicaPtr replica_ptr;
-    //     // status = sdm_store_->get_replica(replica_key, replica_ptr);
-    //     // RETURN_IF_INVALID_STATUS(status)
-    //     // replica_ptr->state.status = ReplicaStatus::LOST;
-    //     // replica_ptr->state.assign_node_id = "";
-    //     // replica_ptr->state.endpoint = {};
-    // }
-    // node.replicas.clear();
     std::vector<Replica> replicas;
     status = sdm_store_->list_replicas_by_node(node.id, replicas);
     RETURN_IF_INVALID_STATUS(status)

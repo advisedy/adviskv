@@ -17,8 +17,6 @@
 
 namespace adviskv::e2e::heavy {
 //TODO 记得整改
-constexpr int32_t kWalTailCount = 16;
-constexpr auto kSnapshotWait = std::chrono::seconds(6);
 
 inline Options with_key_count(const Options& options, int32_t key_count) {
     Options counted = options;

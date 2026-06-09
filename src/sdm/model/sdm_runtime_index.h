@@ -14,15 +14,6 @@ namespace adviskv::sdm {
 using ReplicaKey = ReplicaID;
 using ShardKey = ShardID;
 
-// struct ShardKey {
-//     TableID table_id;
-//     ShardID shard_id;
-
-//     bool operator==(const ShardKey& other) const {
-//         return table_id == other.table_id and shard_id == other.shard_id;
-//     }
-// };
-
 struct TableNameKey {
     std::string db_name;
     std::string table_name;
@@ -36,13 +27,6 @@ struct TableNameKey {
 
 using ReplicaKeyHash = ReplicaIDHash;
 using ShardKeyHash = ShardIDHash;
-// struct ShardKeyHash {
-//     size_t operator()(const ShardKey& key) const {
-//         size_t h1 = std::hash<TableID>{}(key.table_id);
-//         size_t h2 = std::hash<ShardID>{}(key.shard_id);
-//         return h1 ^ (h2 << 1);
-//     }
-// };
 
 struct TableNameKeyHash {
     size_t operator()(const TableNameKey& key) const {
@@ -51,14 +35,6 @@ struct TableNameKeyHash {
         return h1 ^ (h2 << 1);
     }
 };
-
-/*
-
-Status on_table_upsert(const Table& table);
-Status on_node_upsert(const Node& node);
-Status on_replica_upsert(const Replica& replica);
-Status on_replica_delete(const ReplicaKey& key);
-*/
 
 class SdmRuntimeIndex {
    public:

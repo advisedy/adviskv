@@ -12,19 +12,8 @@ DdlService::DdlService(CatalogManager* catalog_manager,
     sdm_client_ = sdm_client;
 }
 
-/*
-//负责一些会涉及到catalog和sdm的操作
-Status create_table(const CreateTableParam& param);
-Status create_db(const CreateDBParam& param);
-Status get_table(const GetTableParam& param, TableMeta& table_meta);
-*/
-
 Status DdlService::create_table(const CreateTableParam& param,
                                 TableMeta* table_meta) {
-    // 这种句式应该也可以搞一个宏定义
-    // if(Status status = CreateTableParam::validate(param); status.fail()){
-    //     return status;
-    // }
     RETURN_IF_INVALID_PARAM(param)
 
     CreateTableMetaParam meta_param;
@@ -120,14 +109,6 @@ Status DdlService::drop_table(const DropTableParam& param,
 }
 
 Status DdlService::create_db(const CreateDBParam& param, DBMeta* db_meta) {
-    // if(Status status = CreateDBParam::validate(param); status.fail()){
-    //     return status;
-    // }
-
-    // if(Status status = param.validate(); status.fail()){
-    //     return status;
-    // }
-
     RETURN_IF_INVALID_PARAM(param)
 
     CreateDBMetaParam meta_param;

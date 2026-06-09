@@ -73,24 +73,6 @@
 #define UNUSED(x) ((void)(x));
 #define IGNORE_RESULT(expr) ((void)(expr));
 
-// #define SWITCH_TYPE_EQUAL(obj, type_a, type_b, name) \
-//     case type_a::name: {                             \
-//         obj = type_b::name;                          \
-//         break;                                       \
-//     }
-
-// #define SWITCH_TYPE_EQUAL2(obj, type_a, name_a, type_b, name_b) \
-//     case type_a::name_a: {                                      \
-//         obj = type_b::name_b;                                   \
-//         break;                                                  \
-//     }
-
-// #define SWITCH_TYPE_EQUAL(obj, type_a, type_b) \
-//     case type_a: {                             \
-//         obj = type_b;                          \
-//         return true;                           \
-//     }
-
 #define DEFINE_OPERATOR_NOT_EQUAL(type) \
     bool operator!=(const type& other) const { return !(*this == other); }
 

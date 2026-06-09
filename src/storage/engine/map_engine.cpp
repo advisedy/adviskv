@@ -39,8 +39,6 @@ Status MapEngine::del(const Key& key) {
     if (!map_.count(key)) return Status::OK();
     map_.erase(key);
     return Status::OK();
-    // return Status{StatusCode::NOT_SUPPORTED,
-    //               "del operation is not supported in MapEngine"};
 }
 
 std::vector<KV> MapEngine::dump_all() const {

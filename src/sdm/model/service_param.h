@@ -191,32 +191,6 @@ struct GetRouteParam {
     }
 };
 
-// heartbeat service
-
-/*
-message HeartBeatRequest{
-    string node_id = 1;
-    string ip = 2;
-    int32 port = 3;
-    string resource_pool = 4;
-    string dc = 5;
-    adviskv.pb.NodeStatus node_status = 6;
-    repeated HeartBeatReplicaInfo replica_info_list = 7;
-}
-
-message HeartBeatReplicaSepc{
-    int32 table_id = 1;
-    int32 shard_id = 2;
-    int32 replica_index = 3;
-    adviskv.pb.ReplicaRole role = 4;
-}
-
-message HeartBeatResponse{
-    adviskv.pb.BaseRsp base_rsp = 1;
-    repeated HeartBeatReplicaSepc replica_spec_list = 2;
-}
-*/
-
 struct HeartBeatReplicaInfo {
     ShardID shard_id;
     ReplicaIndex replica_index;
@@ -245,14 +219,5 @@ struct HeartBeatParam {
         return Status::OK();
     }
 };
-
-// struct HeartBeatResultEntry{
-//     ReplicaID replica_id;
-//     ReplicaRole replica_role;
-// };
-
-// struct HeartBeatResult{
-//   std::vector<HeartBeatResultEntry> entry_list;
-// };
 
 }  // namespace adviskv::sdm

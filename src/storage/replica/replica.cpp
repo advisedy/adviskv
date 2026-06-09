@@ -153,7 +153,6 @@ Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
                 })))
             raft_node_->install_leader_snapshot(
                 param.snapshot_index, param.snapshot_term, param.term);
-            // refresh_recovering_state();
         }
     }
 
@@ -227,7 +226,6 @@ Status Replica::apply_committed_entries() {
     ADVISKV_METRICS_COUNTER("storage_replica_apply_entry",
                             static_cast<int64_t>(entries.size()));
     for (const LogEntry& entry : entries) {
-        // Status status = apply_log_entry(entry);
         Status status = state_machine_->apply(entry);
         if (status.fail()) {
             ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_failure");
@@ -240,23 +238,6 @@ Status Replica::apply_committed_entries() {
     }
     return Status::OK();
 }
-
-// Status Replica::apply_log_entry(const LogEntry& entry) {
-// if (!engine_) {
-//     return {StatusCode::ERROR, "engine is nullptr"};
-// }
-
-// switch (entry.op_type) {
-//     case WriteOpType::PUT:
-//         return engine_->put(entry.key, entry.value);
-//     case WriteOpType::DEL:
-//         return engine_->del(entry.key);
-//     case WriteOpType::NONE:
-//         return Status::OK();
-//     default:
-//         return {StatusCode::INVALID_ARGUMENT, "unknown log op type"};
-// }
-// }
 
 Status Replica::get(const GetParam& param, Value& value) {
     RETURN_IF_INVALID_PARAM(param)
@@ -352,16 +333,6 @@ Status Replica::del(const DelParam& param) {
     return Status::OK();
 }
 
-// void Replica::refresh_recovering_state() {
-//     if (!raft_node_) return;
-//     if (raft_node_->is_faulted()) {
-//         LOG_WARN("raft node is faulted");
-//         return;
-//     }
-//     if (!raft_node_->is_ready()) return;
-//     local_state_.store(ReplicaLocalState::RUNNING);
-// }
-
 Status Replica::handle_request_vote(const RequestVoteParam& param,
                                     RequestVoteResult& result) {
     OperGuard guard;
@@ -383,7 +354,6 @@ Status Replica::handle_append_entries(const AppendEntriesParam& param,
     {
         std::lock_guard lock(state_machine_mutex_);
         RETURN_IF_INVALID_STATUS(fault_if_fail(apply_committed_entries()))
-        // refresh_recovering_state();
     }
 
     return Status::OK();
@@ -437,10 +407,6 @@ void Replica::on_tick() {
         if (fault_if_fail(apply_committed_entries()).fail()) return;
     }
 
-    // 重新调度下一次 tick（Timer 是 one-shot 的）
-    // if (tick_timer_) {
-    //     tick_timer_->reset(MILLISECONDS(20));
-    // }
     try_take_snapshot();
 }
 

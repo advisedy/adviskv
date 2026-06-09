@@ -8,17 +8,6 @@
 #include "storage/model/param.h"
 #include "storage/raft/state_machine/state_machine.h"
 namespace adviskv::storage {
-/*
-
-    virtual ~StateMachine() = default;
-
-    virtual Status apply(const LogEntry& entry) = 0;
-    virtual SnapshotPtr snapshot() const = 0;
-    virtual Status restore(const SnapshotPtr& snap) = 0;
-    virtual LogIndex apply_index() const = 0;
-    virtual LogIndex apply_term() const = 0;
-    virtual Status get(const Key& key, Value& value) const = 0;
-*/
 
 class KvStateMachine : public StateMachine {
    public:

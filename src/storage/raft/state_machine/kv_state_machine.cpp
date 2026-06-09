@@ -95,13 +95,6 @@ Status KvStateMachine::restore(const SnapshotPtr& snap,
 
     apply_index_ = snap->apply_index;
     apply_term_ = snap->apply_term;
-    // engine_->clear();
-    // for (const KV& kv : snap->kvs) {
-    //     Status status = engine_->put(kv.first, kv.second);
-    //     if (status.fail()) {
-    //         LOG_WARN("restore warn");
-    //     }
-    // }
     return Status::OK();
 }
 LogIndex KvStateMachine::apply_index() const { return apply_index_; }

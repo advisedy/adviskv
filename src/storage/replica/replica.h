@@ -80,11 +80,6 @@ class Replica {
     // 调用方必须已经持有state_machine_mutex_，内部没有吃锁，放到外部了。
     Status apply_committed_entries();
 
-    // 单条 apply
-    // Status apply_log_entry(const LogEntry& entry);
-
-    // void refresh_recovering_state();
-
     void try_take_snapshot();
 
     // 给readIndex准备的

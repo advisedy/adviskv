@@ -84,24 +84,9 @@ Status DefaultNodeSelector::select_table_nodes(
                                                         candidate_nodes);
     RETURN_IF_INVALID_STATUS(status)
 
-    // std::vector<NodePtr> candidate_nodes;
-    // candidate_nodes.reserve(pool_nodes.size());
-    // for (const NodePtr& node : pool_nodes) {
-    //     if (!node) {
-    //         continue;
-    //     }
-    //     if (node->spec.status != NodeStatus::ONLINE) {
-    //         continue;
-    //     }
-    //     if (node->state.endpoint.ip.empty() || node->state.endpoint.port <=
-    //     0) {
-    //         continue;
-    //     }
-    //     candidate_nodes.emplace_back(node);
-    // }
-
     func::ad_erase_if(candidate_nodes,
                       [](const Node& node) { return !is_valid_node(node); });
+
 
     if ((int32)(candidate_nodes.size()) < param.replica_count) {
         return Status::RESOURCE_EXHAUSTED(fmt::format(
