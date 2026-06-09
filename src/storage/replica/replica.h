@@ -38,8 +38,7 @@ class Replica {
     ReplicaStatus get_status() const;
 
     bool is_recovering() const {
-        return raft_node_->is_recovering();
-        return get_status() == ReplicaStatus::RECOVERING;
+        return raft_node_ && raft_node_->is_recovering();
     }
 
     Status put(const PutParam& param);
@@ -79,7 +78,7 @@ class Replica {
 
     // 把已经提交但是还没有apply的entry给apply到我们的engine
     // 调用方必须已经持有state_machine_mutex_，内部没有吃锁，放到外部了。
-    void apply_committed_entries();
+    Status apply_committed_entries();
 
     // 单条 apply
     // Status apply_log_entry(const LogEntry& entry);

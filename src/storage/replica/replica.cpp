@@ -92,7 +92,7 @@ Status Replica::put(const PutParam& param) {
     {
         ADVISKV_METRICS_TIMER("storage_replica_put_apply_committed");
         std::lock_guard lock(state_machine_mutex_);
-        apply_committed_entries();
+        RETURN_IF_INVALID_STATUS(fault_if_fail(apply_committed_entries()))
     }
 
     if (!raft_node_->is_leader()) {
@@ -219,7 +219,7 @@ void Replica::flush_messages() {
     }
 }
 
-void Replica::apply_committed_entries() {
+Status Replica::apply_committed_entries() {
     ADVISKV_METRICS_TIMER("storage_replica_apply_committed_entries");
     ADVISKV_METRICS_COUNTER("storage_replica_apply_committed_entries_request");
 
@@ -233,12 +233,12 @@ void Replica::apply_committed_entries() {
             ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_failure");
             LOG_WARN("apply_log_entry failed, index={}, msg={}", entry.index,
                      status.msg());
-            enter_local_state_faulted();
-            return;
+            return status;
         }
         ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_success");
         raft_node_->advance_last_applied(entry.index);
     }
+    return Status::OK();
 }
 
 // Status Replica::apply_log_entry(const LogEntry& entry) {
@@ -282,7 +282,7 @@ Status Replica::get(const GetParam& param, Value& value) {
     RETURN_IF_INVALID_STATUS(check_self_leader_and_get_read_index(read_index))
 
     std::lock_guard lock(state_machine_mutex_);
-    apply_committed_entries();
+    RETURN_IF_INVALID_STATUS(fault_if_fail(apply_committed_entries()))
     if (state_machine_->apply_index() < read_index) {
         return Status::NOT_YET_COMMIT("state machine not yet apply");
     }
@@ -335,7 +335,7 @@ Status Replica::del(const DelParam& param) {
     {
         ADVISKV_METRICS_TIMER("storage_replica_delete_apply_committed");
         std::lock_guard lock(state_machine_mutex_);
-        apply_committed_entries();
+        RETURN_IF_INVALID_STATUS(fault_if_fail(apply_committed_entries()))
     }
 
     if (!raft_node_->is_leader()) {
@@ -382,7 +382,7 @@ Status Replica::handle_append_entries(const AppendEntriesParam& param,
     // 收到 AppendEntries 后，可能有新的 committed entries 需要 apply
     {
         std::lock_guard lock(state_machine_mutex_);
-        apply_committed_entries();
+        RETURN_IF_INVALID_STATUS(fault_if_fail(apply_committed_entries()))
         // refresh_recovering_state();
     }
 
@@ -434,7 +434,7 @@ void Replica::on_tick() {
 
     {
         std::lock_guard lock(state_machine_mutex_);
-        apply_committed_entries();
+        if (fault_if_fail(apply_committed_entries()).fail()) return;
     }
 
     // 重新调度下一次 tick（Timer 是 one-shot 的）
@@ -445,7 +445,7 @@ void Replica::on_tick() {
 }
 
 Status Replica::recover() {
-    // status_.store(ReplicaStatus::INITIALIZING);
+    enter_local_state_starting();
     PersistEngine::RecoverResult result;
     if (Status status = persist_->recover(result); status.fail()) {
         // TODO 这里直接进入FAULTED状态吧
@@ -469,6 +469,7 @@ Status Replica::recover() {
         // status_.store(ReplicaStatus::RECOVERING);
         raft_node_->enter_recovering();
     }
+    enter_local_state_running();
     return Status::OK();
 }
 
@@ -548,7 +549,7 @@ void Replica::shutdown() {
 }
 
 Status Replica::ensure_running() const {
-    if (stopping_.load()) {
+    if (stopping_.load() or local_state_ == LocalState::FAULTED) {
         return Status::ERROR("replica is not running");
     }
     return Status::OK();
