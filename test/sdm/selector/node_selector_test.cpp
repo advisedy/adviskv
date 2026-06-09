@@ -14,11 +14,10 @@ namespace {
 
 Node make_node(const NodeID& id, const std::string& resource_pool, int32_t port,
                NodeStatus status = NodeStatus::ONLINE,
-               const std::string& ip = "127.0.0.1") {
-    return Node{id,
-                NodeSpec{resource_pool, "dc-a", status},
-                NodeState{Endpoint{ip, port}, 100},
-                NodeDerived{}};
+               const std::string& ip = "127.0.0.1",
+               const std::string& dc = "dc-a") {
+    return Node{id, NodeSpec{resource_pool, dc, status},
+                NodeState{Endpoint{ip, port}, 100}, NodeDerived{}};
 }
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id,
@@ -29,8 +28,7 @@ Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id,
     state.observed_raft_role = ReplicaRole::FOLLOWER;
     state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
     return Replica{replica_id,
-                   ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
-                   state};
+                   ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}}, state};
 }
 
 PlaceNodesParam make_param(int32_t shard_count = 1, int32_t replica_count = 2,
@@ -60,19 +58,16 @@ TEST(NodeSelectorTest, InvalidParamReturnsError) {
     DefaultNodeSelector selector(&store);
     TablePlacementResult result;
 
-    Status status = selector.select_table_nodes(
-        PlaceNodesParam{"", 1, 1},
-        result);
+    Status status =
+        selector.select_table_nodes(PlaceNodesParam{"", 1, 1}, result);
     EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
 
-    status = selector.select_table_nodes(
-        PlaceNodesParam{"pool-a", 0, 1},
-        result);
+    status =
+        selector.select_table_nodes(PlaceNodesParam{"pool-a", 0, 1}, result);
     EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
 
-    status = selector.select_table_nodes(
-        PlaceNodesParam{"pool-a", 1, 0},
-        result);
+    status =
+        selector.select_table_nodes(PlaceNodesParam{"pool-a", 1, 0}, result);
     EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
 }
 
@@ -137,29 +132,15 @@ TEST(NodeSelectorTest, PrefersNodesWithFewerPresentReplicas) {
     ASSERT_TRUE(store.put_node(make_node("node-c", "pool-a", 18082)).ok());
 
     ASSERT_TRUE(
-        store
-            .put_replica(make_replica(
-                ReplicaID{1, 0, 0},
-                "node-a"))
-            .ok());
+        store.put_replica(make_replica(ReplicaID{1, 0, 0}, "node-a")).ok());
     ASSERT_TRUE(
-        store
-            .put_replica(make_replica(
-                ReplicaID{1, 1, 0},
-                "node-a"))
-            .ok());
+        store.put_replica(make_replica(ReplicaID{1, 1, 0}, "node-a")).ok());
     ASSERT_TRUE(
-        store
-            .put_replica(make_replica(
-                ReplicaID{2, 0, 0},
-                "node-b"))
-            .ok());
-    ASSERT_TRUE(
-        store
-            .put_replica(make_replica(
-                ReplicaID{3, 0, 0},
-                "node-c", ReplicaDesired::ABSENT))
-            .ok());
+        store.put_replica(make_replica(ReplicaID{2, 0, 0}, "node-b")).ok());
+    ASSERT_TRUE(store
+                    .put_replica(make_replica(ReplicaID{3, 0, 0}, "node-c",
+                                              ReplicaDesired::ABSENT))
+                    .ok());
 
     DefaultNodeSelector selector(&store);
     TablePlacementResult result;
@@ -168,6 +149,99 @@ TEST(NodeSelectorTest, PrefersNodesWithFewerPresentReplicas) {
 
     ASSERT_EQ(result.shards.size(), 1U);
     expect_node_ids(result.shards[0].nodes, {"node-c", "node-b"});
+}
+
+// 优先不同dc的
+TEST(NodeSelectorTest, PrefersDistinctDcsWithinSameShard) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    ASSERT_TRUE(
+        store
+            .put_node(make_node("node-a", "pool-a", 18080, NodeStatus::ONLINE,
+                                "127.0.0.1", "dc-a"))
+            .ok());
+    ASSERT_TRUE(
+        store
+            .put_node(make_node("node-b", "pool-a", 18081, NodeStatus::ONLINE,
+                                "127.0.0.1", "dc-a"))
+            .ok());
+    ASSERT_TRUE(
+        store
+            .put_node(make_node("node-c", "pool-a", 18082, NodeStatus::ONLINE,
+                                "127.0.0.1", "dc-b"))
+            .ok());
+
+    DefaultNodeSelector selector(&store);
+    TablePlacementResult result;
+    Status status = selector.select_table_nodes(make_param(1, 2), result);
+    ASSERT_TRUE(status.ok());
+
+    ASSERT_EQ(result.shards.size(), 1U);
+    expect_node_ids(result.shards[0].nodes, {"node-a", "node-c"});
+}
+
+TEST(NodeSelectorTest, ReusesDcWhenDistinctDcsAreNotEnough) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    ASSERT_TRUE(
+        store
+            .put_node(make_node("node-a", "pool-a", 18080, NodeStatus::ONLINE,
+                                "127.0.0.1", "dc-a"))
+            .ok());
+    ASSERT_TRUE(
+        store
+            .put_node(make_node("node-b", "pool-a", 18081, NodeStatus::ONLINE,
+                                "127.0.0.1", "dc-a"))
+            .ok());
+    ASSERT_TRUE(
+        store
+            .put_node(make_node("node-c", "pool-a", 18082, NodeStatus::ONLINE,
+                                "127.0.0.1", "dc-b"))
+            .ok());
+
+    DefaultNodeSelector selector(&store);
+    TablePlacementResult result;
+    Status status = selector.select_table_nodes(make_param(1, 3), result);
+    ASSERT_TRUE(status.ok());
+
+    ASSERT_EQ(result.shards.size(), 1U);
+    expect_node_ids(result.shards[0].nodes, {"node-a", "node-c", "node-b"});
+}
+
+TEST(NodeSelectorTest, BalancesReplicaCountAcrossDcsWithinSameShard) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    ASSERT_TRUE(
+        store
+            .put_node(make_node("node-a1", "pool-a", 18080, NodeStatus::ONLINE,
+                                "127.0.0.1", "dc-a"))
+            .ok());
+    ASSERT_TRUE(
+        store
+            .put_node(make_node("node-a2", "pool-a", 18081, NodeStatus::ONLINE,
+                                "127.0.0.1", "dc-a"))
+            .ok());
+    ASSERT_TRUE(
+        store
+            .put_node(make_node("node-b1", "pool-a", 18082, NodeStatus::ONLINE,
+                                "127.0.0.1", "dc-b"))
+            .ok());
+    ASSERT_TRUE(
+        store
+            .put_node(make_node("node-b2", "pool-a", 18083, NodeStatus::ONLINE,
+                                "127.0.0.1", "dc-b"))
+            .ok());
+    ASSERT_TRUE(
+        store
+            .put_node(make_node("node-c1", "pool-a", 18084, NodeStatus::ONLINE,
+                                "127.0.0.1", "dc-c"))
+            .ok());
+
+    DefaultNodeSelector selector(&store);
+    TablePlacementResult result;
+    Status status = selector.select_table_nodes(make_param(1, 5), result);
+    ASSERT_TRUE(status.ok());
+
+    ASSERT_EQ(result.shards.size(), 1U);
+    expect_node_ids(result.shards[0].nodes,
+                    {"node-a1", "node-b1", "node-c1", "node-a2", "node-b2"});
 }
 
 // - 检测一下新增 replica 计入后续 shard 的负载

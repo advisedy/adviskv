@@ -117,6 +117,7 @@ class RaftNode {
                               const RequestVoteResult& result);
 
     Status handle_append_response(const ReplicaID& from,
+                                  const AppendEntriesParam& sent_param,
                                   const AppendEntriesResult& result);
 
     std::vector<RaftMessage>

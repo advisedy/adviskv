@@ -520,6 +520,7 @@ void RaftNode::handle_vote_response(const ReplicaID& from,
 // }
 
 Status RaftNode::handle_append_response(const ReplicaID& from,
+                                        const AppendEntriesParam& sent_param,
                                         const AppendEntriesResult& result) {
     ADVISKV_METRICS_TIMER("storage_raft_handle_append_response");
     ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_request");
@@ -544,9 +545,13 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
         ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_success");
         LOG_DEBUG("leader replica:{} append enrties to replica:{} success.",
                   self_id_.to_string(), from.to_string());
-        // 复制成功，更新 match_index 和 next_index
-        match_index_[from] = last_log_index_unlocked();
-        next_index_[from] = last_log_index_unlocked() + 1;
+        // A successful response only proves the entries sent in this RPC.
+        LogIndex matched_index =
+            sent_param.prev_log_index + to<LogIndex>(sent_param.entries.size());
+        if (matched_index > match_index_[from]) {
+            match_index_[from] = matched_index;
+        }
+        next_index_[from] = match_index_[from] + 1;
         try_update_commit_index();
     } else {
         ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_reject");

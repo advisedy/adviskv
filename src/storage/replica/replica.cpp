@@ -191,7 +191,7 @@ void Replica::flush_messages() {
                     msg.target, msg.append_param, result);
                 if (status.ok()) {
                     IGNORE_RESULT(raft_node_->handle_append_response(
-                        msg.target.replica_id, result));
+                        msg.target.replica_id, msg.append_param, result));
                 } else {
                     LOG_WARN("storage raft append entries failed, status:{}",
                              status.to_string());
@@ -506,8 +506,8 @@ Status Replica::check_self_leader_and_get_read_index(LogIndex& read_index) {
             if (status.fail()) continue;
 
             // 这个handle如果失败了，就说明自己不是leader
-            RETURN_IF_INVALID_STATUS(
-                raft_node_->handle_append_response(msg.target.replica_id, res));
+            RETURN_IF_INVALID_STATUS(raft_node_->handle_append_response(
+                msg.target.replica_id, msg.append_param, res));
             if (res.term == read_term)
                 success_cnt++;  // 这里不用写关于判断res.success，
             // 因为我们只是需要确认leader这个身份，success可能是fail，因为prev没对齐

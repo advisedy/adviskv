@@ -267,7 +267,7 @@ class RaftCluster {
                 nodes_[target_idx]->handle_append_entries(msg.append_param,
                                                           result);
                 nodes_[source_idx]->handle_append_response(
-                    msg.target.replica_id, result);
+                    msg.target.replica_id, msg.append_param, result);
                 break;
             }
 
@@ -1169,7 +1169,7 @@ TEST_F(RaftClusterTest, ReadIndexCountsInstallSnapshotMessage) {
             cluster_.node_ptr(target)->handle_append_entries(msg.append_param,
                                                              res);
             IGNORE_RESULT(cluster_.node_ptr(0)->handle_append_response(
-                msg.target.replica_id, res));
+                msg.target.replica_id, msg.append_param, res));
             if (res.term == read_term) success_cnt++;
         } else if (msg.type == RaftMessageType::INSTALL_SNAPSHOT) {
             Status ps = cluster_.node_ptr(target)->prepare_install_snapshot(
@@ -1265,7 +1265,7 @@ TEST_F(RaftClusterTest, ReadIndexCountsRejectedAppendEntriesWithMatchingTerm) {
         EXPECT_EQ(res.term, read_term);
 
         IGNORE_RESULT(cluster_.node_ptr(0)->handle_append_response(
-            msg.target.replica_id, res));
+            msg.target.replica_id, msg.append_param, res));
         if (res.term == read_term) success_cnt++;
     }
 
