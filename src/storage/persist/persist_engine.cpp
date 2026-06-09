@@ -201,6 +201,11 @@ Status PersistEngine::read_wal_batch(std::vector<LogEntry>& entries) {
     return read_wal_batch_unlocked(entries);
 }
 
+Status PersistEngine::rewrite_wal(const std::vector<LogEntry>& entries) {
+    std::unique_lock lock{mutex_};
+    return rewrite_wal_unlocked(entries);
+}
+
 Status PersistEngine::read_wal_batch_unlocked(
     std::vector<LogEntry>& entries) const {
     WalReadResult result;

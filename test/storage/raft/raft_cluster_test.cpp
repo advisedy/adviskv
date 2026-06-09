@@ -280,7 +280,7 @@ class RaftCluster {
                 result.success = s.ok();
 
                 if (s.ok()) {
-                    nodes_[target_idx]->install_snapshot(
+                    nodes_[target_idx]->install_leader_snapshot(
                         msg.snapshot_param.snapshot_index,
                         msg.snapshot_param.snapshot_term,
                         msg.snapshot_param.term);
@@ -1178,7 +1178,7 @@ TEST_F(RaftClusterTest, ReadIndexCountsInstallSnapshotMessage) {
             res.term = cluster_.node_ptr(target)->current_term();
             res.success = ps.ok();
             if (ps.ok()) {
-                cluster_.node_ptr(target)->install_snapshot(
+                cluster_.node_ptr(target)->install_leader_snapshot(
                     msg.snapshot_param.snapshot_index,
                     msg.snapshot_param.snapshot_term, msg.snapshot_param.term);
             }

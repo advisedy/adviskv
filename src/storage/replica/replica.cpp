@@ -151,8 +151,8 @@ Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
                 snap, [this](const KvVisitor& visitor) -> Status {
                     return persist_->for_each_snapshot_kv(visitor);
                 })))
-            raft_node_->install_snapshot(param.snapshot_index,
-                                         param.snapshot_term, param.term);
+            raft_node_->install_leader_snapshot(
+                param.snapshot_index, param.snapshot_term, param.term);
             // refresh_recovering_state();
         }
     }
@@ -459,8 +459,8 @@ Status Replica::recover() {
             result.snapshot, [this](const KvVisitor& visitor) -> Status {
                 return persist_->for_each_snapshot_kv(visitor);
             })))
-        raft_node_->install_snapshot(result.snapshot->apply_index,
-                                     result.snapshot->apply_term, 0);
+        raft_node_->install_local_snapshot(result.snapshot->apply_index,
+                                           result.snapshot->apply_term);
     }
 
     raft_node_->update_raft_meta(result.raft_meta);

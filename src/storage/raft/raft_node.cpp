@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <mutex>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -107,7 +108,7 @@ void RaftNode::become_candidate() {
         enter_faulted_unlocked(status);
         return;
     }
-    // election_ticks_ = 0;
+
     heartbeat_tick_trigger_.stop();
     election_tick_trigger_.reset(ELECTION_TIMEOUT);
 
@@ -167,18 +168,17 @@ std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
     entry.op_type = op;
     entry.key = key;
     entry.value = value;
-    log_entries_.push_back(entry);
 
     if (persist_) {
-        Status status = persist_->append_wal(std::move(entry));
+        Status status = persist_->append_wal(entry);
         if (status.fail()) {
-            log_entries_.pop_back();
-            // TODO
             // 但是发现这里如果失败了的话，那持久化的文件也应该是收到了损伤了，那按照我们的截取的思路，那后面的内容就都没有办法保留了。
             // 这里以后我们再想办法处理吧.
+            enter_faulted_unlocked(status);
             return {status, -1};
         }
     }
+    log_entries_.push_back(entry);
 
     // 广播给所有 follower
     broadcast_append_entries();
@@ -268,6 +268,8 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
     result.term = current_term_;
     result.vote_granted = false;
 
+    // 这边对于recovering状态，我们是会去更新它的current
+    // term的，以防止在恢复正常之后可能会接收到一些比较旧的term的节点的消息，并且做出回复
     if (ensure_not_faulted_unlocked().fail()) {
         return;
     }
@@ -284,8 +286,7 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
         result.term = current_term_;
     }
 
-    if (health_.is_equal_code(RaftNodeHealth::RECOVERING())) {
-        result.term = current_term_;
+    if (ensure_ready_unlocked().fail()) {
         return;
     }
 
@@ -303,13 +304,16 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
         LOG_DEBUG("replica:{} vote to {}, current_term:{}",
                   self_id_.to_string(), param.to_replica_id.table_id,
                   param.to_replica_id.to_string(), current_term_);
+        if (Status status =
+                save_raft_meta(current_term_, param.from_replica_id);
+            status.fail()) {
+            enter_faulted_unlocked(status);
+            return;
+        }
+
         result.vote_granted = true;
         voted_for_ = param.from_replica_id;
-        // election_ticks_ = 0;
         election_tick_trigger_.reset(ELECTION_TIMEOUT);
-        if (save_raft_meta().fail()) {
-            // TODO
-        }
     }
 }
 
@@ -346,6 +350,9 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
         // 然后prev_log_index不一样呢？ 这个时候不需要比较一下index吗？
         // 这里并不需要，毕竟append 不需要去干关于选举方面的事情，
         become_follower(param.term);
+        if (ensure_not_faulted_unlocked().fail()) {
+            return;
+        }
     }
 
     result.term = current_term_;
@@ -376,46 +383,75 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
         // 这里是心跳
     } else {
         // 日志复制
+        std::vector<LogEntry> updated_entries = log_entries_;
         std::vector<LogEntry> new_entries;
+        bool need_rewrite_wal = false;
+
+        auto updated_last_log_index = [&]() -> LogIndex {
+            if (updated_entries.empty()) return snapshot_index_;
+            return updated_entries.back().index;
+        };
+
+        auto updated_get_term = [&](LogIndex index) -> Term {
+            if (index == 0) return 0;
+            if (index < snapshot_index_) return 0;
+            if (index == snapshot_index_) return snapshot_term_;
+            int64_t offset = index_to_offset(index);
+            if (offset < 0 ||
+                offset >= static_cast<int64_t>(updated_entries.size())) {
+                return 0;
+            }
+            return updated_entries[offset].term;
+        };
+
         for (const LogEntry& entry : param.entries) {
             LogIndex index = entry.index;
 
             if (index <= snapshot_index_) continue;
 
-            if (index <= last_log_index_unlocked()) {
-                if (get_term(index) != entry.term) {
-                    log_entries_.resize(index_to_offset(index));
-                    log_entries_.push_back(entry);
+            if (index <= updated_last_log_index()) {
+                if (updated_get_term(index) != entry.term) {
+                    updated_entries.resize(index_to_offset(index));
+                    updated_entries.push_back(entry);
                     new_entries.push_back(entry);
+                    need_rewrite_wal = true;
                 }
-            } else {
-                log_entries_.push_back(entry);
+            } else if (index == updated_last_log_index() + 1) {
+                updated_entries.push_back(entry);
                 new_entries.push_back(entry);
+            } else {
+                LOG_WARN(
+                    "storage raft handle append entries found wal gap, "
+                    "last_log_index={}, entry_index={}",
+                    updated_last_log_index(), index);
+                return;
             }
         }
 
         if (persist_ && !new_entries.empty()) {
-            Status status = persist_->append_wal_batch(new_entries);
+            Status status = need_rewrite_wal
+                                ? persist_->rewrite_wal(updated_entries)
+                                : persist_->append_wal_batch(new_entries);
             if (status.ok()) {
                 ADVISKV_METRICS_COUNTER(
                     "storage_raft_handle_append_entries_wal_batch_success");
             } else {
                 ADVISKV_METRICS_COUNTER(
                     "storage_raft_handle_append_entries_wal_batch_failure");
-                // TODO 处理好失败状态
-                LOG_WARN("storage raft handle append entires wal batch failed!");
+                // 处理好失败状态
+                LOG_WARN(
+                    "storage raft handle append entires wal batch failed!");
+                enter_faulted_unlocked(status);
                 return;
             }
         }
+        log_entries_ = std::move(updated_entries);
     }
 
     // 不管是否有entry，也就是不管是日志追加还是心跳，都会需要更新commit_idx
     if (param.leader_commit > commit_index_) {
         commit_index_ =
             std::min(param.leader_commit, last_log_index_unlocked());
-        if (save_raft_meta().fail()) {
-            // TODO
-        }
     }
     finish_recovering_unlocked();
 
@@ -570,14 +606,14 @@ void RaftNode::become_follower(Term later_term) {
              later_term);
 
     if (later_term > current_term_) {
+        current_term_ = later_term;
         voted_for_.reset();
+        if (Status status = save_raft_meta(); status.fail()) {
+            enter_faulted_unlocked(status);
+            return;
+        }
     }
-    current_term_ = later_term;
     role_ = ReplicaRole::FOLLOWER;
-    if (save_raft_meta().fail()) {
-        // TODO
-    }
-    // election_ticks_ = 0;
     election_tick_trigger_.reset(ELECTION_TIMEOUT);
 }
 
@@ -604,8 +640,16 @@ void RaftNode::become_leader() {
     none_entry.op_type = WriteOpType::NONE;
     none_entry.key = "for debug: this is a no-op entry key";
     none_entry.value = "for debug: this is a no-op entry value";
+
+    // 这段得用测试发现，TODO
+    if (persist_) {
+        Status status = persist_->append_wal(none_entry);
+        if (status.fail()) {
+            enter_faulted_unlocked(status);
+            return;
+        }
+    }
     log_entries_.push_back(none_entry);
-    persist_->append_wal(none_entry);
     // 立即广播（含 no-op），相当于心跳 + 日志复制合一
     broadcast_append_entries();
 
@@ -639,12 +683,7 @@ void RaftNode::try_update_commit_index() {
             if (member.replica_id == self_id_) {
                 continue;
             }
-            if (auto it = match_index_.find(member.replica_id);
-                it != match_index_.end()) {
-                if (it->second >= idx) success_cnt++;
-            } else {
-                LOG_WARN("...22222");
-            }
+            if (match_index_[member.replica_id] >= idx) success_cnt++;
         }
 
         int limit_cnt = static_cast<int>(members_.size()) / 2 + 1;
@@ -718,11 +757,16 @@ void RaftNode::enter_faulted_unlocked(const Status& status) {
 
 // persist 去 持久化raft_meta
 Status RaftNode::save_raft_meta() const {
+    return save_raft_meta(current_term_, voted_for_);
+}
+
+Status RaftNode::save_raft_meta(Term current_term,
+                                std::optional<ReplicaID> voted_for) const {
     if (!persist_) return Status::NOT_INIT("persist is nullptr");
 
     RaftMeta raft_meta;
-    raft_meta.current_term = current_term_;
-    raft_meta.voted_for = voted_for_;
+    raft_meta.current_term = current_term;
+    raft_meta.voted_for = voted_for;
     return persist_->save_raft_meta(raft_meta);
 }
 
@@ -749,17 +793,8 @@ Status RaftNode::truncate_log(LogIndex new_snapshot_index) {
     return Status::OK();
 }
 
-void RaftNode::install_snapshot(LogIndex new_snapshot_index,
-                                Term new_snapshot_term, Term leader_term) {
-    std::lock_guard lock(mutex_);
-    if (ensure_not_faulted_unlocked().fail()) return;
-
-    if (leader_term > current_term_) {
-        current_term_ = leader_term;
-        voted_for_ = std::nullopt;
-        role_ = ReplicaRole::FOLLOWER;
-    }
-
+void RaftNode::install_snapshot_unlocked(LogIndex new_snapshot_index,
+                                         Term new_snapshot_term) {
     snapshot_index_ = new_snapshot_index;
     snapshot_term_ = new_snapshot_term;
     log_entries_.clear();
@@ -770,10 +805,35 @@ void RaftNode::install_snapshot(LogIndex new_snapshot_index,
         last_applied_ = snapshot_index_;
     }
 
-    if (save_raft_meta().fail()) {
-        // TODO
-    }
     finish_recovering_unlocked();
+}
+
+void RaftNode::install_local_snapshot(LogIndex new_snapshot_index,
+                                      Term new_snapshot_term) {
+    std::lock_guard lock(mutex_);
+    if (ensure_not_faulted_unlocked().fail()) return;
+
+    install_snapshot_unlocked(new_snapshot_index, new_snapshot_term);
+}
+
+void RaftNode::install_leader_snapshot(LogIndex new_snapshot_index,
+                                       Term new_snapshot_term,
+                                       Term leader_term) {
+    std::lock_guard lock(mutex_);
+    if (ensure_not_faulted_unlocked().fail()) return;
+
+    if (leader_term < current_term_) {
+        return;
+    }
+
+    if (leader_term > current_term_ || role_ != ReplicaRole::FOLLOWER) {
+        become_follower(leader_term);
+        if (ensure_not_faulted_unlocked().fail()) return;
+    } else {
+        election_tick_trigger_.reset(ELECTION_TIMEOUT);
+    }
+
+    install_snapshot_unlocked(new_snapshot_index, new_snapshot_term);
 }
 
 void RaftNode::handle_install_snapshot_response(

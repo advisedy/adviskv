@@ -172,8 +172,9 @@ class RaftNode {
     Status truncate_log(LogIndex index);
 
     // Snapshot 支持
-    void install_snapshot(LogIndex snapshot_index, Term snapshot_term,
-                          Term leader_term);
+    void install_local_snapshot(LogIndex snapshot_index, Term snapshot_term);
+    void install_leader_snapshot(LogIndex snapshot_index, Term snapshot_term,
+                                 Term leader_term);
 
     // InstallSnapshot 回调
     void handle_install_snapshot_response(const ReplicaID& from,
@@ -214,6 +215,8 @@ class RaftNode {
     Term last_log_term_unlocked() const;
 
     Status save_raft_meta() const;
+    Status save_raft_meta(Term current_term,
+                          std::optional<ReplicaID> voted_for) const;
 
     int64_t index_to_offset(LogIndex index) const;
     LogIndex offset_to_index(int64_t offset) const;
@@ -230,6 +233,8 @@ class RaftNode {
 
     void try_update_commit_index();
     bool later_than_other(Term other_term, LogIndex other_index) const;
+    void install_snapshot_unlocked(LogIndex snapshot_index,
+                                   Term snapshot_term);
     void finish_recovering_unlocked();
     bool has_committed_current_term_entry_unlocked() const;
     RaftMessage build_append_entries_message_unlocked(const PeerMember& member,
