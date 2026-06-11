@@ -176,7 +176,24 @@ cd adviskv
 git submodule update --init --recursive
 ```
 
-### 3. 编译项目
+### 3. 初始化依赖
+
+首次拉取代码后，先执行依赖初始化脚本：
+
+```bash
+./scripts/setup.sh
+```
+
+脚本会执行以下工作：
+
+- 如果 `third_party/vcpkg/vcpkg` 不存在或不可执行，自动 bootstrap vcpkg。
+- 通过 vcpkg 安装 `vcpkg.json` 中声明的依赖。
+- 将 vcpkg 安装产物放到 `.adviskv_deps/vcpkg/installed/`。
+- 将 vcpkg 源码下载缓存和二进制缓存分别放到 `.adviskv_deps/vcpkg/downloads/`、`.adviskv_deps/vcpkg/binary-cache/`。
+
+依赖初始化完成后，日常编译不再主动执行 vcpkg 下载或安装。
+
+### 4. 编译项目
 
 仓库提供统一构建脚本：
 
@@ -186,10 +203,15 @@ git submodule update --init --recursive
 
 脚本会执行以下工作：
 
-- 如果 `third_party/vcpkg/vcpkg` 不存在或不可执行，自动 bootstrap vcpkg。
-- 通过 vcpkg 安装 `vcpkg.json` 中声明的依赖。
+- 检查 `.adviskv_deps/vcpkg/installed/` 中是否已有 vcpkg 依赖。
 - 生成 `proto/*.proto` 对应的 C++ 和 gRPC 代码到 `build/generated/`。
 - 使用 CMake 配置并编译项目。
+
+如果依赖目录不存在或缺少 `protoc`、`grpc_cpp_plugin`，请先执行：
+
+```bash
+./scripts/setup.sh
+```
 
 默认构建参数：
 
@@ -197,6 +219,7 @@ git submodule update --init --recursive
 - `BUILD_TYPE=Release`
 - `GENERATOR=Ninja`
 - `VCPKG_TOOLCHAIN_FILE=third_party/vcpkg/scripts/buildsystems/vcpkg.cmake`
+- `VCPKG_INSTALL_ROOT=.adviskv_deps/vcpkg/installed`
 
 可通过环境变量覆盖：
 
@@ -210,7 +233,7 @@ BUILD_TYPE=Debug BUILD_DIR=build-debug ./scripts/build.sh
 BUILD_TARGETS="meta sdm storage" ./scripts/build.sh
 ```
 
-### 4. 编译产物
+### 5. 编译产物
 
 主要二进制默认位于 `build/bin/`：
 
@@ -233,6 +256,14 @@ BUILD_TARGETS="meta sdm storage" ./scripts/build.sh
 ## 快速开始
 
 ### 1. 构建
+
+首次构建前先初始化依赖：
+
+```bash
+./scripts/setup.sh
+```
+
+之后日常构建只需要执行：
 
 ```bash
 ./scripts/build.sh
@@ -550,6 +581,7 @@ adviskv/
 │   ├── sdm.proto
 │   └── storage.proto
 ├── scripts/                   # 构建、测试、覆盖率、benchmark、进程管理脚本
+│   ├── setup.sh
 │   ├── build.sh
 │   ├── run_test.sh
 │   ├── e2e_pytest.sh
@@ -590,6 +622,8 @@ adviskv/
 ```bash
 ctest --test-dir build --output-on-failure
 ```
+
+如果是首次运行或依赖发生变化，请先执行 `./scripts/setup.sh`。
 
 ### 覆盖率
 
@@ -703,11 +737,9 @@ ctest --test-dir build --output-on-failure
 
 ## 许可证信息
 
-仓库根目录当前没有发现项目自身的 `LICENSE` 文件，也没有统一的 SPDX/Copyright 声明。因此 AdvisKV 本体许可证目前尚未明确。
+本项目采用 MIT License 开源，详见 [LICENSE](LICENSE)。
 
 已知第三方信息：
 
 - `third_party/vcpkg/LICENSE.txt` 是 vcpkg 自身的 MIT License。
 - 项目通过 vcpkg 使用 `fmt`、`spdlog`、`protobuf`、`grpc`、`yaml-cpp`、`gtest` 等依赖；这些依赖的许可证应在正式发布前单独核查并在文档中列明。
-
-如果项目计划公开发布，建议在仓库根目录补充明确的 `LICENSE` 文件，并同步更新本章节。
