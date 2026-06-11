@@ -1,477 +1,713 @@
 # AdvisKV
 
-
-(直接拿AI临时跑了个README出来)
-
-AdvisKV 是一个基于 `C++17 + gRPC + Raft` 的分布式 KV 项目。
-
-这份 README 采用更保守、也更贴近当前代码现状的写法：它不是把项目包装成“已经完成的生产级数据库”，而是把项目真实的定位、模块边界、当前完成度，以及接下来最值得做的事写清楚。
-
-TODO:
-
-[ok] meta侧的持久化还没有完成
-
-[] storage的发送raft消息等待优化
-
-[ok] mian函数里面的监听ip 等待之后统一
-
-[] storage里面还没有集成rocksdb
-
-[] meta的本地备份 ：每次写入前保留旧版本备份，防止磁盘静默损坏
-
-[ok] SDM Store 读接口后续改成 snapshot value 语义：`get_xxx` 返回 `std::optional<T>`（例如 `using ReplicaOr = std::optional<Replica>`），`list_xxx` 返回 `std::vector<T>`，避免把内部 mutable `shared_ptr` 暴露给调用方；所有修改必须通过 `put_xxx/delete_xxx` 进入 Store，以保证持久化和 runtime index 更新边界一致。
-
-[ok] 补全单测文件 storage 
-
-[ok] 补全单测文件 meta
-
-[ok] 补全单测文件 sdm
-
-[ok] 线性一致性读 ReadIndex
-
-[ok] 关于单测的更新
-
-[ok] 关于node上面负载的副本数量没有闭环，直接当场计算
-
-[] 验证一下读一致性的单测
-
-[] 支持在adding table的时候可以delete
-
-[] 记得把build和run_test的脚本细节看一下
-
-[] 关于e2e的测试
-
-[] 接入benchmark
-
-## 项目定位
-
-AdvisKV 当前更准确的定位是：
-
-- 一个自研分布式 KV 系统项目
-- 一个正在把主链路、控制面边界、数据面正确性逐步做实的工程
-- 一个以 `Storage` 和 `SDM` 两条主线为核心的分布式系统实现
-
-当前项目最值得关注的三条主线是：
-
-- `Storage`：Raft、一致性复制、WAL、snapshot、恢复
-- `SDM`：建表部署 workflow、placement、route、节点与副本状态观测
-- 外部 `SDK` 路径：`db + table + key -> SDM 查路由 -> Storage 读写`
-
-当前项目还不是：
-
-- 完整高可用数据库
-- 成熟的动态扩缩容系统
-- 已经具备 config-change / rebalance / 控制面 HA 的生产级系统
-
-## 模块边界
-
-### 1. Meta
-
-`Meta` 的职责应当理解为：
-
-- DDL 入口
-- catalog / 命名空间权威层
-- `db_id / table_id` 分配者
-
-当前它主要负责：
-
-- 接收 `CreateDB / CreateTable / GetTable`
-- 维护本地 catalog 元数据
-- 调用 SDM 的 `PlaceTable`
-
-它不应负责：
-
-- placement
-- route
-- replica 生命周期
-- Raft 内部状态
-
-当前入口：
-
-- [main.cpp](file:///Users/bytedance/Desktop/adviskv/src/meta/main/main.cpp)
-
-默认监听：
-
-- `50052`
-
-### 2. SDM
-
-`SDM` 是当前项目的控制面，定位应当是：
-
-- deployment workflow
-- route 管理
-- placement
-- 节点注册与状态观测
-
-当前已经承载的职责包括：
-
-- `RegisterNode`
-- `HeartBeat`
-- `PlaceTable`
-- `GetRoute`
-- 后台推进 `PlaceTableWorkflow`
-- 后台维护 `ShardRoute`
-
-当前 SDM 的重点不应该是“后台任务数量很多”，而应该是下面几件事是否闭环：
-
-- 如何决定节点放置
-- 如何推进建表部署状态
-- 如何根据 heartbeat 更新副本状态
-- 如何维护 route
-- 如何为 SDK 提供统一路由入口
-
-当前入口：
-
-- [main.cpp](file:///Users/bytedance/Desktop/adviskv/src/sdm/main/main.cpp)
-
-默认监听：
-
-- `50051`
-
-### 3. Storage
-
-`Storage` 是数据面，也是当前项目最核心的技术模块。
-
-它负责：
-
-- `Put / Get / Delete`
-- `CreateReplica`
-- Raft RPC：`RequestVote / AppendEntries / InstallSnapshot`
-- 本地 replica 生命周期管理
-- WAL / snapshot / raft_meta 恢复
-- 通过 `NodeAgent` 向 SDM 注册并周期心跳
-
-当前入口：
-
-- [main.cpp](file:///Users/bytedance/Desktop/adviskv/src/storage/main/main.cpp)
-
-关键实现：
-
-- [storage_service.cpp](file:///Users/bytedance/Desktop/adviskv/src/storage/handler/storage_service.cpp)
-
-默认监听：
-
-- `50050`
-
-### 4. 外部 SDK
-
-项目后续会保留一条明确的外部调用路径：
-
-- 客户端调用 SDK
-- SDK 传入 `db + table + key`
-- SDK 向 SDM 调 `GetRoute`
-- SDM 根据名字和 key 计算目标 shard
-- SDK 再访问对应 Storage
-
-当前协议层已经支持这条路径：
-
-- `proto/sdm.proto` 中已有 `GetRouteRequest { db_name, table_name, key }`
-
-这个方向的优点是：
-
-- SDK 接口更简单
-- 路由规则集中在 SDM
-- 将来如果分片规则变化，不需要修改 SDK API
-
-## 当前主链路
-
-### 1. 建表链路
-
-当前仓库最重要的一条链路是 `CreateTable`：
-
-1. 上层请求调用 Meta 的 `CreateTable`
-2. Meta 调用 SDM 的 `PlaceTable`
-3. SDM 在 `PlaceTableWorkflow` 中创建控制面对象并进入部署流程
-4. SDM 根据 `resource_pool` 选择节点，为每个 shard 写入 `PENDING` replica
-5. SDM 通过 `StorageClient` 向目标 Storage 发送 `CreateReplica`
-6. Storage 收到请求后创建本地 replica，并启动对应的 Raft group
-7. Storage 通过 `NodeAgent` 向 SDM 上报 heartbeat
-8. SDM 根据 heartbeat 把 replica 状态从 `ADDING` 推进到 `READY`
-9. `RouteUpdateCheckTask` 根据健康副本生成 `ShardRoute`
-10. workflow 观察 route 就绪后把 table 推进到终态
-
-这条链路当前已经是项目的主心骨。
-
-### 2. 读写链路
-
-项目目标中的对外读写链路是：
-
-1. SDK 接收 `db + table + key`
-2. SDK 向 SDM 发送 `GetRoute`
-3. SDM 根据 `db_name + table_name + key` 定位 shard
-4. SDM 返回 route
-5. SDK 调用对应 Storage 做 `Put / Get`
-
-目前这条链路在协议和基本实现上是成立的，但仍然存在一个需要继续补强的问题：
-
-- 当前 `GetRoute` 返回语义还不够强
-- 代码里仍有“直接取 `route.replicas[0]`”的简化逻辑
-- 这意味着“返回的一定是 leader”这件事还没有被严格保证
-
-所以，当前读写路径的方向已经对了，但 correctness 还不算完全闭环。
-
-## 当前设计取舍
-
-### 为什么保留 Meta
-
-`Meta` 很薄，但这是合理的薄。
-
-这个项目里，`Meta` 更适合做：
-
-- catalog
-- DDL 入口
-- ID 分配
-
-而不是去承担：
-
-- route 管理
-- 副本调度
-- 节点观测
-
-把 `Meta` 保持成一个边界清楚的薄层，比强行把它做重更合理。
-
-### 为什么保留 SDM
-
-如果 `SDM` 只是：
-
-- 节点注册
-- 心跳接收
-- 路由缓存
-
-那它确实会显得偏薄。
-
-但如果 `SDM` 承担的是：
-
-- 建表部署 workflow
-- placement
-- route 维护
-- 节点与副本状态观测
-- 面向 SDK 的统一路由入口
-
-那它就是一个成立的控制面，而不是鸡肋。
-
-### 为什么 SDK 不自己算 shard
-
-当前项目倾向保留这样的接口：
-
-- `search_kv(db, table, key)`
-- `put_kv(db, table, key, value)`
-
-也就是说：
-
-- 客户端不先自己算 shard
-- 客户端统一把路由定位交给 SDM
-
-这样做的原因是：
-
-- 降低 SDK 复杂度
-- 集中路由逻辑
-- 为后续分片规则变化留空间
-
-## 当前完成度
-
-### 已经具备的部分
-
-- `Meta -> SDM -> Storage` 的建表主链路已经接通
-- `StorageService::CreateReplica` 已有基本实现
-- `SDM` 已经引入 `PlaceTableWorkflow`
-- workflow 已覆盖以下关键阶段：
-  - 重名检测
-  - placement
-  - 创建 replica
-  - 等待 replica ready
-  - 等待 route ready
-  - rollback
-- `RouteUpdateCheckTask` 已经承担 route 维护职责
-- `GetRoute(db_name, table_name, key)` 的协议与基础逻辑已经存在
-- `Storage` 侧已经有 Raft RPC 和持久化相关代码骨架
-
-### 当前仍然简化或未闭环的部分
-
-- `ISdmMetaStore` 目前仍是内存版
-- SDM 重启后的 workflow 恢复还没有真正闭环
-- route 目前还没有严格保证返回 leader 可写路由
-- 外部 SDK 还没有作为完整独立模块落地
-- 多节点、多副本的本地演示配置还不完整
-- benchmark 还没有形成正式结果
-- 崩溃恢复、故障切换还没有形成完整的实验与证据链
-
-### 客观评价
-
-当前项目已经不是“几个类拼出来的玩具”了，但也还没有达到“成熟分布式系统作品”的程度。
-
-更准确地说，它现在处于：
-
-- 基础骨架已经搭对
-- 模块边界逐渐清晰
-- 关键主线已经出现
-- 但最有说服力的可靠性与性能证据还没补齐
-
-## 当前最值得优先做的事
-
-如果目标是把这个项目做成一个更有说服力的秋招项目，优先级建议如下：
-
-1. 修正 `GetRoute` 语义，明确 leader 路由
-2. 跑通 SDK -> SDM -> Storage 的完整读写链路
-3. 补齐多节点、多副本本地演示配置
-4. 验证 leader 宕机后的重新选主与继续读写
-5. 补 `WAL / snapshot / raft_meta` 的恢复实验
-6. 做第一版 benchmark
-7. 再补 `ISdmMetaStore` 的持久化与 workflow 重启续跑
-
-对当前阶段来说，可视化不应排在前面。
-
-## 当前不打算在 V1 解决的事
-
-以下内容暂时不应抢占主工期：
-
-- dashboard / 可视化大屏
-- SDM HA
-- Raft config-change
-- shard rebalance
-- 复杂的多策略 leader selector
-- 过早的平台化能力
-
-原因：
-
-- 这些内容会快速拉高工期
-- 但对当前项目“正确性、恢复、性能”的核心说服力帮助有限
-
-## 仓库结构
+AdvisKV 是一个使用 **C++17 + gRPC + Protocol Buffers + Raft** 实现的分布式 Key-Value 存储项目。项目采用控制面与数据面拆分的架构：`Meta` 负责 DDL 与 catalog，`SDM` 负责部署、路由、节点与副本状态管理，`Storage` 负责 KV 数据读写、Raft 复制和本地持久化，`SDK` 对外提供基于 `db + table + key` 的访问接口。
+
+当前项目是一个可构建、可运行、可测试、持续演进中的分布式 KV 系统原型。它已经具备建库、建表、路由解析、KV 读写、Raft 副本、WAL、snapshot、恢复、单测、E2E 和 benchmark 客户端等主干能力；尚未完成控制面高可用、动态扩缩容、Raft config change、自动 rebalance 等生产级能力。
+
+## 目录
+
+- [项目简介](#项目简介)
+- [功能特性](#功能特性)
+- [整体架构](#整体架构)
+- [技术栈](#技术栈)
+- [安装指南](#安装指南)
+- [快速开始](#快速开始)
+- [API 文档与使用说明](#api-文档与使用说明)
+- [配置说明](#配置说明)
+- [项目结构](#项目结构)
+- [测试](#测试)
+- [Benchmark 测试结果](#benchmark-测试结果)
+- [Benchmark 工具](#benchmark-工具)
+- [开发状态与限制](#开发状态与限制)
+- [许可证信息](#许可证信息)
+
+## 项目简介
+
+AdvisKV 主要解决分布式 KV 存储中的以下问题：
+
+- 通过统一 DDL 入口创建数据库和表。
+- 将表拆分为多个 shard，并为每个 shard 部署多个 replica。
+- 维护节点、replica、route、table phase 等控制面状态。
+- 通过 SDK 将 `db + table + key` 路由到正确的 Storage 节点。
+- 在 Storage 内部通过 Raft 实现副本复制、leader 写入、日志提交、状态机 apply、WAL、snapshot 和恢复。
+
+项目特点：
+
+- **控制面/数据面拆分**：`Meta` 管 catalog，`SDM` 管 placement 和 route，`Storage` 管数据与 Raft。
+- **表级分片与副本模型**：建表时可配置 `shard_count`、`replica_count` 和 `resource_pool`。
+- **Raft 副本复制**：Storage 内部实现投票、日志复制、commit/apply、snapshot 安装和 follower catch-up。
+- **统一 SDK 访问路径**：客户端只需要关心 `db_name`、`table_name` 和 `key`。
+- **本地工具链完整**：提供构建脚本、CLI、C++ E2E、pytest E2E、CTest、coverage 和 benchmark 工具。
+- **模块边界清晰**：各模块以独立 library/executable 组织，proto 协议和 C++ 实现分层明确。
+
+## 功能特性
+
+### 数据库与表管理
+
+- `CreateDB`：创建数据库命名空间。
+- `CreateTable`：创建表，并指定 shard 数、副本数和资源池。
+- `DropTable`：删除表，触发控制面删除流程。
+- `GetTable`：查询表元信息和当前状态。
+
+### Catalog 与持久化
+
+- Meta 维护 `db_id`、`table_id`、表状态、operation id 等 catalog 元数据。
+- Meta 使用本地 `MetaPersistEngine` 保存 catalog 数据，支持主干状态重启恢复。
+- SDM 使用 persistent metastore 保存表、节点、replica、route 等控制面元数据。
+- Storage 持久化 WAL、snapshot 和 replica meta。
+
+### SDM 控制面
+
+- Storage 节点注册与心跳上报。
+- table placement 与 replica 期望状态生成。
+- table reconciler 后台推进建表/删表流程。
+- heartbeat check 后台维护节点状态。
+- route update 后台根据健康 replica 生成 shard route。
+- 根据 `db_name + table_name + key` 提供统一 route 查询。
+
+### Storage 数据面
+
+- 支持 `Put`、`Get`、`Delete` KV 操作。
+- 支持 `CreateReplica`、`DeleteReplica`、`GetReplicaInfo` replica 生命周期接口。
+- 支持 Raft RPC：`RequestVote`、`AppendEntries`、`InstallSnapshot`。
+- `ReplicaManager` 负责本地副本创建、恢复和 tick 调度。
+- 内置 map-based KV engine，便于验证一致性与复制逻辑。
+- 支持 metrics HTTP 暴露，默认 Storage 配置为 `127.0.0.1:51051/metrics`。
+
+### SDK
+
+- 对外提供 `KVClient::put`、`KVClient::get`、`KVClient::del`。
+- 自动向 SDM 解析 route。
+- 遇到 `NOT_LEADER`、`REPLICA_NOT_FOUND`、`ROUTE_NOT_FOUND` 时重新解析 route 并重试一次。
+- 支持 SDK 日志回调与基础 metrics 计数。
+
+### 测试与工具
+
+- GoogleTest 单测覆盖 common、Meta、SDM、Storage、Raft、persist、replica、selector、background task 等模块。
+- C++ E2E 覆盖 basic KV、重启恢复、leader failover、follower catch-up、SDM/Meta crash recovery 等场景。
+- Python pytest E2E 脚本负责拉起/停止本地集群并执行端到端测试。
+- coverage 脚本可生成 HTML/XML 覆盖率报告。
+- benchmark client 支持 put/get/mixed workload、并发线程、JSON 输出和 metrics 暴露。
+
+## 整体架构
 
 ```text
-adviskv/
-├── conf/                 # 默认配置
-├── docs/                 # 设计文档与开发记录
-├── proto/                # gRPC / protobuf 协议
-├── scripts/              # 构建脚本
-├── src/
-│   ├── common/           # 通用组件
-│   ├── meta/             # Meta / catalog / DDL 入口
-│   ├── sdm/              # 控制面：workflow / route / placement / heartbeat
-│   └── storage/          # 数据面：replica / raft / persist / rpc
-├── third_party/vcpkg/    # 依赖管理
-└── README.md
+Client / CLI / Benchmark
+        |
+        v
+      SDK
+        |
+        | GetRoute(db, table, key)
+        v
+       SDM  <-------------------- Storage NodeAgent HeartBeat
+        |
+        | PlaceTable / route / node / replica control plane
+        v
+      Meta  -- DDL/catalog authority
+
+DDL path:
+Meta CreateTable -> SDM PlaceTable -> Storage CreateReplica -> HeartBeat -> Route Ready
+
+Data path:
+SDK -> SDM GetRoute -> Storage Put/Get/Delete -> Raft -> KV StateMachine
 ```
 
-## 依赖
+核心模块：
 
-项目当前通过 `vcpkg + CMake` 管理依赖，核心依赖包括：
+- **Meta**：DDL 入口和 catalog 权威层，负责 `CreateDB`、`CreateTable`、`DropTable`、`GetTable`，并把表部署请求转交给 SDM。
+- **SDM**：Sharding/Deployment Manager，负责节点注册、心跳、资源池、placement、replica 期望状态、route 维护和 table phase 推进。
+- **Storage**：数据面服务，负责 KV RPC、replica 生命周期、Raft RPC、WAL/snapshot/恢复和本地状态机。
+- **SDK**：用户侧访问库，隐藏 route 解析和 Storage RPC 细节。
+- **Common**：日志、配置、状态码、类型定义、metrics、线程池、后台任务、路径工具等公共组件。
 
-- `fmt`
-- `spdlog`
-- `protobuf`
-- `gRPC`
-- `yaml-cpp`
+## 技术栈
 
-编译标准：
+- **语言**：C++17。
+- **构建系统**：CMake 3.20+，默认使用 Ninja。
+- **依赖管理**：vcpkg，仓库内置于 `third_party/vcpkg/`。
+- **RPC/IDL**：gRPC + Protocol Buffers。
+- **配置格式**：YAML。
+- **日志**：spdlog。
+- **格式化输出**：fmt。
+- **测试框架**：GoogleTest + CTest。
+- **端到端测试**：C++ E2E client，Python pytest E2E。
+- **覆盖率**：gcovr。
+- **Benchmark**：内置 `bench_client`，支持 workload、并发、延迟统计、QPS、JSON 输出。
+- **核心依赖**：`fmt`、`spdlog`、`protobuf`、`grpc`、`yaml-cpp`、`gtest`。
 
-- `C++17`
+## 安装指南
 
-## 构建
+### 1. 准备环境
 
-### 1. 配置并编译
+推荐环境：
 
-仓库已提供基础构建脚本：
+- macOS 或 Linux。
+- C++17 兼容编译器：AppleClang、Clang 或 GCC。
+- CMake 3.20 或更高版本。
+- Ninja。
+- Git。
+- Python 3，用于 E2E pytest 和部分脚本。
+- Docker，可选，仅用于本地 CI 脚本。
+- gcovr，可选，仅用于 coverage 报告。
+
+macOS 示例：
+
+```bash
+brew install cmake ninja python3 gcovr
+```
+
+Ubuntu 示例：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential cmake ninja-build git curl zip unzip tar pkg-config python3 python3-venv
+```
+
+### 2. 获取代码
+
+```bash
+git clone <repo-url> adviskv
+cd adviskv
+```
+
+如果 `third_party/vcpkg` 是子模块，请先初始化：
+
+```bash
+git submodule update --init --recursive
+```
+
+### 3. 编译项目
+
+仓库提供统一构建脚本：
 
 ```bash
 ./scripts/build.sh
 ```
 
-它等价于：
+脚本会执行以下工作：
+
+- 如果 `third_party/vcpkg/vcpkg` 不存在或不可执行，自动 bootstrap vcpkg。
+- 通过 vcpkg 安装 `vcpkg.json` 中声明的依赖。
+- 生成 `proto/*.proto` 对应的 C++ 和 gRPC 代码到 `build/generated/`。
+- 使用 CMake 配置并编译项目。
+
+默认构建参数：
+
+- `BUILD_DIR=build`
+- `BUILD_TYPE=Release`
+- `GENERATOR=Ninja`
+- `VCPKG_TOOLCHAIN_FILE=third_party/vcpkg/scripts/buildsystems/vcpkg.cmake`
+
+可通过环境变量覆盖：
 
 ```bash
-cmake -S . -B build \
-  -DCMAKE_TOOLCHAIN_FILE=third_party/vcpkg/scripts/buildsystems/vcpkg.cmake
-
-cmake --build build
+BUILD_TYPE=Debug BUILD_DIR=build-debug ./scripts/build.sh
 ```
 
-编译产物默认位于：
+只构建指定 target：
+
+```bash
+BUILD_TARGETS="meta sdm storage" ./scripts/build.sh
+```
+
+### 4. 编译产物
+
+主要二进制默认位于 `build/bin/`：
 
 - `build/bin/meta`
 - `build/bin/sdm`
 - `build/bin/storage`
+- `build/bin/meta_cli`
+- `build/bin/storage_cli`
+- `build/bin/e2e_client`
+- `build/bin/bench_client`
 
-### 2. 首次生成 protobuf 代码
+主要 library target：
 
-如果是全新工作区，先执行：
+- `adviskv_common`
+- `adviskv_meta_lib`
+- `adviskv_sdm_lib`
+- `adviskv_storage_lib`
+- `adviskv_sdk`
+
+## 快速开始
+
+### 1. 构建
 
 ```bash
-mkdir -p build/generated
-
-./build/vcpkg_installed/arm64-osx/tools/protobuf/protoc \
-  -I=proto \
-  --cpp_out=./build/generated \
-  --grpc_out=./build/generated \
-  --plugin=protoc-gen-grpc=./build/vcpkg_installed/arm64-osx/tools/grpc/grpc_cpp_plugin \
-  proto/common.proto \
-  proto/storage.proto \
-  proto/meta.proto \
-  proto/sdm.proto
+./scripts/build.sh
 ```
 
-然后再执行构建脚本。
+### 2. 启动本地单节点集群
 
-## 本地运行
+默认配置文件：
 
-当前默认配置文件：
+- SDM：`conf/sdm.yaml`，监听 `127.0.0.1:50049`。
+- Storage：`conf/storage-1.yaml`，监听 `127.0.0.1:50051`，向 SDM `127.0.0.1:50049` 注册并发送心跳。
+- Meta：`conf/meta.yaml`，监听 `127.0.0.1:50048`，连接 SDM `127.0.0.1:50049`。
 
-- `Meta`：`conf/meta.yaml`
-- `SDM`：`conf/sdm.yaml`
-- `Storage`：`conf/storage-1.yaml`
-
-默认端口：
-
-- `Storage`：`50050`
-- `SDM`：`50051`
-- `Meta`：`50052`
-
-建议在仓库根目录分别启动三个进程，因为目前配置文件使用的是相对路径：
+建议在三个终端中按顺序启动：
 
 ```bash
 ./build/bin/sdm
 ```
 
 ```bash
-./build/bin/storage
+./build/bin/storage conf/storage-1.yaml
 ```
 
 ```bash
 ./build/bin/meta
 ```
 
-推荐启动顺序：
+注意：`meta` 和 `sdm` 可以不传参数，分别默认读取 `conf/meta.yaml` 和 `conf/sdm.yaml`；`storage` 当前要求显式传入配置文件。
 
-1. `sdm`
-2. `storage`
-3. `meta`
+### 3. 创建数据库和表
 
-原因：
+启动 `meta_cli`：
 
-- `storage` 启动后会向 `SDM` 注册并发送 heartbeat
-- `meta` 启动后会持有 SDM client，后续 DDL 直接走主链路
+```bash
+./build/bin/meta_cli --host 127.0.0.1 --port 50048
+```
 
-## 建议的阅读顺序
+在交互式命令行中执行：
 
-如果想从代码入口开始理解项目，建议按下面的顺序看：
+```text
+create_db demo_db dc1
+create_table demo_db demo_table 1 1 default
+get_table demo_db demo_table
+quit
+```
 
-1. [README.md](file:///Users/bytedance/Desktop/adviskv/README.md)
-2. [main.cpp](file:///Users/bytedance/Desktop/adviskv/src/meta/main/main.cpp)
-3. [main.cpp](file:///Users/bytedance/Desktop/adviskv/src/sdm/main/main.cpp)
-4. [placetable_workflow.cpp](file:///Users/bytedance/Desktop/adviskv/src/sdm/workflow/placetable_workflow.cpp)
-5. [routeupdate_check_task.cpp](file:///Users/bytedance/Desktop/adviskv/src/sdm/background/routeupdate_check_task.cpp)
-6. [route_service.cpp](file:///Users/bytedance/Desktop/adviskv/src/sdm/service/route_service.cpp)
-7. [storage_service.cpp](file:///Users/bytedance/Desktop/adviskv/src/storage/handler/storage_service.cpp)
-8. [raft_node.cpp](file:///Users/bytedance/Desktop/adviskv/src/storage/raft/raft_node.cpp)
+命令说明：
 
-## 一句话总结
+- `create_db demo_db dc1`：创建数据库 `demo_db`，zone 为 `dc1`。
+- `create_table demo_db demo_table 1 1 default`：创建 1 个 shard、1 个 replica 的表，资源池为 `default`。
+- `get_table demo_db demo_table`：查询表状态。
 
-AdvisKV 当前最真实的状态是：
+### 4. 运行基础 E2E
 
-- 架构方向已经逐步收敛
-- `Meta / SDM / Storage` 的边界比之前更清楚
-- 主链路已经出现
-- 但真正决定项目上限的，接下来仍然是 `Storage` 的恢复与正确性、SDK 路由链路的可用性、以及 `SDM` 的持久化闭环
+在集群运行状态下执行：
 
-也就是说，这个项目当前最需要的不是更多概念，而是更强的证据。
+```bash
+./build/bin/e2e_client --conf=conf/meta.yaml --case=basic_kv --replica_count=1
+```
+
+`e2e_client` 参数使用 `--name=value` 格式。常用参数：
+
+- `--case=basic_kv`
+- `--meta_host=127.0.0.1`
+- `--meta_port=50048`
+- `--sdm_host=127.0.0.1`
+- `--sdm_port=50049`
+- `--db=e2e_db`
+- `--table=e2e_table`
+- `--shard_count=1`
+- `--replica_count=1`
+- `--key_count=8`
+
+如果使用默认 `conf/storage-1.yaml` 只启动一个 Storage 节点，建议把 `replica_count` 设为 `1`。默认 benchmark/e2e 配置中部分场景使用 `replica_count=3`，需要准备多个 Storage 节点配置和进程。
+
+### 5. 停止本地进程
+
+```bash
+./scripts/stop_cluster.sh
+```
+
+该脚本会按进程名停止 `sdm`、`meta` 和 `storage`。
+
+## API 文档与使用说明
+
+### MetaService
+
+协议文件：`proto/meta.proto`。
+
+```protobuf
+service MetaService {
+  rpc CreateDB(CreateDBRequest) returns (CreateDBResponse);
+  rpc CreateTable(CreateTableRequest) returns (CreateTableResponse);
+  rpc DropTable(MetaDropTableRequest) returns (MetaDropTableResponse);
+  rpc GetTable(GetTableRequest) returns (GetTableResponse);
+}
+```
+
+接口说明：
+
+- `CreateDB(db_name, zone)`：创建数据库，返回 `db_id`。
+- `CreateTable(db_name, table_name, shard_count, replica_count, resource_pool)`：创建表，返回 `table_id`、`table_state` 和 `operation_id`。
+- `DropTable(db_name, table_name)`：删除表，返回表状态和 operation id。
+- `GetTable(db_name, table_name)`：查询表 ID、shard 数、副本数、表状态和最近错误信息。
+
+典型链路：
+
+```text
+Client/CLI -> MetaService.CreateTable -> CatalogManager -> SdmClient.PlaceTable -> SDM
+```
+
+### ShardingManagerService
+
+协议文件：`proto/sdm.proto`。
+
+```protobuf
+service ShardingManagerService {
+  rpc GetRoute(GetRouteRequest) returns (GetRouteResponse);
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
+  rpc PlaceTable(PlaceTableRequest) returns (PlaceTableResponse);
+  rpc DropTable(DropTableRequest) returns (DropTableResponse);
+  rpc GetTableStatus(GetTableStatusRequest) returns (GetTableStatusResponse);
+  rpc HeartBeat(HeartBeatRequest) returns (HeartBeatResponse);
+}
+```
+
+接口说明：
+
+- `GetRoute(db_name, table_name, key)`：根据表名和 key 返回 `table_id`、`shard_id` 和 replica endpoint 列表。
+- `RegisterNode(node_id, ip, port, resource_pool, dc)`：注册 Storage 节点。
+- `PlaceTable(...)`：接收 Meta 发起的建表部署请求。
+- `DropTable(table_id, operation_id)`：接收 Meta 发起的删表请求。
+- `GetTableStatus(operation_id, table_id)`：查询 SDM 侧表部署状态。
+- `HeartBeat(...)`：Storage NodeAgent 周期上报节点和 replica 状态。
+
+SDM 内部关键组件：
+
+- `SdmStore`：控制面元数据门面。
+- `SdmPersistEngine`：SDM 本地持久化引擎。
+- `DefaultNodeSelector`：根据资源池和节点状态选择 replica 放置节点。
+- `TableReconciler`：推进 table desired state 到实际状态。
+- `RouteUpdateCheckTask`：根据 READY replica 生成 route。
+- `HeartBeatCheckTask`：维护节点在线、疑似、离线状态。
+
+### StorageService
+
+协议文件：`proto/storage.proto`。
+
+```protobuf
+service StorageService {
+  rpc Put(PutRequest) returns (PutResponse);
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc CreateReplica(CreateReplicaRequest) returns (CreateReplicaResponse);
+  rpc DeleteReplica(DeleteReplicaRequest) returns (DeleteReplicaResponse);
+  rpc GetReplicaInfo(GetReplicaInfoRequest) returns (GetReplicaInfoResponse);
+  rpc RequestVote(RequestVoteRequest) returns(RequestVoteResponse);
+  rpc AppendEntries(AppendEntriesRequest) returns(AppendEntriesResponse);
+  rpc InstallSnapshot(InstallSnapshotRequest) returns(InstallSnapshotResponse);
+  rpc TestGetReplicaState(TestGetReplicaStateRequest) returns (TestGetReplicaStateResponse);
+}
+```
+
+接口说明：
+
+- `Put(table_id, shard_id, key, value)`：写入 KV 数据。
+- `Get(table_id, shard_id, key)`：读取 KV 数据。
+- `Delete(table_id, shard_id, key)`：删除 KV 数据。
+- `CreateReplica(table_id, shard_index, replica_index, engine_type, members)`：创建本地 replica。
+- `DeleteReplica(table_id, shard_id, replica_id)`：删除本地 replica。
+- `GetReplicaInfo(table_id, shard_id, replica_id)`：查询本地 replica 信息。
+- `RequestVote`、`AppendEntries`、`InstallSnapshot`：Raft 内部 RPC。
+- `TestGetReplicaState`：测试辅助接口，用于查询 replica 当前 Raft 状态。
+
+Storage 内部关键组件：
+
+- `ReplicaManager`：管理本地所有 replica，负责恢复、创建、删除和 tick 调度。
+- `Replica`：封装 RaftNode、状态机、持久化和发送器。
+- `RaftNode`：实现 Raft 角色转换、投票、日志复制、commit、apply、snapshot 等逻辑。
+- `RaftSender` / `GrpcRaftRpcTransport`：发送 Raft RPC。
+- `KVStateMachine`：把已提交日志应用到 KV engine。
+- `PersistEngine`：WAL 和 snapshot 持久化。
+- `ReplicaMetaPersistEngine`：replica 元信息持久化。
+- `NodeAgent`：向 SDM 注册节点并周期发送 heartbeat。
+
+### C++ SDK
+
+核心头文件：`src/sdk/client.h`。
+
+```cpp
+#include <iostream>
+#include "sdk/client.h"
+
+int main() {
+    adviskv::sdk::KVClientConf conf;
+    conf.db_name = "demo_db";
+    conf.table_name = "demo_table";
+    conf.sdm_host = "127.0.0.1";
+    conf.sdm_port = 50049;
+    conf.sdm_timeout_ms = 2000;
+    conf.storage_timeout_ms = 3000;
+
+    adviskv::sdk::KVClient client(conf);
+
+    adviskv::Status put_status = client.put("hello", "world");
+    if (put_status.fail()) {
+        std::cerr << put_status.to_string() << std::endl;
+        return 1;
+    }
+
+    adviskv::Value value;
+    adviskv::Status get_status = client.get("hello", &value);
+    if (get_status.ok()) {
+        std::cout << value << std::endl;
+    }
+
+    return get_status.ok() ? 0 : 1;
+}
+```
+
+SDK 行为：
+
+- 每次请求先通过 SDM `GetRoute` 获取目标 `table_id`、`shard_id` 和 replica endpoint。
+- Storage 返回 `NOT_LEADER`、`REPLICA_NOT_FOUND` 或 `ROUTE_NOT_FOUND` 时，SDK 会重新解析 route 并重试一次。
+- `NOT_YET_COMMIT` 会被转换为 `UNKNOWN`，调用方应稍后重试或通过后续 `get` 确认结果。
+
+### CLI 工具
+
+#### meta_cli
+
+```bash
+./build/bin/meta_cli --host 127.0.0.1 --port 50048
+```
+
+支持命令：
+
+```text
+create_db <db_name> <zone>
+create_table <db_name> <table_name> <shard_count> <replica_count> <resource_pool>
+get_table <db_name> <table_name>
+help
+quit
+```
+
+#### storage_cli
+
+`storage_cli` 直接访问指定 Storage、table 和 shard，适合调试 Storage RPC，不负责 route 解析。
+
+```bash
+./build/bin/storage_cli --host 127.0.0.1 --port 50051 --table_id 1 --shard_id 0
+```
+
+支持命令：
+
+```text
+put <key> <value>
+get <key>
+help
+quit
+```
+
+使用前需要确保对应 `table_id/shard_id` 的 replica 已在该 Storage 上创建并处于可服务状态。
+
+## 配置说明
+
+### Meta 配置
+
+默认文件：`conf/meta.yaml`。
+
+- `listen_host`：Meta 监听地址，默认 `127.0.0.1`。
+- `port`：Meta 监听端口，当前默认 `50048`。
+- `sdm_host` / `sdm_port`：Meta 连接的 SDM 地址，当前默认 `127.0.0.1:50049`。
+- `data_dir`：Meta catalog 持久化目录。
+- `log_dir` / `log_filename` / `log_level`：日志配置。
+
+### SDM 配置
+
+默认文件：`conf/sdm.yaml`。
+
+- `listen_host`：SDM 监听地址，默认 `127.0.0.1`。
+- `port`：SDM 监听端口，当前默认 `50049`。
+- `data_dir`：SDM metastore 持久化目录。
+- `log_dir` / `log_filename` / `log_level`：日志配置。
+
+### Storage 配置
+
+默认文件：`conf/storage-1.yaml`。
+
+- `node_id`：Storage 节点 ID，例如 `storage-1`。
+- `ip` / `port`：Storage 对外服务地址，当前默认 `127.0.0.1:50051`。
+- `listen_host`：gRPC 监听地址。
+- `resource_pool`：节点所属资源池，默认 `default`。
+- `dc`：节点所属机房/区域标识。
+- `data_dir`：Storage 本地数据目录。
+- `heartbeat_interval_ms`：向 SDM 发送心跳的间隔。
+- `raft_rpc_timeout_ms`：Raft RPC 超时时间。
+- `manager_host` / `manager_port`：SDM 地址。
+- `metrics_http_enable`：是否启用 metrics HTTP server。
+- `metrics_http_host` / `metrics_http_port` / `metrics_http_path`：metrics HTTP 配置，默认 `127.0.0.1:51051/metrics`。
+
+## 项目结构
+
+```text
+adviskv/
+├── CMakeLists.txt             # 顶层 CMake 配置
+├── README.md                  # 项目说明文档
+├── vcpkg.json                 # vcpkg 依赖声明
+├── conf/                      # 本地默认配置
+│   ├── meta.yaml
+│   ├── sdm.yaml
+│   └── storage-1.yaml
+├── proto/                     # protobuf/gRPC 协议定义
+│   ├── common.proto
+│   ├── meta.proto
+│   ├── sdm.proto
+│   └── storage.proto
+├── scripts/                   # 构建、测试、覆盖率、benchmark、进程管理脚本
+│   ├── build.sh
+│   ├── run_test.sh
+│   ├── e2e_pytest.sh
+│   ├── coverage.sh
+│   ├── bench.sh
+│   ├── run_ci_local.sh
+│   └── stop_cluster.sh
+├── src/
+│   ├── common/                # 日志、配置、状态码、metrics、线程池、后台任务等通用组件
+│   ├── meta/                  # DDL、catalog、Meta 持久化、Meta gRPC 服务
+│   ├── sdm/                   # 控制面：node/table/route/heartbeat/reconciler/metastore
+│   ├── storage/               # 数据面：Raft、replica、engine、persist、NodeAgent、Storage RPC
+│   └── sdk/                   # C++ KVClient、route client、storage client
+├── tools/
+│   ├── cli/                   # meta_cli、storage_cli
+│   ├── e2e/                   # C++ E2E client 和场景工具
+│   └── bench/                 # benchmark client
+├── test/                      # GoogleTest 单测和 Python E2E 测试
+│   ├── common/
+│   ├── meta/
+│   ├── sdm/
+│   ├── storage/
+│   └── e2e/
+├── docs/                      # 设计文档、开发日志和阶段性记录
+└── third_party/vcpkg/         # vcpkg 依赖管理工具
+```
+
+## 测试
+
+### 单元测试
+
+```bash
+./scripts/run_test.sh
+```
+
+该脚本会先执行 `./scripts/build.sh`，然后运行：
+
+```bash
+ctest --test-dir build --output-on-failure
+```
+
+### 覆盖率
+
+```bash
+./scripts/coverage.sh
+```
+
+输出文件：
+
+- `build-coverage/coverage.html`
+- `build-coverage/coverage-report/index.html`
+- `build-coverage/coverage-report/coverage.xml`
+
+### Python E2E
+
+```bash
+./scripts/e2e_pytest.sh
+```
+
+脚本行为：
+
+- 创建或复用 `.venv`。
+- 安装 `test/e2e/requirements.txt` 中的依赖。
+- 调用 `scripts/stop_cluster.sh` 清理旧进程。
+- 通过 pytest 执行 `test/e2e` 下的端到端测试。
+
+### 本地 CI
+
+```bash
+./scripts/run_ci_local.sh
+```
+
+该脚本使用 Docker 在 Ubuntu 镜像中安装依赖、复制仓库并执行 `scripts/run_test.sh`。
+
+## Benchmark 测试结果
+
+## Benchmark 工具
+
+项目提供 `bench_client` 和 `scripts/bench.sh` 用于压测。`Benchmark 测试结果` 章节预留给正式测试数据，本节只说明工具用法。
+
+构建：
+
+```bash
+./scripts/build.sh
+```
+
+运行示例：
+
+```bash
+./build/bin/bench_client \
+  --meta_host=127.0.0.1 \
+  --meta_port=50048 \
+  --sdm_host=127.0.0.1 \
+  --sdm_port=50049 \
+  --db=bench_db \
+  --table=bench_table \
+  --zone=dc1 \
+  --resource_pool=default \
+  --shard_count=1 \
+  --replica_count=1 \
+  --workload=put \
+  --threads=1 \
+  --requests=1000 \
+  --key_count=1000 \
+  --value_size=128 \
+  --output_json=build/bench-result.json
+```
+
+支持 workload：
+
+- `put`：纯写入。
+- `get`：纯读取，运行前会准备可读数据集。
+- `mixed`：混合读写，通过 `--read_ratio` 控制读比例。
+
+常用参数：
+
+- `--threads=<n>`：并发线程数。
+- `--requests=<n>`：正式压测请求数。
+- `--warmup_requests=<n>`：预热请求数。
+- `--key_count=<n>`：key 空间大小。
+- `--value_size=<bytes>`：value 大小。
+- `--output_json=<path>`：将结果写入 JSON。
+- `--metrics_http_port=<port>`：为 benchmark 进程暴露 metrics HTTP server。
+- `--metrics_hold_seconds=<n>`：压测结束后保留进程一段时间，方便抓取 metrics。
+
+也可以通过脚本入口运行：
+
+```bash
+./scripts/bench.sh --workload=put --requests=1000 --replica_count=1
+```
+
+## 开发状态与限制
+
+当前已经具备的主干能力：
+
+- `Meta -> SDM -> Storage` 建表主链路。
+- Storage 节点注册、心跳和 replica 状态上报。
+- SDM placement、table reconcile、route update。
+- SDK route 解析和 KV 读写。
+- Storage Raft、WAL、snapshot、replica 恢复相关实现。
+- 单测、E2E、coverage、benchmark 工具链。
+
+当前仍然需要谨慎看待的限制：
+
+- 默认配置只提供一个 Storage 节点；多副本实验需要额外准备多个 Storage 配置和进程。
+- 控制面目前不是高可用部署，Meta 和 SDM 均为单进程本地模式。
+- 尚未实现 Raft config change、自动扩缩容、自动 rebalance。
+- route 和 leader 可写路由语义仍需要在更多故障场景下验证。
+- 当前 Storage 使用 map-based KV engine，还未集成 RocksDB 等生产级 LSM 存储引擎。
+- Benchmark 结果尚未正式沉淀，性能结论应以后续实测数据为准。
+
+## 许可证信息
+
+仓库根目录当前没有发现项目自身的 `LICENSE` 文件，也没有统一的 SPDX/Copyright 声明。因此 AdvisKV 本体许可证目前尚未明确。
+
+已知第三方信息：
+
+- `third_party/vcpkg/LICENSE.txt` 是 vcpkg 自身的 MIT License。
+- 项目通过 vcpkg 使用 `fmt`、`spdlog`、`protobuf`、`grpc`、`yaml-cpp`、`gtest` 等依赖；这些依赖的许可证应在正式发布前单独核查并在文档中列明。
+
+如果项目计划公开发布，建议在仓库根目录补充明确的 `LICENSE` 文件，并同步更新本章节。
