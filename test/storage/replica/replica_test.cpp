@@ -128,6 +128,96 @@ TEST_F(ReplicaTest, HandleInstallSnapshotUpdatesReadableState) {
     EXPECT_EQ(value, "world");
 }
 
+// InstallSnapshot覆盖已有WAL后，磁盘WAL应和RaftNode清空后的内存日志保持一致。
+TEST_F(ReplicaTest, HandleInstallSnapshotClearsOldWalBeforeAppendingNewLog) {
+    {
+        PersistEngine target_persist(base_dir_.string(), replica_id_);
+        Status status = target_persist.init();
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+        status = target_persist.append_wal_batch({
+            make_entry(1, 1, WriteOpType::PUT, "old-1", "v1"),
+            make_entry(1, 2, WriteOpType::PUT, "old-2", "v2"),
+            make_entry(1, 3, WriteOpType::PUT, "old-3", "v3"),
+            make_entry(1, 4, WriteOpType::PUT, "old-4", "v4"),
+            make_entry(1, 5, WriteOpType::PUT, "old-5", "v5"),
+            make_entry(1, 6, WriteOpType::PUT, "old-6", "v6"),
+            make_entry(1, 7, WriteOpType::PUT, "old-7", "v7"),
+            make_entry(1, 8, WriteOpType::PUT, "old-8", "v8"),
+        });
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+        ASSERT_TRUE(target_persist.close().ok());
+    }
+
+    ReplicaManager manager(base_dir_.string());
+    ReplicaPtr replica = add_single_replica(manager);
+    ASSERT_NE(replica, nullptr);
+
+    auto source_dir = base_dir_ / "snapshot_source_clear_wal";
+    ASSERT_TRUE(fs::create_directories(source_dir)) << source_dir.string();
+    ReplicaID source_id{201, 3, 1};
+    PersistEngine source_persist(source_dir.string(), source_id);
+    ASSERT_TRUE(source_persist.init().ok());
+
+    KvStateMachine source_state(EngineType::MAP);
+    for (LogIndex index = 1; index <= 6; ++index) {
+        Status status = source_state.apply(make_entry(
+            2, index, WriteOpType::PUT, "snap-" + std::to_string(index),
+            "value-" + std::to_string(index)));
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    }
+    ASSERT_TRUE(source_persist.do_snapshot(source_state).ok());
+
+    Status status = Status::OK();
+    uint64 offset = 0;
+    while (true) {
+        std::string data;
+        bool eof = false;
+        status = source_persist.read_snapshot_chunk(offset, 9, data, eof);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+
+        status = replica->handle_install_snapshot(InstallSnapshotParam{
+            source_id, replica_id_, 8, source_state.apply_index(),
+            source_state.apply_term(), offset, data, eof});
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+        if (eof) break;
+        offset += data.size();
+    }
+
+    {
+        PersistEngine wal_reader(base_dir_.string(), replica_id_);
+        status = wal_reader.init();
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+        std::vector<LogEntry> entries;
+        status = wal_reader.read_wal_batch(entries);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+        EXPECT_TRUE(entries.empty());
+    }
+
+    AppendEntriesResult result;
+    status = replica->handle_append_entries(
+        AppendEntriesParam{source_id,
+                           replica_id_,
+                           8,
+                           {make_entry(8, 7, WriteOpType::PUT, "new", "value")},
+                           source_state.apply_index(),
+                           source_state.apply_term(),
+                           7},
+        result);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    ASSERT_TRUE(result.success);
+
+    PersistEngine wal_reader(base_dir_.string(), replica_id_);
+    status = wal_reader.init();
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    std::vector<LogEntry> entries;
+    status = wal_reader.read_wal_batch(entries);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    ASSERT_EQ(entries.size(), 1U);
+    EXPECT_EQ(entries[0].index, 7);
+    EXPECT_EQ(entries[0].key, "new");
+    EXPECT_EQ(entries[0].value, "value");
+}
+
 // 单节点replica选举为leader后，put写入的数据应能通过get读回
 TEST_F(ReplicaTest, SingleReplicaPutAndGetAfterElection) {
     ReplicaManager manager(base_dir_.string());
