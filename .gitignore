@@ -1,6 +1,8 @@
 build/
 build-*/
 
+.adviskv_deps/
+
 .venv/
 .pytest_cache/
 
