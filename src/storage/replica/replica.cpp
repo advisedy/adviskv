@@ -262,7 +262,6 @@ Status Replica::get(const GetParam& param, Value& value) {
     if (raft_node_->is_recovering()) {
         return Status::IS_RECOVERING("replica is recovering");
     }
-    // TODO: ReadIndex 保证线性一致性 以后待定吧
 
     LogIndex read_index;
     RETURN_IF_INVALID_STATUS(check_self_leader_and_get_read_index(read_index))
@@ -419,7 +418,6 @@ Status Replica::recover() {
     enter_local_state_starting();
     PersistEngine::RecoverResult result;
     if (Status status = persist_->recover(result); status.fail()) {
-        // TODO 这里直接进入FAULTED状态吧
         LOG_WARN("replica's persist recover failed. msg:{}", status.msg());
         enter_local_state_faulted();
         return status;

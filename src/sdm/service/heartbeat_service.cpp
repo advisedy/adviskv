@@ -37,7 +37,7 @@ Status HeartBeatService::update_node_state(const HeartBeatParam& param) {
     RETURN_IF_INVALID_CONDITION(!node.is_empty(), "node not found")
 
     // 这里对于node的定义可能要变一下了，state里面的内容不全是代表着storage传过来的就要更新的。
-    //  例如拥有的leader，这个应该是交给sdm的routeupdatechecker做的才对。 //TODO
+    //  例如拥有的leader，这个应该是交给sdm的routeupdatechecker做的才对。
     node->state.endpoint = Endpoint{param.ip, param.port};
     node->state.last_heartbeat_ts = param.last_heartbeat_ts;
     return sdm_store_->put_node(*node);

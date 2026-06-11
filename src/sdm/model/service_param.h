@@ -215,7 +215,16 @@ struct HeartBeatParam {
         RETURN_IF_INVALID_CONDITION(!resoure_pool_name.empty(),
                                     "resource_pool should not empty");
         RETURN_IF_INVALID_CONDITION(!dc.empty(), "dc should not empty");
-        // TODO check replica info
+        for (const HeartBeatReplicaInfo& info : replica_list) {
+            RETURN_IF_INVALID_CONDITION(info.replica_index >= 0,
+                                        "info replica index should >= 0");
+            RETURN_IF_INVALID_CONDITION(info.shard_id.table_id >= 0,
+                                        "info table id should >= 0");
+            RETURN_IF_INVALID_CONDITION(info.shard_id.shard_index >= 0,
+                                        "info shard index should >= 0");
+            RETURN_IF_INVALID_CONDITION(info.term >= 0,
+                                        "info replica index should >= 0");
+        }
         return Status::OK();
     }
 };

@@ -10,6 +10,8 @@
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
+#include <exception>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -138,7 +140,12 @@ Status PersistEngine::init() {
         "snapshot_tmp_path_={}",
         dir_path_, wal_path_, raft_meta_path_, snapshot_path_,
         snapshot_tmp_path_);
-    mkdir(dir_path_.c_str(), 0755);  // TODO 改成create_dircation
+    try {
+        std::filesystem::create_directories(dir_path_);
+    } catch (const std::exception& e) {
+        LOG_WARN("persiste create directories failed: {}", dir_path_);
+    }
+    // mkdir(dir_path_.c_str(), 0755);  // 改成create_dircation
 
     wal_fd_ = ::open(wal_path_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (wal_fd_ < 0) {
@@ -444,74 +451,51 @@ Status PersistEngine::finish_snapshot_receive(const SnapshotPtr& snap) {
     return Status::OK();
 }
 
-// 拿到了状态机去做快照，快照落盘了之后再截取wal
-// TODO 这里关于lseek的内容是AI写的， 回头一定要记得看一下
+// 拿到了状态机去做快照，快照落盘了之后再截取 WAL
 Status PersistEngine::do_snapshot(const StateMachine& state_machine) {
-    // Stream snapshot without materializing all KVs.
-    int fd =
-        open(snapshot_tmp_path_.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0) {
-        return Status{StatusCode::ERROR, "failed to open snapshot tmp file"};
-    }
-    auto fd_guard = Defer([&fd]() {
-        if (fd != -1) {
-            ::close(fd);
-            fd = -1;
-        }
-    });
-
     LogIndex apply_index = state_machine.apply_index();
     Term apply_term = state_machine.apply_term();
 
-    // 这里先占位置
-    RETURN_IF_INVALID_STATUS(func::write_value<int64>(fd, 0))
-    RETURN_IF_INVALID_STATUS(func::write_value(fd, apply_index))
-    RETURN_IF_INVALID_STATUS(func::write_value(fd, apply_term))
-    RETURN_IF_INVALID_STATUS(func::write_value<int32>(fd, 0))
+    RETURN_IF_INVALID_STATUS(
+        func::atomic_replace_file(snapshot_path_, [&](int fd) -> Status {
+            // payload_len + apply_index + apply_term + kv_count + [k1, v1] +
+            // [k2, v2] + ...
+            RETURN_IF_INVALID_STATUS(func::write_value<int64>(fd, 0))
+            RETURN_IF_INVALID_STATUS(func::write_value(fd, apply_index))
+            RETURN_IF_INVALID_STATUS(func::write_value(fd, apply_term))
+            RETURN_IF_INVALID_STATUS(func::write_value<int32>(fd, 0))
 
-    int32 kv_count = 0;
-    Status it_status =
-        state_machine.for_each_kv([&](const Key& k, const Value& v) -> Status {
-            RETURN_IF_INVALID_STATUS(func::write_string(fd, k))
-            RETURN_IF_INVALID_STATUS(func::write_string(fd, v))
-            ++kv_count;
+            int32 kv_count = 0;
+            RETURN_IF_INVALID_STATUS(state_machine.for_each_kv(
+                [&](const Key& k, const Value& v) -> Status {
+                    RETURN_IF_INVALID_STATUS(func::write_string(fd, k))
+                    RETURN_IF_INVALID_STATUS(func::write_string(fd, v))
+                    ++kv_count;
+                    return Status::OK();
+                }))
+
+            off_t end_pos = ::lseek(fd, 0, SEEK_END);
+            if (end_pos < 0) {
+                return Status::ERROR("lseek snapshot end failed");
+            }
+
+            int64 payload_len = static_cast<int64>(end_pos) -
+                                sizeof(int64);  // 这个len是没有算上自己的
+
+            if (::lseek(fd, 0, SEEK_SET) < 0) {
+                return Status::ERROR("lseek snapshot payload_len failed");
+            }
+            RETURN_IF_INVALID_STATUS(func::write_value(fd, payload_len))
+
+            if (::lseek(fd, sizeof(int64) + sizeof(LogIndex) + sizeof(Term),
+                        SEEK_SET) < 0) {
+                return Status::ERROR("lseek snapshot kv_count failed");
+            }
+            RETURN_IF_INVALID_STATUS(func::write_value(fd, kv_count))
+
             return Status::OK();
-        });
-    RETURN_IF_INVALID_STATUS(it_status)
+        }))
 
-    off_t end_pos = ::lseek(fd, 0, SEEK_END);
-    if (end_pos < 0) {
-        return Status{StatusCode::ERROR, "lseek end failed"};
-    }
-    int64 payload_len = static_cast<int64>(end_pos) - sizeof(int64);
-
-    if (::lseek(fd, 0, SEEK_SET) < 0) {
-        return Status{StatusCode::ERROR, "lseek set failed"};
-    }
-    RETURN_IF_INVALID_STATUS(func::write_value(fd, payload_len))
-    if (::lseek(fd, sizeof(int64) + sizeof(int64) + sizeof(int64), SEEK_SET) <
-        0) {
-        return Status{StatusCode::ERROR, "lseek kv_count failed"};
-    }
-    RETURN_IF_INVALID_STATUS(func::write_value(fd, kv_count))
-
-    if (::fsync(fd) != 0) {
-        return Status::ERROR("failed to fsync snapshot tmp file");
-    }
-    // Close before rename.
-    if (::close(fd) != 0) {
-        fd = -1;
-        return Status::ERROR("failed to close snapshot tmp file");
-    }
-    fd = -1;
-
-    // 1) Publish snapshot (atomic rename)
-    if (::rename(snapshot_tmp_path_.c_str(), snapshot_path_.c_str()) != 0) {
-        return Status::ERROR("failed to rename snapshot tmp file");
-    }
-    RETURN_IF_INVALID_STATUS(func::fsync_dir(dir_path_))
-
-    // 2) Then truncate WAL up to snapshot index
     testhook::crash_point("do_snapshot.after_write_snapshot");
     RETURN_IF_INVALID_STATUS(truncate_wal(apply_index))
     return Status::OK();
