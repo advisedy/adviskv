@@ -145,14 +145,19 @@ Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
 
         RETURN_IF_INVALID_STATUS(
             fault_if_fail(persist_->finish_snapshot_receive(snap)));
+
+        RETURN_IF_INVALID_STATUS(fault_if_fail(persist_->clear_wal()));
         {
             std::lock_guard lock(state_machine_mutex_);
+
             RETURN_IF_INVALID_STATUS(fault_if_fail(state_machine_->restore(
                 snap, [this](const KvVisitor& visitor) -> Status {
                     return persist_->for_each_snapshot_kv(visitor);
                 })))
-            raft_node_->install_leader_snapshot(
-                param.snapshot_index, param.snapshot_term, param.term);
+
+            RETURN_IF_INVALID_STATUS(
+                fault_if_fail(raft_node_->install_leader_snapshot(
+                    param.snapshot_index, param.snapshot_term, param.term)))
         }
     }
 

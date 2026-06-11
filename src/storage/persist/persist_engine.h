@@ -38,6 +38,7 @@ class PersistEngine {
     Status finish_snapshot_receive(const SnapshotPtr& snap);
 
     Status do_snapshot(const StateMachine& state_machine);
+    Status clear_wal();
 
     struct RecoverResult {
         SnapshotPtr snapshot;

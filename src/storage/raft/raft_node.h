@@ -174,7 +174,7 @@ class RaftNode {
 
     // Snapshot 支持
     void install_local_snapshot(LogIndex snapshot_index, Term snapshot_term);
-    void install_leader_snapshot(LogIndex snapshot_index, Term snapshot_term,
+    Status install_leader_snapshot(LogIndex snapshot_index, Term snapshot_term,
                                  Term leader_term);
 
     // InstallSnapshot 回调

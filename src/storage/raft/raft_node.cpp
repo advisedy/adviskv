@@ -1,5 +1,7 @@
 #include "storage/raft/raft_node.h"
 
+#include <fmt/format.h>
+
 #include <algorithm>
 #include <cassert>
 #include <mutex>
@@ -359,21 +361,26 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
 
     if (param.prev_log_index > 0) {
         if (param.prev_log_index < snapshot_index_) {
-            // TODO突然发现自己怎么还留了一个这个地方啊？这里的话如果出现了这种情况的话，肯定会越来越糟糕的啊，很吓人，我靠，以后一定要处理一下。
-            // 发现应该是不会出现这种情况的，这种情况在leader发送消息之前就会判断出来，然后发送快照，leader那边接受到快照之后也会重置一下follower的next_index，所以if这种情况不会发生
-            ADVISKV_METRICS_COUNTER(
-                "storage_raft_handle_append_entries_prev_behind_snapshot");
             LOG_WARN(
                 "raft node: follower receive append entries: "
-                "param.prev_log_index < snapshot_index_!!");
-            return;
-        }
-        if (get_term(param.prev_log_index) != param.prev_log_term) {
+                "param.prev_log_index:{} < snapshot_index_:{}",
+                param.prev_log_index, snapshot_index_);
+        } else if (get_term(param.prev_log_index) != param.prev_log_term) {
             ADVISKV_METRICS_COUNTER(
                 "storage_raft_handle_append_entries_prev_mismatch");
             return;
         }
     }
+    // if (param.prev_log_index < snapshot_index_) {
+    //     //
+    //     压测情况下leader那边高并发发送，follower来不及回复，prev_log_index没更新，follower这边接收到的消息过多导致自己跑了快照，就会触发这种情况
+    //     ADVISKV_METRICS_COUNTER(
+    //         "storage_raft_handle_append_entries_prev_behind_snapshot");
+    //     LOG_WARN(
+    //         "raft node: follower receive append entries: "
+    //         "param.prev_log_index < snapshot_index_!!");
+    //     return;
+    // }
 
     // 把自己的时间reset一下， 选举的
     // election_ticks_ = 0;
@@ -545,7 +552,6 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
         ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_success");
         LOG_DEBUG("leader replica:{} append enrties to replica:{} success.",
                   self_id_.to_string(), from.to_string());
-        // A successful response only proves the entries sent in this RPC.
         LogIndex matched_index =
             sent_param.prev_log_index + to<LogIndex>(sent_param.entries.size());
         if (matched_index > match_index_[from]) {
@@ -557,20 +563,26 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
         ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_reject");
         // prev_log 对不上
 
+        // 需要先确认一下关于response的时效性
+
+        if (LogIndex sent_next_index = sent_param.prev_log_index + 1;
+            sent_next_index != next_index_[from]) {
+            // 说明其实过期了，这个是旧的请求的回应，继续处理到next_index的话可能会影响
+            LOG_DEBUG(
+                "leader replica:{} sent param.prev_log_index:{} + 1 != "
+                "next_index_[from]:{}",
+                self_id_.to_string(), sent_param.prev_log_index,
+                next_index_[from]);
+            return Status::OK();
+        }
+
         LogIndex new_next =
             std::min(result.last_log_index, last_log_index_unlocked()) + 1;
 
-        if (auto it = next_index_.find(from); it != next_index_.end()) {
-            ADVISKV_METRICS_COUNTER(
-                "storage_raft_handle_append_response_backoff");
-            if (new_next >= it->second && it->second > 1) {
-                new_next = it->second - 1;  // 跳转无效，逐次回退
-            }
-            it->second = new_next;
-        } else {
-            LOG_WARN("next index not find {}", from.to_string());
-            next_index_[from] = new_next;
+        if (new_next >= next_index_[from] && next_index_[from] > 1) {
+            new_next = next_index_[from] - 1;  // 跳转无效，逐次回退
         }
+        next_index_[from] = new_next;
 
         LOG_DEBUG(
             "leader replica:{} append enrties to replica:{} failed. set "
@@ -821,24 +833,28 @@ void RaftNode::install_local_snapshot(LogIndex new_snapshot_index,
     install_snapshot_unlocked(new_snapshot_index, new_snapshot_term);
 }
 
-void RaftNode::install_leader_snapshot(LogIndex new_snapshot_index,
-                                       Term new_snapshot_term,
-                                       Term leader_term) {
+Status RaftNode::install_leader_snapshot(LogIndex new_snapshot_index,
+                                         Term new_snapshot_term,
+                                         Term leader_term) {
     std::lock_guard lock(mutex_);
-    if (ensure_not_faulted_unlocked().fail()) return;
+    RETURN_IF_INVALID_STATUS(ensure_not_faulted_unlocked())
 
     if (leader_term < current_term_) {
-        return;
+        return Status::ERROR(
+            fmt::format("replica_id:{} install_leader_snapshot: leader term:{} "
+                        "< current term:{}",
+                        self_id_.to_string(), leader_term, current_term_));
     }
 
     if (leader_term > current_term_ || role_ != ReplicaRole::FOLLOWER) {
         become_follower(leader_term);
-        if (ensure_not_faulted_unlocked().fail()) return;
+        RETURN_IF_INVALID_STATUS(ensure_not_faulted_unlocked())
     } else {
         election_tick_trigger_.reset(ELECTION_TIMEOUT);
     }
 
     install_snapshot_unlocked(new_snapshot_index, new_snapshot_term);
+    return Status::OK();
 }
 
 void RaftNode::handle_install_snapshot_response(
@@ -864,7 +880,9 @@ Status RaftNode::prepare_install_snapshot(Term leader_term,
     RETURN_IF_INVALID_STATUS(ensure_not_faulted_unlocked())
 
     if (leader_term < current_term_) {  // 发送过来的leader的term低
-        return Status::ERROR("stale install snapshot term");
+        return Status::ERROR(
+            fmt::format("leade term:{} is oldear than current term:{}",
+                        leader_term, current_term_));
     }
 
     if (leader_term > current_term_ || role_ != ReplicaRole::FOLLOWER) {
@@ -872,7 +890,9 @@ Status RaftNode::prepare_install_snapshot(Term leader_term,
     }
 
     if (new_snapshot_index <= snapshot_index_) {
-        return Status::ERROR("stale install snapshot index");
+        return Status::ERROR(fmt::format(
+            "leader snapshot_index:{} is older than current snapshot_index:{}",
+            new_snapshot_index, snapshot_index_));
     }
 
     return Status::OK();

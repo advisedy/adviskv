@@ -443,6 +443,7 @@ Status PersistEngine::finish_snapshot_receive(const SnapshotPtr& snap) {
     snap->path = snapshot_path_;
     return Status::OK();
 }
+
 // 拿到了状态机去做快照，快照落盘了之后再截取wal
 // TODO 这里关于lseek的内容是AI写的， 回头一定要记得看一下
 Status PersistEngine::do_snapshot(const StateMachine& state_machine) {
@@ -620,9 +621,8 @@ Status PersistEngine::recover(RecoverResult& result) {
 
     if (wal_read_result.error) {
         result.need_recover = true;
-        LOG_WARN(
-            "wal corrupted during recover, reason={}",
-            wal_read_result.error_msg);
+        LOG_WARN("wal corrupted during recover, reason={}",
+                 wal_read_result.error_msg);
         RETURN_IF_INVALID_STATUS(rewrite_wal_unlocked(result.wal_entries))
         return Status::OK();
     }
@@ -696,5 +696,7 @@ Status PersistEngine::read_wal_from_disk(const std::string& path,
     }
     return Status::OK();
 }
+
+Status PersistEngine::clear_wal() { return rewrite_wal({}); }
 
 }  // namespace adviskv::storage

@@ -19,8 +19,8 @@
         return Status{StatusCode::INVALID_ARGUMENT, msg}; \
     }
 
-#define RETURN_IF_INVALID_STATUS(name)                     \
-    if (auto&& advis_status = name; advis_status.fail()) { \
+#define RETURN_IF_INVALID_STATUS(s1)                     \
+    if (auto&& advis_status = s1; advis_status.fail()) { \
         return advis_status;                               \
     }
 

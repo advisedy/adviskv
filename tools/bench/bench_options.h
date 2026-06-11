@@ -23,9 +23,9 @@ struct BenchOptions {
     std::string workload{"put"};
     double read_ratio{0.8};  // 只针对mixed场景
 
-    int32_t threads{1};
-    int64_t requests{1000};
-    int64_t key_count{1000};
+    int32_t threads{1}; // 压测线程数
+    int64_t requests{1000};   // 这次 benchmark 总共发多少个请求
+    int64_t key_count{1000};  // 这些请求会落在多少个不同 key 上
     int32_t value_size{128};
     int64_t warmup_requests{0};
 
