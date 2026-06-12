@@ -14,30 +14,30 @@ jobs:
     steps:
       - name: Checkout
         # 使用 GitHub 官方提供的一个 Action：actions/checkout，作用是把你的仓库代码拉到 CI 机器上
-        uses: actions/checkout@v4 
+        uses: actions/checkout@v4
         with:
           submodules: recursive  # 带上 submodules
 
-      # 安装ninja
+      # 安装 ninja 和 pkg-config。
       - name: Install system packages
-          # pkg-config 是很多 C/C++ 依赖检测时会用到的工具。vcpkg 或某些 CMake 包查依赖时可能需要它。装上基本没坏处。
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config 
+          sudo apt-get install -y ninja-build pkg-config
 
-      # 搞缓存的
-      - name: Cache vcpkg artifacts
+      # 缓存 vcpkg 依赖目录，下次 CI 可以少下载、少编译一些依赖。
+      - name: Cache vcpkg
         uses: actions/cache@v4
         with:
-          # path代表缓存哪些目录
-          # ~/.cache/vcpkg/archives 是 vcpkg 的二进制包缓存目录。
-          path: |
-            build/vcpkg_installed
-            ~/.cache/vcpkg/archives
-          # key是缓存的名字
-          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('scripts/build.sh') }}
+          path: .adviskv_deps/vcpkg
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json') }}
           restore-keys: |
             ${{ runner.os }}-vcpkg-
 
-      - name: Build and test
-        run: ./scripts/run_test.sh
+      - name: Setup dependencies
+        run: ./scripts/setup.sh
+
+      - name: Build
+        run: ./scripts/build.sh
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
