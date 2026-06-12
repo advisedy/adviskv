@@ -112,7 +112,7 @@ def service_spec_from_conf(name: str, binary: Path, conf: Path) -> ServiceSpec:
     values = load_simple_kv_conf(conf)
     host = connect_host(require_conf_value(values, conf, "listen_host"))
     port = int(require_conf_value(values, conf, "port"))
-    return ServiceSpec(name, [str(binary), str(conf)], host, port)
+    return ServiceSpec(name, [str(binary), f"--conf={conf}"], host, port)
 
 
 class LocalCluster:

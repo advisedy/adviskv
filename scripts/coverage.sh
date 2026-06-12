@@ -46,6 +46,8 @@ find "$BUILD_DIR" -maxdepth 1 \
   --exclude 'third_party/.*' \
   --exclude 'test/.*' \
   --exclude 'build.*/.*' \
+  --exclude '.adviskv_deps/.*' \
+  --exclude 'tools/.*' \
   --html-details "$REPORT_DIR/index.html" \
   --xml "$REPORT_DIR/coverage.xml" \
   --print-summary

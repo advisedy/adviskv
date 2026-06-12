@@ -9,6 +9,7 @@
 #include <memory>
 #include <string>
 
+#include "common/arg_parser.h"
 #include "common/confmgr.h"
 #include "common/log.h"
 #include "common/path_util.h"
@@ -26,6 +27,19 @@
 #include "sdm/service/table_service.h"
 
 namespace {
+void print_usage() { fmt::print(stderr, "usage: sdm --conf=<conf.yaml>\n"); }
+
+bool parse_args(int argc, char* argv[], std::string* conf_file) {
+    adviskv::ArgParser parser;
+    parser.add_string("conf", *conf_file);
+    if (!parser.parse(argc, argv)) return false;
+    if (conf_file->empty()) {
+        fmt::print(stderr, "--conf must be provided\n");
+        return false;
+    }
+    return true;
+}
+
 void init_conf(const char* conf_file) {
     auto& conf_mgr = adviskv::ConfMgr::get_instance();
     conf_mgr.LoadFromFile(adviskv::path_from_project_root(conf_file).string());
@@ -61,17 +75,18 @@ std::string get_metastore_data_dir() {
 }  // namespace
 
 int main(int argc, char* argv[]) {
-    if (argc > 2) {
-        fmt::print(stderr, "usage: sdm [conf_file]\n");
+    std::string conf_file;
+    if (!parse_args(argc, argv, &conf_file)) {
+        print_usage();
         return 1;
     }
-    const char* conf_file = argc == 2 ? argv[1] : "conf/sdm.yaml";
     try {
-        init_conf(conf_file);
+        init_conf(conf_file.c_str());
         init_logger();
         LOG_INFO("init phase finish");
     } catch (const std::exception& e) {
         fmt::print(stderr, "Exception caught in main: {}\n", e.what());
+        return 1;
     }
 
     {
