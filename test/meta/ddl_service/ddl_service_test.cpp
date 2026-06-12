@@ -80,9 +80,7 @@ class DdlServiceTest : public ::testing::Test {
         }
     };
 
-    CreateDBParam create_db_param() {
-        return CreateDBParam{db_name_, zone_};
-    }
+    CreateDBParam create_db_param() { return CreateDBParam{db_name_, zone_}; }
 
     CreateTableParam create_table_param() {
         return CreateTableParam{db_name_, table_name_, 4, 3, resource_pool_};
@@ -91,6 +89,8 @@ class DdlServiceTest : public ::testing::Test {
     DropTableParam drop_table_param() {
         return DropTableParam{db_name_, table_name_};
     }
+
+    DropDBParam drop_db_param() { return DropDBParam{db_name_}; }
 
     GetTableParam get_table_by_name_param() {
         return GetTableParam{db_name_, table_name_, false, -1};
@@ -138,6 +138,46 @@ TEST_F(DdlServiceTest, CreateDbSuccessPersistsCatalog) {
     DBMeta stored;
     ASSERT_TRUE(fixture.catalog.get_db(db_name_, &stored).ok());
     EXPECT_EQ(stored, db);
+}
+
+// 测试 DDL 层删除仍包含活跃表的 DB 时返回非法参数，并保留 DB 元信息。
+TEST_F(DdlServiceTest, DropDbRejectsDbWithActiveTable) {
+    Fixture fixture{make_sub_dir("drop_db_with_active_table")};
+    FakeSdmClient client;
+    DdlService service{&fixture.catalog, &client};
+    ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
+    TableMeta table;
+    ASSERT_TRUE(service.create_table(create_table_param(), &table).ok());
+
+    DBMeta dropped;
+    Status status = service.drop_db(drop_db_param(), &dropped);
+
+    EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
+    DBMeta stored;
+    ASSERT_TRUE(fixture.catalog.get_db(db_name_, &stored).ok());
+    EXPECT_EQ(stored.db_name, db_name_);
+}
+
+// 测试 DDL 层允许删除只剩 DELETED 历史表的 DB，并确认 DB 名称索引被清理。
+TEST_F(DdlServiceTest, DropDbAllowsOnlyDeletedTables) {
+    Fixture fixture{make_sub_dir("drop_db_only_deleted_tables")};
+    FakeSdmClient client;
+    DdlService service{&fixture.catalog, &client};
+    ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
+    TableMeta table;
+    ASSERT_TRUE(service.create_table(create_table_param(), &table).ok());
+    ASSERT_TRUE(
+        fixture.catalog.update_table_state(table.table_id, TableState::DELETED)
+            .ok());
+
+    DBMeta dropped;
+    Status status = service.drop_db(drop_db_param(), &dropped);
+
+    ASSERT_TRUE(status.ok()) << status.to_string();
+    EXPECT_EQ(dropped.db_name, db_name_);
+    DBMeta stored;
+    EXPECT_EQ(fixture.catalog.get_db(db_name_, &stored).code(),
+              StatusCode::DB_NOT_FOUND);
 }
 
 // 测试创建table之后，没有sdm_client，失败了，table的状态还是ADDING，检测err_msg。
@@ -345,9 +385,8 @@ TEST_F(DdlServiceTest, RecreateSameNameAfterDeleteKeepsOldIdLookup) {
 
     TableMeta old_by_id;
     ASSERT_TRUE(service
-                    .get_table(
-                        GetTableParam{"", "", true, old_table.table_id},
-                        &old_by_id)
+                    .get_table(GetTableParam{"", "", true, old_table.table_id},
+                               &old_by_id)
                     .ok());
     EXPECT_EQ(old_by_id.table_id, old_table.table_id);
     EXPECT_EQ(old_by_id.state, TableState::DELETED);

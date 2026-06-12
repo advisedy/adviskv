@@ -6,8 +6,8 @@
 #include "common/define.h"
 #include "common/status.h"
 #include "common/type.h"
-#include "meta/catalog/meta_types.h"
 #include "meta.grpc.pb.h"
+#include "meta/catalog/meta_types.h"
 
 namespace adviskv::cli {
 
@@ -40,9 +40,11 @@ class DirectMetaClient {
 
     Status create_db(const std::string& db_name, const std::string& zone,
                      DatabaseID* db_id) const;
-    Status create_table(const std::string& db_name, const std::string& table_name,
-                        int32_t shard_count, int32_t replica_count,
-                        TableID* table_id, std::string resource_pool) const;
+    Status drop_db(const std::string& db_name, DatabaseID* db_id) const;
+    Status create_table(const std::string& db_name,
+                        const std::string& table_name, int32_t shard_count,
+                        int32_t replica_count, TableID* table_id,
+                        std::string resource_pool) const;
     Status get_table(const std::string& db_name, const std::string& table_name,
                      TableInfo* table_info) const;
 

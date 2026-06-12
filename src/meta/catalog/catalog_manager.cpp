@@ -18,7 +18,7 @@
 
 namespace adviskv::meta {
 
-CatalogManager::CatalogManager(IMetaPersistEngine *persist_engine)
+CatalogManager::CatalogManager(IMetaPersistEngine* persist_engine)
     : persist_engine_(persist_engine) {}
 
 Status CatalogManager::init() {
@@ -36,18 +36,18 @@ Status CatalogManager::init() {
     db_id_allocator_ = IDAllocator<DatabaseID>(record.next_db_id);
     table_id_allocator_ = IDAllocator<TableID>(record.next_table_id);
 
-    for (const auto &[db_id, db_meta] : record.db_meta_map) {
+    for (const auto& [db_id, db_meta] : record.db_meta_map) {
         db_meta_map_[db_id] = db_meta;
         db_name2db_id_[db_meta.db_name] = db_id;
     }
 
-    for (const auto &[table_id, table_meta] : record.table_id2table_meta) {
+    for (const auto& [table_id, table_meta] : record.table_id2table_meta) {
         table_id2table_meta_[table_id] = table_meta;
         db_id2table_ids_[table_meta.db_id].insert(table_id);
 
         if (table_meta.state == TableState::DELETED) continue;
 
-        auto &table_name_index = db_table_name2table_id_[table_meta.db_name];
+        auto& table_name_index = db_table_name2table_id_[table_meta.db_name];
         auto [it, inserted] =
             table_name_index.emplace(table_meta.table_name, table_id);
         if (!inserted) {  // 按道理讲不应该insert不进去
@@ -81,7 +81,7 @@ Status CatalogManager::persist_meta() {
     return persist_engine_->save_meta(record);
 }
 
-void CatalogManager::remove_table_name_index(const TableMeta &table_meta) {
+void CatalogManager::remove_table_name_index(const TableMeta& table_meta) {
     auto db_table_it = db_table_name2table_id_.find(table_meta.db_name);
     if (db_table_it == db_table_name2table_id_.end()) {
         return;
@@ -96,11 +96,11 @@ void CatalogManager::remove_table_name_index(const TableMeta &table_meta) {
     }
 }
 
-Status CatalogManager::add_table_name_index(const TableMeta &table_meta) {
+Status CatalogManager::add_table_name_index(const TableMeta& table_meta) {
     if ((table_meta.state == TableState::DELETED)) {
         return Status::OK();
     }
-    auto &name_index = db_table_name2table_id_[table_meta.db_name];
+    auto& name_index = db_table_name2table_id_[table_meta.db_name];
     auto [it, inserted] =
         name_index.emplace(table_meta.table_name, table_meta.table_id);
     if (!inserted && it->second != table_meta.table_id) {
@@ -111,9 +111,9 @@ Status CatalogManager::add_table_name_index(const TableMeta &table_meta) {
     return Status::OK();
 }
 
-Status CatalogManager::create_db(const CreateDBMetaParam &param,
-                                 DBMeta *db_meta) {
-    const std::string &db_name = param.db_name;
+Status CatalogManager::create_db(const CreateDBMetaParam& param,
+                                 DBMeta* db_meta) {
+    const std::string& db_name = param.db_name;
 
     RETURN_IF_INVALID_PARAM(param)
 
@@ -150,10 +150,10 @@ Status CatalogManager::create_db(const CreateDBMetaParam &param,
     return Status::OK();
 }
 
-Status CatalogManager::create_table(const CreateTableMetaParam &param,
-                                    TableMeta *table_meta) {
-    const std::string &db_name = param.db_name;
-    const std::string &table_name = param.table_name;
+Status CatalogManager::create_table(const CreateTableMetaParam& param,
+                                    TableMeta* table_meta) {
+    const std::string& db_name = param.db_name;
+    const std::string& table_name = param.table_name;
 
     RETURN_IF_INVALID_PARAM(param)
 
@@ -223,28 +223,45 @@ Status CatalogManager::delete_db(DatabaseID db_id) {
     }
 
     auto table_set_it = db_id2table_ids_.find(db_id);
-    if (table_set_it != db_id2table_ids_.end() &&
-        !table_set_it->second.empty()) {
-        return Status{
-            StatusCode::INVALID_ARGUMENT,
-            fmt::format("db_id:{} still has tables, cannot delete", db_id)};
+    std::unordered_set<TableID> old_table_ids;
+    if (table_set_it != db_id2table_ids_.end()) {
+        old_table_ids = table_set_it->second;
+        for (const auto table_id : table_set_it->second) {
+            auto table_it = table_id2table_meta_.find(table_id);
+            if (table_it == table_id2table_meta_.end()) {
+                return Status{
+                    StatusCode::ERROR,
+                    fmt::format("internal error: table_id:{} should exist",
+                                table_id)};
+            }
+            if (table_it->second.state != TableState::DELETED) {
+                return Status{StatusCode::INVALID_ARGUMENT,
+                              fmt::format("db_id:{} still has tables, cannot "
+                                          "delete",
+                                          db_id)};
+            }
+        }
     }
 
     DBMeta old_db_meta = db_it->second;
     db_meta_map_.erase(db_it);
     db_name2db_id_.erase(old_db_meta.db_name);
+    db_table_name2table_id_.erase(old_db_meta.db_name);
     db_id2table_ids_.erase(db_id);
 
     Status status = persist_meta();
     if (status.fail()) {
         db_meta_map_[old_db_meta.db_id] = old_db_meta;
         db_name2db_id_[old_db_meta.db_name] = old_db_meta.db_id;
+        if (!old_table_ids.empty()) {
+            db_id2table_ids_[old_db_meta.db_id] = std::move(old_table_ids);
+        }
         return status;
     }
     return Status::OK();
 }
 
-Status CatalogManager::delete_table(TableID table_id, TableMeta *table_meta) {
+Status CatalogManager::delete_table(TableID table_id, TableMeta* table_meta) {
     std::unique_lock lock(mutex_);
 
     auto table_it = table_id2table_meta_.find(table_id);
@@ -286,7 +303,7 @@ Status CatalogManager::delete_table(TableID table_id, TableMeta *table_meta) {
 }
 
 Status CatalogManager::update_table_state(TableID table_id, TableState state,
-                                          const std::string &last_error_msg) {
+                                          const std::string& last_error_msg) {
     std::unique_lock lock(mutex_);
 
     auto table_it = table_id2table_meta_.find(table_id);
@@ -318,20 +335,20 @@ Status CatalogManager::update_table_state(TableID table_id, TableState state,
     return Status::OK();
 }
 
-Status CatalogManager::get_db(const std::string &db_name, DBMeta *db_meta) {
+Status CatalogManager::get_db(const std::string& db_name, DBMeta* db_meta) {
     std::shared_lock lock(mutex_);
     return lookup_db_by_name(db_name, db_meta);
 }
 
 Status CatalogManager::get_table_by_id(TableID table_id,
-                                       TableMeta *table_meta) {
+                                       TableMeta* table_meta) {
     std::shared_lock lock(mutex_);
     return lookup_table_by_id(table_id, table_meta);
 }
 
-Status CatalogManager::get_table_by_name(const std::string &db_name,
-                                         const std::string &table_name,
-                                         TableMeta *table_meta) {
+Status CatalogManager::get_table_by_name(const std::string& db_name,
+                                         const std::string& table_name,
+                                         TableMeta* table_meta) {
     std::shared_lock lock(mutex_);
     if (Status status = lookup_db_by_name(db_name, nullptr); status.fail()) {
         return status;
@@ -339,8 +356,8 @@ Status CatalogManager::get_table_by_name(const std::string &db_name,
     return lookup_table_by_name(db_name, table_name, table_meta);
 }
 
-Status CatalogManager::list_tables(const std::string &db_name,
-                                   std::vector<TableMeta> *table_meta_list) {
+Status CatalogManager::list_tables(const std::string& db_name,
+                                   std::vector<TableMeta>* table_meta_list) {
     if (!table_meta_list) {
         return Status{StatusCode::INVALID_ARGUMENT,
                       "table_meta_list is nullptr"};
@@ -353,7 +370,7 @@ Status CatalogManager::list_tables(const std::string &db_name,
     if (set_it == db_id2table_ids_.end()) {
         return Status::OK();
     }
-    for (const auto &table_id : set_it->second) {
+    for (const auto& table_id : set_it->second) {
         auto it = table_id2table_meta_.find(table_id);
         if (it == table_id2table_meta_.end()) {
             return Status{
@@ -370,14 +387,14 @@ Status CatalogManager::list_tables(const std::string &db_name,
 }
 
 Status CatalogManager::list_tables_by_state(
-    TableState state, std::vector<TableMeta> *table_meta_list) {
+    TableState state, std::vector<TableMeta>* table_meta_list) {
     if (!table_meta_list) {
         return Status{StatusCode::INVALID_ARGUMENT,
                       "table_meta_list is nullptr"};
     }
     table_meta_list->clear();
     std::shared_lock lock(mutex_);
-    for (const auto &[_, table_meta] : table_id2table_meta_) {
+    for (const auto& [_, table_meta] : table_id2table_meta_) {
         UNUSED(_);
         if (table_meta.state == state) {
             table_meta_list->push_back(table_meta);
@@ -386,8 +403,8 @@ Status CatalogManager::list_tables_by_state(
     return Status::OK();
 }
 
-Status CatalogManager::lookup_db_by_name(const std::string &db_name,
-                                         DBMeta *db_meta) {
+Status CatalogManager::lookup_db_by_name(const std::string& db_name,
+                                         DBMeta* db_meta) {
     auto it = db_name2db_id_.find(db_name);
     if (it == db_name2db_id_.end()) {
         return Status{StatusCode::DB_NOT_FOUND,
@@ -407,7 +424,7 @@ Status CatalogManager::lookup_db_by_name(const std::string &db_name,
 }
 
 Status CatalogManager::lookup_table_by_id(TableID table_id,
-                                          TableMeta *table_meta) {
+                                          TableMeta* table_meta) {
     auto table_meta_it = table_id2table_meta_.find(table_id);
     if (table_meta_it == table_id2table_meta_.end()) {
         return Status{StatusCode::TABLE_NOT_FOUND,
@@ -419,9 +436,9 @@ Status CatalogManager::lookup_table_by_id(TableID table_id,
     return Status::OK();
 }
 
-Status CatalogManager::lookup_table_by_name(const std::string &db_name,
-                                            const std::string &table_name,
-                                            TableMeta *table_meta) {
+Status CatalogManager::lookup_table_by_name(const std::string& db_name,
+                                            const std::string& table_name,
+                                            TableMeta* table_meta) {
     auto it = db_table_name2table_id_.find(db_name);
     if (it == db_table_name2table_id_.end()) {
         return Status{StatusCode::TABLE_NOT_FOUND,

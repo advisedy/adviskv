@@ -26,7 +26,10 @@ void print_usage() {
 void print_help() {
     fmt::print("commands:\n");
     fmt::print("  create_db <db_name> <zone>\n");
-    fmt::print("  create_table <db_name> <table_name> <shard_count> <replica_count>\n");
+    fmt::print("  drop_db <db_name>\n");
+    fmt::print(
+        "  create_table <db_name> <table_name> <shard_count> "
+        "<replica_count> <resource_pool>\n");
     fmt::print("  get_table <db_name> <table_name>\n");
     fmt::print("  help\n");
     fmt::print("  quit\n");
@@ -139,7 +142,22 @@ int main(int argc, char* argv[]) {
                 continue;
             }
             DatabaseID db_id = -1;
-            const Status status = client.create_db(tokens[1], tokens[2], &db_id);
+            const Status status =
+                client.create_db(tokens[1], tokens[2], &db_id);
+            if (status.ok()) {
+                fmt::print("OK db_id={}\n", db_id);
+            } else {
+                print_status(status);
+            }
+            continue;
+        }
+        if (command == "drop_db") {
+            if (tokens.size() != 2) {
+                fmt::print("usage: drop_db <db_name>\n");
+                continue;
+            }
+            DatabaseID db_id = -1;
+            const Status status = client.drop_db(tokens[1], &db_id);
             if (status.ok()) {
                 fmt::print("OK db_id={}\n", db_id);
             } else {
@@ -149,20 +167,23 @@ int main(int argc, char* argv[]) {
         }
         if (command == "create_table") {
             if (tokens.size() != 6) {
-                fmt::print("usage: create_table <db_name> <table_name> "
-                           "<shard_count> <replica_count> <resource_pool>\n");
+                fmt::print(
+                    "usage: create_table <db_name> <table_name> "
+                    "<shard_count> <replica_count> <resource_pool>\n");
                 continue;
             }
             int32_t shard_count = 0;
             int32_t replica_count = 0;
             if (!parse_i32(tokens[3], &shard_count) ||
                 !parse_i32(tokens[4], &replica_count)) {
-                fmt::print("shard_count and replica_count should be integers\n");
+                fmt::print(
+                    "shard_count and replica_count should be integers\n");
                 continue;
             }
             TableID table_id = -1;
-            const Status status = client.create_table(
-                tokens[1], tokens[2], shard_count, replica_count, &table_id, tokens[5]);
+            const Status status =
+                client.create_table(tokens[1], tokens[2], shard_count,
+                                    replica_count, &table_id, tokens[5]);
             if (status.ok()) {
                 fmt::print("OK table_id={}\n", table_id);
             } else {
@@ -179,12 +200,13 @@ int main(int argc, char* argv[]) {
             const Status status =
                 client.get_table(tokens[1], tokens[2], &table_info);
             if (status.ok()) {
-                fmt::print("OK db_id={} table_id={} shard_count={} "
-                           "replica_count={} table_state={} last_error_msg={}\n",
-                           table_info.db_id, table_info.table_id,
-                           table_info.shard_count, table_info.replica_count,
-                           static_cast<int32_t>(table_info.table_state),
-                           table_info.last_error_msg);
+                fmt::print(
+                    "OK db_id={} table_id={} shard_count={} "
+                    "replica_count={} table_state={} last_error_msg={}\n",
+                    table_info.db_id, table_info.table_id,
+                    table_info.shard_count, table_info.replica_count,
+                    static_cast<int32_t>(table_info.table_state),
+                    table_info.last_error_msg);
             } else {
                 print_status(status);
             }

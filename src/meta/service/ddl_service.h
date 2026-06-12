@@ -16,6 +16,7 @@ class DdlService {
     Status create_table(const CreateTableParam& param, TableMeta* table_meta);
     Status drop_table(const DropTableParam& param, TableMeta* table_meta);
     Status create_db(const CreateDBParam& param, DBMeta* db_meta);
+    Status drop_db(const DropDBParam& param, DBMeta* db_meta);
     Status get_table(const GetTableParam& param, TableMeta* table_meta);
 
    private:

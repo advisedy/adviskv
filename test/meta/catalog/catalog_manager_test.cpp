@@ -520,5 +520,71 @@ TEST_F(CatalogManagerTest, RecoverSkipsDeletedNameIndexAndKeepsIdLookup) {
     }
 }
 
+// 测试删除仍包含活跃表的 DB 时会被拒绝，并确认 DB 元信息不会被误删。
+TEST_F(CatalogManagerTest, DeleteDbRejectsActiveTables) {
+    auto dir = make_sub_dir("delete_db_rejects_active");
+
+    MetaPersistEngine engine(dir.string());
+    ASSERT_TRUE(engine.init().ok());
+    CatalogManager catalog(&engine);
+    ASSERT_TRUE(catalog.init().ok());
+
+    DBMeta db;
+    ASSERT_TRUE(
+        catalog.create_db(CreateDBMetaParam{"commerce", "z1"}, &db).ok());
+    ASSERT_TRUE(catalog
+                    .create_table(CreateTableMetaParam{"commerce", "orders", 4,
+                                                       3, "pool-a"},
+                                  nullptr)
+                    .ok());
+
+    Status status = catalog.delete_db(db.db_id);
+
+    EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
+    DBMeta stored;
+    ASSERT_TRUE(catalog.get_db("commerce", &stored).ok());
+    EXPECT_EQ(stored.db_id, db.db_id);
+}
+
+// 测试 DB 只剩 DELETED 历史表时允许删除，同时保留旧表的 table_id 查询能力。
+TEST_F(CatalogManagerTest, DeleteDbAllowsOnlyDeletedTables) {
+    auto dir = make_sub_dir("delete_db_deleted_tables");
+
+    MetaPersistEngine engine(dir.string());
+    ASSERT_TRUE(engine.init().ok());
+    CatalogManager catalog(&engine);
+    ASSERT_TRUE(catalog.init().ok());
+
+    DBMeta db;
+    ASSERT_TRUE(
+        catalog.create_db(CreateDBMetaParam{"commerce", "z1"}, &db).ok());
+    TableMeta table;
+    ASSERT_TRUE(catalog
+                    .create_table(CreateTableMetaParam{"commerce", "orders", 4,
+                                                       3, "pool-a"},
+                                  &table)
+                    .ok());
+    ASSERT_TRUE(
+        catalog.update_table_state(table.table_id, TableState::DELETED).ok());
+
+    ASSERT_TRUE(catalog.delete_db(db.db_id).ok());
+
+    DBMeta dropped_db;
+    EXPECT_EQ(catalog.get_db("commerce", &dropped_db).code(),
+              StatusCode::DB_NOT_FOUND);
+    TableMeta deleted_table;
+    ASSERT_TRUE(catalog.get_table_by_id(table.table_id, &deleted_table).ok());
+    EXPECT_EQ(deleted_table.state, TableState::DELETED);
+
+    DBMeta recreated_db;
+    ASSERT_TRUE(
+        catalog.create_db(CreateDBMetaParam{"commerce", "z2"}, &recreated_db)
+            .ok());
+    EXPECT_NE(recreated_db.db_id, db.db_id);
+    std::vector<TableMeta> tables;
+    ASSERT_TRUE(catalog.list_tables("commerce", &tables).ok());
+    EXPECT_TRUE(tables.empty());
+}
+
 }  // namespace
 }  // namespace adviskv::meta

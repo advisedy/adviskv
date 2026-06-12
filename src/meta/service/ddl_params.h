@@ -19,6 +19,15 @@ struct CreateDBParam {
     }
 };
 
+struct DropDBParam {
+    std::string db_name;
+    Status validate() const {
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(),
+                                    "db_name should not empty")
+        return Status::OK();
+    }
+};
+
 struct CreateTableParam {
     std::string db_name;
     std::string table_name;

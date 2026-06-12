@@ -47,6 +47,31 @@ Status DirectMetaClient::create_db(const std::string& db_name,
     return Status::OK();
 }
 
+Status DirectMetaClient::drop_db(const std::string& db_name,
+                                 DatabaseID* db_id) const {
+    RETURN_IF_INVALID_PARAM(target_)
+    RETURN_IF_INVALID_CONDITION(db_id != nullptr, "db_id should not be nullptr")
+
+    rpc::DropDBRequest request;
+    request.set_db_name(db_name);
+
+    rpc::DropDBResponse response;
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() +
+                         std::chrono::milliseconds(target_.timeout_ms));
+
+    grpc::Status grpc_status = stub_->DropDB(&context, request, &response);
+    if (!grpc_status.ok()) {
+        return Status::ERROR(
+            fmt::format("Meta DropDB RPC failed, grpc code = {}, msg = {}",
+                        static_cast<int>(grpc_status.error_code()),
+                        grpc_status.error_message()));
+    }
+    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
+    *db_id = response.db_id();
+    return Status::OK();
+}
+
 Status DirectMetaClient::create_table(const std::string& db_name,
                                       const std::string& table_name,
                                       int32_t shard_count,

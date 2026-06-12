@@ -78,14 +78,14 @@ Status DdlService::drop_table(const DropTableParam& param,
         return Status::OK();
     }
 
-    RETURN_IF_INVALID_STATUS(catalog_manager_->delete_table(table.table_id,
-                                                            &table))
+    RETURN_IF_INVALID_STATUS(
+        catalog_manager_->delete_table(table.table_id, &table))
 
     if (!sdm_client_) {
         // 这里后续的内容交给reconclier去做，先返回OK。
         const std::string err_msg = "sdm_client is nullptr";
 
-        //更新一遍持久化那边的last_error_msg
+        // 更新一遍持久化那边的last_error_msg
         RETURN_IF_INVALID_STATUS(catalog_manager_->update_table_state(
             table.table_id, TableState::DROPPING, err_msg))
         table.last_error_msg = err_msg;
@@ -116,6 +116,19 @@ Status DdlService::create_db(const CreateDBParam& param, DBMeta* db_meta) {
     meta_param.zone = param.zone;
 
     return catalog_manager_->create_db(meta_param, db_meta);
+}
+
+Status DdlService::drop_db(const DropDBParam& param, DBMeta* db_meta) {
+    RETURN_IF_INVALID_PARAM(param)
+
+    DBMeta db;
+    RETURN_IF_INVALID_STATUS(catalog_manager_->get_db(param.db_name, &db))
+    RETURN_IF_INVALID_STATUS(catalog_manager_->delete_db(db.db_id))
+
+    if (db_meta != nullptr) {
+        *db_meta = db;
+    }
+    return Status::OK();
 }
 
 Status DdlService::get_table(const GetTableParam& param,

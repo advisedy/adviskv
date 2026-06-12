@@ -8,17 +8,17 @@
 
 #include "common/define.h"
 #include "common/status.h"
-#include "meta/service/ddl_service.h"
 #include "meta/proto/table_state_proto.h"
+#include "meta/service/ddl_service.h"
 
 namespace adviskv::meta {
 
-MetaServiceImpl::MetaServiceImpl(DdlService *ddl_service)
+MetaServiceImpl::MetaServiceImpl(DdlService* ddl_service)
     : ddl_service_(ddl_service) {}
 
-grpc::Status MetaServiceImpl::CreateDB(grpc::ServerContext *context,
-                                       const rpc::CreateDBRequest *request,
-                                       rpc::CreateDBResponse *response) {
+grpc::Status MetaServiceImpl::CreateDB(grpc::ServerContext* context,
+                                       const rpc::CreateDBRequest* request,
+                                       rpc::CreateDBResponse* response) {
     UNUSED(context);
     CreateDBParam param{request->db_name(), request->zone()};
 
@@ -32,9 +32,25 @@ grpc::Status MetaServiceImpl::CreateDB(grpc::ServerContext *context,
     return grpc::Status::OK;
 }
 
+grpc::Status MetaServiceImpl::DropDB(grpc::ServerContext* context,
+                                     const rpc::DropDBRequest* request,
+                                     rpc::DropDBResponse* response) {
+    UNUSED(context);
+    DropDBParam param{request->db_name()};
+
+    DBMeta db_meta;
+    Status status = ddl_service_->drop_db(param, &db_meta);
+    fill_base_rsp(response, status);
+    if (status.fail()) {
+        return grpc::Status::OK;
+    }
+    response->set_db_id(db_meta.db_id);
+    return grpc::Status::OK;
+}
+
 grpc::Status MetaServiceImpl::CreateTable(
-    grpc::ServerContext *context, const rpc::CreateTableRequest *request,
-    rpc::CreateTableResponse *response) {
+    grpc::ServerContext* context, const rpc::CreateTableRequest* request,
+    rpc::CreateTableResponse* response) {
     UNUSED(context);
     CreateTableParam param;
     param.db_name = request->db_name();
@@ -56,8 +72,8 @@ grpc::Status MetaServiceImpl::CreateTable(
 }
 
 grpc::Status MetaServiceImpl::DropTable(
-    grpc::ServerContext *context, const rpc::MetaDropTableRequest *request,
-    rpc::MetaDropTableResponse *response) {
+    grpc::ServerContext* context, const rpc::MetaDropTableRequest* request,
+    rpc::MetaDropTableResponse* response) {
     UNUSED(context);
     DropTableParam param;
     param.db_name = request->db_name();
@@ -75,9 +91,9 @@ grpc::Status MetaServiceImpl::DropTable(
     return grpc::Status::OK;
 }
 
-grpc::Status MetaServiceImpl::GetTable(grpc::ServerContext *context,
-                                       const rpc::GetTableRequest *request,
-                                       rpc::GetTableResponse *response) {
+grpc::Status MetaServiceImpl::GetTable(grpc::ServerContext* context,
+                                       const rpc::GetTableRequest* request,
+                                       rpc::GetTableResponse* response) {
     UNUSED(context);
 
     GetTableParam param;
