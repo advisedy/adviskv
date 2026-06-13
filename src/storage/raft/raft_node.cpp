@@ -29,10 +29,8 @@ RaftNode::RaftNode(const ReplicaID& self_id,
                    PersistEngine* persist)
     : self_id_(self_id),
       members_(members),
-      election_tick_trigger_(ELECTION_TIMEOUT,
-                             [this]() { become_candidate(); }),
-      heartbeat_tick_trigger_(HEARTBEAT_INTERVAL,
-                              [this]() { broadcast_append_entries(); }),
+      election_tick_trigger_(ELECTION_TIMEOUT),
+      heartbeat_tick_trigger_(HEARTBEAT_INTERVAL),
       persist_(persist) {
     for (const PeerMember& member : members_) {
         if (member.replica_id == self_id_) continue;
@@ -70,14 +68,18 @@ bool RaftNode::later_than_other(Term other_term, LogIndex other_index) const {
     return last_log_index_unlocked() > other_index;
 }
 
-void RaftNode::tick() {
+void RaftNode::tick(RaftEffects& effects) {
     std::lock_guard lock(mutex_);
+    effects = RaftEffects{};
     if (ensure_ready_unlocked().fail()) return;
 
     if (role_ == ReplicaRole::LEADER) {
-        heartbeat_tick_trigger_.tick();
-    } else {
-        election_tick_trigger_.tick();
+        if (heartbeat_tick_trigger_.tick()) {
+            broadcast_append_entries();
+            effects.messages.swap(pending_messages_);
+        }
+    } else if (election_tick_trigger_.tick()) {
+        become_candidate(effects);
     }
 
     // if (role_ == ReplicaRole::LEADER) {
@@ -97,7 +99,7 @@ void RaftNode::tick() {
     // }
 }
 
-void RaftNode::become_candidate() {
+void RaftNode::become_candidate(RaftEffects& effects) {
     if (ensure_ready_unlocked().fail()) return;
     LOG_INFO("replica:{} start become cadidate", self_id_.to_string());
     election_generation_++;
@@ -115,7 +117,7 @@ void RaftNode::become_candidate() {
 
     // 如果只有一个节点的话，就直接当选
     if (members_.size() == 1) {
-        become_leader();
+        become_leader(effects);
         return;
     }
 
@@ -124,6 +126,7 @@ void RaftNode::become_candidate() {
         if (member.replica_id == self_id_) continue;
         send_request_vote_to(member);
     }
+    effects.messages.swap(pending_messages_);
 }
 
 void RaftNode::send_request_vote_to(const PeerMember& member) {
@@ -451,10 +454,12 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
 }
 
 void RaftNode::handle_vote_response(const ReplicaID& from,
-                                    const RequestVoteResult& result) {
+                                    const RequestVoteResult& result,
+                                    RaftEffects& effects) {
     UNUSED(from);
 
     std::lock_guard lock(mutex_);
+    effects = RaftEffects{};
     if (ensure_ready_unlocked().fail()) return;
 
     // 已经不是 CANDIDATE 了，就直接忽略之前的发起内容
@@ -478,7 +483,7 @@ void RaftNode::handle_vote_response(const ReplicaID& from,
 
     int limit = static_cast<int>(members_.size()) / 2 + 1;
     if (granted_vote_count_ >= limit) {
-        become_leader();
+        become_leader(effects);
     }
 }
 
@@ -617,7 +622,7 @@ void RaftNode::become_follower(Term later_term) {
     election_tick_trigger_.reset(ELECTION_TIMEOUT);
 }
 
-void RaftNode::become_leader() {
+void RaftNode::become_leader(RaftEffects& effects) {
     if (ensure_ready_unlocked().fail()) return;
 
     LOG_INFO("replica:{} become leader", self_id_.to_string());
@@ -641,17 +646,14 @@ void RaftNode::become_leader() {
     none_entry.key = "for debug: this is a no-op entry key";
     none_entry.value = "for debug: this is a no-op entry value";
 
-    // 这段得用测试发现，TODO
-    if (persist_) {
-        Status status = persist_->append_wal(none_entry);
-        if (status.fail()) {
-            enter_faulted_unlocked(status);
-            return;
-        }
-    }
     log_entries_.push_back(none_entry);
+    effects.entries_to_append.push_back(none_entry);
     // 立即广播（含 no-op），相当于心跳 + 日志复制合一
     broadcast_append_entries();
+    for (RaftMessage& msg : pending_messages_) {
+        effects.messages.push_back(std::move(msg));
+    }
+    pending_messages_.clear();
 
     if (members_.size() == 1) {
         try_update_commit_index();

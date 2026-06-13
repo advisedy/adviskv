@@ -213,8 +213,11 @@ Status Replica::drive_raft_effects(RaftEffects effects) {
                 Status status = raft_sender_.send_request_vote(
                     msg.target, msg.vote_param, result);
                 if (status.ok()) {
+                    RaftEffects response_effects;
                     raft_node_->handle_vote_response(msg.target.replica_id,
-                                                     result);
+                                                     result, response_effects);
+                    RETURN_IF_INVALID_STATUS(
+                        drive_raft_effects(std::move(response_effects)))
                 } else {
                     LOG_WARN("[flush_messages] send_request_vote failed: {}",
                              status.msg());
@@ -438,7 +441,9 @@ void Replica::on_tick() {
     OperGuard guard;
     if (acquire_operation(guard).fail()) return;
 
-    raft_node_->tick();
+    RaftEffects effects;
+    raft_node_->tick(effects);
+    if (fault_if_fail(drive_raft_effects(std::move(effects))).fail()) return;
     flush_messages();
 
     // 如果put最开始的时候没有推进commit_idx（例如其他的followers都太慢了或者有问题了），
