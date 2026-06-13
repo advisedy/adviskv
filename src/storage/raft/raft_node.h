@@ -55,41 +55,6 @@ class TickTrigger {
     TickFunc func_;
 };
 
-class RaftNodeHealth {
-   public:
-#define ADVISKV_RAFT_HEALTH_CODE_LIST(X) \
-    X(INITIALIZING, 0)                   \
-    X(READY, 1)                          \
-    X(RECOVERING, 2)                     \
-    X(FAULTED, 3)
-
-    enum class RaftNodeHealthCode {
-#define X(name, code) name = code,
-        ADVISKV_RAFT_HEALTH_CODE_LIST(X)
-#undef X
-    };
-
-#define X(name, code)                                    \
-    static RaftNodeHealth name() {                       \
-        return RaftNodeHealth{RaftNodeHealthCode::name}; \
-    }
-    ADVISKV_RAFT_HEALTH_CODE_LIST(X)
-#undef X
-
-#undef ADVISKV_RAFT_HEALTH_CODE_LIST
-
-    RaftNodeHealth(RaftNodeHealthCode code)
-        : code_(code), status_(Status::OK()) {}
-
-    bool is_equal_code(const RaftNodeHealth& one) const {
-        return code_ == one.code_;
-    }
-
-   private:
-    RaftNodeHealthCode code_;
-    Status status_{Status::OK()};
-};
-
 class PersistEngine;
 
 class RaftNode {
@@ -192,17 +157,17 @@ class RaftNode {
 
     bool is_recovering() const {
         std::lock_guard lock(mutex_);
-        return health_.is_equal_code(RaftNodeHealth::RECOVERING());
+        return state_ == RaftNodeState::RECOVERING;
     }
 
     bool is_faulted() const {
         std::lock_guard lock(mutex_);
-        return health_.is_equal_code(RaftNodeHealth::FAULTED());
+        return state_ == RaftNodeState::FAULTED;
     }
 
     bool is_ready() const {
         std::lock_guard lock(mutex_);
-        return health_.is_equal_code(RaftNodeHealth::READY());
+        return state_ == RaftNodeState::READY;
     }
 
     void finish_recovering();
@@ -247,6 +212,12 @@ class RaftNode {
     void send_append_entries_to(const PeerMember& member, LogIndex next_index);
     void broadcast_append_entries();
 
+    enum class RaftNodeState {
+        READY,
+        RECOVERING,
+        FAULTED,
+    };
+
     ReplicaID self_id_;
     ReplicaRole role_{ReplicaRole::FOLLOWER};
     Term current_term_{0};
@@ -279,7 +250,7 @@ class RaftNode {
 
     mutable std::mutex mutex_;
 
-    RaftNodeHealth health_{RaftNodeHealth::INITIALIZING()};
+    RaftNodeState state_{RaftNodeState::READY};
 
     friend class RaftClusterTest;
 };

@@ -41,7 +41,6 @@ RaftNode::RaftNode(const ReplicaID& self_id,
         }
     }
 
-    health_ = RaftNodeHealth::READY();
 }
 
 LogIndex RaftNode::last_log_index_unlocked() const {
@@ -741,7 +740,7 @@ Term RaftNode::get_term(LogIndex index) const {
 }
 
 Status RaftNode::ensure_not_faulted_unlocked() const {
-    if (health_.is_equal_code(RaftNodeHealth::FAULTED())) {
+    if (state_ == RaftNodeState::FAULTED) {
         return Status::ERROR("raft node is faulted");
     }
     return Status::OK();
@@ -751,21 +750,21 @@ Status RaftNode::ensure_ready_unlocked() const {
     Status status = ensure_not_faulted_unlocked();
     if (status.fail()) return status;
 
-    if (health_.is_equal_code(RaftNodeHealth::RECOVERING())) {
+    if (state_ == RaftNodeState::RECOVERING) {
         return Status::IS_RECOVERING("raft node is recovering");
     }
-    if (!health_.is_equal_code(RaftNodeHealth::READY())) {
+    if (state_ != RaftNodeState::READY) {
         return Status::NOT_INIT("raft node is not ready");
     }
     return Status::OK();
 }
 
 void RaftNode::enter_faulted_unlocked(const Status& status) {
-    if (health_.is_equal_code(RaftNodeHealth::FAULTED())) return;
+    if (state_ == RaftNodeState::FAULTED) return;
 
     LOG_WARN("raft node:{} enter faulted, reason={}", self_id_.to_string(),
              status.to_string());
-    health_ = RaftNodeHealth::FAULTED();
+    state_ = RaftNodeState::FAULTED;
     role_ = ReplicaRole::FOLLOWER;
     election_tick_trigger_.stop();
     heartbeat_tick_trigger_.stop();
@@ -911,9 +910,9 @@ void RaftNode::update_log_entries(const std::vector<LogEntry>& entries) {
 
 void RaftNode::enter_recovering() {
     std::lock_guard lock(mutex_);
-    if (health_.is_equal_code(RaftNodeHealth::FAULTED())) return;
+    if (state_ == RaftNodeState::FAULTED) return;
 
-    health_ = RaftNodeHealth::RECOVERING();
+    state_ = RaftNodeState::RECOVERING;
     role_ = ReplicaRole::FOLLOWER;
     election_tick_trigger_.stop();
     heartbeat_tick_trigger_.stop();
@@ -925,9 +924,9 @@ void RaftNode::finish_recovering() {
 }
 
 void RaftNode::finish_recovering_unlocked() {
-    if (!health_.is_equal_code(RaftNodeHealth::RECOVERING())) return;
+    if (state_ != RaftNodeState::RECOVERING) return;
 
-    health_ = RaftNodeHealth::READY();
+    state_ = RaftNodeState::READY;
     election_tick_trigger_.reset(ELECTION_TIMEOUT);
 }
 
