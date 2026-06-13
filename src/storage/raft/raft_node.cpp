@@ -107,10 +107,7 @@ void RaftNode::become_candidate(RaftEffects& effects) {
     voted_for_ = self_id_;
     granted_vote_count_ = 1;
     role_ = ReplicaRole::CANDIDATE;
-    if (Status status = save_raft_meta(); status.fail()) {
-        enter_faulted_unlocked(status);
-        return;
-    }
+    record_hard_state_unlocked(effects);
 
     heartbeat_tick_trigger_.stop();
     election_tick_trigger_.reset(ELECTION_TIMEOUT);
@@ -257,10 +254,12 @@ RaftMessage RaftNode::build_append_entries_message_unlocked(
 }
 
 void RaftNode::handle_request_vote(const RequestVoteParam& param,
-                                   RequestVoteResult& result) {
+                                   RequestVoteResult& result,
+                                   RaftEffects& effects) {
     LOG_DEBUG("replica:{} get request vote from {}", self_id_.to_string(),
               param.from_replica_id.to_string());
     std::lock_guard lock(mutex_);
+    effects = RaftEffects{};
     result.term = current_term_;
     result.vote_granted = false;
 
@@ -278,7 +277,7 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
         // 这里这个函数会把自己的vote_for_给清空掉，会不会导致投了很多次票
         // 但是应该没有问题，毕竟是这种情况应该是发生在多次投票里面，他们的term不一样
         // 既然不一样的话，肯定是最终term最大的那一个去当的leader了，别的会自动变成follower
-        become_follower(param.term);
+        become_follower(param.term, effects);
         result.term = current_term_;
     }
 
@@ -300,15 +299,9 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
         LOG_DEBUG("replica:{} vote to {}, current_term:{}",
                   self_id_.to_string(), param.to_replica_id.table_id,
                   param.to_replica_id.to_string(), current_term_);
-        if (Status status =
-                save_raft_meta(current_term_, param.from_replica_id);
-            status.fail()) {
-            enter_faulted_unlocked(status);
-            return;
-        }
-
-        result.vote_granted = true;
         voted_for_ = param.from_replica_id;
+        record_hard_state_unlocked(effects);
+        result.vote_granted = true;
         election_tick_trigger_.reset(ELECTION_TIMEOUT);
     }
 }
@@ -347,7 +340,7 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
         // 这里的判断条件是，只要role不是FOLLOWER，就会become，但是如果term和param的term是相等的
         // 然后prev_log_index不一样呢？ 这个时候不需要比较一下index吗？
         // 这里并不需要，毕竟append 不需要去干关于选举方面的事情，
-        become_follower(param.term);
+        become_follower(param.term, effects);
         if (ensure_not_faulted_unlocked().fail()) {
             return;
         }
@@ -469,7 +462,7 @@ void RaftNode::handle_vote_response(const ReplicaID& from,
               self_id_.to_string(), from.to_string());
 
     if (result.term > current_term_) {
-        become_follower(result.term);
+        become_follower(result.term, effects);
         return;
     }
 
@@ -516,17 +509,19 @@ void RaftNode::handle_vote_response(const ReplicaID& from,
 
 Status RaftNode::handle_append_response(const ReplicaID& from,
                                         const AppendEntriesParam& sent_param,
-                                        const AppendEntriesResult& result) {
+                                        const AppendEntriesResult& result,
+                                        RaftEffects& effects) {
     ADVISKV_METRICS_TIMER("storage_raft_handle_append_response");
     ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_request");
 
     std::lock_guard lock(mutex_);
+    effects = RaftEffects{};
     RETURN_IF_INVALID_STATUS(ensure_ready_unlocked())
 
     if (result.term > current_term_) {
         ADVISKV_METRICS_COUNTER(
             "storage_raft_handle_append_response_higher_term");
-        become_follower(result.term);
+        become_follower(result.term, effects);
         return Status::NOT_LEADER("higher term");
     }
 
@@ -604,7 +599,7 @@ void RaftNode::advance_last_applied(LogIndex applied) {
     }
 }
 
-void RaftNode::become_follower(Term later_term) {
+void RaftNode::become_follower(Term later_term, RaftEffects& effects) {
     assert(later_term >= current_term_);
 
     LOG_INFO("replica:{} become follower, new term:{}", self_id_.to_string(),
@@ -613,10 +608,7 @@ void RaftNode::become_follower(Term later_term) {
     if (later_term > current_term_) {
         current_term_ = later_term;
         voted_for_.reset();
-        if (Status status = save_raft_meta(); status.fail()) {
-            enter_faulted_unlocked(status);
-            return;
-        }
+        record_hard_state_unlocked(effects);
     }
     role_ = ReplicaRole::FOLLOWER;
     election_tick_trigger_.reset(ELECTION_TIMEOUT);
@@ -757,19 +749,8 @@ void RaftNode::enter_faulted_unlocked(const Status& status) {
     pending_messages_.clear();
 }
 
-// persist 去 持久化raft_meta
-Status RaftNode::save_raft_meta() const {
-    return save_raft_meta(current_term_, voted_for_);
-}
-
-Status RaftNode::save_raft_meta(Term current_term,
-                                std::optional<ReplicaID> voted_for) const {
-    if (!persist_) return Status::NOT_INIT("persist is nullptr");
-
-    RaftMeta raft_meta;
-    raft_meta.current_term = current_term;
-    raft_meta.voted_for = voted_for;
-    return persist_->save_raft_meta(raft_meta);
+void RaftNode::record_hard_state_unlocked(RaftEffects& effects) const {
+    effects.hard_state = RaftMeta{current_term_, voted_for_};
 }
 
 // void try_take_snapshot();
@@ -820,8 +801,10 @@ void RaftNode::install_local_snapshot(LogIndex new_snapshot_index,
 
 Status RaftNode::install_leader_snapshot(LogIndex new_snapshot_index,
                                          Term new_snapshot_term,
-                                         Term leader_term) {
+                                         Term leader_term,
+                                         RaftEffects& effects) {
     std::lock_guard lock(mutex_);
+    effects = RaftEffects{};
     RETURN_IF_INVALID_STATUS(ensure_not_faulted_unlocked())
 
     if (leader_term < current_term_) {
@@ -832,7 +815,7 @@ Status RaftNode::install_leader_snapshot(LogIndex new_snapshot_index,
     }
 
     if (leader_term > current_term_ || role_ != ReplicaRole::FOLLOWER) {
-        become_follower(leader_term);
+        become_follower(leader_term, effects);
         RETURN_IF_INVALID_STATUS(ensure_not_faulted_unlocked())
     } else {
         election_tick_trigger_.reset(ELECTION_TIMEOUT);
@@ -843,13 +826,15 @@ Status RaftNode::install_leader_snapshot(LogIndex new_snapshot_index,
 }
 
 void RaftNode::handle_install_snapshot_response(
-    const ReplicaID& from, const InstallSnapshotResult& result) {
+    const ReplicaID& from, const InstallSnapshotResult& result,
+    RaftEffects& effects) {
     std::lock_guard lock(mutex_);
+    effects = RaftEffects{};
     if (ensure_ready_unlocked().fail()) return;
     if (role_ != ReplicaRole::LEADER) return;
 
     if (result.term > current_term_) {
-        become_follower(result.term);
+        become_follower(result.term, effects);
         return;
     }
 
@@ -860,8 +845,10 @@ void RaftNode::handle_install_snapshot_response(
 }
 
 Status RaftNode::prepare_install_snapshot(Term leader_term,
-                                          LogIndex new_snapshot_index) {
+                                          LogIndex new_snapshot_index,
+                                          RaftEffects& effects) {
     std::lock_guard lock(mutex_);
+    effects = RaftEffects{};
     RETURN_IF_INVALID_STATUS(ensure_not_faulted_unlocked())
 
     if (leader_term < current_term_) {  // 发送过来的leader的term低
@@ -871,7 +858,7 @@ Status RaftNode::prepare_install_snapshot(Term leader_term,
     }
 
     if (leader_term > current_term_ || role_ != ReplicaRole::FOLLOWER) {
-        become_follower(leader_term);
+        become_follower(leader_term, effects);
     }
 
     if (new_snapshot_index <= snapshot_index_) {

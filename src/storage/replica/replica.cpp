@@ -132,8 +132,10 @@ Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
     OperGuard guard;
     RETURN_IF_INVALID_STATUS(acquire_operation(guard))
 
-    RETURN_IF_INVALID_STATUS(
-        raft_node_->prepare_install_snapshot(param.term, param.snapshot_index));
+    RaftEffects prepare_effects;
+    RETURN_IF_INVALID_STATUS(raft_node_->prepare_install_snapshot(
+        param.term, param.snapshot_index, prepare_effects));
+    RETURN_IF_INVALID_STATUS(drive_raft_effects(std::move(prepare_effects)))
 
     SnapshotPtr snap;
     {
@@ -158,9 +160,13 @@ Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
                     return persist_->for_each_snapshot_kv(visitor);
                 })))
 
+            RaftEffects install_effects;
+            RETURN_IF_INVALID_STATUS(fault_if_fail(
+                raft_node_->install_leader_snapshot(
+                    param.snapshot_index, param.snapshot_term, param.term,
+                    install_effects)))
             RETURN_IF_INVALID_STATUS(
-                fault_if_fail(raft_node_->install_leader_snapshot(
-                    param.snapshot_index, param.snapshot_term, param.term)))
+                fault_if_fail(drive_raft_effects(std::move(install_effects))))
         }
     }
 
@@ -229,8 +235,13 @@ Status Replica::drive_raft_effects(RaftEffects effects) {
                 Status status = raft_sender_.send_append_entries(
                     msg.target, msg.append_param, result);
                 if (status.ok()) {
-                    IGNORE_RESULT(raft_node_->handle_append_response(
-                        msg.target.replica_id, msg.append_param, result));
+                    RaftEffects response_effects;
+                    Status response_status = raft_node_->handle_append_response(
+                        msg.target.replica_id, msg.append_param, result,
+                        response_effects);
+                    IGNORE_RESULT(response_status);
+                    RETURN_IF_INVALID_STATUS(
+                        drive_raft_effects(std::move(response_effects)))
                 } else {
                     LOG_WARN("storage raft append entries failed, status:{}",
                              status.to_string());
@@ -245,8 +256,11 @@ Status Replica::drive_raft_effects(RaftEffects effects) {
                 Status status = raft_sender_.send_install_snapshot(
                     msg.target, msg.snapshot_param, *persist_, result);
                 if (status.ok()) {
+                    RaftEffects response_effects;
                     raft_node_->handle_install_snapshot_response(
-                        msg.target.replica_id, result);
+                        msg.target.replica_id, result, response_effects);
+                    RETURN_IF_INVALID_STATUS(
+                        drive_raft_effects(std::move(response_effects)))
                 } else {
                     LOG_WARN(
                         "storage raft send install snapshot failed, status:{}",
@@ -382,8 +396,9 @@ Status Replica::handle_request_vote(const RequestVoteParam& param,
     OperGuard guard;
     RETURN_IF_INVALID_STATUS(acquire_operation(guard))
 
-    raft_node_->handle_request_vote(param, result);
-    return Status::OK();
+    RaftEffects effects;
+    raft_node_->handle_request_vote(param, result, effects);
+    return drive_raft_effects(std::move(effects));
 }
 
 Status Replica::handle_append_entries(const AppendEntriesParam& param,
@@ -519,8 +534,10 @@ Status Replica::check_self_leader_and_get_read_index(LogIndex& read_index) {
             if (status.fail()) continue;
 
             // 这个handle如果失败了，就说明自己不是leader
+            RaftEffects effects;
             RETURN_IF_INVALID_STATUS(raft_node_->handle_append_response(
-                msg.target.replica_id, msg.append_param, res));
+                msg.target.replica_id, msg.append_param, res, effects));
+            RETURN_IF_INVALID_STATUS(drive_raft_effects(std::move(effects)))
             if (res.term == read_term)
                 success_cnt++;  // 这里不用写关于判断res.success，
             // 因为我们只是需要确认leader这个身份，success可能是fail，因为prev没对齐
@@ -529,8 +546,10 @@ Status Replica::check_self_leader_and_get_read_index(LogIndex& read_index) {
             Status status = raft_sender_.send_install_snapshot(
                 msg.target, msg.snapshot_param, *persist_, res);
             if (status.fail()) continue;
+            RaftEffects effects;
             raft_node_->handle_install_snapshot_response(msg.target.replica_id,
-                                                         res);
+                                                         res, effects);
+            RETURN_IF_INVALID_STATUS(drive_raft_effects(std::move(effects)))
             if (res.term == read_term) success_cnt++;
         } else {
             LOG_WARN("replica:{} check self leader, but have request vote msg!",
