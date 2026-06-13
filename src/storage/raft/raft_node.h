@@ -68,17 +68,15 @@ class RaftNode {
     // 这里返回值第一个是Status，
     // 第二个是commit之后，新的commit_index应该对应是多少
     std::pair<Status, LogIndex> propose(WriteOpType op, const Key& key,
-                                        const Value& value);
-    std::pair<Status, LogIndex> propose_with_effects(WriteOpType op,
-                                                     const Key& key,
-                                                     const Value& value,
-                                                     RaftEffects& effects);
+                                        const Value& value,
+                                        RaftEffects& effects);
 
     // 处理来自storage_service_impl的RPC的请求
     void handle_request_vote(const RequestVoteParam& param,
                              RequestVoteResult& result);
     void handle_append_entries(const AppendEntriesParam& param,
-                               AppendEntriesResult& result);
+                               AppendEntriesResult& result,
+                               RaftEffects& effects);
 
     // 当replica通过flush_message去发送消息之后， 会返回过来结果
     // raft_node会再去处理这个，response
