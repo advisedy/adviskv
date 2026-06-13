@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <functional>
 #include <mutex>
 #include <optional>
 #include <unordered_map>
@@ -15,33 +14,31 @@
 #include "storage/model/param.h"
 namespace adviskv::storage {
 
-// using TickFunc = void (*)();
-using TickFunc = std::function<void()>;
-
 // 这个就是一个计数触发器
 // 手动在外面保证传进来的limit_cnt是非负吧。
 class TickTrigger {
    public:
-    TickTrigger(int32_t limit_cnt, TickFunc func)
-        : limit_cnt_(limit_cnt), func_(func) {}
+    explicit TickTrigger(int32_t limit_cnt) : limit_cnt_(limit_cnt) {}
 
-    void tick() {
-        if (stop_flag_) return;
+    bool tick() {
+        if (stop_flag_) return false;
         cur_cnt_++;
         if (cur_cnt_ >= limit_cnt_) {
             cur_cnt_ = 0;
-            func_();
+            return true;
         }
+        return false;
     }
 
-    void reset(int32_t limit_cnt) {
+    bool reset(int32_t limit_cnt) {
         stop_flag_ = false;
         cur_cnt_ = 0;
         limit_cnt_ = limit_cnt;
         if (cur_cnt_ >= limit_cnt_) {
             cur_cnt_ = 0;
-            func_();
+            return true;
         }
+        return false;
     }
 
     void clear() { cur_cnt_ = 0; }
@@ -52,7 +49,6 @@ class TickTrigger {
     bool stop_flag_{false};
     int32_t cur_cnt_{0};
     int32_t limit_cnt_;
-    TickFunc func_;
 };
 
 class PersistEngine;
@@ -62,7 +58,7 @@ class RaftNode {
     RaftNode(const ReplicaID& self_id, const std::vector<PeerMember>& members,
              PersistEngine* persist);
 
-    void tick();
+    void tick(RaftEffects& effects);
 
     // 处理外层的写请求
     // 这里返回值第一个是Status，
@@ -81,7 +77,8 @@ class RaftNode {
     // 当replica通过flush_message去发送消息之后， 会返回过来结果
     // raft_node会再去处理这个，response
     void handle_vote_response(const ReplicaID& from,
-                              const RequestVoteResult& result);
+                              const RequestVoteResult& result,
+                              RaftEffects& effects);
 
     Status handle_append_response(const ReplicaID& from,
                                   const AppendEntriesParam& sent_param,
@@ -195,8 +192,8 @@ class RaftNode {
     Status ensure_ready_unlocked() const;
 
     void become_follower(Term later_term);
-    void become_leader();
-    void become_candidate();
+    void become_leader(RaftEffects& effects);
+    void become_candidate(RaftEffects& effects);
     void enter_faulted_unlocked(const Status& reason);
 
     void try_update_commit_index();
