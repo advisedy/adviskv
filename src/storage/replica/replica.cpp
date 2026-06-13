@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <mutex>
+#include <utility>
 
 #include "common/define.h"
 #include "common/log.h"
@@ -55,10 +56,11 @@ Status Replica::put(const PutParam& param) {
     // 提交给 RaftNode
     LogIndex new_commit_idx = 0;
     Status status;
+    RaftEffects effects;
     {
         ADVISKV_METRICS_TIMER("storage_replica_put_propose");
-        auto propose_result =
-            raft_node_->propose(WriteOpType::PUT, param.key, param.value);
+        auto propose_result = raft_node_->propose_with_effects(
+            WriteOpType::PUT, param.key, param.value, effects);
         status = propose_result.first;
         new_commit_idx = propose_result.second;
     }
@@ -67,7 +69,7 @@ Status Replica::put(const PutParam& param) {
     // 发送 RaftNode 产出的消息（同步 RPC）
     {
         ADVISKV_METRICS_TIMER("storage_replica_put_flush_messages");
-        flush_messages();
+        RETURN_IF_INVALID_STATUS(drive_raft_effects(std::move(effects)))
     }
 
     // (AI重新表述过的版本，自己的语言描述太烂了）：
@@ -168,10 +170,39 @@ void Replica::flush_messages() {
     ADVISKV_METRICS_TIMER("storage_raft_flush_messages");
     ADVISKV_METRICS_COUNTER("storage_raft_flush_messages_batch");
 
-    auto messages = raft_node_->extract_messages();
+    RaftEffects effects;
+    effects.messages = raft_node_->extract_messages();
     ADVISKV_METRICS_COUNTER("storage_raft_flush_messages_message",
-                            static_cast<int64_t>(messages.size()));
-    for (auto& msg : messages) {
+                            static_cast<int64_t>(effects.messages.size()));
+    if (Status status = drive_raft_effects(std::move(effects)); status.fail()) {
+        LOG_WARN("storage raft drive messages failed, status:{}",
+                 status.to_string());
+    }
+}
+
+Status Replica::drive_raft_effects(RaftEffects effects) {
+    if (effects.entries_to_rewrite.has_value() &&
+        !effects.entries_to_append.empty()) {
+        return Status::INVALID_ARGUMENT(
+            "cannot append and rewrite raft log in one effects batch");
+    }
+
+    if (effects.hard_state.has_value()) {
+        RETURN_IF_INVALID_STATUS(
+            fault_if_fail(persist_->save_raft_meta(*effects.hard_state)))
+    }
+
+    if (effects.entries_to_rewrite.has_value()) {
+        RETURN_IF_INVALID_STATUS(
+            fault_if_fail(persist_->rewrite_wal(*effects.entries_to_rewrite)))
+    }
+
+    if (!effects.entries_to_append.empty()) {
+        RETURN_IF_INVALID_STATUS(
+            fault_if_fail(persist_->append_wal_batch(effects.entries_to_append)))
+    }
+
+    for (auto& msg : effects.messages) {
         switch (msg.type) {
             case RaftMessageType::REQUEST_VOTE: {
                 ADVISKV_METRICS_TIMER(
@@ -221,16 +252,8 @@ void Replica::flush_messages() {
             }
         }
     }
-}
 
-Status Replica::apply_committed_entries() {
-    ADVISKV_METRICS_TIMER("storage_replica_apply_committed_entries");
-    ADVISKV_METRICS_COUNTER("storage_replica_apply_committed_entries_request");
-
-    auto entries = raft_node_->extract_committed_entries();
-    ADVISKV_METRICS_COUNTER("storage_replica_apply_entry",
-                            static_cast<int64_t>(entries.size()));
-    for (const LogEntry& entry : entries) {
+    for (const LogEntry& entry : effects.committed_entries) {
         Status status = state_machine_->apply(entry);
         if (status.fail()) {
             ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_failure");
@@ -242,6 +265,18 @@ Status Replica::apply_committed_entries() {
         raft_node_->advance_last_applied(entry.index);
     }
     return Status::OK();
+}
+
+Status Replica::apply_committed_entries() {
+    ADVISKV_METRICS_TIMER("storage_replica_apply_committed_entries");
+    ADVISKV_METRICS_COUNTER("storage_replica_apply_committed_entries_request");
+
+    RaftEffects effects;
+    effects.committed_entries = raft_node_->extract_committed_entries();
+    ADVISKV_METRICS_COUNTER(
+        "storage_replica_apply_entry",
+        static_cast<int64_t>(effects.committed_entries.size()));
+    return drive_raft_effects(std::move(effects));
 }
 
 Status Replica::get(const GetParam& param, Value& value) {
@@ -296,10 +331,11 @@ Status Replica::del(const DelParam& param) {
 
     LogIndex new_commit_idx = 0;
     Status status;
+    RaftEffects effects;
     {
         ADVISKV_METRICS_TIMER("storage_replica_delete_propose");
-        auto propose_result =
-            raft_node_->propose(WriteOpType::DEL, param.key, "");
+        auto propose_result = raft_node_->propose_with_effects(
+            WriteOpType::DEL, param.key, "", effects);
         status = propose_result.first;
         new_commit_idx = propose_result.second;
     }
@@ -307,7 +343,7 @@ Status Replica::del(const DelParam& param) {
 
     {
         ADVISKV_METRICS_TIMER("storage_replica_delete_flush_messages");
-        flush_messages();
+        RETURN_IF_INVALID_STATUS(drive_raft_effects(std::move(effects)))
     }
 
     // delete 与 put 的完成语义保持一致：只有当当前请求对应的日志在本次返回前

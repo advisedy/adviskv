@@ -69,6 +69,10 @@ class RaftNode {
     // 第二个是commit之后，新的commit_index应该对应是多少
     std::pair<Status, LogIndex> propose(WriteOpType op, const Key& key,
                                         const Value& value);
+    std::pair<Status, LogIndex> propose_with_effects(WriteOpType op,
+                                                     const Key& key,
+                                                     const Value& value,
+                                                     RaftEffects& effects);
 
     // 处理来自storage_service_impl的RPC的请求
     void handle_request_vote(const RequestVoteParam& param,

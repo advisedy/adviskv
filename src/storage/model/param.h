@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "common/define.h"
 #include "common/status.h"
@@ -159,6 +160,15 @@ struct RaftMessage {
     RequestVoteParam vote_param{};
     AppendEntriesParam append_param{};
     InstallSnapshotParam snapshot_param{};
+};
+
+// raftnode的产物，交给replica去做
+struct RaftEffects {
+    std::optional<RaftMeta> hard_state;
+    std::vector<LogEntry> entries_to_append;
+    std::optional<std::vector<LogEntry>> entries_to_rewrite;
+    std::vector<RaftMessage> messages;
+    std::vector<LogEntry> committed_entries;
 };
 
 }  // namespace adviskv::storage
