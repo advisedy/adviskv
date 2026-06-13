@@ -151,32 +151,7 @@ void RaftNode::send_request_vote_to(const PeerMember& member) {
 
 然后replica侧调用apply_committed_entries，去apply到状态机上。同时也会更新raft_node的last_apply_
 */
-std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
-                                              const Value& value) {
-    RaftEffects effects;
-    auto [status, new_commit_idx] =
-        propose_with_effects(op, key, value, effects);
-    if (status.fail()) return {status, new_commit_idx};
-
-    if (persist_ && !effects.entries_to_append.empty()) {
-        status = persist_->append_wal_batch(effects.entries_to_append);
-        if (status.fail()) {
-            std::lock_guard lock(mutex_);
-            enter_faulted_unlocked(status);
-            return {status, -1};
-        }
-    }
-
-    {
-        std::lock_guard lock(mutex_);
-        for (RaftMessage& msg : effects.messages) {
-            pending_messages_.push_back(std::move(msg));
-        }
-    }
-    return {Status::OK(), new_commit_idx};
-}
-
-std::pair<Status, LogIndex> RaftNode::propose_with_effects(
+std::pair<Status, LogIndex> RaftNode::propose(
     WriteOpType op, const Key& key, const Value& value, RaftEffects& effects) {
     std::lock_guard lock(mutex_);
     effects = RaftEffects{};
@@ -337,9 +312,11 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
 
 // 这个是leadr发过来，raftnode作为follower/cacdidate做的handle
 void RaftNode::handle_append_entries(const AppendEntriesParam& param,
-                                     AppendEntriesResult& result) {
+                                     AppendEntriesResult& result,
+                                     RaftEffects& effects) {
     ADVISKV_METRICS_TIMER("storage_raft_handle_append_entries");
     ADVISKV_METRICS_COUNTER("storage_raft_handle_append_entries_request");
+    effects = RaftEffects{};
     if (param.entries.empty()) {
         ADVISKV_METRICS_COUNTER("storage_raft_handle_append_entries_heartbeat");
     } else {
@@ -451,21 +428,11 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
             }
         }
 
-        if (persist_ && !new_entries.empty()) {
-            Status status = need_rewrite_wal
-                                ? persist_->rewrite_wal(updated_entries)
-                                : persist_->append_wal_batch(new_entries);
-            if (status.ok()) {
-                ADVISKV_METRICS_COUNTER(
-                    "storage_raft_handle_append_entries_wal_batch_success");
+        if (!new_entries.empty()) {
+            if (need_rewrite_wal) {
+                effects.entries_to_rewrite = updated_entries;
             } else {
-                ADVISKV_METRICS_COUNTER(
-                    "storage_raft_handle_append_entries_wal_batch_failure");
-                // 处理好失败状态
-                LOG_WARN(
-                    "storage raft handle append entires wal batch failed!");
-                enter_faulted_unlocked(status);
-                return;
+                effects.entries_to_append = std::move(new_entries);
             }
         }
         log_entries_ = std::move(updated_entries);

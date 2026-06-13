@@ -59,8 +59,9 @@ Status Replica::put(const PutParam& param) {
     RaftEffects effects;
     {
         ADVISKV_METRICS_TIMER("storage_replica_put_propose");
-        auto propose_result = raft_node_->propose_with_effects(
-            WriteOpType::PUT, param.key, param.value, effects);
+        auto propose_result =
+            raft_node_->propose(WriteOpType::PUT, param.key, param.value,
+                                effects);
         status = propose_result.first;
         new_commit_idx = propose_result.second;
     }
@@ -334,8 +335,8 @@ Status Replica::del(const DelParam& param) {
     RaftEffects effects;
     {
         ADVISKV_METRICS_TIMER("storage_replica_delete_propose");
-        auto propose_result = raft_node_->propose_with_effects(
-            WriteOpType::DEL, param.key, "", effects);
+        auto propose_result =
+            raft_node_->propose(WriteOpType::DEL, param.key, "", effects);
         status = propose_result.first;
         new_commit_idx = propose_result.second;
     }
@@ -388,7 +389,9 @@ Status Replica::handle_append_entries(const AppendEntriesParam& param,
     RETURN_IF_INVALID_STATUS(acquire_operation(guard))
 
     // 这里是作为follower那边的handle，会更新commit_idx
-    raft_node_->handle_append_entries(param, result);
+    RaftEffects effects;
+    raft_node_->handle_append_entries(param, result, effects);
+    RETURN_IF_INVALID_STATUS(drive_raft_effects(std::move(effects)))
 
     // 收到 AppendEntries 后，可能有新的 committed entries 需要 apply
     {
