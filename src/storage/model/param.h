@@ -1,5 +1,7 @@
 #pragma once
 
+#include <fmt/format.h>
+
 #include <cstdint>
 #include <optional>
 
@@ -37,6 +39,11 @@ struct LogEntry {
                value == other.value;
     }
     DEFINE_OPERATOR_NOT_EQUAL(LogEntry)
+
+    std::string to_string() const {
+        return fmt::format("[term:{}, index:{}, key:{}, value:{}, op_type:{}]",
+                           term, index, key, value, to<int32>(op_type));
+    }
 };
 
 struct PutParam {

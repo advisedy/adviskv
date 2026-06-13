@@ -67,8 +67,7 @@ adviskv::sdm::SdmMetaStoreType get_metastore_type() {
 
 std::string get_metastore_data_dir() {
     return adviskv::path_from_project_root(
-               CONF_GET_STR("data_dir", std::string("./build/"
-                                                    "sdm_metastore")))
+               CONF_GET_STR("data_dir", std::string("build/runtime/data/sdm")))
         .string();
 }
 

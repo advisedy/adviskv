@@ -60,7 +60,9 @@ Status RaftSender::send_append_entries(const PeerMember& member,
     for (int i = 0, siz = param.entries.size(); i < siz; i++) {
         LOG_DEBUG(
             "leader replica:{} send append entires to replica:{}, "
-            "entries[{}]:[op_type:{}, key:{}, value:{}, term:{}, index:{}]");
+            "entries[{}]:{}",
+            param.from_replica_id.to_string(), param.to_replica_id.to_string(),
+            i, param.entries[i].to_string());
     }
 
     Status status =

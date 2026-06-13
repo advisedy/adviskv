@@ -1,4 +1,6 @@
+import argparse
 import os
+import shlex
 import socket
 import subprocess
 import time
@@ -156,8 +158,9 @@ class LocalCluster:
     def _log_path_for(self, spec: ServiceSpec) -> Optional[Path]:
         if not self.capture_output:
             return None
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        return (self.log_dir / spec.name).with_suffix(".out")
+        service_log_dir = self.log_dir / spec.name
+        service_log_dir.mkdir(parents=True, exist_ok=True)
+        return service_log_dir
 
     def _launch_process(self, spec: ServiceSpec, env: dict[str, str],
                         log_path: Optional[Path]) -> subprocess.Popen:
@@ -169,20 +172,23 @@ class LocalCluster:
                 text=True,
             )
 
-        with log_path.open("w", encoding="utf-8") as log_file:
+        stdout_path = log_path / "stdout.log"
+        stderr_path = log_path / "stderr.log"
+        with stdout_path.open("w", encoding="utf-8") as stdout_file, \
+                stderr_path.open("w", encoding="utf-8") as stderr_file:
             return subprocess.Popen(
                 spec.command,
                 cwd=ROOT_DIR,
                 env=env,
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
+                stdout=stdout_file,
+                stderr=stderr_file,
                 text=True,
             )
 
     def _log_hint(self, log_path: Optional[Path]) -> str:
         if log_path is None:
             return "stdout/stderr not captured by LocalCluster"
-        return f"log: {log_path}"
+        return f"logs: {log_path / 'stdout.log'}, {log_path / 'stderr.log'}"
 
     def _wait_until_started(self, handle: ProcessHandle) -> None:
         time.sleep(1.0)
@@ -324,3 +330,138 @@ def cluster_from_confs(
         log_dir=log_dir,
         capture_output=capture_output,
     )
+
+
+def default_cluster() -> LocalCluster:
+    return cluster_from_confs(
+        log_dir=BUILD_DIR / "runtime" / "logs",
+        sdm_conf=ROOT_DIR / "conf" / "sdm.yaml",
+        meta_conf=ROOT_DIR / "conf" / "meta.yaml",
+        storage_confs=[
+            ROOT_DIR / "conf" / "storage-1.yaml",
+            ROOT_DIR / "conf" / "storage-2.yaml",
+            ROOT_DIR / "conf" / "storage-3.yaml",
+        ],
+        capture_output=True,
+    )
+
+
+def list_processes() -> list[tuple[int, str]]:
+    output = subprocess.run(
+        ["ps", "-Ao", "pid=,command="],
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    ).stdout
+    processes: list[tuple[int, str]] = []
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        pid_text, _, command = line.partition(" ")
+        try:
+            processes.append((int(pid_text), command.strip()))
+        except ValueError:
+            continue
+    return processes
+
+
+def spec_matches_command(spec: ServiceSpec, command: str) -> bool:
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        return False
+    if not argv:
+        return False
+    if Path(argv[0]).name != Path(spec.command[0]).name:
+        return False
+    return all(arg in argv[1:] for arg in spec.command[1:])
+
+
+def find_pids_for_spec(spec: ServiceSpec) -> list[int]:
+    return [
+        pid
+        for pid, command in list_processes()
+        if spec_matches_command(spec, command)
+    ]
+
+
+def print_status(cluster: LocalCluster) -> None:
+    for spec in cluster.specs:
+        pids = find_pids_for_spec(spec)
+        state = "RUNNING" if pids else "STOPPED"
+        pid_text = ",".join(str(pid) for pid in pids) if pids else "-"
+        print(f"{spec.name:<10} {state:<7} pid={pid_text:<10} {spec.host}:{spec.port}")
+
+
+def kill_spec(spec: ServiceSpec) -> None:
+    pids = find_pids_for_spec(spec)
+    if not pids:
+        print(f"{spec.name} already stopped")
+        return
+    print(f"stopping {spec.name}: {pids}")
+    for pid in pids:
+        try:
+            os.kill(pid, 15)
+        except ProcessLookupError:
+            pass
+    time.sleep(1.0)
+    remaining = find_pids_for_spec(spec)
+    if remaining:
+        print(f"force killing {spec.name}: {remaining}")
+        for pid in remaining:
+            try:
+                os.kill(pid, 9)
+            except ProcessLookupError:
+                pass
+
+
+def start_spec(cluster: LocalCluster, spec: ServiceSpec) -> None:
+    if find_pids_for_spec(spec):
+        print(f"{spec.name} already running")
+        return
+    cluster.start_service(spec.name)
+    print(f"{spec.name} started")
+
+
+def handle_cli(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Manage local AdvisKV demo cluster")
+    parser.add_argument("command", choices=["start", "stop", "kill", "restart", "status"])
+    parser.add_argument("service", nargs="?", help="sdm, meta, storage-1, storage-2, storage-3")
+    args = parser.parse_args(argv)
+
+    cluster = default_cluster()
+    known = {spec.name: spec for spec in cluster.specs}
+
+    if args.command == "status":
+        print_status(cluster)
+        return 0
+
+    if args.command == "start" and args.service is None:
+        for spec in cluster.specs:
+            start_spec(cluster, spec)
+        return 0
+
+    if args.command == "stop" and args.service is None:
+        for spec in reversed(cluster.specs):
+            kill_spec(spec)
+        return 0
+
+    if args.service not in known:
+        print(f"unknown service: {args.service}", file=os.sys.stderr)
+        print(f"known services: {', '.join(known)}", file=os.sys.stderr)
+        return 1
+
+    spec = known[args.service]
+    if args.command in ("stop", "kill"):
+        kill_spec(spec)
+    elif args.command == "start":
+        start_spec(cluster, spec)
+    elif args.command == "restart":
+        kill_spec(spec)
+        start_spec(cluster, spec)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(handle_cli(os.sys.argv[1:]))

@@ -5,16 +5,16 @@ port: 50053
 listen_host: "127.0.0.1"
 resource_pool: "default"
 dc: "dc1"
-data_dir: "build/storage-3-data"
+data_dir: "build/runtime/data/storage-3"
 heartbeat_interval_ms: 3000
 raft_rpc_timeout_ms: 1000
 
 #log
 logger_name: "storage-3_log"
-log_dir: "./build/logs/storage-3"
+log_dir: "build/runtime/logs/storage-3"
 log_filename: "storage-3.log"
 log_level: "debug"
-log_to_console: true
+log_to_console: false
 log_to_file: true
 
 #sdm

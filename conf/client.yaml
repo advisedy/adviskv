@@ -1,0 +1,7 @@
+meta_host: "127.0.0.1"
+meta_port: 50048
+sdm_host: "127.0.0.1"
+sdm_port: 50049
+meta_timeout_ms: 3000
+sdm_timeout_ms: 3000
+storage_timeout_ms: 3000

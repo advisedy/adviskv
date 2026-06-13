@@ -240,8 +240,7 @@ BUILD_TARGETS="meta sdm storage" ./scripts/build.sh
 - `build/bin/meta`
 - `build/bin/sdm`
 - `build/bin/storage`
-- `build/bin/meta_cli`
-- `build/bin/storage_cli`
+- `build/bin/adviskvctl`
 - `build/bin/e2e_client`
 - `build/bin/bench_client`
 
@@ -269,7 +268,17 @@ BUILD_TARGETS="meta sdm storage" ./scripts/build.sh
 ./scripts/build.sh
 ```
 
-### 2. 启动本地单节点集群
+### 2. 一键启动 Demo Shell
+
+推荐使用 demo 脚本启动交互式 CLI：
+
+```bash
+./scripts/adviskvctl_demo.sh
+```
+
+该脚本会先停止旧本地进程，清空 `build/` 下的 demo 数据目录，启动默认本地集群，然后进入 `adviskvctl`。退出 shell 或按 `Ctrl-C` 后，脚本会自动关闭本地集群。
+
+### 3. 手动启动本地单节点集群
 
 默认配置文件：
 
@@ -280,32 +289,38 @@ BUILD_TARGETS="meta sdm storage" ./scripts/build.sh
 建议在三个终端中按顺序启动：
 
 ```bash
-./build/bin/sdm
+./build/bin/sdm --conf=conf/sdm.yaml
 ```
 
 ```bash
-./build/bin/storage conf/storage-1.yaml
+./build/bin/storage --conf=conf/storage-1.yaml
 ```
 
 ```bash
-./build/bin/meta
+./build/bin/meta --conf=conf/meta.yaml
 ```
 
-注意：`meta` 和 `sdm` 可以不传参数，分别默认读取 `conf/meta.yaml` 和 `conf/sdm.yaml`；`storage` 当前要求显式传入配置文件。
+注意：`meta`、`sdm` 和 `storage` 都必须显式使用 `--conf=...` 传入配置文件；相对路径会按项目根目录解析。
 
-### 3. 创建数据库和表
+### 4. 使用统一 CLI 演示
 
-启动 `meta_cli`：
+启动 `adviskvctl` 交互式 shell：
 
 ```bash
-./build/bin/meta_cli --host 127.0.0.1 --port 50048
+./build/bin/adviskvctl
 ```
+
+默认读取 `conf/client.yaml`；该文件只描述 CLI/SDK 客户端连接信息和 RPC 超时，不用于启动服务端进程。
 
 在交互式命令行中执行：
 
 ```text
 create_db demo_db dc1
 create_table demo_db demo_table 1 1 default
+wait_table demo_db demo_table
+put demo_db demo_table k1 v1
+get demo_db demo_table k1
+route demo_db demo_table k1
 get_table demo_db demo_table
 quit
 ```
@@ -314,9 +329,11 @@ quit
 
 - `create_db demo_db dc1`：创建数据库 `demo_db`，zone 为 `dc1`。
 - `create_table demo_db demo_table 1 1 default`：创建 1 个 shard、1 个 replica 的表，资源池为 `default`。
+- `put/get`：通过 SDK 自动向 SDM 查询 route，再访问对应 Storage leader。
+- `route demo_db demo_table k1`：展示 key 对应 shard 和 replica leader/follower。
 - `get_table demo_db demo_table`：查询表状态。
 
-### 4. 运行基础 E2E
+### 5. 运行基础 E2E
 
 在集群运行状态下执行：
 
@@ -339,7 +356,7 @@ quit
 
 如果使用默认 `conf/storage-1.yaml` 只启动一个 Storage 节点，建议把 `replica_count` 设为 `1`。默认 benchmark/e2e 配置中部分场景使用 `replica_count=3`，需要准备多个 Storage 节点配置和进程。
 
-### 5. 停止本地进程
+### 6. 停止本地进程
 
 ```bash
 ./scripts/stop_cluster.sh
@@ -492,46 +509,38 @@ SDK 行为：
 
 ### CLI 工具
 
-#### meta_cli
+#### adviskvctl
+
+`adviskvctl` 是推荐的统一演示入口，启动后进入交互式 shell。
 
 ```bash
-./build/bin/meta_cli --host 127.0.0.1 --port 50048
+./build/bin/adviskvctl
 ```
 
-支持命令：
+默认读取 `conf/client.yaml`；如需连接另一套集群，可使用 `--conf=<client.yaml>` 指定客户端配置。
+
+Shell 内常用命令：
 
 ```text
-create_db <db_name> <zone>
-create_table <db_name> <table_name> <shard_count> <replica_count> <resource_pool>
-get_table <db_name> <table_name>
-help
-quit
+create_db <db> <zone>
+create_table <db> <table> <shards> <replicas> <resource_pool>
+wait_table <db> <table> [timeout_ms]
+put <db> <table> <key> <value>
+get <db> <table> <key>
+delete <db> <table> <key>
+route <db> <table> <key>
+demo status
+demo kill <service>
+demo restart <service>
 ```
 
-#### storage_cli
-
-`storage_cli` 直接访问指定 Storage、table 和 shard，适合调试 Storage RPC，不负责 route 解析。
-
-```bash
-./build/bin/storage_cli --host 127.0.0.1 --port 50051 --table_id 1 --shard_id 0
-```
-
-支持命令：
-
-```text
-put <key> <value>
-get <key>
-help
-quit
-```
-
-使用前需要确保对应 `table_id/shard_id` 的 replica 已在该 Storage 上创建并处于可服务状态。
+`demo *` 命令只用于本地演示环境，会桥接 `scripts/local_cluster.py` 管理本机进程，不代表线上数据库管理接口。
 
 ## 配置说明
 
 ### Meta 配置
 
-默认文件：`conf/meta.yaml`。
+示例文件：`conf/meta.yaml`，启动时必须通过 `--conf=conf/meta.yaml` 显式指定。
 
 - `listen_host`：Meta 监听地址，默认 `127.0.0.1`。
 - `port`：Meta 监听端口，当前默认 `50048`。
@@ -541,7 +550,7 @@ quit
 
 ### SDM 配置
 
-默认文件：`conf/sdm.yaml`。
+示例文件：`conf/sdm.yaml`，启动时必须通过 `--conf=conf/sdm.yaml` 显式指定。
 
 - `listen_host`：SDM 监听地址，默认 `127.0.0.1`。
 - `port`：SDM 监听端口，当前默认 `50049`。
@@ -550,7 +559,7 @@ quit
 
 ### Storage 配置
 
-默认文件：`conf/storage-1.yaml`。
+示例文件：`conf/storage-1.yaml`，启动时必须通过 `--conf=conf/storage-1.yaml` 显式指定。
 
 - `node_id`：Storage 节点 ID，例如 `storage-1`。
 - `ip` / `port`：Storage 对外服务地址，当前默认 `127.0.0.1:50051`。
@@ -563,6 +572,30 @@ quit
 - `manager_host` / `manager_port`：SDM 地址。
 - `metrics_http_enable`：是否启用 metrics HTTP server。
 - `metrics_http_host` / `metrics_http_port` / `metrics_http_path`：metrics HTTP 配置，默认 `127.0.0.1:51051/metrics`。
+
+### 本地运行目录
+
+默认本地运行态文件统一放在 `build/runtime/`：
+
+```text
+build/runtime/
+  data/
+    meta/
+    sdm/
+    storage-1/
+    storage-2/
+    storage-3/
+  logs/
+    meta/
+    sdm/
+    storage-1/
+    storage-2/
+    storage-3/
+```
+
+- `data/`：Meta、SDM、Storage 的持久化数据。
+- `logs/`：服务内部日志；`local_cluster.py` 捕获的进程标准流分别写入对应服务目录下的 `stdout.log` 和 `stderr.log`。
+- `scripts/adviskvctl_demo.sh` 会在启动前清空 `build/runtime/`，确保 demo 从干净集群开始。
 
 ## 项目结构
 
@@ -588,6 +621,8 @@ adviskv/
 │   ├── coverage.sh
 │   ├── bench.sh
 │   ├── run_ci_local.sh
+│   ├── adviskvctl_demo.sh
+│   ├── local_cluster.py
 │   └── stop_cluster.sh
 ├── src/
 │   ├── common/                # 日志、配置、状态码、metrics、线程池、后台任务等通用组件
@@ -596,7 +631,7 @@ adviskv/
 │   ├── storage/               # 数据面：Raft、replica、engine、persist、NodeAgent、Storage RPC
 │   └── sdk/                   # C++ KVClient、route client、storage client
 ├── tools/
-│   ├── cli/                   # meta_cli、storage_cli
+│   ├── cli/                   # adviskvctl 统一交互式 CLI
 │   ├── e2e/                   # C++ E2E client 和场景工具
 │   └── bench/                 # benchmark client
 ├── test/                      # GoogleTest 单测和 Python E2E 测试

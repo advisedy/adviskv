@@ -1,11 +1,11 @@
 
 # log
 logger_name: "test_log"
-log_dir: "./build/logs/test"
+log_dir: "build/runtime/logs/test"
 log_filename: "test.log"
 log_level: "debug"
 log_to_console: false
 log_to_file: true
 
 # test shared paths
-test_data_root: "./build/test_data"
+test_data_root: "build/runtime/test_data"

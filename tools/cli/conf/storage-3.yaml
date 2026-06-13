@@ -1,5 +1,0 @@
-host: "127.0.0.1"
-port: 50053
-table_id: 0
-shard_id: 0
-timeout_ms: 3000
