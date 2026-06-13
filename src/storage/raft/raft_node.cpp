@@ -153,7 +153,33 @@ void RaftNode::send_request_vote_to(const PeerMember& member) {
 */
 std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
                                               const Value& value) {
-    std::lock_guard lock(mutex_);  // ← 加锁
+    RaftEffects effects;
+    auto [status, new_commit_idx] =
+        propose_with_effects(op, key, value, effects);
+    if (status.fail()) return {status, new_commit_idx};
+
+    if (persist_ && !effects.entries_to_append.empty()) {
+        status = persist_->append_wal_batch(effects.entries_to_append);
+        if (status.fail()) {
+            std::lock_guard lock(mutex_);
+            enter_faulted_unlocked(status);
+            return {status, -1};
+        }
+    }
+
+    {
+        std::lock_guard lock(mutex_);
+        for (RaftMessage& msg : effects.messages) {
+            pending_messages_.push_back(std::move(msg));
+        }
+    }
+    return {Status::OK(), new_commit_idx};
+}
+
+std::pair<Status, LogIndex> RaftNode::propose_with_effects(
+    WriteOpType op, const Key& key, const Value& value, RaftEffects& effects) {
+    std::lock_guard lock(mutex_);
+    effects = RaftEffects{};
 
     Status ready_status = ensure_ready_unlocked();
     if (ready_status.fail()) return {ready_status, -1};
@@ -161,7 +187,6 @@ std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
     if (role_ != ReplicaRole::LEADER) {
         return {Status{StatusCode::NOT_LEADER, "not leader"}, -1};
     }
-    LogIndex new_commit_idx = last_log_index_unlocked() + 1;
 
     LogEntry entry;
     entry.term = current_term_;
@@ -170,26 +195,18 @@ std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
     entry.key = key;
     entry.value = value;
 
-    if (persist_) {
-        Status status = persist_->append_wal(entry);
-        if (status.fail()) {
-            // 但是发现这里如果失败了的话，那持久化的文件也应该是收到了损伤了，那按照我们的截取的思路，那后面的内容就都没有办法保留了。
-            // 这里以后我们再想办法处理吧.
-            enter_faulted_unlocked(status);
-            return {status, -1};
-        }
-    }
+    const LogIndex new_commit_idx = entry.index;
     log_entries_.push_back(entry);
+    effects.entries_to_append.push_back(entry);
 
-    // 广播给所有 follower
     broadcast_append_entries();
+    effects.messages.swap(pending_messages_);
 
     if (role_ != ReplicaRole::LEADER) {
         return {Status{StatusCode::NOT_LEADER, "not leader"}, -1};
     }
 
     if (role_ == ReplicaRole::LEADER and members_.size() == 1) {
-        // 如果自己是leader，并且整个group只有自己一个节点的话，那就更新下commit_idx
         try_update_commit_index();
     }
 

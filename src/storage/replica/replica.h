@@ -76,6 +76,8 @@ class Replica {
     // 把raft_node发生的消息落实他，发送RPC消息
     void flush_messages();
 
+    Status drive_raft_effects(RaftEffects effects);
+
     // 把已经提交但是还没有apply的entry给apply到我们的engine
     // 调用方必须已经持有state_machine_mutex_，内部没有吃锁，放到外部了。
     Status apply_committed_entries();
