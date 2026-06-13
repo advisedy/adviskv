@@ -69,7 +69,8 @@ class RaftNode {
 
     // 处理来自storage_service_impl的RPC的请求
     void handle_request_vote(const RequestVoteParam& param,
-                             RequestVoteResult& result);
+                             RequestVoteResult& result,
+                             RaftEffects& effects);
     void handle_append_entries(const AppendEntriesParam& param,
                                AppendEntriesResult& result,
                                RaftEffects& effects);
@@ -82,7 +83,8 @@ class RaftNode {
 
     Status handle_append_response(const ReplicaID& from,
                                   const AppendEntriesParam& sent_param,
-                                  const AppendEntriesResult& result);
+                                  const AppendEntriesResult& result,
+                                  RaftEffects& effects);
 
     std::vector<RaftMessage>
     extract_messages();  // 提取raft这边产生的message，replica读取了之后会进行这些操作。
@@ -139,13 +141,15 @@ class RaftNode {
     // Snapshot 支持
     void install_local_snapshot(LogIndex snapshot_index, Term snapshot_term);
     Status install_leader_snapshot(LogIndex snapshot_index, Term snapshot_term,
-                                 Term leader_term);
+                                   Term leader_term, RaftEffects& effects);
 
     // InstallSnapshot 回调
     void handle_install_snapshot_response(const ReplicaID& from,
-                                          const InstallSnapshotResult& result);
+                                          const InstallSnapshotResult& result,
+                                          RaftEffects& effects);
 
-    Status prepare_install_snapshot(Term leader_term, LogIndex snapshot_index);
+    Status prepare_install_snapshot(Term leader_term, LogIndex snapshot_index,
+                                    RaftEffects& effects);
 
     // revocer 的时候更新用的
     void update_raft_meta(const RaftMeta& meta);
@@ -179,10 +183,6 @@ class RaftNode {
     LogIndex last_log_index_unlocked() const;
     Term last_log_term_unlocked() const;
 
-    Status save_raft_meta() const;
-    Status save_raft_meta(Term current_term,
-                          std::optional<ReplicaID> voted_for) const;
-
     int64_t index_to_offset(LogIndex index) const;
     LogIndex offset_to_index(int64_t offset) const;
 
@@ -191,7 +191,7 @@ class RaftNode {
     Status ensure_not_faulted_unlocked() const;
     Status ensure_ready_unlocked() const;
 
-    void become_follower(Term later_term);
+    void become_follower(Term later_term, RaftEffects& effects);
     void become_leader(RaftEffects& effects);
     void become_candidate(RaftEffects& effects);
     void enter_faulted_unlocked(const Status& reason);
@@ -202,6 +202,7 @@ class RaftNode {
                                    Term snapshot_term);
     void finish_recovering_unlocked();
     bool has_committed_current_term_entry_unlocked() const;
+    void record_hard_state_unlocked(RaftEffects& effects) const;
     RaftMessage build_append_entries_message_unlocked(const PeerMember& member,
                                                       LogIndex next_index);
 
