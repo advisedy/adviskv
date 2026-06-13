@@ -147,7 +147,6 @@ SDK -> SDM GetRoute -> Storage Put/Get/Delete -> Raft -> KV StateMachine
 - Ninja。
 - Git。
 - Python 3，用于 E2E pytest 和部分脚本。
-- Docker，可选，仅用于本地 CI 脚本。
 - gcovr，可选，仅用于 coverage 报告。
 
 macOS 示例：
@@ -620,7 +619,6 @@ adviskv/
 │   ├── e2e_pytest.sh
 │   ├── coverage.sh
 │   ├── bench.sh
-│   ├── run_ci_local.sh
 │   ├── adviskvctl_demo.sh
 │   ├── local_cluster.py
 │   └── stop_cluster.sh
@@ -684,14 +682,6 @@ ctest --test-dir build --output-on-failure
 - 安装 `test/e2e/requirements.txt` 中的依赖。
 - 调用 `scripts/stop_cluster.sh` 清理旧进程。
 - 通过 pytest 执行 `test/e2e` 下的端到端测试。
-
-### 本地 CI
-
-```bash
-./scripts/run_ci_local.sh
-```
-
-该脚本使用 Docker 在 Ubuntu 镜像中安装依赖、复制仓库并执行 `scripts/run_test.sh`。
 
 ## Benchmark 测试结果
 
