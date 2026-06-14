@@ -37,6 +37,34 @@ class RaftNodeTest : public ::testing::Test {
                                std::string key, std::string value) {
         return LogEntry{term, index, op_type, std::move(key), std::move(value)};
     }
+
+    static Status drive_raft_effects(PersistEngine& persist,
+                                     const RaftEffects& effects) {
+        if (effects.entries_to_rewrite.has_value() &&
+            !effects.entries_to_append.empty()) {
+            return Status::INVALID_ARGUMENT(
+                "cannot append and rewrite raft log in one effects batch");
+        }
+        if (effects.hard_state.has_value()) {
+            RETURN_IF_INVALID_STATUS(persist.save_raft_meta(*effects.hard_state))
+        }
+        if (effects.entries_to_rewrite.has_value()) {
+            RETURN_IF_INVALID_STATUS(
+                persist.rewrite_wal(*effects.entries_to_rewrite))
+        }
+        if (!effects.entries_to_append.empty()) {
+            RETURN_IF_INVALID_STATUS(
+                persist.append_wal_batch(effects.entries_to_append))
+        }
+        return Status::OK();
+    }
+
+    static Status tick(PersistEngine& persist, RaftNode& node) {
+        RaftEffects effects;
+        node.tick(effects);
+        return drive_raft_effects(persist, effects);
+    }
+
     ReplicaID replica_id_{101, 7, 2};
     std::vector<PeerMember> members_{PeerMember{"", replica_id_, {}}};
 
@@ -53,9 +81,10 @@ TEST_F(RaftNodeTest, test_1) {
         Status status = persist.init();
         ASSERT_EQ(status, Status::OK());
     }
-    RaftNode node{replica_id_, members_, &persist};
+    RaftNode node{replica_id_, members_};
     for (int i = 1; i <= 30; i++) {
-        node.tick();
+        Status status = tick(persist, node);
+        ASSERT_EQ(status, Status::OK()) << status.to_string();
     }
     ASSERT_EQ(node.role(), ReplicaRole::LEADER);
 }
@@ -68,13 +97,18 @@ TEST_F(RaftNodeTest, test_2) {
         ASSERT_EQ(status, Status::OK());
     }
 
-    RaftNode node{replica_id_, members_, &persist};
+    RaftNode node{replica_id_, members_};
     for (int i = 1; i <= 30; i++) {
-        node.tick();
+        Status status = tick(persist, node);
+        ASSERT_EQ(status, Status::OK()) << status.to_string();
     }
     ASSERT_EQ(node.role(), ReplicaRole::LEADER);
-    auto [status, new_index] = node.propose(WriteOpType::PUT, "1", "1");
+    RaftEffects effects;
+    auto [status, new_index] =
+        node.propose(WriteOpType::PUT, "1", "1", effects);
     ASSERT_EQ(status, Status::OK());
+    status = drive_raft_effects(persist, effects);
+    ASSERT_EQ(status, Status::OK()) << status.to_string();
     std::vector<LogEntry> entries;
     status = persist.read_wal_batch(entries);
     ASSERT_EQ(status, Status::OK());
@@ -104,22 +138,28 @@ TEST_F(RaftNodeTest, RecoveringBlocksElectionVoteAndProposeUntilCatchUp) {
     Status persist_status = persist.init();
     ASSERT_EQ(persist_status, Status::OK());
 
-    RaftNode node{replica_id_, members, &persist};
+    RaftNode node{replica_id_, members};
 
     node.enter_recovering();
     ASSERT_TRUE(node.is_recovering());
 
     for (int i = 1; i <= 30; i++) {
-        node.tick();
+        Status tick_status = tick(persist, node);
+        ASSERT_EQ(tick_status, Status::OK()) << tick_status.to_string();
     }
     ASSERT_EQ(node.role(), ReplicaRole::FOLLOWER);
 
     RequestVoteResult vote_result;
+    RaftEffects vote_effects;
     node.handle_request_vote(RequestVoteParam{leader_id, replica_id_, 1, 0, 0},
-                             vote_result);
+                             vote_result, vote_effects);
+    Status vote_status = drive_raft_effects(persist, vote_effects);
+    ASSERT_EQ(vote_status, Status::OK()) << vote_status.to_string();
     ASSERT_FALSE(vote_result.vote_granted);
 
-    auto [status, new_index] = node.propose(WriteOpType::PUT, "k", "v");
+    RaftEffects propose_effects;
+    auto [status, new_index] =
+        node.propose(WriteOpType::PUT, "k", "v", propose_effects);
     ASSERT_TRUE(status.fail());
     ASSERT_EQ(new_index, -1);
 
@@ -132,7 +172,10 @@ TEST_F(RaftNodeTest, RecoveringBlocksElectionVoteAndProposeUntilCatchUp) {
                                     0,
                                     0,
                                     2};
-    node.handle_append_entries(append_param, append_result);
+    RaftEffects effects;
+    node.handle_append_entries(append_param, append_result, effects);
+    status = drive_raft_effects(persist, effects);
+    ASSERT_EQ(status, Status::OK()) << status.to_string();
 
     ASSERT_TRUE(append_result.success);
     ASSERT_EQ(node.commit_index(), 2);
@@ -145,12 +188,16 @@ TEST_F(RaftNodeTest, RecoveringFinishesWhenSnapshotCoversTarget) {
     Status status = persist.init();
     ASSERT_EQ(status, Status::OK());
 
-    RaftNode node{replica_id_, members_, &persist};
+    RaftNode node{replica_id_, members_};
 
     node.enter_recovering();
     ASSERT_TRUE(node.is_recovering());
 
-    node.install_leader_snapshot(5, 2, 2);
+    RaftEffects effects;
+    status = node.install_leader_snapshot(5, 2, 2, effects);
+    ASSERT_EQ(status, Status::OK()) << status.to_string();
+    status = drive_raft_effects(persist, effects);
+    ASSERT_EQ(status, Status::OK()) << status.to_string();
 
     ASSERT_EQ(node.snapshot_index(), 5);
     ASSERT_EQ(node.commit_index(), 5);
@@ -170,7 +217,7 @@ TEST_F(RaftNodeTest, HandleAppendEntriesRewritesWalWhenLeaderOverwritesConflict)
     status = persist.append_wal_batch(initial_entries);
     ASSERT_EQ(status, Status::OK());
 
-    RaftNode node{replica_id_, members_, &persist};
+    RaftNode node{replica_id_, members_};
     node.update_raft_meta(RaftMeta{2, std::nullopt});
     node.update_log_entries(initial_entries);
 
@@ -180,9 +227,12 @@ TEST_F(RaftNodeTest, HandleAppendEntriesRewritesWalWhenLeaderOverwritesConflict)
     };
     ReplicaID leader_id{101, 7, 1};
     AppendEntriesResult result;
+    RaftEffects effects;
     node.handle_append_entries(
         AppendEntriesParam{leader_id, replica_id_, 2, leader_entries, 1, 1, 3},
-        result);
+        result, effects);
+    status = drive_raft_effects(persist, effects);
+    ASSERT_EQ(status, Status::OK()) << status.to_string();
 
     ASSERT_TRUE(result.success);
 
@@ -198,21 +248,27 @@ TEST_F(RaftNodeTest, HandleAppendEntriesRewritesWalWhenLeaderOverwritesConflict)
     ASSERT_EQ(actual_entries, expected_entries);
 }
 
-TEST_F(RaftNodeTest, BecomeLeaderFaultsWhenNoopWalAppendFails) {
+TEST_F(RaftNodeTest, BecomeLeaderNoopWalAppendFailureIsReturnedByEffectsDriver) {
     PersistEngine persist = make_engine();
     Status status = persist.init();
     ASSERT_EQ(status, Status::OK());
+
+    RaftNode node{replica_id_, members_};
+    RaftEffects effects;
+    for (int i = 1; i <= 30; i++) {
+        node.tick(effects);
+        if (!effects.entries_to_append.empty()) break;
+    }
+    ASSERT_EQ(node.role(), ReplicaRole::LEADER);
+    ASSERT_EQ(effects.entries_to_append.size(), 1U);
+    ASSERT_EQ(effects.entries_to_append[0].op_type, WriteOpType::NONE);
+    ASSERT_TRUE(effects.messages.empty());
+
     status = persist.close();
     ASSERT_EQ(status, Status::OK());
 
-    RaftNode node{replica_id_, members_, &persist};
-    for (int i = 1; i <= 30; i++) {
-        node.tick();
-    }
-
-    ASSERT_TRUE(node.is_faulted());
-    ASSERT_EQ(node.role(), ReplicaRole::FOLLOWER);
-    ASSERT_TRUE(node.extract_messages().empty());
+    status = drive_raft_effects(persist, effects);
+    ASSERT_TRUE(status.fail());
 }
 
 TEST_F(RaftNodeTest, InstallLocalSnapshotDoesNotSaveRaftMeta) {
@@ -220,7 +276,7 @@ TEST_F(RaftNodeTest, InstallLocalSnapshotDoesNotSaveRaftMeta) {
     Status status = persist.init();
     ASSERT_EQ(status, Status::OK());
 
-    RaftNode node{replica_id_, members_, &persist};
+    RaftNode node{replica_id_, members_};
     node.update_raft_meta(RaftMeta{5, std::nullopt});
 
     std::error_code ec;
@@ -229,7 +285,6 @@ TEST_F(RaftNodeTest, InstallLocalSnapshotDoesNotSaveRaftMeta) {
 
     node.install_local_snapshot(10, 5);
 
-    ASSERT_FALSE(node.is_faulted());
     ASSERT_EQ(node.snapshot_index(), 10);
     ASSERT_EQ(node.commit_index(), 10);
 }
@@ -240,12 +295,15 @@ TEST_F(RaftNodeTest, InstallLeaderSnapshotStepsDownAndPersistsHigherTerm) {
     Status status = persist.init();
     ASSERT_EQ(status, Status::OK());
 
-    RaftNode node{replica_id_, members_, &persist};
+    RaftNode node{replica_id_, members_};
     node.update_raft_meta(RaftMeta{3, replica_id_});
 
-    node.install_leader_snapshot(10, 5, 4);
+    RaftEffects effects;
+    status = node.install_leader_snapshot(10, 5, 4, effects);
+    ASSERT_EQ(status, Status::OK()) << status.to_string();
+    status = drive_raft_effects(persist, effects);
+    ASSERT_EQ(status, Status::OK()) << status.to_string();
 
-    ASSERT_FALSE(node.is_faulted());
     ASSERT_EQ(node.role(), ReplicaRole::FOLLOWER);
     ASSERT_EQ(node.current_term(), 4);
     ASSERT_EQ(node.snapshot_index(), 10);

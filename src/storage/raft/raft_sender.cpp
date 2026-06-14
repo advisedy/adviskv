@@ -86,17 +86,11 @@ Status RaftSender::send_install_snapshot(const PeerMember& member,
                                          InstallSnapshotResult& result) const {
     {
         std::lock_guard locker{in_flight_mutex_};
-        do {
-            if (auto it = in_flight_snapshots_.find(member.replica_id);
-                it != in_flight_snapshots_.end()) {
-                // V1版本的做法，只要有follower被发送快照，我们就不允许继续发了，不会继续去判断是否快照相同了。
-                // const InFlightSnapshot& snapshot = it->second;
-                // if (snapshot.snapshot_index != param.snapshot_index) break;
-                // if (snapshot.snapshot_term != param.snapshot_term) break;
-                return Status::ALREADY_EXIST(
-                    "snapshot is sending the same one");
-            }
-        } while (false);
+        if (auto it = in_flight_snapshots_.find(member.replica_id);
+            it != in_flight_snapshots_.end()) {
+            // V1版本的做法，只要有follower被发送快照，我们就不允许继续发了，不会继续去判断是否快照相同了。
+            return Status::ALREADY_EXIST("snapshot is sending the same one");
+        }
         in_flight_snapshots_[member.replica_id] = InFlightSnapshot{
             member.replica_id, param.snapshot_index, param.snapshot_term};
     }

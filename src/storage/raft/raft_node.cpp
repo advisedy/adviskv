@@ -354,6 +354,9 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
 
     if (param.prev_log_index > 0) {
         if (param.prev_log_index < snapshot_index_) {
+            // 在这个情况下，目前的处理是:
+            // leader那边会一直prev_log_index--，然后直到达不到leader的
+            // snapshot_index，然后发送快照让follower安装leader的快照。
             LOG_WARN(
                 "raft node: follower receive append entries: "
                 "param.prev_log_index:{} < snapshot_index_:{}",
@@ -528,6 +531,14 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
         return Status::NOT_LEADER("higher term");
     }
 
+    if (sent_param.term != current_term_) {
+        LOG_DEBUG(
+            "leader replica:{} handle append response: result.term:{} != "
+            "current_term:{}",
+            self_id_.to_string(), result.term, current_term_);
+        return Status::OK();
+    }
+
     if (role_ != ReplicaRole::LEADER) {
         ADVISKV_METRICS_COUNTER(
             "storage_raft_handle_append_response_not_leader");
@@ -550,10 +561,9 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
         // prev_log 对不上
 
         // 需要先确认一下关于response的时效性
-
         if (LogIndex sent_next_index = sent_param.prev_log_index + 1;
             sent_next_index != next_index_[from]) {
-            // 说明其实过期了，这个是旧的请求的回应，继续处理到next_index的话可能会影响
+            // 说明其实过期了，这个是旧的请求的回应，应该忽略才对
             LOG_DEBUG(
                 "leader replica:{} sent param.prev_log_index:{} + 1 != "
                 "next_index_[from]:{}",
@@ -568,6 +578,10 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
         if (new_next >= next_index_[from] && next_index_[from] > 1) {
             new_next = next_index_[from] - 1;  // 跳转无效，逐次回退
         }
+
+        // 加上match_index的下限，肯定不会低于match_index
+        new_next = std::max(new_next, match_index_[from] + 1);
+
         next_index_[from] = new_next;
 
         LOG_DEBUG(
