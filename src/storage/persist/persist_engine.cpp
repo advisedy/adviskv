@@ -335,7 +335,7 @@ Status PersistEngine::load_snapshot_meta(SnapshotPtr& snapshot) const {
     }
     int32 kv_count{0};
     RETURN_IF_INVALID_STATUS(read_snapshot_header(fd, snapshot.get(), kv_count))
-    snapshot->path = snapshot_path_;
+    // snapshot->path = snapshot_path_;
 
     return Status::OK();
 }
@@ -406,6 +406,7 @@ Status PersistEngine::read_snapshot_chunk(uint64 offset, size_t max_bytes,
     return Status::OK();
 }
 
+// TODO check
 Status PersistEngine::append_snapshot_chunk(const InstallSnapshotParam& param) {
     int flags = O_WRONLY | O_CREAT;
     flags |= (param.offset == 0) ? O_TRUNC : O_APPEND;
@@ -447,7 +448,7 @@ Status PersistEngine::finish_snapshot_receive(const SnapshotPtr& snap) {
     }
     RETURN_IF_INVALID_STATUS(func::fsync_dir(dir_path_))
 
-    snap->path = snapshot_path_;
+    // snap->path = snapshot_path_;
     return Status::OK();
 }
 
