@@ -1,5 +1,7 @@
 #include "storage/replica/replica.h"
 
+#include <fmt/format.h>
+
 #include <memory>
 #include <mutex>
 #include <utility>
@@ -574,7 +576,10 @@ void Replica::shutdown() {
 
 Status Replica::ensure_running() const {
     if (stopping_.load() or local_state_ == LocalState::FAULTED) {
-        return Status::ERROR("replica is not running");
+        return Status::ERROR(fmt::format(
+            "replica is not running, reason:{}",
+            stopping_.load() ? "stopping.load()"
+                             : "local_state_ == LocalState::FAULTED"));
     }
     return Status::OK();
 }
@@ -613,9 +618,12 @@ ReplicaStatus Replica::get_status() const {
 // 持久化effect + 发送RPC消息
 Status Replica::run_raft_step(RaftStepFunc&& step) {
     RaftEffects effects;
-    Status status = step(effects);
-    RETURN_IF_INVALID_STATUS(persist_raft_effects(effects))
-    RETURN_IF_INVALID_STATUS(status)
+    {
+        std::unique_lock lock(raft_step_mutex_);
+        Status status = step(effects);
+        RETURN_IF_INVALID_STATUS(persist_raft_effects(effects))
+        RETURN_IF_INVALID_STATUS(status)
+    }
     return send_raft_messages(std::move(effects.messages));
 }
 

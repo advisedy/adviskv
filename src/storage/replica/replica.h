@@ -158,6 +158,7 @@ class Replica {
     mutable std::shared_mutex life_mutex_;
     mutable std::mutex state_machine_mutex_;
     mutable std::mutex persist_snapshot_mutex_;
+    mutable std::mutex raft_step_mutex_;
 };
 
 using ReplicaPtr = std::shared_ptr<Replica>;
