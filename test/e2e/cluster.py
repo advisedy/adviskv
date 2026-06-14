@@ -145,14 +145,14 @@ def e2e_service_specs(
     specs = [
         ServiceSpec(
             "sdm",
-            [str(BIN_DIR / "sdm_test"), str(CONF_DIR / "sdm.yaml")],
+            [str(BIN_DIR / "sdm_test"), f"--conf={CONF_DIR / 'sdm.yaml'}"],
             LOCALHOST,
             SDM_PORT,
             env=envs.get("sdm"),
         ),
         ServiceSpec(
             "meta",
-            [str(BIN_DIR / "meta"), str(CONF_DIR / "meta.yaml")],
+            [str(BIN_DIR / "meta"), f"--conf={CONF_DIR / 'meta.yaml'}"],
             LOCALHOST,
             META_PORT,
             env=envs.get("meta"),
@@ -163,7 +163,10 @@ def e2e_service_specs(
         specs.append(
             ServiceSpec(
                 name,
-                [str(BIN_DIR / "storage"), str(CONF_DIR / f"{name}.yaml")],
+                [
+                    str(BIN_DIR / "storage"),
+                    f"--conf={CONF_DIR / f'{name}.yaml'}",
+                ],
                 LOCALHOST,
                 storage_port(index),
                 env=envs.get(name),

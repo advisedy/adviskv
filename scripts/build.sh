@@ -50,4 +50,9 @@ cmake \
   -DVCPKG_MANIFEST_INSTALL=OFF \
   "$@"
 
-cmake --build "$BUILD_DIR" --parallel
+if [[ -n "${BUILD_TARGETS:-}" ]]; then
+  read -r -a targets <<< "$BUILD_TARGETS"
+  cmake --build "$BUILD_DIR" --parallel --target "${targets[@]}"
+else
+  cmake --build "$BUILD_DIR" --parallel
+fi
