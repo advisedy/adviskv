@@ -333,6 +333,7 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     }
 
     std::lock_guard lock(mutex_);
+    result = AppendEntriesResult{};
     result.success = false;
     result.term = current_term_;
     result.last_log_index = last_log_index_unlocked();

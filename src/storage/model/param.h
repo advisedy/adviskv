@@ -111,7 +111,7 @@ struct RequestVoteParam {
 };
 
 struct RequestVoteResult {
-    Term term;
+    Term term{0};
     bool vote_granted{false};
 };
 
@@ -126,9 +126,9 @@ struct AppendEntriesParam {
 };
 
 struct AppendEntriesResult {
-    Term term;
-    bool success;
-    LogIndex last_log_index;
+    Term term{0};
+    bool success{false};
+    LogIndex last_log_index{0};
 };
 
 struct InstallSnapshotParam {
