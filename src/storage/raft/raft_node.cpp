@@ -17,28 +17,23 @@
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
-#include "storage/persist/persist_engine.h"
-#include "storage/replica/replica.h"
 namespace adviskv::storage {
 
 static constexpr int32_t HEARTBEAT_INTERVAL = 3;
 #define ELECTION_TIMEOUT (func::get_random_int32(15, 30))
 
 RaftNode::RaftNode(const ReplicaID& self_id,
-                   const std::vector<PeerMember>& members,
-                   PersistEngine* persist)
+                   const std::vector<PeerMember>& members)
     : self_id_(self_id),
       members_(members),
       election_tick_trigger_(ELECTION_TIMEOUT),
-      heartbeat_tick_trigger_(HEARTBEAT_INTERVAL),
-      persist_(persist) {
+      heartbeat_tick_trigger_(HEARTBEAT_INTERVAL) {
     for (const PeerMember& member : members_) {
         if (member.replica_id == self_id_) continue;
         if (!match_index_.count(member.replica_id)) {
             match_index_[member.replica_id] = 0;
         }
     }
-
 }
 
 LogIndex RaftNode::last_log_index_unlocked() const {
@@ -61,6 +56,14 @@ Term RaftNode::last_log_term() const {
     return last_log_term_unlocked();
 }
 
+int RaftNode::quorum_size_unlocked() const {
+    return static_cast<int>(members_.size()) / 2 + 1;
+}
+
+bool RaftNode::has_quorum_unlocked(int ack_count) const {
+    return ack_count >= quorum_size_unlocked();
+}
+
 bool RaftNode::later_than_other(Term other_term, LogIndex other_index) const {
     if (last_log_term_unlocked() != other_term) {
         return last_log_term_unlocked() > other_term;
@@ -75,8 +78,7 @@ void RaftNode::tick(RaftEffects& effects) {
 
     if (role_ == ReplicaRole::LEADER) {
         if (heartbeat_tick_trigger_.tick()) {
-            broadcast_append_entries();
-            effects.messages.swap(pending_messages_);
+            broadcast_append_entries(effects);
         }
     } else if (election_tick_trigger_.tick()) {
         become_candidate(effects);
@@ -113,7 +115,7 @@ void RaftNode::become_candidate(RaftEffects& effects) {
     election_tick_trigger_.reset(ELECTION_TIMEOUT);
 
     // 如果只有一个节点的话，就直接当选
-    if (members_.size() == 1) {
+    if (has_quorum_unlocked(granted_vote_count_)) {
         become_leader(effects);
         return;
     }
@@ -121,12 +123,12 @@ void RaftNode::become_candidate(RaftEffects& effects) {
     // 给所有 peer 发 RequestVote
     for (const PeerMember& member : members_) {
         if (member.replica_id == self_id_) continue;
-        send_request_vote_to(member);
+        send_request_vote_to(member, effects);
     }
-    effects.messages.swap(pending_messages_);
 }
 
-void RaftNode::send_request_vote_to(const PeerMember& member) {
+void RaftNode::send_request_vote_to(const PeerMember& member,
+                                    RaftEffects& effects) {
     RaftMessage msg;
     msg.type = RaftMessageType::REQUEST_VOTE;
     msg.target = member;
@@ -135,7 +137,7 @@ void RaftNode::send_request_vote_to(const PeerMember& member) {
     msg.vote_param.term = current_term_;
     msg.vote_param.last_log_index = last_log_index_unlocked();
     msg.vote_param.last_log_term = last_log_term_unlocked();
-    pending_messages_.push_back(std::move(msg));
+    effects.messages.push_back(std::move(msg));
 }
 
 /*
@@ -151,8 +153,25 @@ void RaftNode::send_request_vote_to(const PeerMember& member) {
 
 然后replica侧调用apply_committed_entries，去apply到状态机上。同时也会更新raft_node的last_apply_
 */
-std::pair<Status, LogIndex> RaftNode::propose(
-    WriteOpType op, const Key& key, const Value& value, RaftEffects& effects) {
+LogIndex RaftNode::append_new_entry_unlocked(WriteOpType op, const Key& key,
+                                             const Value& value,
+                                             RaftEffects& effects) {
+    LogEntry entry;
+    entry.term = current_term_;
+    entry.index = last_log_index_unlocked() + 1;
+    entry.op_type = op;
+    entry.key = key;
+    entry.value = value;
+
+    const LogIndex new_index = entry.index;
+    log_entries_.push_back(entry);
+    effects.entries_to_append.push_back(entry);
+    return new_index;
+}
+
+std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
+                                              const Value& value,
+                                              RaftEffects& effects) {
     std::lock_guard lock(mutex_);
     effects = RaftEffects{};
 
@@ -163,25 +182,16 @@ std::pair<Status, LogIndex> RaftNode::propose(
         return {Status{StatusCode::NOT_LEADER, "not leader"}, -1};
     }
 
-    LogEntry entry;
-    entry.term = current_term_;
-    entry.index = last_log_index_unlocked() + 1;
-    entry.op_type = op;
-    entry.key = key;
-    entry.value = value;
+    LogIndex new_commit_idx =
+        append_new_entry_unlocked(op, key, value, effects);
 
-    const LogIndex new_commit_idx = entry.index;
-    log_entries_.push_back(entry);
-    effects.entries_to_append.push_back(entry);
-
-    broadcast_append_entries();
-    effects.messages.swap(pending_messages_);
+    broadcast_append_entries(effects);
 
     if (role_ != ReplicaRole::LEADER) {
         return {Status{StatusCode::NOT_LEADER, "not leader"}, -1};
     }
 
-    if (role_ == ReplicaRole::LEADER and members_.size() == 1) {
+    if (role_ == ReplicaRole::LEADER and has_quorum_unlocked(1)) {
         try_update_commit_index();
     }
 
@@ -193,7 +203,7 @@ std::pair<Status, LogIndex> RaftNode::propose(
 都发送给他们。 具体是会放到pending_message队列里面。
 所以每一次广播之后，我们的pending_message就会更新。
 */
-void RaftNode::broadcast_append_entries() {
+void RaftNode::broadcast_append_entries(RaftEffects& effects) {
     if (ensure_ready_unlocked().fail()) return;
     if (role_ != ReplicaRole::LEADER) return;
 
@@ -205,13 +215,14 @@ void RaftNode::broadcast_append_entries() {
         }
 
         LogIndex next_idx = next_index_[member.replica_id];
-        send_append_entries_to(member, next_idx);
+        send_append_entries_to(member, next_idx, effects);
     }
 }
 
 void RaftNode::send_append_entries_to(const PeerMember& member,
-                                      LogIndex next_index) {
-    pending_messages_.push_back(
+                                      LogIndex next_index,
+                                      RaftEffects& effects) {
+    effects.messages.push_back(
         build_append_entries_message_unlocked(member, next_index));
 }
 
@@ -265,9 +276,9 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
 
     // 这边对于recovering状态，我们是会去更新它的current
     // term的，以防止在恢复正常之后可能会接收到一些比较旧的term的节点的消息，并且做出回复
-    if (ensure_not_faulted_unlocked().fail()) {
-        return;
-    }
+    // if (ensure_not_faulted_unlocked().fail()) {
+    //     return;
+    // }
 
     if (param.term < current_term_) {
         return;
@@ -326,10 +337,6 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     result.term = current_term_;
     result.last_log_index = last_log_index_unlocked();
 
-    if (ensure_not_faulted_unlocked().fail()) {
-        return;
-    }
-
     if (param.term < current_term_) {
         ADVISKV_METRICS_COUNTER(
             "storage_raft_handle_append_entries_stale_term");
@@ -341,9 +348,6 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
         // 然后prev_log_index不一样呢？ 这个时候不需要比较一下index吗？
         // 这里并不需要，毕竟append 不需要去干关于选举方面的事情，
         become_follower(param.term, effects);
-        if (ensure_not_faulted_unlocked().fail()) {
-            return;
-        }
     }
 
     result.term = current_term_;
@@ -474,8 +478,7 @@ void RaftNode::handle_vote_response(const ReplicaID& from,
         "count++ to {}",
         self_id_.to_string(), from.to_string(), granted_vote_count_);
 
-    int limit = static_cast<int>(members_.size()) / 2 + 1;
-    if (granted_vote_count_ >= limit) {
+    if (has_quorum_unlocked(granted_vote_count_)) {
         become_leader(effects);
     }
 }
@@ -575,14 +578,6 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
     return Status::OK();
 }
 
-///////////////////////// extract
-std::vector<RaftMessage> RaftNode::extract_messages() {
-    std::lock_guard lock(mutex_);
-    std::vector<RaftMessage> messages;
-    messages.swap(pending_messages_);
-    return messages;
-}
-
 std::vector<LogEntry> RaftNode::extract_committed_entries() {
     std::lock_guard lock(mutex_);
     std::vector<LogEntry> entries;
@@ -630,24 +625,13 @@ void RaftNode::become_leader(RaftEffects& effects) {
         match_index_[member.replica_id] = 0;
     }
 
-    // 追加 no-op entry
-    LogEntry none_entry;
-    none_entry.term = current_term_;
-    none_entry.index = last_log_index_unlocked() + 1;
-    none_entry.op_type = WriteOpType::NONE;
-    none_entry.key = "for debug: this is a no-op entry key";
-    none_entry.value = "for debug: this is a no-op entry value";
-
-    log_entries_.push_back(none_entry);
-    effects.entries_to_append.push_back(none_entry);
+    append_new_entry_unlocked(
+        WriteOpType::NONE, "for debug: this is a no-op entry key",
+        "for debug: this is a no-op entry value", effects);
     // 立即广播（含 no-op），相当于心跳 + 日志复制合一
-    broadcast_append_entries();
-    for (RaftMessage& msg : pending_messages_) {
-        effects.messages.push_back(std::move(msg));
-    }
-    pending_messages_.clear();
+    broadcast_append_entries(effects);
 
-    if (members_.size() == 1) {
+    if (has_quorum_unlocked(1)) {
         try_update_commit_index();
     }
 }
@@ -680,8 +664,7 @@ void RaftNode::try_update_commit_index() {
             if (match_index_[member.replica_id] >= idx) success_cnt++;
         }
 
-        int limit_cnt = static_cast<int>(members_.size()) / 2 + 1;
-        if (success_cnt >= limit_cnt) {
+        if (has_quorum_unlocked(success_cnt)) {
             LOG_DEBUG("replica:{} commit_index pushed success. from {} to {}.",
                       self_id_.to_string(), commit_index_, idx);
             commit_index_ = idx;
@@ -717,17 +700,7 @@ Term RaftNode::get_term(LogIndex index) const {
     return log_entries_[offset].term;
 }
 
-Status RaftNode::ensure_not_faulted_unlocked() const {
-    if (state_ == RaftNodeState::FAULTED) {
-        return Status::ERROR("raft node is faulted");
-    }
-    return Status::OK();
-}
-
 Status RaftNode::ensure_ready_unlocked() const {
-    Status status = ensure_not_faulted_unlocked();
-    if (status.fail()) return status;
-
     if (state_ == RaftNodeState::RECOVERING) {
         return Status::IS_RECOVERING("raft node is recovering");
     }
@@ -735,18 +708,6 @@ Status RaftNode::ensure_ready_unlocked() const {
         return Status::NOT_INIT("raft node is not ready");
     }
     return Status::OK();
-}
-
-void RaftNode::enter_faulted_unlocked(const Status& status) {
-    if (state_ == RaftNodeState::FAULTED) return;
-
-    LOG_WARN("raft node:{} enter faulted, reason={}", self_id_.to_string(),
-             status.to_string());
-    state_ = RaftNodeState::FAULTED;
-    role_ = ReplicaRole::FOLLOWER;
-    election_tick_trigger_.stop();
-    heartbeat_tick_trigger_.stop();
-    pending_messages_.clear();
 }
 
 void RaftNode::record_hard_state_unlocked(RaftEffects& effects) const {
@@ -794,8 +755,6 @@ void RaftNode::install_snapshot_unlocked(LogIndex new_snapshot_index,
 void RaftNode::install_local_snapshot(LogIndex new_snapshot_index,
                                       Term new_snapshot_term) {
     std::lock_guard lock(mutex_);
-    if (ensure_not_faulted_unlocked().fail()) return;
-
     install_snapshot_unlocked(new_snapshot_index, new_snapshot_term);
 }
 
@@ -805,7 +764,6 @@ Status RaftNode::install_leader_snapshot(LogIndex new_snapshot_index,
                                          RaftEffects& effects) {
     std::lock_guard lock(mutex_);
     effects = RaftEffects{};
-    RETURN_IF_INVALID_STATUS(ensure_not_faulted_unlocked())
 
     if (leader_term < current_term_) {
         return Status::ERROR(
@@ -816,7 +774,6 @@ Status RaftNode::install_leader_snapshot(LogIndex new_snapshot_index,
 
     if (leader_term > current_term_ || role_ != ReplicaRole::FOLLOWER) {
         become_follower(leader_term, effects);
-        RETURN_IF_INVALID_STATUS(ensure_not_faulted_unlocked())
     } else {
         election_tick_trigger_.reset(ELECTION_TIMEOUT);
     }
@@ -849,7 +806,6 @@ Status RaftNode::prepare_install_snapshot(Term leader_term,
                                           RaftEffects& effects) {
     std::lock_guard lock(mutex_);
     effects = RaftEffects{};
-    RETURN_IF_INVALID_STATUS(ensure_not_faulted_unlocked())
 
     if (leader_term < current_term_) {  // 发送过来的leader的term低
         return Status::ERROR(
@@ -883,17 +839,10 @@ void RaftNode::update_log_entries(const std::vector<LogEntry>& entries) {
 
 void RaftNode::enter_recovering() {
     std::lock_guard lock(mutex_);
-    if (state_ == RaftNodeState::FAULTED) return;
-
     state_ = RaftNodeState::RECOVERING;
     role_ = ReplicaRole::FOLLOWER;
     election_tick_trigger_.stop();
     heartbeat_tick_trigger_.stop();
-}
-
-void RaftNode::finish_recovering() {
-    std::lock_guard lock(mutex_);
-    finish_recovering_unlocked();
 }
 
 void RaftNode::finish_recovering_unlocked() {

@@ -51,12 +51,9 @@ class TickTrigger {
     int32_t limit_cnt_;
 };
 
-class PersistEngine;
-
 class RaftNode {
    public:
-    RaftNode(const ReplicaID& self_id, const std::vector<PeerMember>& members,
-             PersistEngine* persist);
+    RaftNode(const ReplicaID& self_id, const std::vector<PeerMember>& members);
 
     void tick(RaftEffects& effects);
 
@@ -75,8 +72,7 @@ class RaftNode {
                                AppendEntriesResult& result,
                                RaftEffects& effects);
 
-    // 当replica通过flush_message去发送消息之后， 会返回过来结果
-    // raft_node会再去处理这个，response
+    // Replica 发送 RaftEffects 中的消息后，把 response 再交回 RaftNode。
     void handle_vote_response(const ReplicaID& from,
                               const RequestVoteResult& result,
                               RaftEffects& effects);
@@ -86,10 +82,6 @@ class RaftNode {
                                   const AppendEntriesResult& result,
                                   RaftEffects& effects);
 
-    std::vector<RaftMessage>
-    extract_messages();  // 提取raft这边产生的message，replica读取了之后会进行这些操作。
-                         // 提取pending_message， 主要是来自become_candidate 和
-                         // 广播函数。
     std::vector<LogEntry>
     extract_committed_entries();  // 提取那些已提交但是还未 apply 的日志
 
@@ -163,17 +155,10 @@ class RaftNode {
         return state_ == RaftNodeState::RECOVERING;
     }
 
-    bool is_faulted() const {
-        std::lock_guard lock(mutex_);
-        return state_ == RaftNodeState::FAULTED;
-    }
-
     bool is_ready() const {
         std::lock_guard lock(mutex_);
         return state_ == RaftNodeState::READY;
     }
-
-    void finish_recovering();
 
     // 读一致性准备心跳
     Status build_append_entries_for_read(std::vector<RaftMessage>& messages,
@@ -188,14 +173,18 @@ class RaftNode {
 
     Term get_term(LogIndex index) const;
 
-    Status ensure_not_faulted_unlocked() const;
     Status ensure_ready_unlocked() const;
+
+    int quorum_size_unlocked() const;
+    bool has_quorum_unlocked(int ack_count) const;
 
     void become_follower(Term later_term, RaftEffects& effects);
     void become_leader(RaftEffects& effects);
     void become_candidate(RaftEffects& effects);
-    void enter_faulted_unlocked(const Status& reason);
 
+    LogIndex append_new_entry_unlocked(WriteOpType op, const Key& key,
+                                       const Value& value,
+                                       RaftEffects& effects);
     void try_update_commit_index();
     bool later_than_other(Term other_term, LogIndex other_index) const;
     void install_snapshot_unlocked(LogIndex snapshot_index,
@@ -206,16 +195,15 @@ class RaftNode {
     RaftMessage build_append_entries_message_unlocked(const PeerMember& member,
                                                       LogIndex next_index);
 
-    // 对于raftNOde来说，发送RPC的申请交给了外包的replica，自己只需要负责放到vector里面就好了
-    // replica那边会自动拿取队列里面的内容的
-    void send_request_vote_to(const PeerMember& member);
-    void send_append_entries_to(const PeerMember& member, LogIndex next_index);
-    void broadcast_append_entries();
+    // RaftNode 只生成消息；Replica 负责把 RaftEffects.messages 发送出去。
+    void send_request_vote_to(const PeerMember& member, RaftEffects& effects);
+    void send_append_entries_to(const PeerMember& member, LogIndex next_index,
+                                RaftEffects& effects);
+    void broadcast_append_entries(RaftEffects& effects);
 
     enum class RaftNodeState {
         READY,
         RECOVERING,
-        FAULTED,
     };
 
     ReplicaID self_id_;
@@ -241,10 +229,6 @@ class RaftNode {
     TickTrigger election_tick_trigger_;
     TickTrigger heartbeat_tick_trigger_;
 
-    // 待发消息队列
-    std::vector<RaftMessage> pending_messages_;
-
-    PersistEngine* persist_;
     LogIndex snapshot_index_{0};
     Term snapshot_term_{0};
 
