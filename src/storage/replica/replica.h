@@ -1,10 +1,12 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "common/define.h"
@@ -73,14 +75,18 @@ class Replica {
     // tick 回调（Timer 定时调用）
     void on_tick();
 
-    // 把raft_node发生的消息落实他，发送RPC消息
-    void flush_messages();
+    Status persist_raft_effects(const RaftEffects& effects);
+    Status send_raft_messages(std::vector<RaftMessage> messages);
+    Status send_raft_message(const RaftMessage& msg);
 
-    Status drive_raft_effects(RaftEffects effects);
+    using RaftStepFunc = std::function<Status(RaftEffects&)>;
+    Status run_raft_step(RaftStepFunc&& step);
 
     // 把已经提交但是还没有apply的entry给apply到我们的engine
     // 调用方必须已经持有state_machine_mutex_，内部没有吃锁，放到外部了。
     Status apply_committed_entries();
+    Status apply_log_entry(const LogEntry& entry);
+    Status apply_kv_log_entry(const LogEntry& entry);
 
     void try_take_snapshot();
 
