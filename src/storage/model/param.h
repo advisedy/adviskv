@@ -168,7 +168,6 @@ struct RaftEffects {
     std::vector<LogEntry> entries_to_append;
     std::optional<std::vector<LogEntry>> entries_to_rewrite;
     std::vector<RaftMessage> messages;
-    std::vector<LogEntry> committed_entries;
 };
 
 }  // namespace adviskv::storage

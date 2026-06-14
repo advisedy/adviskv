@@ -161,7 +161,7 @@ class RaftNode {
     }
 
     // 读一致性准备心跳
-    Status build_append_entries_for_read(std::vector<RaftMessage>& messages,
+    Status build_append_entries_for_read(RaftEffects& effects,
                                          LogIndex& read_index, Term& read_term);
 
    private:

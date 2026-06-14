@@ -873,9 +873,11 @@ bool RaftNode::has_committed_current_term_entry_unlocked() const {
 // 其实由于我们get操作会专门发送一次，所以导致同样的append_entires
 // 可能会多次发送
 // ，但是无伤大雅，handle_append_entries里面会判断出来new_entries是空的
-Status RaftNode::build_append_entries_for_read(
-    std::vector<RaftMessage>& messages, LogIndex& read_index, Term& read_term) {
+Status RaftNode::build_append_entries_for_read(RaftEffects& effects,
+                                               LogIndex& read_index,
+                                               Term& read_term) {
     std::lock_guard lock(mutex_);
+    effects = RaftEffects{};
     RETURN_IF_INVALID_STATUS(ensure_ready_unlocked())
 
     if (role_ != ReplicaRole::LEADER) return Status::NOT_LEADER("not leader");
@@ -885,7 +887,6 @@ Status RaftNode::build_append_entries_for_read(
 
     read_term = current_term_;
     read_index = commit_index_;
-    messages.clear();
 
     for (const PeerMember& member : members_) {
         if (member.replica_id == self_id_) continue;
@@ -896,7 +897,7 @@ Status RaftNode::build_append_entries_for_read(
 
         LogIndex next_idx = next_index_[member.replica_id];
 
-        messages.push_back(
+        effects.messages.push_back(
             build_append_entries_message_unlocked(member, next_idx));
     }
     return Status::OK();

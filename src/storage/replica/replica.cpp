@@ -503,17 +503,17 @@ Status Replica::check_self_leader_and_get_read_index(LogIndex& read_index) {
     if (!raft_node_->is_leader()) return Status::NOT_LEADER();
 
     // 我们需要检测一下自己是不是leader，并且需要发送给followers自己的心跳，主动发送一次
-    std::vector<RaftMessage> messages;
+    RaftEffects read_effects;
     Term read_term;
     RETURN_IF_INVALID_STATUS(raft_node_->build_append_entries_for_read(
-        messages, read_index, read_term))
+        read_effects, read_index, read_term))
 
     int success_cnt = 1;
-    int limit = to<int>(messages.size() + 1) / 2 + 1;
+    int limit = to<int>(read_effects.messages.size() + 1) / 2 + 1;
     // 达到limit就可以了 // 这里就是要message_size
     // +1，review代码的时候差点绕进去了，这个是msg，得再加上自己
 
-    for (const RaftMessage& msg : messages) {
+    for (const RaftMessage& msg : read_effects.messages) {
         // if (msg.type != RaftMessageType::APPEND_ENTRIES) {
         //     continue;
         // }
@@ -615,6 +615,7 @@ Status Replica::run_raft_step(RaftStepFunc&& step) {
     RaftEffects effects;
     Status status = step(effects);
     RETURN_IF_INVALID_STATUS(persist_raft_effects(effects))
+    RETURN_IF_INVALID_STATUS(status)
     return send_raft_messages(std::move(effects.messages));
 }
 
