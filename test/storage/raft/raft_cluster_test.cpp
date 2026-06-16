@@ -568,7 +568,7 @@ class RaftClusterTest : public ::testing::Test {
                              LogIndex val) {
         RaftNode* node = cluster_.node_ptr(node_idx);
         if (!node) return;
-        node->next_index_[target] = val;
+        node->set_next_index_for_test(target, val);
     }
 
     RaftCluster cluster_;

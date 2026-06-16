@@ -18,6 +18,7 @@
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
+#include "storage/raft/raft_membership.h"
 namespace adviskv::storage {
 
 static constexpr int32_t HEARTBEAT_INTERVAL = 3;
@@ -26,16 +27,10 @@ static constexpr int32_t HEARTBEAT_INTERVAL = 3;
 RaftNode::RaftNode(const ReplicaID& self_id,
                    const std::vector<PeerMember>& members)
     : self_id_(self_id),
-      members_(members),
+      membership_(self_id_, members),
+      peer_progress_(self_id_, membership_),
       election_tick_trigger_(ELECTION_TIMEOUT),
-      heartbeat_tick_trigger_(HEARTBEAT_INTERVAL) {
-    for (const PeerMember& member : members_) {
-        if (member.replica_id == self_id_) continue;
-        if (!match_index_.count(member.replica_id)) {
-            match_index_[member.replica_id] = 0;
-        }
-    }
-}
+      heartbeat_tick_trigger_(HEARTBEAT_INTERVAL) {}
 
 LogIndex RaftNode::last_log_index_unlocked() const {
     return raft_log_.last_log_index();
@@ -64,11 +59,11 @@ Term RaftNode::last_log_term() const {
 }
 
 int RaftNode::quorum_size_unlocked() const {
-    return static_cast<int>(members_.size()) / 2 + 1;
+    return membership_.quorum_size_unlocked();
 }
 
 bool RaftNode::has_quorum_unlocked(int ack_count) const {
-    return ack_count >= quorum_size_unlocked();
+    return membership_.has_quorum_unlocked(ack_count);
 }
 
 ReplicaRole RaftNode::role() const {
@@ -147,7 +142,7 @@ void RaftNode::become_candidate(RaftEffects& effects) {
     }
 
     // 给所有 peer 发 RequestVote
-    for (const PeerMember& member : members_) {
+    for (const PeerMember& member : membership_.get_members()) {
         if (member.replica_id == self_id_) continue;
         send_request_vote_to(member, effects);
     }
@@ -230,14 +225,15 @@ void RaftNode::broadcast_append_entries(RaftEffects& effects) {
     if (ensure_ready_unlocked().fail()) return;
     if (role_ != ReplicaRole::LEADER) return;
 
-    for (const PeerMember& member : members_) {
+    for (const PeerMember& member : membership_.get_members()) {
         if (member.replica_id == self_id_) continue;
 
-        if (!next_index_.count(member.replica_id)) {
-            next_index_[member.replica_id] = last_log_index_unlocked() + 1;
+        if (peer_progress_.get_next_index(member.replica_id) == 0) {
+            peer_progress_.update_next_index(member.replica_id,
+                                             last_log_index_unlocked() + 1);
         }
 
-        LogIndex next_idx = next_index_[member.replica_id];
+        LogIndex next_idx = peer_progress_.get_next_index(member.replica_id);
         send_append_entries_to(member, next_idx, effects);
     }
 }
@@ -530,12 +526,8 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
         ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_success");
         LOG_DEBUG("leader replica:{} append enrties to replica:{} success.",
                   self_id_.to_string(), from.to_string());
-        LogIndex matched_index =
-            sent_param.prev_log_index + to<LogIndex>(sent_param.entries.size());
-        if (matched_index > match_index_[from]) {
-            match_index_[from] = matched_index;
-        }
-        next_index_[from] = match_index_[from] + 1;
+        peer_progress_.handle_append_ok(from, sent_param.prev_log_index,
+                                        sent_param.entries.size());
         try_update_commit_index();
     } else {
         ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_reject");
@@ -543,32 +535,24 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
 
         // 需要先确认一下关于response的时效性
         if (LogIndex sent_next_index = sent_param.prev_log_index + 1;
-            sent_next_index != next_index_[from]) {
+            sent_next_index != peer_progress_.get_next_index(from)) {
             // 说明其实过期了，这个是旧的请求的回应，应该忽略才对
             LOG_DEBUG(
                 "leader replica:{} sent param.prev_log_index:{} + 1 != "
                 "next_index_[from]:{}",
                 self_id_.to_string(), sent_param.prev_log_index,
-                next_index_[from]);
+                peer_progress_.get_next_index(from));
             return Status::OK();
         }
 
-        LogIndex new_next =
-            std::min(result.last_log_index, last_log_index_unlocked()) + 1;
-
-        if (new_next >= next_index_[from] && next_index_[from] > 1) {
-            new_next = next_index_[from] - 1;  // 跳转无效，逐次回退
-        }
-
-        // 加上match_index的下限，肯定不会低于match_index
-        new_next = std::max(new_next, match_index_[from] + 1);
-
-        next_index_[from] = new_next;
+        peer_progress_.handle_append_failed(
+            from, result.last_log_index, last_log_index_unlocked());
 
         LOG_DEBUG(
             "leader replica:{} append enrties to replica:{} failed. set "
             "next_index:{}",
-            self_id_.to_string(), from.to_string(), new_next);
+            self_id_.to_string(), from.to_string(),
+            peer_progress_.get_next_index(from));
     }
     return Status::OK();
 }
@@ -608,11 +592,7 @@ void RaftNode::become_leader(RaftEffects& effects) {
     heartbeat_tick_trigger_.reset(HEARTBEAT_INTERVAL);
 
     // TODO 为什么当上了leader之后需要把这些全都初始化呢？ 保留原来的值不行吗？
-    for (const PeerMember& member : members_) {
-        if (member.replica_id == self_id_) continue;
-        next_index_[member.replica_id] = last_log_index_unlocked() + 1;
-        match_index_[member.replica_id] = 0;
-    }
+    peer_progress_.reset_for_leader(membership_, last_log_index_unlocked());
 
     append_new_entry_unlocked(
         WriteOpType::NONE, "for debug: this is a no-op entry key",
@@ -646,11 +626,13 @@ void RaftNode::try_update_commit_index() {
         }
 
         int success_cnt = 1;
-        for (const auto& member : members_) {
+        for (const auto& member : membership_.get_members()) {
             if (member.replica_id == self_id_) {
                 continue;
             }
-            if (match_index_[member.replica_id] >= idx) success_cnt++;
+            if (peer_progress_.match_index_at_least(member.replica_id, idx)) {
+                success_cnt++;
+            }
         }
 
         if (has_quorum_unlocked(success_cnt)) {
@@ -740,8 +722,7 @@ void RaftNode::handle_install_snapshot_response(
 
     if (!result.success) return;
 
-    next_index_[from] = snapshot_index_unlocked() + 1;
-    match_index_[from] = snapshot_index_unlocked();
+    peer_progress_.update_snapshot_progress(from, snapshot_index_unlocked());
 }
 
 Status RaftNode::prepare_install_snapshot(Term leader_term,
@@ -833,14 +814,15 @@ Status RaftNode::build_append_entries_for_read(RaftEffects& effects,
     read_term = current_term_;
     read_index = raft_log_.commit_index();
 
-    for (const PeerMember& member : members_) {
+    for (const PeerMember& member : membership_.get_members()) {
         if (member.replica_id == self_id_) continue;
 
-        if (!next_index_.count(member.replica_id)) {
-            next_index_[member.replica_id] = last_log_index_unlocked() + 1;
+        if (peer_progress_.get_next_index(member.replica_id) == 0) {
+            peer_progress_.update_next_index(member.replica_id,
+                                             last_log_index_unlocked() + 1);
         }
 
-        LogIndex next_idx = next_index_[member.replica_id];
+        LogIndex next_idx = peer_progress_.get_next_index(member.replica_id);
 
         effects.messages.push_back(
             build_append_entries_message_unlocked(member, next_idx));

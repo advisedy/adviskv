@@ -1,0 +1,90 @@
+#include "storage/raft/raft_peer_progress.h"
+
+#include <algorithm>
+
+namespace adviskv::storage {
+
+RaftPeerProgress::RaftPeerProgress(ReplicaID replica_id,
+                                   const RaftMembership& membership)
+    : self_id_(replica_id) {
+    for (const PeerMember& member : membership.get_members()) {
+        if (member.replica_id == self_id_) continue;
+        if (!match_index_.count(member.replica_id)) {
+            match_index_[member.replica_id] = 0;
+        }
+    }
+}
+
+LogIndex RaftPeerProgress::get_next_index(ReplicaID replica_id) const {
+    auto it = next_index_.find(replica_id);
+    if (it == next_index_.end()) {
+        return 0;
+    }
+    return it->second;
+}
+
+void RaftPeerProgress::update_next_index(ReplicaID replica_id,
+                                         LogIndex log_index) {
+    next_index_[replica_id] = log_index;
+}
+
+LogIndex RaftPeerProgress::get_match_index(ReplicaID replica_id) const {
+    auto it = match_index_.find(replica_id);
+    if (it == match_index_.end()) {
+        return 0;
+    }
+    return it->second;
+}
+
+void RaftPeerProgress::update_match_index(ReplicaID replica_id,
+                                          LogIndex log_index) {
+    match_index_[replica_id] = log_index;
+}
+
+void RaftPeerProgress::reset_for_leader(const RaftMembership& membership,
+                                        LogIndex last_log_index) {
+    for (const PeerMember& member : membership.get_members()) {
+        if (member.replica_id == self_id_) continue;
+        next_index_[member.replica_id] = last_log_index + 1;
+        match_index_[member.replica_id] = 0;
+    }
+}
+
+void RaftPeerProgress::update_snapshot_progress(ReplicaID replica_id,
+                                                LogIndex snapshot_index) {
+    next_index_[replica_id] = snapshot_index + 1;
+    match_index_[replica_id] = snapshot_index;
+}
+
+void RaftPeerProgress::handle_append_ok(ReplicaID replica_id,
+                                        LogIndex prev_log_index,
+                                        size_t entries_size) {
+    LogIndex matched_index =
+        prev_log_index + static_cast<LogIndex>(entries_size);
+    if (matched_index > get_match_index(replica_id)) {
+        update_match_index(replica_id, matched_index);
+    }
+    update_next_index(replica_id, get_match_index(replica_id) + 1);
+}
+
+void RaftPeerProgress::handle_append_failed(
+    ReplicaID replica_id, LogIndex follower_last_log_index,
+    LogIndex leader_last_log_index) {
+    LogIndex current_next = get_next_index(replica_id);
+    LogIndex new_next =
+        std::min(follower_last_log_index, leader_last_log_index) + 1;
+
+    if (new_next >= current_next && current_next > 1) {
+        new_next = current_next - 1;
+    }
+
+    new_next = std::max(new_next, get_match_index(replica_id) + 1);
+    update_next_index(replica_id, new_next);
+}
+
+bool RaftPeerProgress::match_index_at_least(ReplicaID replica_id,
+                                            LogIndex log_index) const {
+    return get_match_index(replica_id) >= log_index;
+}
+
+}  // namespace adviskv::storage

@@ -13,6 +13,8 @@
 #include "common/type.h"
 #include "storage/model/param.h"
 #include "storage/raft/raft_log.h"
+#include "storage/raft/raft_membership.h"
+#include "storage/raft/raft_peer_progress.h"
 namespace adviskv::storage {
 
 // 这个就是一个计数触发器
@@ -191,10 +193,8 @@ class RaftNode {
     int32_t granted_vote_count_{0};
 
     RaftLog raft_log_;
-    std::vector<PeerMember> members_;
-
-    std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> next_index_;
-    std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> match_index_;
+    RaftMembership membership_;
+    RaftPeerProgress peer_progress_;
 
     TickTrigger election_tick_trigger_;
     TickTrigger heartbeat_tick_trigger_;
@@ -210,6 +210,10 @@ class RaftNode {
 
     std::pair<LogIndex, Term> snapshot_for_test() const {
         return {raft_log_.snapshot_index(), raft_log_.snapshot_term()};
+    }
+
+    void set_next_index_for_test(ReplicaID target, LogIndex index) {
+        peer_progress_.update_next_index(target, index);
     }
 
     friend class RaftClusterTest;
