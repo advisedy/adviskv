@@ -555,13 +555,13 @@ class RaftClusterTest : public ::testing::Test {
     std::vector<LogEntry> get_node_entries(int idx) {
         RaftNode* node = cluster_.node_ptr(idx);
         if (!node) return {};
-        return node->log_entries_;
+        return node->log_entries_for_test();
     }
 
     std::pair<LogIndex, Term> get_node_snapshot(int idx) {
         RaftNode* node = cluster_.node_ptr(idx);
         if (!node) return {};
-        return {node->snapshot_index_, node->snapshot_term_};
+        return node->snapshot_for_test();
     }
 
     void set_node_next_index(int node_idx, const ReplicaID& target,

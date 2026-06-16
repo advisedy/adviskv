@@ -1,0 +1,58 @@
+#pragma once
+
+#include <optional>
+#include <vector>
+
+#include "common/type.h"
+#include "storage/model/param.h"
+
+namespace adviskv::storage {
+
+// 专门处理raft node 内部的log相关的内容
+class RaftLog {
+   public:
+    struct AppendEntriesResult {
+        std::vector<LogEntry> entries_to_append;
+        std::optional<std::vector<LogEntry>> entries_to_rewrite;
+    };
+    LogIndex commit_index() const { return commit_index_; }
+    LogIndex last_applied() const { return last_applied_; }
+    LogIndex snapshot_index() const { return snapshot_index_; }
+    Term snapshot_term() const { return snapshot_term_; }
+    const std::vector<LogEntry>& entries() const { return log_entries_; }
+
+    LogIndex last_log_index() const;
+    Term last_log_term() const;
+    int64_t index_to_offset(LogIndex index) const;
+    LogIndex offset_to_index(int64_t offset) const;
+    Term term_at(LogIndex index) const;
+
+    const LogEntry* entry_at(LogIndex index) const;
+    std::vector<LogEntry> entries_from(LogIndex index) const;
+
+    LogIndex append_new_entry(Term term, WriteOpType op, const Key& key,
+                              const Value& value);
+    Status append_entries_from_leader(const std::vector<LogEntry>& entries,
+                                      AppendEntriesResult& result);
+
+    void set_commit_index(LogIndex commit_index);
+    void advance_commit_index(LogIndex leader_commit);
+    void advance_last_applied(LogIndex applied);
+    std::vector<LogEntry> extract_committed_entries() const;
+
+    Status truncate(LogIndex new_snapshot_index);
+    void install_snapshot(LogIndex new_snapshot_index, Term new_snapshot_term);
+
+    void update_entries(const std::vector<LogEntry>& entries);
+
+   private:
+    LogIndex commit_index_{0};
+    LogIndex last_applied_{0};
+
+    std::vector<LogEntry> log_entries_;
+
+    LogIndex snapshot_index_{0};
+    Term snapshot_term_{0};
+};
+
+}  // namespace adviskv::storage

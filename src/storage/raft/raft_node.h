@@ -12,6 +12,7 @@
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
+#include "storage/raft/raft_log.h"
 namespace adviskv::storage {
 
 // 这个就是一个计数触发器
@@ -66,8 +67,7 @@ class RaftNode {
 
     // 处理来自storage_service_impl的RPC的请求
     void handle_request_vote(const RequestVoteParam& param,
-                             RequestVoteResult& result,
-                             RaftEffects& effects);
+                             RequestVoteResult& result, RaftEffects& effects);
     void handle_append_entries(const AppendEntriesParam& param,
                                AppendEntriesResult& result,
                                RaftEffects& effects);
@@ -85,44 +85,23 @@ class RaftNode {
     std::vector<LogEntry>
     extract_committed_entries();  // 提取那些已提交但是还未 apply 的日志
 
-    ReplicaRole role() const {
-        std::lock_guard lock(mutex_);
-        return role_;
-    }
+    ReplicaRole role() const;
 
-    Term current_term() const {
-        std::lock_guard lock(mutex_);
-        return current_term_;
-    }
+    Term current_term() const;
 
-    LogIndex commit_index() const {
-        std::lock_guard lock(mutex_);
-        return commit_index_;
-    }
+    LogIndex commit_index() const;
 
-    LogIndex last_applied() const {
-        std::lock_guard lock(mutex_);
-        return last_applied_;
-    }
+    LogIndex last_applied() const;
 
     LogIndex last_log_index() const;
 
     Term last_log_term() const;
 
-    LogIndex snapshot_index() const {
-        std::lock_guard lock(mutex_);
-        return snapshot_index_;
-    }
+    LogIndex snapshot_index() const;
 
-    Term snapshot_term() const {
-        std::lock_guard lock(mutex_);
-        return snapshot_term_;
-    }
+    Term snapshot_term() const;
 
-    bool is_leader() const {
-        std::lock_guard lock(mutex_);
-        return role_ == ReplicaRole::LEADER;
-    }
+    bool is_leader() const;
 
     // 外部更新 last_applied（apply 完成后调用）
     void advance_last_applied(LogIndex applied);
@@ -167,11 +146,8 @@ class RaftNode {
    private:
     LogIndex last_log_index_unlocked() const;
     Term last_log_term_unlocked() const;
-
-    int64_t index_to_offset(LogIndex index) const;
-    LogIndex offset_to_index(int64_t offset) const;
-
-    Term get_term(LogIndex index) const;
+    LogIndex snapshot_index_unlocked() const;
+    Term snapshot_term_unlocked() const;
 
     Status ensure_ready_unlocked() const;
 
@@ -187,8 +163,7 @@ class RaftNode {
                                        RaftEffects& effects);
     void try_update_commit_index();
     bool later_than_other(Term other_term, LogIndex other_index) const;
-    void install_snapshot_unlocked(LogIndex snapshot_index,
-                                   Term snapshot_term);
+    void install_snapshot_unlocked(LogIndex snapshot_index, Term snapshot_term);
     void finish_recovering_unlocked();
     bool has_committed_current_term_entry_unlocked() const;
     void record_hard_state_unlocked(RaftEffects& effects) const;
@@ -210,31 +185,32 @@ class RaftNode {
     ReplicaRole role_{ReplicaRole::FOLLOWER};
     Term current_term_{0};
     std::optional<ReplicaID> voted_for_;
-    LogIndex commit_index_{0};
-    LogIndex last_applied_{0};
 
     // 选举
     int32_t election_generation_{0};
     int32_t granted_vote_count_{0};
 
-    std::vector<LogEntry> log_entries_;
+    RaftLog raft_log_;
     std::vector<PeerMember> members_;
 
     std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> next_index_;
     std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> match_index_;
 
-    // tick 计数器（替代 Timer
-    // int32_t election_ticks_{0};
-    // int32_t heartbeat_ticks_{0};
     TickTrigger election_tick_trigger_;
     TickTrigger heartbeat_tick_trigger_;
-
-    LogIndex snapshot_index_{0};
-    Term snapshot_term_{0};
 
     mutable std::mutex mutex_;
 
     RaftNodeState state_{RaftNodeState::READY};
+
+    //////////// TEST
+    const std::vector<LogEntry>& log_entries_for_test() const {
+        return raft_log_.entries();
+    }
+
+    std::pair<LogIndex, Term> snapshot_for_test() const {
+        return {raft_log_.snapshot_index(), raft_log_.snapshot_term()};
+    }
 
     friend class RaftClusterTest;
 };

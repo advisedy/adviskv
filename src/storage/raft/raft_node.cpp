@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <mutex>
 #include <optional>
 #include <utility>
@@ -37,13 +38,19 @@ RaftNode::RaftNode(const ReplicaID& self_id,
 }
 
 LogIndex RaftNode::last_log_index_unlocked() const {
-    if (log_entries_.empty()) return snapshot_index_;
-    return log_entries_.back().index;
+    return raft_log_.last_log_index();
 }
 
 Term RaftNode::last_log_term_unlocked() const {
-    if (log_entries_.empty()) return snapshot_term_;
-    return log_entries_.back().term;
+    return raft_log_.last_log_term();
+}
+
+LogIndex RaftNode::snapshot_index_unlocked() const {
+    return raft_log_.snapshot_index();
+}
+
+Term RaftNode::snapshot_term_unlocked() const {
+    return raft_log_.snapshot_term();
 }
 
 LogIndex RaftNode::last_log_index() const {
@@ -62,6 +69,41 @@ int RaftNode::quorum_size_unlocked() const {
 
 bool RaftNode::has_quorum_unlocked(int ack_count) const {
     return ack_count >= quorum_size_unlocked();
+}
+
+ReplicaRole RaftNode::role() const {
+    std::lock_guard lock(mutex_);
+    return role_;
+}
+
+Term RaftNode::current_term() const {
+    std::lock_guard lock(mutex_);
+    return current_term_;
+}
+
+LogIndex RaftNode::commit_index() const {
+    std::lock_guard lock(mutex_);
+    return raft_log_.commit_index();
+}
+
+LogIndex RaftNode::last_applied() const {
+    std::lock_guard lock(mutex_);
+    return raft_log_.last_applied();
+}
+
+LogIndex RaftNode::snapshot_index() const {
+    std::lock_guard lock(mutex_);
+    return snapshot_index_unlocked();
+}
+
+Term RaftNode::snapshot_term() const {
+    std::lock_guard lock(mutex_);
+    return snapshot_term_unlocked();
+}
+
+bool RaftNode::is_leader() const {
+    std::lock_guard lock(mutex_);
+    return role_ == ReplicaRole::LEADER;
 }
 
 bool RaftNode::later_than_other(Term other_term, LogIndex other_index) const {
@@ -83,22 +125,6 @@ void RaftNode::tick(RaftEffects& effects) {
     } else if (election_tick_trigger_.tick()) {
         become_candidate(effects);
     }
-
-    // if (role_ == ReplicaRole::LEADER) {
-    //     heartbeat_ticks_++;
-    //     if (heartbeat_ticks_ >= HEARTBEAT_INTERVAL) {
-    //         heartbeat_ticks_ = 0;
-    //         //
-    //         当目前已经是leader的时候，此刻发送如果是日志复制的话，那么pending_message会有内容，否则
-    //         broadcast_append_entries();
-    //     }
-    // } else {
-    //     // FOLLOWER 或 CANDIDATE
-    //     if (election_ticks_ >= ELECTION_TIMEOUT) {
-    //         election_ticks_ = 0;
-    //         become_candidate();
-    //     }
-    // }
 }
 
 void RaftNode::become_candidate(RaftEffects& effects) {
@@ -156,16 +182,13 @@ void RaftNode::send_request_vote_to(const PeerMember& member,
 LogIndex RaftNode::append_new_entry_unlocked(WriteOpType op, const Key& key,
                                              const Value& value,
                                              RaftEffects& effects) {
-    LogEntry entry;
-    entry.term = current_term_;
-    entry.index = last_log_index_unlocked() + 1;
-    entry.op_type = op;
-    entry.key = key;
-    entry.value = value;
+    LogIndex new_index =
+        raft_log_.append_new_entry(current_term_, op, key, value);
+    const LogEntry* entry = raft_log_.entry_at(new_index);
 
-    const LogIndex new_index = entry.index;
-    log_entries_.push_back(entry);
-    effects.entries_to_append.push_back(entry);
+    if (entry != nullptr) {
+        effects.entries_to_append.push_back(*entry);
+    }
     return new_index;
 }
 
@@ -231,19 +254,19 @@ RaftMessage RaftNode::build_append_entries_message_unlocked(
     LogIndex prev_log_index = next_index - 1;
 
     // 如果找不到了话，就发送下载快照的命令。
-    if (prev_log_index < snapshot_index_) {
+    if (prev_log_index < snapshot_index_unlocked()) {
         RaftMessage msg;
         msg.type = RaftMessageType::INSTALL_SNAPSHOT;
         msg.target = member;
         msg.snapshot_param.from_replica_id = self_id_;
         msg.snapshot_param.to_replica_id = member.replica_id;
         msg.snapshot_param.term = current_term_;
-        msg.snapshot_param.snapshot_index = snapshot_index_;
-        msg.snapshot_param.snapshot_term = snapshot_term_;
+        msg.snapshot_param.snapshot_index = snapshot_index_unlocked();
+        msg.snapshot_param.snapshot_term = snapshot_term_unlocked();
         return msg;
     }
 
-    Term prev_log_term = get_term(prev_log_index);
+    Term prev_log_term = raft_log_.term_at(prev_log_index);
 
     AppendEntriesParam param;
     param.from_replica_id = self_id_;
@@ -251,11 +274,9 @@ RaftMessage RaftNode::build_append_entries_message_unlocked(
     param.term = current_term_;
     param.prev_log_index = prev_log_index;
     param.prev_log_term = prev_log_term;
-    param.leader_commit = commit_index_;
+    param.leader_commit = raft_log_.commit_index();
 
-    for (LogIndex idx = next_index; idx <= last_log_index_unlocked(); ++idx) {
-        param.entries.push_back(log_entries_[index_to_offset(idx)]);
-    }
+    param.entries = raft_log_.entries_from(next_index);
 
     RaftMessage msg;
     msg.type = RaftMessageType::APPEND_ENTRIES;
@@ -354,15 +375,16 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     result.term = current_term_;
 
     if (param.prev_log_index > 0) {
-        if (param.prev_log_index < snapshot_index_) {
+        if (param.prev_log_index < snapshot_index_unlocked()) {
             // 在这个情况下，目前的处理是:
             // leader那边会一直prev_log_index--，然后直到达不到leader的
             // snapshot_index，然后发送快照让follower安装leader的快照。
             LOG_WARN(
                 "raft node: follower receive append entries: "
                 "param.prev_log_index:{} < snapshot_index_:{}",
-                param.prev_log_index, snapshot_index_);
-        } else if (get_term(param.prev_log_index) != param.prev_log_term) {
+                param.prev_log_index, snapshot_index_unlocked());
+        } else if (raft_log_.term_at(param.prev_log_index) !=
+                   param.prev_log_term) {
             ADVISKV_METRICS_COUNTER(
                 "storage_raft_handle_append_entries_prev_mismatch");
             return;
@@ -386,67 +408,25 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     if (param.entries.empty()) {
         // 这里是心跳
     } else {
-        // 日志复制
-        std::vector<LogEntry> updated_entries = log_entries_;
-        std::vector<LogEntry> new_entries;
-        bool need_rewrite_wal = false;
-
-        auto updated_last_log_index = [&]() -> LogIndex {
-            if (updated_entries.empty()) return snapshot_index_;
-            return updated_entries.back().index;
-        };
-
-        auto updated_get_term = [&](LogIndex index) -> Term {
-            if (index == 0) return 0;
-            if (index < snapshot_index_) return 0;
-            if (index == snapshot_index_) return snapshot_term_;
-            int64_t offset = index_to_offset(index);
-            if (offset < 0 ||
-                offset >= static_cast<int64_t>(updated_entries.size())) {
-                return 0;
-            }
-            return updated_entries[offset].term;
-        };
-
-        for (const LogEntry& entry : param.entries) {
-            LogIndex index = entry.index;
-
-            if (index <= snapshot_index_) continue;
-
-            if (index <= updated_last_log_index()) {
-                if (updated_get_term(index) != entry.term) {
-                    updated_entries.resize(index_to_offset(index));
-                    updated_entries.push_back(entry);
-                    new_entries.push_back(entry);
-                    need_rewrite_wal = true;
-                }
-            } else if (index == updated_last_log_index() + 1) {
-                updated_entries.push_back(entry);
-                new_entries.push_back(entry);
-            } else {
-                LOG_WARN(
-                    "storage raft handle append entries found wal gap, "
-                    "last_log_index={}, entry_index={}",
-                    updated_last_log_index(), index);
-                return;
-            }
+        RaftLog::AppendEntriesResult append_result;
+        Status append_status =
+            raft_log_.append_entries_from_leader(param.entries, append_result);
+        if (append_status.fail()) {
+            LOG_WARN("storage raft handle append entries failed, msg={}",
+                     append_status.msg());
+            return;
         }
-
-        if (!new_entries.empty()) {
-            if (need_rewrite_wal) {
-                effects.entries_to_rewrite = updated_entries;
-            } else {
-                effects.entries_to_append = std::move(new_entries);
-            }
+        if (append_result.entries_to_rewrite.has_value()) {
+            effects.entries_to_rewrite =
+                std::move(append_result.entries_to_rewrite.value());
+        } else {
+            effects.entries_to_append =
+                std::move(append_result.entries_to_append);
         }
-        log_entries_ = std::move(updated_entries);
     }
 
     // 不管是否有entry，也就是不管是日志追加还是心跳，都会需要更新commit_idx
-    if (param.leader_commit > commit_index_) {
-        commit_index_ =
-            std::min(param.leader_commit, last_log_index_unlocked());
-    }
+    raft_log_.advance_commit_index(param.leader_commit);
     finish_recovering_unlocked();
 
     result.success = true;
@@ -595,18 +575,12 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
 
 std::vector<LogEntry> RaftNode::extract_committed_entries() {
     std::lock_guard lock(mutex_);
-    std::vector<LogEntry> entries;
-    for (LogIndex i = last_applied_ + 1; i <= commit_index_; i++) {
-        entries.push_back(log_entries_[index_to_offset(i)]);
-    }
-    return entries;
+    return raft_log_.extract_committed_entries();
 }
 
 void RaftNode::advance_last_applied(LogIndex applied) {
     std::lock_guard lock(mutex_);
-    if (applied > last_applied_) {
-        last_applied_ = applied;
-    }
+    raft_log_.advance_last_applied(applied);
 }
 
 void RaftNode::become_follower(Term later_term, RaftEffects& effects) {
@@ -656,9 +630,9 @@ void RaftNode::become_leader(RaftEffects& effects) {
 void RaftNode::try_update_commit_index() {
     if (ensure_ready_unlocked().fail()) return;
 
-    LogIndex old_commit_index = commit_index_;
-    for (LogIndex idx = commit_index_ + 1; idx <= last_log_index_unlocked();
-         ++idx) {
+    LogIndex old_commit_index = raft_log_.commit_index();
+    for (LogIndex idx = raft_log_.commit_index() + 1;
+         idx <= raft_log_.last_log_index(); ++idx) {
         // TODO 这里将来需要check一下这个term是否需要和当前的term一样吗？
         // 但是好像leader是可以提交上一个leader没有提交的内容吧，所以好像不用
 
@@ -667,7 +641,7 @@ void RaftNode::try_update_commit_index() {
         // 被多数派确认后，commit_index 才会推进，此时之前 term 的 entry 会因为
         // commit_index 的递增而被顺带提交（ trace_commit_log_entries 从
         // last_applied_ 推进到 commit_index_ ，包含了之前 term 的 entry）。
-        if (log_entries_[index_to_offset(idx)].term != current_term_) {
+        if (raft_log_.term_at(idx) != current_term_) {
             continue;
         }
 
@@ -681,38 +655,16 @@ void RaftNode::try_update_commit_index() {
 
         if (has_quorum_unlocked(success_cnt)) {
             LOG_DEBUG("replica:{} commit_index pushed success. from {} to {}.",
-                      self_id_.to_string(), commit_index_, idx);
-            commit_index_ = idx;
+                      self_id_.to_string(), raft_log_.commit_index(), idx);
+            raft_log_.set_commit_index(idx);
         }
     }
-    if (commit_index_ > old_commit_index) {
+    if (raft_log_.commit_index() > old_commit_index) {
         ADVISKV_METRICS_COUNTER("storage_raft_commit_index_advance");
         ADVISKV_METRICS_COUNTER(
             "storage_raft_committed_entry",
-            static_cast<int64_t>(commit_index_ - old_commit_index));
+            static_cast<int64_t>(raft_log_.commit_index() - old_commit_index));
     }
-}
-
-int64_t RaftNode::index_to_offset(LogIndex index) const {
-    return index - snapshot_index_ - 1;
-}
-LogIndex RaftNode::offset_to_index(int64_t offset) const {
-    return offset + 1 + snapshot_index_;
-}
-
-Term RaftNode::get_term(LogIndex index) const {
-    if (index == 0) return 0;
-    if (index == snapshot_index_) return snapshot_term_;
-    if (index < snapshot_index_) {
-        //
-        LOG_WARN("... get term");
-        return 0;
-    }
-    int64_t offset = index_to_offset(index);
-    if (offset < 0 || offset >= (int64_t)(log_entries_.size())) {
-        return 0;
-    }
-    return log_entries_[offset].term;
 }
 
 Status RaftNode::ensure_ready_unlocked() const {
@@ -734,36 +686,12 @@ void RaftNode::record_hard_state_unlocked(RaftEffects& effects) const {
 
 Status RaftNode::truncate_log(LogIndex new_snapshot_index) {
     std::lock_guard lock(mutex_);
-    if (new_snapshot_index <= snapshot_index_ or
-        new_snapshot_index > last_applied_) {
-        return StatusCode::ERROR;
-    }
-    // new_snapshot_index should <= last_applied_
-
-    Term new_snapshot_term = get_term(new_snapshot_index);
-
-    int64_t keep_from = index_to_offset(new_snapshot_index + 1);
-
-    log_entries_.erase(log_entries_.begin(), log_entries_.begin() + keep_from);
-
-    snapshot_index_ = new_snapshot_index;
-    snapshot_term_ = new_snapshot_term;
-
-    return Status::OK();
+    return raft_log_.truncate(new_snapshot_index);
 }
 
 void RaftNode::install_snapshot_unlocked(LogIndex new_snapshot_index,
                                          Term new_snapshot_term) {
-    snapshot_index_ = new_snapshot_index;
-    snapshot_term_ = new_snapshot_term;
-    log_entries_.clear();
-    if (commit_index_ < snapshot_index_) {
-        commit_index_ = snapshot_index_;
-    }
-    if (last_applied_ < snapshot_index_) {
-        last_applied_ = snapshot_index_;
-    }
-
+    raft_log_.install_snapshot(new_snapshot_index, new_snapshot_term);
     finish_recovering_unlocked();
 }
 
@@ -812,8 +740,8 @@ void RaftNode::handle_install_snapshot_response(
 
     if (!result.success) return;
 
-    next_index_[from] = snapshot_index_ + 1;
-    match_index_[from] = snapshot_index_;
+    next_index_[from] = snapshot_index_unlocked() + 1;
+    match_index_[from] = snapshot_index_unlocked();
 }
 
 Status RaftNode::prepare_install_snapshot(Term leader_term,
@@ -832,10 +760,10 @@ Status RaftNode::prepare_install_snapshot(Term leader_term,
         become_follower(leader_term, effects);
     }
 
-    if (new_snapshot_index <= snapshot_index_) {
+    if (new_snapshot_index <= snapshot_index_unlocked()) {
         return Status::ERROR(fmt::format(
             "leader snapshot_index:{} is older than current snapshot_index:{}",
-            new_snapshot_index, snapshot_index_));
+            new_snapshot_index, snapshot_index_unlocked()));
     }
 
     return Status::OK();
@@ -849,7 +777,7 @@ void RaftNode::update_raft_meta(const RaftMeta& meta) {
 
 void RaftNode::update_log_entries(const std::vector<LogEntry>& entries) {
     std::lock_guard lock(mutex_);
-    log_entries_ = entries;
+    raft_log_.update_entries(entries);
 }
 
 void RaftNode::enter_recovering() {
@@ -871,13 +799,15 @@ void RaftNode::finish_recovering_unlocked() {
 // 原因的话是因为如果他没有提交过的话，那这个commit
 // index就还没有这个及时的更新到，那么就有可能会导致客户端最终那边会读到旧的数据。
 bool RaftNode::has_committed_current_term_entry_unlocked() const {
-    if (snapshot_index_ > 0 && snapshot_index_ <= commit_index_ &&
-        snapshot_term_ == current_term_) {
+    if (snapshot_index_unlocked() > 0 &&
+        snapshot_index_unlocked() <= raft_log_.commit_index() &&
+        snapshot_term_unlocked() == current_term_) {
         return true;
     }
 
-    for (LogIndex idx = commit_index_; idx >= snapshot_index_ + 1; idx--) {
-        if (get_term(idx) == current_term_) {
+    for (LogIndex idx = raft_log_.commit_index();
+         idx >= snapshot_index_unlocked() + 1; --idx) {
+        if (raft_log_.term_at(idx) == current_term_) {
             return true;
         }
     }
@@ -901,7 +831,7 @@ Status RaftNode::build_append_entries_for_read(RaftEffects& effects,
     }
 
     read_term = current_term_;
-    read_index = commit_index_;
+    read_index = raft_log_.commit_index();
 
     for (const PeerMember& member : members_) {
         if (member.replica_id == self_id_) continue;
