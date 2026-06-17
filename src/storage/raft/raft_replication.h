@@ -4,6 +4,7 @@
 
 #include "common/type.h"
 #include "storage/model/param.h"
+#include "storage/raft/raft_apply.h"
 #include "storage/raft/raft_log.h"
 #include "storage/raft/raft_membership.h"
 #include "storage/raft/raft_peer_progress.h"
@@ -13,6 +14,8 @@ namespace adviskv::storage {
 // 负责Raft的复制相关内容
 class RaftReplication {
    public:
+
+   // 这个类其实只是给外部的RaftNode提供打点用的
     struct CommitAdvanceResult {
         bool advanced{false};
         LogIndex old_commit_index{0};
@@ -20,7 +23,8 @@ class RaftReplication {
     };
 
     RaftReplication(const ReplicaID& self_id,
-                    const RaftMembership& membership, RaftLog& raft_log);
+                    const RaftMembership& membership, const RaftLog& raft_log,
+                    RaftApply& raft_apply);
 
     void reset_for_leader();
     void broadcast_append_entries(Term current_term, RaftEffects& effects);
@@ -44,7 +48,8 @@ class RaftReplication {
 
     ReplicaID self_id_;
     const RaftMembership& membership_;
-    RaftLog& raft_log_;
+    const RaftLog& raft_log_;
+    RaftApply& raft_apply_;
     RaftPeerProgress peer_progress_;
 };
 

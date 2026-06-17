@@ -8,10 +8,11 @@ namespace adviskv::storage {
 
 RaftReplication::RaftReplication(const ReplicaID& self_id,
                                  const RaftMembership& membership,
-                                 RaftLog& raft_log)
+                                 const RaftLog& raft_log, RaftApply& raft_apply)
     : self_id_(self_id),
       membership_(membership),
       raft_log_(raft_log),
+      raft_apply_(raft_apply),
       peer_progress_(self_id_, membership_) {}
 
 void RaftReplication::reset_for_leader() {
@@ -55,10 +56,10 @@ void RaftReplication::handle_append_failed(const ReplicaID& replica_id,
 RaftReplication::CommitAdvanceResult RaftReplication::try_advance_commit_index(
     Term current_term) {
     CommitAdvanceResult result;
-    result.old_commit_index = raft_log_.commit_index();
+    result.old_commit_index = raft_apply_.commit_index();
     result.new_commit_index = result.old_commit_index;
 
-    for (LogIndex idx = raft_log_.commit_index() + 1;
+    for (LogIndex idx = raft_apply_.commit_index() + 1;
          idx <= raft_log_.last_log_index(); ++idx) {
         // TODO 这里将来需要check一下这个term是否需要和当前的term一样吗？
         // 但是好像leader是可以提交上一个leader没有提交的内容吧，所以好像不用
@@ -84,12 +85,12 @@ RaftReplication::CommitAdvanceResult RaftReplication::try_advance_commit_index(
 
         if (membership_.has_quorum_unlocked(success_cnt)) {
             LOG_DEBUG("replica:{} commit_index pushed success. from {} to {}.",
-                      self_id_.to_string(), raft_log_.commit_index(), idx);
-            raft_log_.set_commit_index(idx);
+                      self_id_.to_string(), raft_apply_.commit_index(), idx);
+            raft_apply_.set_commit_index(idx);
         }
     }
 
-    result.new_commit_index = raft_log_.commit_index();
+    result.new_commit_index = raft_apply_.commit_index();
     result.advanced = result.new_commit_index > result.old_commit_index;
     return result;
 }
@@ -130,7 +131,7 @@ RaftMessage RaftReplication::build_append_entries_message(
     param.term = current_term;
     param.prev_log_index = prev_log_index;
     param.prev_log_term = raft_log_.term_at(prev_log_index);
-    param.leader_commit = raft_log_.commit_index();
+    param.leader_commit = raft_apply_.commit_index();
     param.entries = raft_log_.entries_from(next_index);
 
     RaftMessage msg;

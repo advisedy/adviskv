@@ -15,6 +15,7 @@
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
+#include "storage/raft/raft_apply.h"
 #include "storage/raft/raft_log.h"
 #include "storage/raft/raft_membership.h"
 #include "storage/raft/raft_replication.h"
@@ -28,8 +29,9 @@ RaftNode::RaftNode(const ReplicaID& self_id,
     : self_id_(self_id),
       election_(self_id_),
       raft_log_(),
+      raft_apply_(raft_log_),
       membership_(self_id_, members),
-      replication_(self_id_, membership_, raft_log_),
+      replication_(self_id_, membership_, raft_log_, raft_apply_),
       election_tick_trigger_(ELECTION_TIMEOUT),
       heartbeat_tick_trigger_(HEARTBEAT_INTERVAL) {}
 
@@ -79,12 +81,12 @@ Term RaftNode::current_term() const {
 
 LogIndex RaftNode::commit_index() const {
     std::lock_guard lock(mutex_);
-    return raft_log_.commit_index();
+    return raft_apply_.commit_index();
 }
 
 LogIndex RaftNode::last_applied() const {
     std::lock_guard lock(mutex_);
-    return raft_log_.last_applied();
+    return raft_apply_.last_applied();
 }
 
 LogIndex RaftNode::snapshot_index() const {
@@ -362,7 +364,7 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     }
 
     // 不管是否有entry，也就是不管是日志追加还是心跳，都会需要更新commit_idx
-    raft_log_.advance_commit_index(param.leader_commit);
+    raft_apply_.advance_commit_index_from_leader(param.leader_commit);
     finish_recovering_unlocked();
 
     result.success = true;
@@ -476,12 +478,12 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
 
 std::vector<LogEntry> RaftNode::extract_committed_entries() {
     std::lock_guard lock(mutex_);
-    return raft_log_.extract_committed_entries();
+    return raft_apply_.extract_committed_entries();
 }
 
 void RaftNode::advance_last_applied(LogIndex applied) {
     std::lock_guard lock(mutex_);
-    raft_log_.advance_last_applied(applied);
+    raft_apply_.advance_last_applied(applied);
 }
 
 void RaftNode::become_follower(Term later_term, RaftEffects& effects) {
@@ -553,12 +555,20 @@ void RaftNode::record_hard_state_unlocked(RaftEffects& effects) const {
 
 Status RaftNode::truncate_log(LogIndex new_snapshot_index) {
     std::lock_guard lock(mutex_);
+    if (new_snapshot_index > raft_apply_.last_applied()) {
+        LOG_WARN(
+            "new_snap_index > last_applied, new_snapshhot_index:{}, "
+            "last_applied:{}",
+            new_snapshot_index, raft_apply_.last_applied());
+        return Status::ERROR("new_snap_index > last_applied");
+    }
     return raft_log_.truncate(new_snapshot_index);
 }
 
 void RaftNode::install_snapshot_unlocked(LogIndex new_snapshot_index,
                                          Term new_snapshot_term) {
     raft_log_.install_snapshot(new_snapshot_index, new_snapshot_term);
+    raft_apply_.install_snapshot(new_snapshot_index);
     finish_recovering_unlocked();
 }
 
@@ -664,20 +674,8 @@ void RaftNode::finish_recovering_unlocked() {
 // 原因的话是因为如果他没有提交过的话，那这个commit
 // index就还没有这个及时的更新到，那么就有可能会导致客户端最终那边会读到旧的数据。
 bool RaftNode::has_committed_current_term_entry_unlocked() const {
-    if (snapshot_index_unlocked() > 0 &&
-        snapshot_index_unlocked() <= raft_log_.commit_index() &&
-        snapshot_term_unlocked() == election_.current_term()) {
-        return true;
-    }
-
-    for (LogIndex idx = raft_log_.commit_index();
-         idx >= snapshot_index_unlocked() + 1; --idx) {
-        if (raft_log_.term_at(idx) == election_.current_term()) {
-            return true;
-        }
-    }
-
-    return false;
+    return raft_apply_.has_committed_current_term_entry(
+        election_.current_term());
 }
 
 // 其实由于我们get操作会专门发送一次，所以导致同样的append_entires
@@ -696,7 +694,7 @@ Status RaftNode::build_append_entries_for_read(RaftEffects& effects,
     }
 
     read_term = election_.current_term();
-    read_index = raft_log_.commit_index();
+    read_index = raft_apply_.commit_index();
 
     replication_.broadcast_append_entries(election_.current_term(), effects);
     return Status::OK();

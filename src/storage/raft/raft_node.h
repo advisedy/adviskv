@@ -12,6 +12,7 @@
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
+#include "storage/raft/raft_apply.h"
 #include "storage/raft/raft_election.h"
 #include "storage/raft/raft_log.h"
 #include "storage/raft/raft_membership.h"
@@ -179,6 +180,7 @@ class RaftNode {
     ReplicaID self_id_;
     RaftElection election_;
     RaftLog raft_log_;
+    RaftApply raft_apply_;
     RaftMembership membership_;
     RaftReplication replication_;
 

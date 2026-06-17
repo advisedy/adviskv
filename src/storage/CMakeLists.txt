@@ -2,6 +2,7 @@ set(STORAGE_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/node_agent/node_agent.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_apply.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_log.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_membership.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_election.cpp

@@ -2,8 +2,6 @@
 
 #include <fmt/format.h>
 
-#include <algorithm>
-
 #include "common/log.h"
 
 namespace adviskv::storage {
@@ -138,40 +136,12 @@ Status RaftLog::append_entries_from_leader(const std::vector<LogEntry>& entries,
     return Status::OK();
 }
 
-void RaftLog::set_commit_index(LogIndex commit_index) {
-    commit_index_ = commit_index;
-}
-
-void RaftLog::advance_commit_index(LogIndex leader_commit) {
-    if (leader_commit > commit_index_) {
-        commit_index_ = std::min(leader_commit, last_log_index());
-    }
-}
-
-void RaftLog::advance_last_applied(LogIndex applied) {
-    if (applied > last_applied_) {
-        last_applied_ = applied;
-    }
-}
-
-std::vector<LogEntry> RaftLog::extract_committed_entries() const {
-    std::vector<LogEntry> entries;
-    for (LogIndex i = last_applied_ + 1; i <= commit_index_; ++i) {
-        const LogEntry* entry = entry_at(i);
-        if (entry == nullptr) continue;
-        entries.push_back(*entry);
-    }
-    return entries;
-}
-
 Status RaftLog::truncate(LogIndex new_snapshot_index) {
-    if (new_snapshot_index <= snapshot_index_ ||
-        new_snapshot_index > last_applied_) {
+    if (new_snapshot_index <= snapshot_index_) {
         LOG_WARN(
-            "new_snapshot_index <= snapshot_index_ || new_snapshot_index > "
-            "last_applied_, new_snapshot_index:{}, snapshot_index:{}, "
-            "last_applied:{}",
-            new_snapshot_index, snapshot_index_, last_applied_);
+            "new_snapshot_index <= snapshot_index_, new_snapshot_index:{}, "
+            "snapshot_index:{}",
+            new_snapshot_index, snapshot_index_);
         return StatusCode::ERROR;
     }
 
@@ -189,12 +159,6 @@ void RaftLog::install_snapshot(LogIndex new_snapshot_index,
     snapshot_index_ = new_snapshot_index;
     snapshot_term_ = new_snapshot_term;
     log_entries_.clear();
-    if (commit_index_ < snapshot_index_) {
-        commit_index_ = snapshot_index_;
-    }
-    if (last_applied_ < snapshot_index_) {
-        last_applied_ = snapshot_index_;
-    }
 }
 
 void RaftLog::update_entries(const std::vector<LogEntry>& entries) {
