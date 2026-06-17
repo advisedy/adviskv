@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cassert>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <unordered_map>
@@ -10,6 +12,7 @@
 #include "common/define.h"
 #include "common/model/storage_replica_status.h"
 #include "common/status.h"
+#include "common/tick_trigger.h"
 #include "common/type.h"
 #include "storage/model/param.h"
 #include "storage/raft/raft_apply.h"
@@ -18,43 +21,6 @@
 #include "storage/raft/raft_membership.h"
 #include "storage/raft/raft_replication.h"
 namespace adviskv::storage {
-
-// 这个就是一个计数触发器
-// 手动在外面保证传进来的limit_cnt是非负吧。
-class TickTrigger {
-   public:
-    explicit TickTrigger(int32_t limit_cnt) : limit_cnt_(limit_cnt) {}
-
-    bool tick() {
-        if (stop_flag_) return false;
-        cur_cnt_++;
-        if (cur_cnt_ >= limit_cnt_) {
-            cur_cnt_ = 0;
-            return true;
-        }
-        return false;
-    }
-
-    bool reset(int32_t limit_cnt) {
-        stop_flag_ = false;
-        cur_cnt_ = 0;
-        limit_cnt_ = limit_cnt;
-        if (cur_cnt_ >= limit_cnt_) {
-            cur_cnt_ = 0;
-            return true;
-        }
-        return false;
-    }
-
-    void clear() { cur_cnt_ = 0; }
-
-    void stop() { stop_flag_ = true; }
-
-   private:
-    bool stop_flag_{false};
-    int32_t cur_cnt_{0};
-    int32_t limit_cnt_;
-};
 
 class RaftNode {
    public:
@@ -120,6 +86,7 @@ class RaftNode {
 
     // InstallSnapshot 回调
     void handle_install_snapshot_response(const ReplicaID& from,
+                                          const InstallSnapshotParam& sent_param,
                                           const InstallSnapshotResult& result,
                                           RaftEffects& effects);
 

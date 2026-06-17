@@ -371,6 +371,8 @@ Status PersistEngine::for_each_snapshot_kv(const KvVisitor& fn) const {
 
 Status PersistEngine::read_snapshot_chunk(uint64 offset, size_t max_bytes,
                                           std::string& data, bool& eof) const {
+    LOG_DEBUG("replica_id:{}, persist engine read snapshot chunk, offset:{}",
+              replica_id_.to_string(), offset);
     data.clear();
     eof = false;
     int fd = ::open(snapshot_path_.c_str(), O_RDONLY);
@@ -457,6 +459,12 @@ Status PersistEngine::do_snapshot(const StateMachine& state_machine) {
     LogIndex apply_index = state_machine.apply_index();
     Term apply_term = state_machine.apply_term();
 
+    LOG_DEBUG(
+        "replica_id:{}, persist engine start to do snapshot, "
+        "snapshot_index:{}, "
+        "snapshot_term:{}",
+        replica_id_.to_string(), apply_index, apply_term);
+
     RETURN_IF_INVALID_STATUS(
         func::atomic_replace_file(snapshot_path_, [&](int fd) -> Status {
             // payload_len + apply_index + apply_term + kv_count + [k1, v1] +
@@ -499,6 +507,12 @@ Status PersistEngine::do_snapshot(const StateMachine& state_machine) {
 
     testhook::crash_point("do_snapshot.after_write_snapshot");
     RETURN_IF_INVALID_STATUS(truncate_wal(apply_index))
+
+    LOG_DEBUG(
+        "replica_id:{}, persist engine finish do snapshot, "
+        "snapshot_index:{}, "
+        "snapshot_term:{}",
+        replica_id_.to_string(), apply_index, apply_term);
     return Status::OK();
 }
 

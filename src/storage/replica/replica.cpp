@@ -113,7 +113,15 @@ Status Replica::put(const PutParam& param) {
 }
 
 Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
-    LOG_INFO(
+    if (param.offset == 0) {
+        LOG_INFO(
+            "replica:{} start handle to install snapshot from replica:{}. "
+            "The "
+            "snapshot index:{}, snapshot term:{}",
+            param.to_replica_id.to_string(), param.from_replica_id.to_string(),
+            param.snapshot_index, param.snapshot_term);
+    }
+    LOG_DEBUG(
         "replica:{} is handling to install snapshot from replica:{}. The "
         "snapshot index:{}, snapshot term:{}",
         param.to_replica_id.to_string(), param.from_replica_id.to_string(),
@@ -157,6 +165,12 @@ Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
                         effects);
                 })))
         }
+        LOG_INFO(
+            "replica:{} finish install snapshot from replica:{}. "
+            "The "
+            "snapshot index:{}, snapshot term:{}",
+            param.to_replica_id.to_string(), param.from_replica_id.to_string(),
+            param.snapshot_index, param.snapshot_term);
     }
 
     return Status::OK();
@@ -237,13 +251,18 @@ Status Replica::send_raft_message(const RaftMessage& msg) {
                 "storage_raft_flush_messages_install_snapshot");
 
             InstallSnapshotResult result;
-            Status status = raft_sender_.send_install_snapshot(
-                msg.target, msg.snapshot_param, *persist_, result);
+            Status status;
+            {
+                std::lock_guard locker{persist_snapshot_mutex_};
+                status = raft_sender_.send_install_snapshot(
+                    msg.target, msg.snapshot_param, *persist_, result);
+            }
             if (status.ok()) {
                 RETURN_IF_INVALID_STATUS(
                     run_raft_step([&](RaftEffects& effects) {
                         raft_node_->handle_install_snapshot_response(
-                            msg.target.replica_id, result, effects);
+                            msg.target.replica_id, msg.snapshot_param, result,
+                            effects);
                         return Status::OK();
                     }))
             } else {
@@ -422,7 +441,12 @@ void Replica::try_take_snapshot() {
              snapshot_index = raft_node_->snapshot_index();
     if (last_apply_index - snapshot_index < SNAPSHOT_LIMIT) return;
 
-    std::lock_guard lock(state_machine_mutex_);
+    std::lock_guard snapshot_lock(persist_snapshot_mutex_);
+    std::lock_guard state_machine_lock(state_machine_mutex_);
+    last_apply_index = raft_node_->last_applied();
+    snapshot_index = raft_node_->snapshot_index();
+    if (last_apply_index - snapshot_index < SNAPSHOT_LIMIT) return;
+
     Status status = persist_->do_snapshot(*state_machine_);
 
     // 现在这里的情况是，persist的执行快照有可能会失败，但是失败是有可能是因为truncate_wal里面的read_wal_from_disk里走到了：
@@ -536,12 +560,16 @@ Status Replica::check_self_leader_and_get_read_index(LogIndex& read_index) {
             // 因为我们只是需要确认leader这个身份，success可能是fail，因为prev没对齐
         } else if (msg.type == RaftMessageType::INSTALL_SNAPSHOT) {
             InstallSnapshotResult res;
-            Status status = raft_sender_.send_install_snapshot(
-                msg.target, msg.snapshot_param, *persist_, res);
+            Status status;
+            {
+                std::lock_guard locker{persist_snapshot_mutex_};
+                status = raft_sender_.send_install_snapshot(
+                    msg.target, msg.snapshot_param, *persist_, res);
+            }
             if (status.fail()) continue;
             RETURN_IF_INVALID_STATUS(run_raft_step([&](RaftEffects& effects) {
                 raft_node_->handle_install_snapshot_response(
-                    msg.target.replica_id, res, effects);
+                    msg.target.replica_id, msg.snapshot_param, res, effects);
                 return Status::OK();
             }))
             if (res.term == read_term) success_cnt++;

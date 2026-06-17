@@ -10,6 +10,7 @@ namespace adviskv::storage {
 class RaftLog;
 
 // 负责记录已经 commit / apply 到哪里的进度。
+// 和名字不同，不仅会负责apply的推进，还有commit的推进
 class RaftApply {
    public:
     explicit RaftApply(const RaftLog& raft_log);

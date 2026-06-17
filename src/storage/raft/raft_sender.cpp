@@ -4,6 +4,7 @@
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
+#include "common/status.h"
 #include "storage/model/param.h"
 #include "storage/raft/grpc_raft_rpc_transport.h"
 
@@ -93,6 +94,11 @@ Status RaftSender::send_install_snapshot(const PeerMember& member,
         }
         in_flight_snapshots_[member.replica_id] = InFlightSnapshot{
             member.replica_id, param.snapshot_index, param.snapshot_term};
+        LOG_INFO(
+            "replica_id:{}, start to send install snapshot to replica_id:{}, "
+            "snapshot_index:{}, snapshot_term:{}",
+            param.from_replica_id.to_string(), param.to_replica_id.to_string(),
+            param.snapshot_index, param.snapshot_term);
     }
     auto clear_in_flight = Defer([this, replica_id = member.replica_id]() {
         std::lock_guard locker{in_flight_mutex_};
@@ -101,8 +107,10 @@ Status RaftSender::send_install_snapshot(const PeerMember& member,
 
     constexpr size_t kChunkSize = 1 << 20;
     uint64 offset = 0;
+
+    // 这里的result代表的是发送单次read_snapshot_chunk的结果
     result.term = param.term;
-    result.success = false;
+    result.status = Status::OK();
     while (true) {
         std::string data;
         bool eof = false;
@@ -117,16 +125,27 @@ Status RaftSender::send_install_snapshot(const PeerMember& member,
         Status status = transport_->install_snapshot_chunk(member, chunk_param,
                                                            timeout_ms_, result);
         RETURN_IF_INVALID_STATUS(status)
-        if (!result.success) {
+        if (result.status.fail()) {
+            LOG_WARN(
+                "replica_id:{}, transport install snapshot chunk result "
+                "failed, status:{}",
+                param.from_replica_id.to_string(), result.status.to_string());
             return Status::OK();
         }
 
         if (eof) {
-            result.success = true;
+            result.status = Status::OK();
             break;
         }
         offset += data.size();
     }
+
+    LOG_INFO(
+        "replica_id:{}, finish send install snapshot to replica_id:{}, "
+        "snapshot_index:{}, snapshot_term:{}",
+        param.from_replica_id.to_string(), param.to_replica_id.to_string(),
+        param.snapshot_index, param.snapshot_term);
+
     return Status::OK();
 }
 

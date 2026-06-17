@@ -37,7 +37,8 @@ class RaftReplication {
                               LogIndex follower_last_log_index);
     CommitAdvanceResult try_advance_commit_index(Term current_term);
 
-    void update_snapshot_progress(const ReplicaID& replica_id);
+    void update_snapshot_progress(const ReplicaID& replica_id,
+                                  LogIndex snapshot_index);
     LogIndex next_index(const ReplicaID& replica_id) const;
     void set_next_index_for_test(ReplicaID replica_id, LogIndex index);
 

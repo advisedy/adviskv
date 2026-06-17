@@ -144,7 +144,7 @@ struct InstallSnapshotParam {
 
 struct InstallSnapshotResult {
     Term term{0};
-    bool success{false};
+    Status status{Status::OK()};
 };
 
 enum class RaftMessageType : uint8_t {

@@ -76,7 +76,8 @@ void Logger::init(const LogConfig& config) {
                                                sinks.begin(), sinks.end());
 
     logger_->set_level(ParseLogLevel(config.log_level));
-    logger_->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%n] [%s:%#] %v");
+    logger_->set_pattern(
+        "[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%n] [tid:%t] [%s:%#] %v");
     logger_->flush_on(spdlog::level::info);
 
     init_flag_ = true;

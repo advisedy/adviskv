@@ -59,8 +59,10 @@ class Status {
    public:
     Status() : code_(StatusCode::OK) {}
     Status(StatusCode code) : code_(code) {}
-    explicit Status(int code) : code_(static_cast<StatusCode>(code)) {}
+    explicit Status(int32_t code) : code_(static_cast<StatusCode>(code)) {}
     Status(StatusCode code, const std::string& msg) : code_(code), msg_(msg) {}
+    Status(int32_t code, const std::string& msg)
+        : code_(to<StatusCode>(code)), msg_(msg) {}
 
     bool ok() const { return code_ == StatusCode::OK; }
     bool fail() const { return !ok(); }

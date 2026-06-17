@@ -121,8 +121,7 @@ Status GrpcRaftRpcTransport::install_snapshot_chunk(
     }
 
     result.term = response.term();
-    result.success =
-        response.base_rsp().code() == static_cast<int32_t>(StatusCode::OK);
+    result.status = Status{response.base_rsp().code(), response.base_rsp().msg()};
     return Status::OK();
 }
 

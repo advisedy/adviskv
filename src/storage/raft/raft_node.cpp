@@ -3,6 +3,7 @@
 #include <fmt/format.h>
 
 #include <cassert>
+#include <functional>
 #include <mutex>
 #include <utility>
 #include <vector>
@@ -13,6 +14,7 @@
 #include "common/metrics/metrics.h"
 #include "common/model/replica_role.h"
 #include "common/status.h"
+#include "common/tick_trigger.h"
 #include "common/type.h"
 #include "storage/model/param.h"
 #include "storage/raft/raft_apply.h"
@@ -22,7 +24,9 @@
 namespace adviskv::storage {
 
 static constexpr int32_t HEARTBEAT_INTERVAL = 3;
-#define ELECTION_TIMEOUT (func::get_random_int32(15, 30))
+
+static const TickTrigger::TickLimitFunc ELECTION_TIMEOUT_FUNC =
+    std::bind(func::get_random_int32, 15, 30);
 
 RaftNode::RaftNode(const ReplicaID& self_id,
                    const std::vector<PeerMember>& members)
@@ -32,7 +36,7 @@ RaftNode::RaftNode(const ReplicaID& self_id,
       raft_apply_(raft_log_),
       membership_(self_id_, members),
       replication_(self_id_, membership_, raft_log_, raft_apply_),
-      election_tick_trigger_(ELECTION_TIMEOUT),
+      election_tick_trigger_(ELECTION_TIMEOUT_FUNC),
       heartbeat_tick_trigger_(HEARTBEAT_INTERVAL) {}
 
 LogIndex RaftNode::last_log_index_unlocked() const {
@@ -119,11 +123,10 @@ void RaftNode::tick(RaftEffects& effects) {
     if (ensure_ready_unlocked().fail()) return;
 
     if (election_.is_leader()) {
-        if (heartbeat_tick_trigger_.tick()) {
-            broadcast_append_entries(effects);
-        }
-    } else if (election_tick_trigger_.tick()) {
-        become_candidate(effects);
+        heartbeat_tick_trigger_.tick(
+            [&] { broadcast_append_entries(effects); });
+    } else {
+        election_tick_trigger_.tick([&] { become_candidate(effects); });
     }
 }
 
@@ -134,7 +137,7 @@ void RaftNode::become_candidate(RaftEffects& effects) {
     record_hard_state_unlocked(effects);
 
     heartbeat_tick_trigger_.stop();
-    election_tick_trigger_.reset(ELECTION_TIMEOUT);
+    election_tick_trigger_.reset();
 
     // 如果只有一个节点的话，就直接当选
     if (has_quorum_unlocked(election_.granted_vote_count())) {
@@ -272,7 +275,7 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
                   election_.current_term());
         record_hard_state_unlocked(effects);
         result.vote_granted = true;
-        election_tick_trigger_.reset(ELECTION_TIMEOUT);
+        election_tick_trigger_.clear();
     }
 }
 
@@ -311,6 +314,7 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     }
 
     result.term = election_.current_term();
+    election_tick_trigger_.clear();
 
     if (param.prev_log_index > 0) {
         if (param.prev_log_index < snapshot_index_unlocked()) {
@@ -338,10 +342,6 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     //         "param.prev_log_index < snapshot_index_!!");
     //     return;
     // }
-
-    // 把自己的时间reset一下， 选举的
-    // election_ticks_ = 0;
-    election_tick_trigger_.reset(ELECTION_TIMEOUT);
 
     if (param.entries.empty()) {
         // 这里是心跳
@@ -375,8 +375,6 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
 void RaftNode::handle_vote_response(const ReplicaID& from,
                                     const RequestVoteResult& result,
                                     RaftEffects& effects) {
-    UNUSED(from);
-
     std::lock_guard lock(mutex_);
     effects = RaftEffects{};
     if (ensure_ready_unlocked().fail()) return;
@@ -492,10 +490,12 @@ void RaftNode::become_follower(Term later_term, RaftEffects& effects) {
     LOG_INFO("replica:{} become follower, new term:{}", self_id_.to_string(),
              later_term);
 
+    heartbeat_tick_trigger_.stop();
+    election_tick_trigger_.reset();
+
     if (election_.become_follower(later_term)) {
         record_hard_state_unlocked(effects);
     }
-    election_tick_trigger_.reset(ELECTION_TIMEOUT);
 }
 
 void RaftNode::become_leader(RaftEffects& effects) {
@@ -503,9 +503,9 @@ void RaftNode::become_leader(RaftEffects& effects) {
 
     LOG_INFO("replica:{} become leader", self_id_.to_string());
     election_.become_leader();
-    // heartbeat_ticks_ = election_ticks_ = 0;
+
     election_tick_trigger_.stop();
-    heartbeat_tick_trigger_.reset(HEARTBEAT_INTERVAL);
+    heartbeat_tick_trigger_.reset();
 
     // TODO 为什么当上了leader之后需要把这些全都初始化呢？ 保留原来的值不行吗？
     replication_.reset_for_leader();
@@ -594,30 +594,52 @@ Status RaftNode::install_leader_snapshot(LogIndex new_snapshot_index,
 
     if (leader_term > election_.current_term() || !election_.is_follower()) {
         become_follower(leader_term, effects);
-    } else {
-        election_tick_trigger_.reset(ELECTION_TIMEOUT);
     }
+
+    election_tick_trigger_.clear();
 
     install_snapshot_unlocked(new_snapshot_index, new_snapshot_term);
     return Status::OK();
 }
 
 void RaftNode::handle_install_snapshot_response(
-    const ReplicaID& from, const InstallSnapshotResult& result,
-    RaftEffects& effects) {
+    const ReplicaID& from, const InstallSnapshotParam& sent_param,
+    const InstallSnapshotResult& result, RaftEffects& effects) {
     std::lock_guard lock(mutex_);
     effects = RaftEffects{};
     if (ensure_ready_unlocked().fail()) return;
-    if (!election_.is_leader()) return;
 
     if (result.term > election_.current_term()) {
         become_follower(result.term, effects);
         return;
     }
 
-    if (!result.success) return;
+    if (!election_.is_leader()) return;
 
-    replication_.update_snapshot_progress(from);
+    if (sent_param.term != election_.current_term()) {
+        LOG_WARN(
+            "raft replica_id:{} handle snapshot response replica_id:{}, "
+            "sent_param.term:{} != election_.current_term:{}",
+            self_id_.to_string(), from.to_string(), sent_param.term,
+            election_.current_term());
+        return;
+    }
+
+    if (result.status.fail()) {
+        LOG_WARN(
+            "raft replica_id:{} handle snapshot response replica_id:{}, result "
+            "status.fail, status:{}",
+            self_id_.to_string(), from.to_string(), result.status.to_string());
+        return;
+    }
+
+    replication_.update_snapshot_progress(from, sent_param.snapshot_index);
+
+    LOG_DEBUG(
+        "raft node replica_id:{} send to replica_id:{} snapshot finish, "
+        "snapshot_index:{}, snapshot_term:{}",
+        self_id_.to_string(), from.to_string(), snapshot_index_unlocked(),
+        snapshot_term_unlocked());
 }
 
 Status RaftNode::prepare_install_snapshot(Term leader_term,
@@ -635,11 +657,12 @@ Status RaftNode::prepare_install_snapshot(Term leader_term,
     if (leader_term > election_.current_term() || !election_.is_follower()) {
         become_follower(leader_term, effects);
     }
+    election_tick_trigger_.clear();
 
     if (new_snapshot_index <= snapshot_index_unlocked()) {
-        return Status::ERROR(fmt::format(
-            "leader snapshot_index:{} is older than current snapshot_index:{}",
-            new_snapshot_index, snapshot_index_unlocked()));
+        return Status::ERROR(
+            fmt::format("leader snapshot_index:{} <= current snapshot_index:{}",
+                        new_snapshot_index, snapshot_index_unlocked()));
     }
 
     return Status::OK();
@@ -667,7 +690,7 @@ void RaftNode::finish_recovering_unlocked() {
     if (state_ != RaftNodeState::RECOVERING) return;
 
     state_ = RaftNodeState::READY;
-    election_tick_trigger_.reset(ELECTION_TIMEOUT);
+    election_tick_trigger_.reset();
 }
 
 // 判判断当前这个term，这个leader是否已经提交过entry了
@@ -699,7 +722,5 @@ Status RaftNode::build_append_entries_for_read(RaftEffects& effects,
     replication_.broadcast_append_entries(election_.current_term(), effects);
     return Status::OK();
 }
-
-#undef ELECTION_TIMEOUT
 
 }  // namespace adviskv::storage
