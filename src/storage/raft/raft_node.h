@@ -15,7 +15,7 @@
 #include "storage/raft/raft_election.h"
 #include "storage/raft/raft_log.h"
 #include "storage/raft/raft_membership.h"
-#include "storage/raft/raft_peer_progress.h"
+#include "storage/raft/raft_replication.h"
 namespace adviskv::storage {
 
 // 这个就是一个计数触发器
@@ -171,20 +171,16 @@ class RaftNode {
     void finish_recovering_unlocked();
     bool has_committed_current_term_entry_unlocked() const;
     void record_hard_state_unlocked(RaftEffects& effects) const;
-    RaftMessage build_append_entries_message_unlocked(const PeerMember& member,
-                                                      LogIndex next_index);
 
     // RaftNode 只生成消息；Replica 负责把 RaftEffects.messages 发送出去。
     void send_request_vote_to(const PeerMember& member, RaftEffects& effects);
-    void send_append_entries_to(const PeerMember& member, LogIndex next_index,
-                                RaftEffects& effects);
     void broadcast_append_entries(RaftEffects& effects);
 
     ReplicaID self_id_;
     RaftElection election_;
     RaftLog raft_log_;
     RaftMembership membership_;
-    RaftPeerProgress peer_progress_;
+    RaftReplication replication_;
 
     TickTrigger election_tick_trigger_;
     TickTrigger heartbeat_tick_trigger_;
@@ -207,7 +203,7 @@ class RaftNode {
     }
 
     void set_next_index_for_test(ReplicaID target, LogIndex index) {
-        peer_progress_.update_next_index(target, index);
+        replication_.set_next_index_for_test(target, index);
     }
 
     friend class RaftClusterTest;

@@ -2,11 +2,8 @@
 
 #include <fmt/format.h>
 
-#include <algorithm>
 #include <cassert>
-#include <cstddef>
 #include <mutex>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -20,6 +17,7 @@
 #include "storage/model/param.h"
 #include "storage/raft/raft_log.h"
 #include "storage/raft/raft_membership.h"
+#include "storage/raft/raft_replication.h"
 namespace adviskv::storage {
 
 static constexpr int32_t HEARTBEAT_INTERVAL = 3;
@@ -29,8 +27,9 @@ RaftNode::RaftNode(const ReplicaID& self_id,
                    const std::vector<PeerMember>& members)
     : self_id_(self_id),
       election_(self_id_),
+      raft_log_(),
       membership_(self_id_, members),
-      peer_progress_(self_id_, membership_),
+      replication_(self_id_, membership_, raft_log_),
       election_tick_trigger_(ELECTION_TIMEOUT),
       heartbeat_tick_trigger_(HEARTBEAT_INTERVAL) {}
 
@@ -103,10 +102,7 @@ bool RaftNode::is_leader() const {
     return election_.is_leader();
 }
 
-RaftMeta RaftNode::get_rafe_meta() const{
-    return election_.hard_state();
-}
-
+RaftMeta RaftNode::get_rafe_meta() const { return election_.hard_state(); }
 
 bool RaftNode::later_than_other(Term other_term, LogIndex other_index) const {
     if (last_log_term_unlocked() != other_term) {
@@ -208,7 +204,6 @@ std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
 
     broadcast_append_entries(effects);
 
-
     if (election_.is_leader() and has_quorum_unlocked(1)) {
         try_update_commit_index();
     }
@@ -225,60 +220,7 @@ void RaftNode::broadcast_append_entries(RaftEffects& effects) {
     if (ensure_ready_unlocked().fail()) return;
     if (!election_.is_leader()) return;
 
-    for (const PeerMember& member : membership_.get_members()) {
-        if (member.replica_id == self_id_) continue;
-
-        if (peer_progress_.get_next_index(member.replica_id) == 0) {
-            peer_progress_.update_next_index(member.replica_id,
-                                             last_log_index_unlocked() + 1);
-        }
-
-        LogIndex next_idx = peer_progress_.get_next_index(member.replica_id);
-        send_append_entries_to(member, next_idx, effects);
-    }
-}
-
-void RaftNode::send_append_entries_to(const PeerMember& member,
-                                      LogIndex next_index,
-                                      RaftEffects& effects) {
-    effects.messages.push_back(
-        build_append_entries_message_unlocked(member, next_index));
-}
-
-RaftMessage RaftNode::build_append_entries_message_unlocked(
-    const PeerMember& member, LogIndex next_index) {
-    LogIndex prev_log_index = next_index - 1;
-
-    // 如果找不到了话，就发送下载快照的命令。
-    if (prev_log_index < snapshot_index_unlocked()) {
-        RaftMessage msg;
-        msg.type = RaftMessageType::INSTALL_SNAPSHOT;
-        msg.target = member;
-        msg.snapshot_param.from_replica_id = self_id_;
-        msg.snapshot_param.to_replica_id = member.replica_id;
-        msg.snapshot_param.term = election_.current_term();
-        msg.snapshot_param.snapshot_index = snapshot_index_unlocked();
-        msg.snapshot_param.snapshot_term = snapshot_term_unlocked();
-        return msg;
-    }
-
-    Term prev_log_term = raft_log_.term_at(prev_log_index);
-
-    AppendEntriesParam param;
-    param.from_replica_id = self_id_;
-    param.to_replica_id = member.replica_id;
-    param.term = election_.current_term();
-    param.prev_log_index = prev_log_index;
-    param.prev_log_term = prev_log_term;
-    param.leader_commit = raft_log_.commit_index();
-
-    param.entries = raft_log_.entries_from(next_index);
-
-    RaftMessage msg;
-    msg.type = RaftMessageType::APPEND_ENTRIES;
-    msg.target = member;
-    msg.append_param = std::move(param);
-    return msg;
+    replication_.broadcast_append_entries(election_.current_term(), effects);
 }
 
 void RaftNode::handle_request_vote(const RequestVoteParam& param,
@@ -460,8 +402,7 @@ void RaftNode::handle_vote_response(const ReplicaID& from,
     LOG_DEBUG(
         "candidate replica:{} get vote response from replica:{}, self vote "
         "count++ to {}",
-        self_id_.to_string(), from.to_string(),
-        election_.granted_vote_count());
+        self_id_.to_string(), from.to_string(), election_.granted_vote_count());
 
     if (has_quorum_unlocked(election_.granted_vote_count())) {
         become_leader(effects);
@@ -504,33 +445,31 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
         ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_success");
         LOG_DEBUG("leader replica:{} append enrties to replica:{} success.",
                   self_id_.to_string(), from.to_string());
-        peer_progress_.handle_append_ok(from, sent_param.prev_log_index,
-                                        sent_param.entries.size());
+        replication_.handle_append_ok(from, sent_param.prev_log_index,
+                                      sent_param.entries.size());
         try_update_commit_index();
     } else {
         ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_reject");
         // prev_log 对不上
 
         // 需要先确认一下关于response的时效性
-        if (LogIndex sent_next_index = sent_param.prev_log_index + 1;
-            sent_next_index != peer_progress_.get_next_index(from)) {
+        if (replication_.is_stale_append_response(from, sent_param)) {
             // 说明其实过期了，这个是旧的请求的回应，应该忽略才对
             LOG_DEBUG(
                 "leader replica:{} sent param.prev_log_index:{} + 1 != "
                 "next_index_[from]:{}",
                 self_id_.to_string(), sent_param.prev_log_index,
-                peer_progress_.get_next_index(from));
+                replication_.next_index(from));
             return Status::OK();
         }
 
-        peer_progress_.handle_append_failed(
-            from, result.last_log_index, last_log_index_unlocked());
+        replication_.handle_append_failed(from, result.last_log_index);
 
         LOG_DEBUG(
             "leader replica:{} append enrties to replica:{} failed. set "
             "next_index:{}",
             self_id_.to_string(), from.to_string(),
-            peer_progress_.get_next_index(from));
+            replication_.next_index(from));
     }
     return Status::OK();
 }
@@ -567,7 +506,7 @@ void RaftNode::become_leader(RaftEffects& effects) {
     heartbeat_tick_trigger_.reset(HEARTBEAT_INTERVAL);
 
     // TODO 为什么当上了leader之后需要把这些全都初始化呢？ 保留原来的值不行吗？
-    peer_progress_.reset_for_leader(membership_, last_log_index_unlocked());
+    replication_.reset_for_leader();
 
     append_new_entry_unlocked(
         WriteOpType::NONE, "for debug: this is a no-op entry key",
@@ -585,42 +524,13 @@ void RaftNode::become_leader(RaftEffects& effects) {
 void RaftNode::try_update_commit_index() {
     if (ensure_ready_unlocked().fail()) return;
 
-    LogIndex old_commit_index = raft_log_.commit_index();
-    for (LogIndex idx = raft_log_.commit_index() + 1;
-         idx <= raft_log_.last_log_index(); ++idx) {
-        // TODO 这里将来需要check一下这个term是否需要和当前的term一样吗？
-        // 但是好像leader是可以提交上一个leader没有提交的内容吧，所以好像不用
-
-        // 原来如此: leader 确实可以提交前一个 leader 未提交的
-        // entry，但不是"直接"提交。Raft 的规则是：只有当当前 term 的 entry
-        // 被多数派确认后，commit_index 才会推进，此时之前 term 的 entry 会因为
-        // commit_index 的递增而被顺带提交（ trace_commit_log_entries 从
-        // last_applied_ 推进到 commit_index_ ，包含了之前 term 的 entry）。
-        if (raft_log_.term_at(idx) != election_.current_term()) {
-            continue;
-        }
-
-        int success_cnt = 1;
-        for (const auto& member : membership_.get_members()) {
-            if (member.replica_id == self_id_) {
-                continue;
-            }
-            if (peer_progress_.match_index_at_least(member.replica_id, idx)) {
-                success_cnt++;
-            }
-        }
-
-        if (has_quorum_unlocked(success_cnt)) {
-            LOG_DEBUG("replica:{} commit_index pushed success. from {} to {}.",
-                      self_id_.to_string(), raft_log_.commit_index(), idx);
-            raft_log_.set_commit_index(idx);
-        }
-    }
-    if (raft_log_.commit_index() > old_commit_index) {
+    RaftReplication::CommitAdvanceResult result =
+        replication_.try_advance_commit_index(election_.current_term());
+    if (result.advanced) {
         ADVISKV_METRICS_COUNTER("storage_raft_commit_index_advance");
-        ADVISKV_METRICS_COUNTER(
-            "storage_raft_committed_entry",
-            static_cast<int64_t>(raft_log_.commit_index() - old_commit_index));
+        ADVISKV_METRICS_COUNTER("storage_raft_committed_entry",
+                                static_cast<int64_t>(result.new_commit_index -
+                                                     result.old_commit_index));
     }
 }
 
@@ -666,11 +576,10 @@ Status RaftNode::install_leader_snapshot(LogIndex new_snapshot_index,
     effects = RaftEffects{};
 
     if (leader_term < election_.current_term()) {
-        return Status::ERROR(
-            fmt::format("replica_id:{} install_leader_snapshot: leader term:{} "
-                        "< current term:{}",
-                        self_id_.to_string(), leader_term,
-                        election_.current_term()));
+        return Status::ERROR(fmt::format(
+            "replica_id:{} install_leader_snapshot: leader term:{} "
+            "< current term:{}",
+            self_id_.to_string(), leader_term, election_.current_term()));
     }
 
     if (leader_term > election_.current_term() || !election_.is_follower()) {
@@ -698,7 +607,7 @@ void RaftNode::handle_install_snapshot_response(
 
     if (!result.success) return;
 
-    peer_progress_.update_snapshot_progress(from, snapshot_index_unlocked());
+    replication_.update_snapshot_progress(from);
 }
 
 Status RaftNode::prepare_install_snapshot(Term leader_term,
@@ -789,19 +698,7 @@ Status RaftNode::build_append_entries_for_read(RaftEffects& effects,
     read_term = election_.current_term();
     read_index = raft_log_.commit_index();
 
-    for (const PeerMember& member : membership_.get_members()) {
-        if (member.replica_id == self_id_) continue;
-
-        if (peer_progress_.get_next_index(member.replica_id) == 0) {
-            peer_progress_.update_next_index(member.replica_id,
-                                             last_log_index_unlocked() + 1);
-        }
-
-        LogIndex next_idx = peer_progress_.get_next_index(member.replica_id);
-
-        effects.messages.push_back(
-            build_append_entries_message_unlocked(member, next_idx));
-    }
+    replication_.broadcast_append_entries(election_.current_term(), effects);
     return Status::OK();
 }
 

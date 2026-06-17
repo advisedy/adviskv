@@ -5,6 +5,7 @@ set(STORAGE_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_log.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_membership.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_election.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_replication.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_node.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_peer_progress.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_sender.cpp
