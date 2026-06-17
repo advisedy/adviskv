@@ -12,6 +12,7 @@
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
+#include "storage/raft/raft_election.h"
 #include "storage/raft/raft_log.h"
 #include "storage/raft/raft_membership.h"
 #include "storage/raft/raft_peer_progress.h"
@@ -146,6 +147,7 @@ class RaftNode {
                                          LogIndex& read_index, Term& read_term);
 
    private:
+    RaftMeta get_rafe_meta() const;
     LogIndex last_log_index_unlocked() const;
     Term last_log_term_unlocked() const;
     LogIndex snapshot_index_unlocked() const;
@@ -178,20 +180,8 @@ class RaftNode {
                                 RaftEffects& effects);
     void broadcast_append_entries(RaftEffects& effects);
 
-    enum class RaftNodeState {
-        READY,
-        RECOVERING,
-    };
-
     ReplicaID self_id_;
-    ReplicaRole role_{ReplicaRole::FOLLOWER};
-    Term current_term_{0};
-    std::optional<ReplicaID> voted_for_;
-
-    // 选举
-    int32_t election_generation_{0};
-    int32_t granted_vote_count_{0};
-
+    RaftElection election_;
     RaftLog raft_log_;
     RaftMembership membership_;
     RaftPeerProgress peer_progress_;
@@ -201,6 +191,10 @@ class RaftNode {
 
     mutable std::mutex mutex_;
 
+    enum class RaftNodeState {
+        READY,
+        RECOVERING,
+    };
     RaftNodeState state_{RaftNodeState::READY};
 
     //////////// TEST

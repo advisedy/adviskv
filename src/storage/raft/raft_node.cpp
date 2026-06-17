@@ -18,6 +18,7 @@
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
+#include "storage/raft/raft_log.h"
 #include "storage/raft/raft_membership.h"
 namespace adviskv::storage {
 
@@ -27,6 +28,7 @@ static constexpr int32_t HEARTBEAT_INTERVAL = 3;
 RaftNode::RaftNode(const ReplicaID& self_id,
                    const std::vector<PeerMember>& members)
     : self_id_(self_id),
+      election_(self_id_),
       membership_(self_id_, members),
       peer_progress_(self_id_, membership_),
       election_tick_trigger_(ELECTION_TIMEOUT),
@@ -68,12 +70,12 @@ bool RaftNode::has_quorum_unlocked(int ack_count) const {
 
 ReplicaRole RaftNode::role() const {
     std::lock_guard lock(mutex_);
-    return role_;
+    return election_.role();
 }
 
 Term RaftNode::current_term() const {
     std::lock_guard lock(mutex_);
-    return current_term_;
+    return election_.current_term();
 }
 
 LogIndex RaftNode::commit_index() const {
@@ -98,8 +100,13 @@ Term RaftNode::snapshot_term() const {
 
 bool RaftNode::is_leader() const {
     std::lock_guard lock(mutex_);
-    return role_ == ReplicaRole::LEADER;
+    return election_.is_leader();
 }
+
+RaftMeta RaftNode::get_rafe_meta() const{
+    return election_.hard_state();
+}
+
 
 bool RaftNode::later_than_other(Term other_term, LogIndex other_index) const {
     if (last_log_term_unlocked() != other_term) {
@@ -113,7 +120,7 @@ void RaftNode::tick(RaftEffects& effects) {
     effects = RaftEffects{};
     if (ensure_ready_unlocked().fail()) return;
 
-    if (role_ == ReplicaRole::LEADER) {
+    if (election_.is_leader()) {
         if (heartbeat_tick_trigger_.tick()) {
             broadcast_append_entries(effects);
         }
@@ -125,18 +132,14 @@ void RaftNode::tick(RaftEffects& effects) {
 void RaftNode::become_candidate(RaftEffects& effects) {
     if (ensure_ready_unlocked().fail()) return;
     LOG_INFO("replica:{} start become cadidate", self_id_.to_string());
-    election_generation_++;
-    current_term_++;
-    voted_for_ = self_id_;
-    granted_vote_count_ = 1;
-    role_ = ReplicaRole::CANDIDATE;
+    election_.become_candidate();
     record_hard_state_unlocked(effects);
 
     heartbeat_tick_trigger_.stop();
     election_tick_trigger_.reset(ELECTION_TIMEOUT);
 
     // 如果只有一个节点的话，就直接当选
-    if (has_quorum_unlocked(granted_vote_count_)) {
+    if (has_quorum_unlocked(election_.granted_vote_count())) {
         become_leader(effects);
         return;
     }
@@ -155,7 +158,7 @@ void RaftNode::send_request_vote_to(const PeerMember& member,
     msg.target = member;
     msg.vote_param.from_replica_id = self_id_;
     msg.vote_param.to_replica_id = member.replica_id;
-    msg.vote_param.term = current_term_;
+    msg.vote_param.term = election_.current_term();
     msg.vote_param.last_log_index = last_log_index_unlocked();
     msg.vote_param.last_log_term = last_log_term_unlocked();
     effects.messages.push_back(std::move(msg));
@@ -178,7 +181,7 @@ LogIndex RaftNode::append_new_entry_unlocked(WriteOpType op, const Key& key,
                                              const Value& value,
                                              RaftEffects& effects) {
     LogIndex new_index =
-        raft_log_.append_new_entry(current_term_, op, key, value);
+        raft_log_.append_new_entry(election_.current_term(), op, key, value);
     const LogEntry* entry = raft_log_.entry_at(new_index);
 
     if (entry != nullptr) {
@@ -196,7 +199,7 @@ std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
     Status ready_status = ensure_ready_unlocked();
     if (ready_status.fail()) return {ready_status, -1};
 
-    if (role_ != ReplicaRole::LEADER) {
+    if (!election_.is_leader()) {
         return {Status{StatusCode::NOT_LEADER, "not leader"}, -1};
     }
 
@@ -205,11 +208,8 @@ std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
 
     broadcast_append_entries(effects);
 
-    if (role_ != ReplicaRole::LEADER) {
-        return {Status{StatusCode::NOT_LEADER, "not leader"}, -1};
-    }
 
-    if (role_ == ReplicaRole::LEADER and has_quorum_unlocked(1)) {
+    if (election_.is_leader() and has_quorum_unlocked(1)) {
         try_update_commit_index();
     }
 
@@ -223,7 +223,7 @@ std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
 */
 void RaftNode::broadcast_append_entries(RaftEffects& effects) {
     if (ensure_ready_unlocked().fail()) return;
-    if (role_ != ReplicaRole::LEADER) return;
+    if (!election_.is_leader()) return;
 
     for (const PeerMember& member : membership_.get_members()) {
         if (member.replica_id == self_id_) continue;
@@ -256,7 +256,7 @@ RaftMessage RaftNode::build_append_entries_message_unlocked(
         msg.target = member;
         msg.snapshot_param.from_replica_id = self_id_;
         msg.snapshot_param.to_replica_id = member.replica_id;
-        msg.snapshot_param.term = current_term_;
+        msg.snapshot_param.term = election_.current_term();
         msg.snapshot_param.snapshot_index = snapshot_index_unlocked();
         msg.snapshot_param.snapshot_term = snapshot_term_unlocked();
         return msg;
@@ -267,7 +267,7 @@ RaftMessage RaftNode::build_append_entries_message_unlocked(
     AppendEntriesParam param;
     param.from_replica_id = self_id_;
     param.to_replica_id = member.replica_id;
-    param.term = current_term_;
+    param.term = election_.current_term();
     param.prev_log_index = prev_log_index;
     param.prev_log_term = prev_log_term;
     param.leader_commit = raft_log_.commit_index();
@@ -288,7 +288,7 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
               param.from_replica_id.to_string());
     std::lock_guard lock(mutex_);
     effects = RaftEffects{};
-    result.term = current_term_;
+    result.term = election_.current_term();
     result.vote_granted = false;
 
     // 这边对于recovering状态，我们是会去更新它的current
@@ -297,16 +297,16 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
     //     return;
     // }
 
-    if (param.term < current_term_) {
+    if (param.term < election_.current_term()) {
         return;
     }
 
-    if (param.term > current_term_) {
+    if (param.term > election_.current_term()) {
         // 这里这个函数会把自己的vote_for_给清空掉，会不会导致投了很多次票
         // 但是应该没有问题，毕竟是这种情况应该是发生在多次投票里面，他们的term不一样
         // 既然不一样的话，肯定是最终term最大的那一个去当的leader了，别的会自动变成follower
         become_follower(param.term, effects);
-        result.term = current_term_;
+        result.term = election_.current_term();
     }
 
     if (ensure_ready_unlocked().fail()) {
@@ -322,12 +322,10 @@ void RaftNode::handle_request_vote(const RequestVoteParam& param,
     // 如果投过了这个同一个人的话，其实这里vote_granted是true还是false都无所谓吧，反正对方已经拿到票了。
     // 保障一致性，还是设置成true把
 
-    if (!voted_for_.has_value() ||
-        voted_for_.value() == param.from_replica_id) {
+    if (election_.grant_vote_to(param.from_replica_id)) {
         LOG_DEBUG("replica:{} vote to {}, current_term:{}",
-                  self_id_.to_string(), param.to_replica_id.table_id,
-                  param.to_replica_id.to_string(), current_term_);
-        voted_for_ = param.from_replica_id;
+                  self_id_.to_string(), param.from_replica_id.to_string(),
+                  election_.current_term());
         record_hard_state_unlocked(effects);
         result.vote_granted = true;
         election_tick_trigger_.reset(ELECTION_TIMEOUT);
@@ -352,23 +350,23 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     std::lock_guard lock(mutex_);
     result = AppendEntriesResult{};
     result.success = false;
-    result.term = current_term_;
+    result.term = election_.current_term();
     result.last_log_index = last_log_index_unlocked();
 
-    if (param.term < current_term_) {
+    if (param.term < election_.current_term()) {
         ADVISKV_METRICS_COUNTER(
             "storage_raft_handle_append_entries_stale_term");
         return;
     }
 
-    if (param.term > current_term_ || role_ != ReplicaRole::FOLLOWER) {
+    if (param.term > election_.current_term() || !election_.is_follower()) {
         // 这里的判断条件是，只要role不是FOLLOWER，就会become，但是如果term和param的term是相等的
         // 然后prev_log_index不一样呢？ 这个时候不需要比较一下index吗？
         // 这里并不需要，毕竟append 不需要去干关于选举方面的事情，
         become_follower(param.term, effects);
     }
 
-    result.term = current_term_;
+    result.term = election_.current_term();
 
     if (param.prev_log_index > 0) {
         if (param.prev_log_index < snapshot_index_unlocked()) {
@@ -426,7 +424,7 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
     finish_recovering_unlocked();
 
     result.success = true;
-    result.term = current_term_;
+    result.term = election_.current_term();
     ADVISKV_METRICS_COUNTER("storage_raft_handle_append_entries_success");
 }
 
@@ -440,55 +438,35 @@ void RaftNode::handle_vote_response(const ReplicaID& from,
     if (ensure_ready_unlocked().fail()) return;
 
     // 已经不是 CANDIDATE 了，就直接忽略之前的发起内容
-    if (role_ != ReplicaRole::CANDIDATE) return;
+    if (!election_.is_candidate()) return;
 
     LOG_DEBUG("candidate replica:{} get vote response from replica:{}",
               self_id_.to_string(), from.to_string());
 
-    if (result.term > current_term_) {
+    if (result.term > election_.current_term()) {
         become_follower(result.term, effects);
+        return;
+    }
+
+    if (result.term < election_.current_term()) {
         return;
     }
 
     if (!result.vote_granted) return;
 
-    granted_vote_count_++;
+    if (!election_.record_vote_granted_from(from)) {
+        return;
+    }
     LOG_DEBUG(
         "candidate replica:{} get vote response from replica:{}, self vote "
         "count++ to {}",
-        self_id_.to_string(), from.to_string(), granted_vote_count_);
+        self_id_.to_string(), from.to_string(),
+        election_.granted_vote_count());
 
-    if (has_quorum_unlocked(granted_vote_count_)) {
+    if (has_quorum_unlocked(election_.granted_vote_count())) {
         become_leader(effects);
     }
 }
-
-// 这里的from是代表的从form那边返回的response。
-// 写到一半的时候脑子混了
-// 这个是raftnode作为leader，收到了来自别的replica的回应， 自己的handle
-// void RaftNode::handle_append_response(const ReplicaID& from,
-//                                       const AppendEntriesResult& result) {
-//     std::lock_guard lock(mutex_);
-//     if (role_ != ReplicaRole::LEADER) return;
-
-//     if (result.term > current_term_) {
-//         become_follower(result.term);
-//         return;
-//     }
-
-//     if (result.success) {
-//         // 复制成功，更新 match_index 和 next_index
-//         match_index_[from] = last_log_index_unlocked();
-//         next_index_[from] = last_log_index_unlocked() + 1;
-//         try_update_commit_index();
-//     } else {
-//         // prev_log 对不上，往前回退
-//         auto it = next_index_.find(from);
-//         if (it != next_index_.end() && it->second > 1) {
-//             --it->second;
-//         }
-//     }
-// }
 
 Status RaftNode::handle_append_response(const ReplicaID& from,
                                         const AppendEntriesParam& sent_param,
@@ -501,22 +479,22 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
     effects = RaftEffects{};
     RETURN_IF_INVALID_STATUS(ensure_ready_unlocked())
 
-    if (result.term > current_term_) {
+    if (result.term > election_.current_term()) {
         ADVISKV_METRICS_COUNTER(
             "storage_raft_handle_append_response_higher_term");
         become_follower(result.term, effects);
         return Status::NOT_LEADER("higher term");
     }
 
-    if (sent_param.term != current_term_) {
+    if (sent_param.term != election_.current_term()) {
         LOG_DEBUG(
             "leader replica:{} handle append response: result.term:{} != "
             "current_term:{}",
-            self_id_.to_string(), result.term, current_term_);
+            self_id_.to_string(), result.term, election_.current_term());
         return Status::OK();
     }
 
-    if (role_ != ReplicaRole::LEADER) {
+    if (!election_.is_leader()) {
         ADVISKV_METRICS_COUNTER(
             "storage_raft_handle_append_response_not_leader");
         return Status::NOT_LEADER();
@@ -568,17 +546,14 @@ void RaftNode::advance_last_applied(LogIndex applied) {
 }
 
 void RaftNode::become_follower(Term later_term, RaftEffects& effects) {
-    assert(later_term >= current_term_);
+    assert(later_term >= election_.current_term());
 
     LOG_INFO("replica:{} become follower, new term:{}", self_id_.to_string(),
              later_term);
 
-    if (later_term > current_term_) {
-        current_term_ = later_term;
-        voted_for_.reset();
+    if (election_.become_follower(later_term)) {
         record_hard_state_unlocked(effects);
     }
-    role_ = ReplicaRole::FOLLOWER;
     election_tick_trigger_.reset(ELECTION_TIMEOUT);
 }
 
@@ -586,7 +561,7 @@ void RaftNode::become_leader(RaftEffects& effects) {
     if (ensure_ready_unlocked().fail()) return;
 
     LOG_INFO("replica:{} become leader", self_id_.to_string());
-    role_ = ReplicaRole::LEADER;
+    election_.become_leader();
     // heartbeat_ticks_ = election_ticks_ = 0;
     election_tick_trigger_.stop();
     heartbeat_tick_trigger_.reset(HEARTBEAT_INTERVAL);
@@ -621,7 +596,7 @@ void RaftNode::try_update_commit_index() {
         // 被多数派确认后，commit_index 才会推进，此时之前 term 的 entry 会因为
         // commit_index 的递增而被顺带提交（ trace_commit_log_entries 从
         // last_applied_ 推进到 commit_index_ ，包含了之前 term 的 entry）。
-        if (raft_log_.term_at(idx) != current_term_) {
+        if (raft_log_.term_at(idx) != election_.current_term()) {
             continue;
         }
 
@@ -660,7 +635,7 @@ Status RaftNode::ensure_ready_unlocked() const {
 }
 
 void RaftNode::record_hard_state_unlocked(RaftEffects& effects) const {
-    effects.hard_state = RaftMeta{current_term_, voted_for_};
+    effects.hard_state = get_rafe_meta();
 }
 
 // void try_take_snapshot();
@@ -690,14 +665,15 @@ Status RaftNode::install_leader_snapshot(LogIndex new_snapshot_index,
     std::lock_guard lock(mutex_);
     effects = RaftEffects{};
 
-    if (leader_term < current_term_) {
+    if (leader_term < election_.current_term()) {
         return Status::ERROR(
             fmt::format("replica_id:{} install_leader_snapshot: leader term:{} "
                         "< current term:{}",
-                        self_id_.to_string(), leader_term, current_term_));
+                        self_id_.to_string(), leader_term,
+                        election_.current_term()));
     }
 
-    if (leader_term > current_term_ || role_ != ReplicaRole::FOLLOWER) {
+    if (leader_term > election_.current_term() || !election_.is_follower()) {
         become_follower(leader_term, effects);
     } else {
         election_tick_trigger_.reset(ELECTION_TIMEOUT);
@@ -713,9 +689,9 @@ void RaftNode::handle_install_snapshot_response(
     std::lock_guard lock(mutex_);
     effects = RaftEffects{};
     if (ensure_ready_unlocked().fail()) return;
-    if (role_ != ReplicaRole::LEADER) return;
+    if (!election_.is_leader()) return;
 
-    if (result.term > current_term_) {
+    if (result.term > election_.current_term()) {
         become_follower(result.term, effects);
         return;
     }
@@ -731,13 +707,13 @@ Status RaftNode::prepare_install_snapshot(Term leader_term,
     std::lock_guard lock(mutex_);
     effects = RaftEffects{};
 
-    if (leader_term < current_term_) {  // 发送过来的leader的term低
+    if (leader_term < election_.current_term()) {  // 发送过来的leader的term低
         return Status::ERROR(
             fmt::format("leade term:{} is oldear than current term:{}",
-                        leader_term, current_term_));
+                        leader_term, election_.current_term()));
     }
 
-    if (leader_term > current_term_ || role_ != ReplicaRole::FOLLOWER) {
+    if (leader_term > election_.current_term() || !election_.is_follower()) {
         become_follower(leader_term, effects);
     }
 
@@ -752,8 +728,7 @@ Status RaftNode::prepare_install_snapshot(Term leader_term,
 
 void RaftNode::update_raft_meta(const RaftMeta& meta) {
     std::lock_guard lock(mutex_);
-    current_term_ = meta.current_term;
-    voted_for_ = meta.voted_for;
+    election_.update_meta(meta);
 }
 
 void RaftNode::update_log_entries(const std::vector<LogEntry>& entries) {
@@ -764,7 +739,7 @@ void RaftNode::update_log_entries(const std::vector<LogEntry>& entries) {
 void RaftNode::enter_recovering() {
     std::lock_guard lock(mutex_);
     state_ = RaftNodeState::RECOVERING;
-    role_ = ReplicaRole::FOLLOWER;
+    election_.become_follower(election_.current_term());
     election_tick_trigger_.stop();
     heartbeat_tick_trigger_.stop();
 }
@@ -782,13 +757,13 @@ void RaftNode::finish_recovering_unlocked() {
 bool RaftNode::has_committed_current_term_entry_unlocked() const {
     if (snapshot_index_unlocked() > 0 &&
         snapshot_index_unlocked() <= raft_log_.commit_index() &&
-        snapshot_term_unlocked() == current_term_) {
+        snapshot_term_unlocked() == election_.current_term()) {
         return true;
     }
 
     for (LogIndex idx = raft_log_.commit_index();
          idx >= snapshot_index_unlocked() + 1; --idx) {
-        if (raft_log_.term_at(idx) == current_term_) {
+        if (raft_log_.term_at(idx) == election_.current_term()) {
             return true;
         }
     }
@@ -806,12 +781,12 @@ Status RaftNode::build_append_entries_for_read(RaftEffects& effects,
     effects = RaftEffects{};
     RETURN_IF_INVALID_STATUS(ensure_ready_unlocked())
 
-    if (role_ != ReplicaRole::LEADER) return Status::NOT_LEADER("not leader");
+    if (!election_.is_leader()) return Status::NOT_LEADER("not leader");
     if (!has_committed_current_term_entry_unlocked()) {
         return Status::NOT_YET_COMMIT("current term entry is not committed");
     }
 
-    read_term = current_term_;
+    read_term = election_.current_term();
     read_index = raft_log_.commit_index();
 
     for (const PeerMember& member : membership_.get_members()) {
