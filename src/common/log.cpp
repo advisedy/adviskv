@@ -5,7 +5,9 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <filesystem>
 #include <stdexcept>
 #include <vector>
@@ -15,22 +17,26 @@ namespace adviskv {
 namespace {
 
 spdlog::level::level_enum ParseLogLevel(const std::string& level) {
-    if (level == "trace") {
+    std::string normalized = level;
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
+    if (normalized == "trace") {
         return spdlog::level::trace;
     }
-    if (level == "debug") {
+    if (normalized == "debug") {
         return spdlog::level::debug;
     }
-    if (level == "info") {
+    if (normalized == "info") {
         return spdlog::level::info;
     }
-    if (level == "warning") {
+    if (normalized == "warn" || normalized == "warning") {
         return spdlog::level::warn;
     }
-    if (level == "error") {
+    if (normalized == "error" || normalized == "err") {
         return spdlog::level::err;
     }
-    if (level == "critical") {
+    if (normalized == "critical") {
         return spdlog::level::critical;
     }
     throw std::invalid_argument("invalid log level: " + level);
