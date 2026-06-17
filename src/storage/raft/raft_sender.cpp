@@ -1,6 +1,5 @@
 #include "storage/raft/raft_sender.h"
 
-#include "common/defer.h"
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
@@ -81,34 +80,22 @@ Status RaftSender::send_append_entries(const PeerMember& member,
     return Status::OK();
 }
 
+// 这个函数返回的是OK，代表的是'接收'到了下载快照的Response,并不保证Response的返回码是OK。
 Status RaftSender::send_install_snapshot(const PeerMember& member,
                                          const InstallSnapshotParam& param,
                                          const PersistEngine& persist,
                                          InstallSnapshotResult& result) const {
-    {
-        std::lock_guard locker{in_flight_mutex_};
-        if (auto it = in_flight_snapshots_.find(member.replica_id);
-            it != in_flight_snapshots_.end()) {
-            // V1版本的做法，只要有follower被发送快照，我们就不允许继续发了，不会继续去判断是否快照相同了。
-            return Status::ALREADY_EXIST("snapshot is sending the same one");
-        }
-        in_flight_snapshots_[member.replica_id] = InFlightSnapshot{
-            member.replica_id, param.snapshot_index, param.snapshot_term};
-        LOG_INFO(
-            "replica_id:{}, start to send install snapshot to replica_id:{}, "
-            "snapshot_index:{}, snapshot_term:{}",
-            param.from_replica_id.to_string(), param.to_replica_id.to_string(),
-            param.snapshot_index, param.snapshot_term);
-    }
-    auto clear_in_flight = Defer([this, replica_id = member.replica_id]() {
-        std::lock_guard locker{in_flight_mutex_};
-        in_flight_snapshots_.erase(replica_id);
-    });
+    LOG_INFO(
+        "replica_id:{}, start to send install snapshot to replica_id:{}, "
+        "snapshot_index:{}, snapshot_term:{}",
+        param.from_replica_id.to_string(), param.to_replica_id.to_string(),
+        param.snapshot_index, param.snapshot_term);
 
     constexpr size_t kChunkSize = 1 << 20;
     uint64 offset = 0;
 
     // 这里的result代表的是发送单次read_snapshot_chunk的结果
+    result = InstallSnapshotResult{};
     result.term = param.term;
     result.status = Status::OK();
     while (true) {

@@ -35,6 +35,9 @@ class Replica {
     Term current_term() const {
         return raft_node_ ? raft_node_->current_term() : 0;
     }
+    LogIndex snapshot_index() const {
+        return raft_node_ ? raft_node_->snapshot_index() : 0;
+    }
 
     // 这个是返回给外部的ReplicaStatus的， 内部使用LocalState
     ReplicaStatus get_status() const;

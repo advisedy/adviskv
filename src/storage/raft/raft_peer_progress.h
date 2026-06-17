@@ -25,6 +25,14 @@ class RaftPeerProgress {
                           LogIndex last_log_index);
     void update_snapshot_progress(ReplicaID replica_id,
                                   LogIndex snapshot_index);
+    LogIndex get_confirmed_snapshot_index(ReplicaID replica_id) const;
+    bool confirmed_snapshot_index_at_least(ReplicaID replica_id,
+                                           LogIndex snapshot_index) const;
+    LogIndex get_inflight_snapshot_index(ReplicaID replica_id) const;
+    bool has_inflight_snapshot(ReplicaID replica_id) const;
+    bool mark_snapshot_inflight(ReplicaID replica_id, LogIndex snapshot_index);
+    void clear_snapshot_inflight(ReplicaID replica_id,
+                                 LogIndex snapshot_index);
     void handle_append_ok(ReplicaID replica_id, LogIndex prev_log_index,
                           size_t entries_size);
     void handle_append_failed(ReplicaID replica_id,
@@ -36,6 +44,10 @@ class RaftPeerProgress {
     ReplicaID self_id_;
     std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> next_index_;
     std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> match_index_;
+    std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash>
+        confirmed_snapshot_index_;
+    std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash>
+        inflight_snapshot_index_;
 };
 
 }  // namespace adviskv::storage

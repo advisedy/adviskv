@@ -71,6 +71,8 @@ class RaftNode {
 
     Term snapshot_term() const;
 
+    int quorum_size() const;
+
     bool is_leader() const;
 
     // 外部更新 last_applied（apply 完成后调用）
@@ -89,6 +91,9 @@ class RaftNode {
                                           const InstallSnapshotParam& sent_param,
                                           const InstallSnapshotResult& result,
                                           RaftEffects& effects);
+    void handle_install_snapshot_send_failed(
+        const ReplicaID& from, const InstallSnapshotParam& sent_param,
+        const Status& status);
 
     Status prepare_install_snapshot(Term leader_term, LogIndex snapshot_index,
                                     RaftEffects& effects);

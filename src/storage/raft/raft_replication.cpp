@@ -1,8 +1,10 @@
 #include "storage/raft/raft_replication.h"
 
+#include <optional>
 #include <utility>
 
 #include "common/log.h"
+#include "storage/model/param.h"
 
 namespace adviskv::storage {
 
@@ -30,8 +32,12 @@ void RaftReplication::broadcast_append_entries(Term current_term,
         }
 
         LogIndex next_idx = peer_progress_.get_next_index(member.replica_id);
-        effects.messages.push_back(
-            build_append_entries_message(member, next_idx, current_term));
+
+        RaftMessageOr msg =
+            build_append_entries_message(member, next_idx, current_term);
+        if (msg.has_value()) {
+            effects.messages.push_back(std::move(*msg));
+        }
     }
 }
 
@@ -95,13 +101,28 @@ RaftReplication::CommitAdvanceResult RaftReplication::try_advance_commit_index(
     return result;
 }
 
-void RaftReplication::update_snapshot_progress(const ReplicaID& replica_id) {
-    peer_progress_.update_snapshot_progress(replica_id,
-                                            raft_log_.snapshot_index());
+void RaftReplication::update_snapshot_progress(const ReplicaID& replica_id,
+                                               LogIndex snapshot_index) {
+    peer_progress_.update_snapshot_progress(replica_id, snapshot_index);
+}
+
+void RaftReplication::clear_snapshot_inflight(const ReplicaID& replica_id,
+                                              LogIndex snapshot_index) {
+    peer_progress_.clear_snapshot_inflight(replica_id, snapshot_index);
 }
 
 LogIndex RaftReplication::next_index(const ReplicaID& replica_id) const {
     return peer_progress_.get_next_index(replica_id);
+}
+
+LogIndex RaftReplication::confirmed_snapshot_index(
+    const ReplicaID& replica_id) const {
+    return peer_progress_.get_confirmed_snapshot_index(replica_id);
+}
+
+LogIndex RaftReplication::inflight_snapshot_index(
+    const ReplicaID& replica_id) const {
+    return peer_progress_.get_inflight_snapshot_index(replica_id);
 }
 
 void RaftReplication::set_next_index_for_test(ReplicaID replica_id,
@@ -109,18 +130,33 @@ void RaftReplication::set_next_index_for_test(ReplicaID replica_id,
     peer_progress_.update_next_index(replica_id, index);
 }
 
-RaftMessage RaftReplication::build_append_entries_message(
-    const PeerMember& member, LogIndex next_index, Term current_term) const {
+RaftMessageOr RaftReplication::build_append_entries_message(
+    const PeerMember& member, LogIndex next_index, Term current_term) {
     LogIndex prev_log_index = next_index - 1;
 
     if (prev_log_index < raft_log_.snapshot_index()) {
+        LogIndex snapshot_index = raft_log_.snapshot_index();
+        if (!peer_progress_.mark_snapshot_inflight(member.replica_id,
+                                                   snapshot_index)) {
+            LOG_DEBUG(
+                "replica:{} skip install snapshot to replica:{}, "
+                "inflight_snapshot_index:{}",
+                self_id_.to_string(), member.replica_id.to_string(),
+                peer_progress_.get_inflight_snapshot_index(member.replica_id));
+            return std::nullopt;
+        }
+        LOG_DEBUG(
+            "replica:{} build message, install snapshot to replica:{}, "
+            "snapshot_index:{}",
+            self_id_.to_string(), member.replica_id.to_string(),
+            snapshot_index);
         RaftMessage msg;
         msg.type = RaftMessageType::INSTALL_SNAPSHOT;
         msg.target = member;
         msg.snapshot_param.from_replica_id = self_id_;
         msg.snapshot_param.to_replica_id = member.replica_id;
         msg.snapshot_param.term = current_term;
-        msg.snapshot_param.snapshot_index = raft_log_.snapshot_index();
+        msg.snapshot_param.snapshot_index = snapshot_index;
         msg.snapshot_param.snapshot_term = raft_log_.snapshot_term();
         return msg;
     }

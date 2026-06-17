@@ -1,8 +1,6 @@
 #pragma once
 
 #include <memory>
-#include <mutex>
-#include <unordered_map>
 
 #include "common/status.h"
 #include "storage/model/param.h"
@@ -32,15 +30,6 @@ class RaftSender {
                                  InstallSnapshotResult& result) const;
 
    private:
-    struct InFlightSnapshot {
-        ReplicaID target;
-        LogIndex snapshot_index;
-        Term snapshot_term;
-    };
-    mutable std::unordered_map<ReplicaID, InFlightSnapshot, ReplicaIDHash>
-        in_flight_snapshots_;
-
-    mutable std::mutex in_flight_mutex_;
     std::unique_ptr<IRaftRpcTransport> transport_;
     int32 timeout_ms_{1000};
 };

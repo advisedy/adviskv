@@ -17,34 +17,35 @@ namespace {
 
 class BlockingInstallSnapshotTransport final : public IRaftRpcTransport {
    public:
-   Status request_vote(const PeerMember&, const RequestVoteParam&,
-                       int32_t,
-                       RequestVoteResult&) const override {
-       return Status::ERROR("unused");
-   }
+    Status request_vote(const PeerMember&, const RequestVoteParam&, int32_t,
+                        RequestVoteResult&) const override {
+        return Status::ERROR("unused");
+    }
 
-   Status append_entries(const PeerMember&, const AppendEntriesParam&,
-                         int32_t,
-                         AppendEntriesResult&) const override {
-       return Status::ERROR("unused");
-   }
+    Status append_entries(const PeerMember&, const AppendEntriesParam&, int32_t,
+                          AppendEntriesResult&) const override {
+        return Status::ERROR("unused");
+    }
+
     Status install_snapshot_chunk(
         const PeerMember&, const InstallSnapshotParam& param, int32_t,
         InstallSnapshotResult& result) const override {
         std::unique_lock lock(mutex_);
         ++install_snapshot_call_count_;
-        install_snapshot_entered_ = true;
         cv_.notify_all();
         cv_.wait(lock, [&] { return released_; });
         result.term = param.term;
-        result.success = true;
+        result.status = Status::OK();
+        result.snapshot_index = param.snapshot_index;
+        result.follower_snapshot_ahead = false;
         return Status::OK();
     }
 
-    bool wait_until_entered(Milliseconds timeout) const {
+    bool wait_until_call_count(int expected, Milliseconds timeout) const {
         std::unique_lock lock(mutex_);
-        return cv_.wait_for(lock, timeout,
-                            [&] { return install_snapshot_entered_; });
+        return cv_.wait_for(lock, timeout, [&] {
+            return install_snapshot_call_count_ >= expected;
+        });
     }
 
     void release() {
@@ -61,7 +62,6 @@ class BlockingInstallSnapshotTransport final : public IRaftRpcTransport {
    private:
     mutable std::mutex mutex_;
     mutable std::condition_variable cv_;
-    mutable bool install_snapshot_entered_{false};
     mutable bool released_{false};
     mutable int install_snapshot_call_count_{0};
 };
@@ -99,14 +99,7 @@ class RaftSenderTest : public ::testing::Test {
         EXPECT_TRUE(persist->do_snapshot(machine).ok());
 
         return InstallSnapshotParam{
-            ReplicaID{101, 7, 0},
-            member_.replica_id,
-            3,
-            1,
-            1,
-            0,
-            "",
-            false,
+            ReplicaID{101, 7, 0}, member_.replica_id, 3, 1, 1, 0, "", false,
         };
     }
 
@@ -115,10 +108,7 @@ class RaftSenderTest : public ::testing::Test {
     PeerMember member_;
 };
 
-
-
-TEST_F(RaftSenderTest,
-       DuplicateInstallSnapshotWhileInflightReturnsAlreadyExist) {
+TEST_F(RaftSenderTest, InstallSnapshotInflightIsNotOwnedBySender) {
     PersistEngine persist = make_snapshot_persist(ReplicaID{101, 7, 0});
     InstallSnapshotParam param = prepare_snapshot(&persist, "snap-value");
 
@@ -133,20 +123,34 @@ TEST_F(RaftSenderTest,
             sender.send_install_snapshot(member_, param, persist, first_result);
     });
 
-    ASSERT_TRUE(raw_transport->wait_until_entered(Milliseconds(1000)));
+    bool first_entered =
+        raw_transport->wait_until_call_count(1, Milliseconds(1000));
+    if (!first_entered) {
+        raw_transport->release();
+        first_sender.join();
+    }
+    ASSERT_TRUE(first_entered);
 
     InstallSnapshotResult second_result;
-    Status second_status = sender.send_install_snapshot(
-        member_, param, persist, second_result);
+    Status second_status = Status::ERROR("not finished");
+    std::thread second_sender([&] {
+        second_status = sender.send_install_snapshot(member_, param, persist,
+                                                     second_result);
+    });
 
-    EXPECT_EQ(second_status.code(), StatusCode::ALREADY_EXIST);
+    bool second_entered =
+        raw_transport->wait_until_call_count(2, Milliseconds(1000));
 
     raw_transport->release();
     first_sender.join();
+    second_sender.join();
 
+    ASSERT_TRUE(second_entered);
     ASSERT_TRUE(first_status.ok()) << first_status.msg();
-    ASSERT_TRUE(first_result.success);
-    EXPECT_EQ(raw_transport->install_snapshot_call_count(), 1);
+    ASSERT_TRUE(second_status.ok()) << second_status.msg();
+    ASSERT_TRUE(first_result.status.ok()) << first_result.status.to_string();
+    ASSERT_TRUE(second_result.status.ok()) << second_result.status.to_string();
+    EXPECT_EQ(raw_transport->install_snapshot_call_count(), 2);
 }
 
 }  // namespace

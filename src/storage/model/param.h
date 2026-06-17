@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "common/define.h"
+#include "common/optional.h"
 #include "common/status.h"
 #include "common/type.h"
 
@@ -145,6 +146,8 @@ struct InstallSnapshotParam {
 struct InstallSnapshotResult {
     Term term{0};
     Status status{Status::OK()};
+    LogIndex snapshot_index{0};
+    bool follower_snapshot_ahead{false};
 };
 
 enum class RaftMessageType : uint8_t {
@@ -161,6 +164,8 @@ struct RaftMessage {
     AppendEntriesParam append_param{};
     InstallSnapshotParam snapshot_param{};
 };
+
+using RaftMessageOr = Optional<RaftMessage>;
 
 // raftnode的产物，交给replica去做
 struct RaftEffects {

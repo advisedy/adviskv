@@ -24,7 +24,7 @@ spdlog::level::level_enum ParseLogLevel(const std::string& level) {
     if (level == "info") {
         return spdlog::level::info;
     }
-    if (level == "warn") {
+    if (level == "warning") {
         return spdlog::level::warn;
     }
     if (level == "error") {

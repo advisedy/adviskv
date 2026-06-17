@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 
 #include "common/type.h"
 #include "storage/model/param.h"
@@ -39,13 +40,16 @@ class RaftReplication {
 
     void update_snapshot_progress(const ReplicaID& replica_id,
                                   LogIndex snapshot_index);
+    void clear_snapshot_inflight(const ReplicaID& replica_id,
+                                 LogIndex snapshot_index);
     LogIndex next_index(const ReplicaID& replica_id) const;
+    LogIndex confirmed_snapshot_index(const ReplicaID& replica_id) const;
+    LogIndex inflight_snapshot_index(const ReplicaID& replica_id) const;
     void set_next_index_for_test(ReplicaID replica_id, LogIndex index);
 
    private:
-    RaftMessage build_append_entries_message(const PeerMember& member,
-                                             LogIndex next_index,
-                                             Term current_term) const;
+    RaftMessageOr build_append_entries_message(
+        const PeerMember& member, LogIndex next_index, Term current_term);
 
     ReplicaID self_id_;
     const RaftMembership& membership_;

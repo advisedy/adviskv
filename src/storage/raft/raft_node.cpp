@@ -69,6 +69,11 @@ int RaftNode::quorum_size_unlocked() const {
     return membership_.quorum_size_unlocked();
 }
 
+int RaftNode::quorum_size() const {
+    std::lock_guard lock(mutex_);
+    return quorum_size_unlocked();
+}
+
 bool RaftNode::has_quorum_unlocked(int ack_count) const {
     return membership_.has_quorum_unlocked(ack_count);
 }
@@ -625,6 +630,29 @@ void RaftNode::handle_install_snapshot_response(
         return;
     }
 
+    replication_.clear_snapshot_inflight(from, sent_param.snapshot_index);
+
+    if (result.follower_snapshot_ahead) {
+        LogIndex follower_snapshot_index = result.snapshot_index;
+        if (follower_snapshot_index < sent_param.snapshot_index) {
+            LOG_WARN(
+                "raft replica_id:{} handle snapshot response replica_id:{}, "
+                "follower_snapshot_ahead is true but "
+                "follower_snapshot_index:{} < sent_snapshot_index:{}",
+                self_id_.to_string(), from.to_string(), follower_snapshot_index,
+                sent_param.snapshot_index);
+            return;
+        }
+
+        replication_.update_snapshot_progress(from, follower_snapshot_index);
+        LOG_DEBUG(
+            "raft node replica_id:{} follower replica_id:{} already covers "
+            "snapshot, sent_snapshot_index:{}, follower_snapshot_index:{}",
+            self_id_.to_string(), from.to_string(), sent_param.snapshot_index,
+            follower_snapshot_index);
+        return;
+    }
+
     if (result.status.fail()) {
         LOG_WARN(
             "raft replica_id:{} handle snapshot response replica_id:{}, result "
@@ -638,8 +666,33 @@ void RaftNode::handle_install_snapshot_response(
     LOG_DEBUG(
         "raft node replica_id:{} send to replica_id:{} snapshot finish, "
         "snapshot_index:{}, snapshot_term:{}",
-        self_id_.to_string(), from.to_string(), snapshot_index_unlocked(),
-        snapshot_term_unlocked());
+        self_id_.to_string(), from.to_string(), sent_param.snapshot_index,
+        sent_param.snapshot_term);
+}
+
+void RaftNode::handle_install_snapshot_send_failed(
+    const ReplicaID& from, const InstallSnapshotParam& sent_param,
+    const Status& status) {
+    std::lock_guard lock(mutex_);
+    if (ensure_ready_unlocked().fail()) return;
+
+    if (!election_.is_leader()) return;
+
+    if (sent_param.term != election_.current_term()) {
+        LOG_WARN(
+            "raft replica_id:{} handle snapshot send failed replica_id:{}, "
+            "sent_param.term:{} != election_.current_term:{}, status:{}",
+            self_id_.to_string(), from.to_string(), sent_param.term,
+            election_.current_term(), status.to_string());
+        return;
+    }
+
+    replication_.clear_snapshot_inflight(from, sent_param.snapshot_index);
+    LOG_WARN(
+        "raft replica_id:{} clear snapshot inflight for replica_id:{} after "
+        "send failed, snapshot_index:{}, status:{}",
+        self_id_.to_string(), from.to_string(), sent_param.snapshot_index,
+        status.to_string());
 }
 
 Status RaftNode::prepare_install_snapshot(Term leader_term,

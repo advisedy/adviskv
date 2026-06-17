@@ -12,6 +12,12 @@ RaftPeerProgress::RaftPeerProgress(ReplicaID replica_id,
         if (!match_index_.count(member.replica_id)) {
             match_index_[member.replica_id] = 0;
         }
+        if (!confirmed_snapshot_index_.count(member.replica_id)) {
+            confirmed_snapshot_index_[member.replica_id] = 0;
+        }
+        if (!inflight_snapshot_index_.count(member.replica_id)) {
+            inflight_snapshot_index_[member.replica_id] = 0;
+        }
     }
 }
 
@@ -47,13 +53,66 @@ void RaftPeerProgress::reset_for_leader(const RaftMembership& membership,
         if (member.replica_id == self_id_) continue;
         next_index_[member.replica_id] = last_log_index + 1;
         match_index_[member.replica_id] = 0;
+        confirmed_snapshot_index_[member.replica_id] = 0;
+        inflight_snapshot_index_[member.replica_id] = 0;
     }
 }
 
 void RaftPeerProgress::update_snapshot_progress(ReplicaID replica_id,
                                                 LogIndex snapshot_index) {
-    next_index_[replica_id] = snapshot_index + 1;
-    match_index_[replica_id] = snapshot_index;
+    confirmed_snapshot_index_[replica_id] =
+        std::max(get_confirmed_snapshot_index(replica_id), snapshot_index);
+    match_index_[replica_id] =
+        std::max(get_match_index(replica_id), snapshot_index);
+    next_index_[replica_id] =
+        std::max(get_next_index(replica_id), snapshot_index + 1);
+}
+
+LogIndex RaftPeerProgress::get_confirmed_snapshot_index(
+    ReplicaID replica_id) const {
+    auto it = confirmed_snapshot_index_.find(replica_id);
+    if (it == confirmed_snapshot_index_.end()) {
+        return 0;
+    }
+    return it->second;
+}
+
+bool RaftPeerProgress::confirmed_snapshot_index_at_least(
+    ReplicaID replica_id, LogIndex snapshot_index) const {
+    return get_confirmed_snapshot_index(replica_id) >= snapshot_index;
+}
+
+LogIndex RaftPeerProgress::get_inflight_snapshot_index(
+    ReplicaID replica_id) const {
+    auto it = inflight_snapshot_index_.find(replica_id);
+    if (it == inflight_snapshot_index_.end()) {
+        return 0;
+    }
+    return it->second;
+}
+
+bool RaftPeerProgress::has_inflight_snapshot(ReplicaID replica_id) const {
+    return get_inflight_snapshot_index(replica_id) > 0;
+}
+
+bool RaftPeerProgress::mark_snapshot_inflight(ReplicaID replica_id,
+                                              LogIndex snapshot_index) {
+    if (has_inflight_snapshot(replica_id)) {
+        return false;
+    }
+    inflight_snapshot_index_[replica_id] = snapshot_index;
+    return true;
+}
+
+void RaftPeerProgress::clear_snapshot_inflight(ReplicaID replica_id,
+                                               LogIndex snapshot_index) {
+    auto it = inflight_snapshot_index_.find(replica_id);
+    if (it == inflight_snapshot_index_.end()) {
+        return;
+    }
+    if (it->second == snapshot_index) {
+        it->second = 0;
+    }
 }
 
 void RaftPeerProgress::handle_append_ok(ReplicaID replica_id,

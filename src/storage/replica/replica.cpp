@@ -268,6 +268,8 @@ Status Replica::send_raft_message(const RaftMessage& msg) {
             } else {
                 LOG_WARN("storage raft send install snapshot failed, status:{}",
                          status.to_string());
+                raft_node_->handle_install_snapshot_send_failed(
+                    msg.target.replica_id, msg.snapshot_param, status);
             }
             break;
         }
@@ -535,9 +537,8 @@ Status Replica::check_self_leader_and_get_read_index(LogIndex& read_index) {
         read_effects, read_index, read_term))
 
     int success_cnt = 1;
-    int limit = to<int>(read_effects.messages.size() + 1) / 2 + 1;
-    // 达到limit就可以了 // 这里就是要message_size
-    // +1，review代码的时候差点绕进去了，这个是msg，得再加上自己
+    int limit = raft_node_->quorum_size();
+    // 达到limit就可以了
 
     for (const RaftMessage& msg : read_effects.messages) {
         // if (msg.type != RaftMessageType::APPEND_ENTRIES) {
@@ -566,7 +567,11 @@ Status Replica::check_self_leader_and_get_read_index(LogIndex& read_index) {
                 status = raft_sender_.send_install_snapshot(
                     msg.target, msg.snapshot_param, *persist_, res);
             }
-            if (status.fail()) continue;
+            if (status.fail()) {
+                raft_node_->handle_install_snapshot_send_failed(
+                    msg.target.replica_id, msg.snapshot_param, status);
+                continue;
+            }
             RETURN_IF_INVALID_STATUS(run_raft_step([&](RaftEffects& effects) {
                 raft_node_->handle_install_snapshot_response(
                     msg.target.replica_id, msg.snapshot_param, res, effects);
@@ -643,7 +648,7 @@ ReplicaStatus Replica::get_status() const {
     return ReplicaStatus::INITIALIZING;
 }
 
-// 持久化effect + 发送RPC消息
+// 持久化effect + 发送RPC消息(如果有的话)
 Status Replica::run_raft_step(RaftStepFunc&& step) {
     RaftEffects effects;
     {
