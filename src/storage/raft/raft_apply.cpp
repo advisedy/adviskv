@@ -1,6 +1,7 @@
 #include "storage/raft/raft_apply.h"
 
 #include <algorithm>
+#include <cassert>
 
 #include "common/log.h"
 #include "storage/raft/raft_log.h"
@@ -37,6 +38,9 @@ void RaftApply::install_snapshot(LogIndex snapshot_index) {
 // 提取出来已经commit，但是还没有apply的entry
 std::vector<LogEntry> RaftApply::extract_committed_entries() const {
     std::vector<LogEntry> entries;
+    
+    assert(last_applied_ >= raft_log_.snapshot_index());
+
     for (LogIndex i = last_applied_ + 1; i <= commit_index_; ++i) {
         const LogEntry* entry = raft_log_.entry_at(i);
         if (entry == nullptr) {

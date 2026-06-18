@@ -146,8 +146,13 @@ struct InstallSnapshotParam {
 struct InstallSnapshotResult {
     Term term{0};
     Status status{Status::OK()};
+    LogIndex snapshot_watermark{0};
+};
+
+struct SnapshotInstallPlan {
     LogIndex snapshot_index{0};
-    bool follower_snapshot_ahead{false};
+    Term snapshot_term{0};
+    std::vector<LogEntry> retained_entries;
 };
 
 enum class RaftMessageType : uint8_t {

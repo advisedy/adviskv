@@ -345,7 +345,7 @@ class RaftCluster {
                 RaftEffects prepare_effects;
                 Status s = nodes_[target_idx]->prepare_install_snapshot(
                     msg.snapshot_param.term, msg.snapshot_param.snapshot_index,
-                    prepare_effects);
+                    msg.snapshot_param.snapshot_term, prepare_effects);
                 Status prepare_status =
                     drive_raft_effects(target_idx, std::move(prepare_effects));
                 ASSERT_TRUE(prepare_status.ok()) << prepare_status.to_string();
@@ -365,11 +365,16 @@ class RaftCluster {
                     ASSERT_TRUE(install_status.ok())
                         << install_status.to_string();
                 }
-                if (s.fail() && msg.snapshot_param.snapshot_index <=
-                                    nodes_[target_idx]->snapshot_index()) {
-                    result.snapshot_index =
-                        nodes_[target_idx]->snapshot_index();
-                    result.follower_snapshot_ahead = true;
+                if (s.code() == StatusCode::ALREADY_EXIST ||
+                    (s.fail() && msg.snapshot_param.snapshot_index <=
+                                     nodes_[target_idx]->snapshot_index())) {
+                    if (s.code() == StatusCode::ALREADY_EXIST) {
+                        result.snapshot_watermark =
+                            msg.snapshot_param.snapshot_index;
+                    } else {
+                        result.snapshot_watermark =
+                            nodes_[target_idx]->snapshot_index();
+                    }
                 }
 
                 RaftEffects response_effects;
@@ -582,11 +587,10 @@ class RaftClusterTest : public ::testing::Test {
         return node->replication_.next_index(target);
     }
 
-    LogIndex get_confirmed_snapshot_index(int node_idx,
-                                          const ReplicaID& target) {
+    LogIndex get_snapshot_watermark(int node_idx, const ReplicaID& target) {
         RaftNode* node = cluster_.node_ptr(node_idx);
         if (!node) return 0;
-        return node->replication_.confirmed_snapshot_index(target);
+        return node->replication_.snapshot_watermark(target);
     }
 
     LogIndex get_inflight_snapshot_index(int node_idx,
@@ -1314,7 +1318,7 @@ TEST_F(RaftClusterTest, ReadIndexCountsInstallSnapshotMessage) {
             RaftEffects prepare_effects;
             Status ps = cluster_.node_ptr(target)->prepare_install_snapshot(
                 msg.snapshot_param.term, msg.snapshot_param.snapshot_index,
-                prepare_effects);
+                msg.snapshot_param.snapshot_term, prepare_effects);
             Status prepare_status =
                 cluster_.drive_raft_effects(target, std::move(prepare_effects));
             ASSERT_TRUE(prepare_status.ok()) << prepare_status.to_string();
@@ -1331,11 +1335,15 @@ TEST_F(RaftClusterTest, ReadIndexCountsInstallSnapshotMessage) {
                     target, std::move(install_effects));
                 ASSERT_TRUE(install_status.ok()) << install_status.to_string();
             }
-            if (ps.fail() && msg.snapshot_param.snapshot_index <=
-                                 cluster_.node_ptr(target)->snapshot_index()) {
-                res.snapshot_index =
-                    cluster_.node_ptr(target)->snapshot_index();
-                res.follower_snapshot_ahead = true;
+            if (ps.code() == StatusCode::ALREADY_EXIST ||
+                (ps.fail() && msg.snapshot_param.snapshot_index <=
+                                  cluster_.node_ptr(target)->snapshot_index())) {
+                if (ps.code() == StatusCode::ALREADY_EXIST) {
+                    res.snapshot_watermark = msg.snapshot_param.snapshot_index;
+                } else {
+                    res.snapshot_watermark =
+                        cluster_.node_ptr(target)->snapshot_index();
+                }
             }
             RaftEffects response_effects;
             cluster_.node_ptr(0)->handle_install_snapshot_response(
@@ -1397,8 +1405,7 @@ TEST_F(RaftClusterTest, InstallSnapshotSuccessUsesSentSnapshotIndex) {
     InstallSnapshotResult res;
     res.term = cluster_.node_ptr(0)->current_term();
     res.status = Status::OK();
-    res.snapshot_index = 0;
-    res.follower_snapshot_ahead = false;
+    res.snapshot_watermark = 0;
 
     RaftEffects response_effects;
     cluster_.node_ptr(0)->handle_install_snapshot_response(
@@ -1407,12 +1414,12 @@ TEST_F(RaftClusterTest, InstallSnapshotSuccessUsesSentSnapshotIndex) {
 
     EXPECT_EQ(get_node_next_index(0, snapshot_msg.target.replica_id),
               snapshot_msg.snapshot_param.snapshot_index + 1);
-    EXPECT_EQ(get_confirmed_snapshot_index(0, snapshot_msg.target.replica_id),
+    EXPECT_EQ(get_snapshot_watermark(0, snapshot_msg.target.replica_id),
               snapshot_msg.snapshot_param.snapshot_index);
     EXPECT_EQ(get_inflight_snapshot_index(0, snapshot_msg.target.replica_id),
               0);
 }
-TEST_F(RaftClusterTest, InstallSnapshotEqualSnapshotFlagUpdatesProgress) {
+TEST_F(RaftClusterTest, InstallSnapshotCoveredWatermarkUpdatesProgress) {
     create_and_set_0_leader(3);
     ASSERT_TRUE(tick_until_all_committed(1));
     ASSERT_EQ(cluster_.leader_idx(), 0);
@@ -1455,8 +1462,7 @@ TEST_F(RaftClusterTest, InstallSnapshotEqualSnapshotFlagUpdatesProgress) {
     InstallSnapshotResult res;
     res.term = cluster_.node_ptr(0)->current_term();
     res.status = Status::ERROR("follower already has sent snapshot");
-    res.snapshot_index = snapshot_msg.snapshot_param.snapshot_index;
-    res.follower_snapshot_ahead = true;
+    res.snapshot_watermark = snapshot_msg.snapshot_param.snapshot_index;
 
     RaftEffects response_effects;
     cluster_.node_ptr(0)->handle_install_snapshot_response(
@@ -1465,13 +1471,13 @@ TEST_F(RaftClusterTest, InstallSnapshotEqualSnapshotFlagUpdatesProgress) {
 
     EXPECT_EQ(get_node_next_index(0, snapshot_msg.target.replica_id),
               snapshot_msg.snapshot_param.snapshot_index + 1);
-    EXPECT_EQ(get_confirmed_snapshot_index(0, snapshot_msg.target.replica_id),
+    EXPECT_EQ(get_snapshot_watermark(0, snapshot_msg.target.replica_id),
               snapshot_msg.snapshot_param.snapshot_index);
     EXPECT_EQ(get_inflight_snapshot_index(0, snapshot_msg.target.replica_id),
               0);
 }
 
-TEST_F(RaftClusterTest, InstallSnapshotResponseFollowerAheadUpdatesProgress) {
+TEST_F(RaftClusterTest, InstallSnapshotHigherWatermarkUpdatesProgress) {
     create_and_set_0_leader(3);
     ASSERT_TRUE(tick_until_all_committed(1));
     ASSERT_EQ(cluster_.leader_idx(), 0);
@@ -1519,8 +1525,7 @@ TEST_F(RaftClusterTest, InstallSnapshotResponseFollowerAheadUpdatesProgress) {
     InstallSnapshotResult res;
     res.term = cluster_.node_ptr(0)->current_term();
     res.status = Status::ERROR("follower already has newer snapshot");
-    res.snapshot_index = cluster_.node_ptr(2)->snapshot_index();
-    res.follower_snapshot_ahead = true;
+    res.snapshot_watermark = cluster_.node_ptr(2)->snapshot_index();
 
     RaftEffects response_effects;
     cluster_.node_ptr(0)->handle_install_snapshot_response(
@@ -1529,7 +1534,7 @@ TEST_F(RaftClusterTest, InstallSnapshotResponseFollowerAheadUpdatesProgress) {
 
     EXPECT_EQ(get_node_next_index(0, snapshot_msg.target.replica_id),
               cluster_.node_ptr(2)->snapshot_index() + 1);
-    EXPECT_EQ(get_confirmed_snapshot_index(0, snapshot_msg.target.replica_id),
+    EXPECT_EQ(get_snapshot_watermark(0, snapshot_msg.target.replica_id),
               cluster_.node_ptr(2)->snapshot_index());
     EXPECT_EQ(get_inflight_snapshot_index(0, snapshot_msg.target.replica_id),
               0);

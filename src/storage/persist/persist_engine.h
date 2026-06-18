@@ -35,7 +35,7 @@ class PersistEngine {
     Status read_snapshot_chunk(uint64 offset, size_t max_bytes,
                                std::string& data, bool& eof) const;
     Status append_snapshot_chunk(const InstallSnapshotParam& param);
-    Status finish_snapshot_receive(const SnapshotPtr& snap);
+    Status finish_snapshot_receive();
 
     Status do_snapshot(const StateMachine& state_machine);
     Status clear_wal();

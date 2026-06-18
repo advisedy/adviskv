@@ -36,8 +36,7 @@ class BlockingInstallSnapshotTransport final : public IRaftRpcTransport {
         cv_.wait(lock, [&] { return released_; });
         result.term = param.term;
         result.status = Status::OK();
-        result.snapshot_index = param.snapshot_index;
-        result.follower_snapshot_ahead = false;
+        result.snapshot_watermark = param.snapshot_index;
         return Status::OK();
     }
 

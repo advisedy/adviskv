@@ -82,6 +82,7 @@ class Replica {
     Status persist_raft_effects(const RaftEffects& effects);
     Status send_raft_messages(std::vector<RaftMessage> messages);
     Status send_raft_message(const RaftMessage& msg);
+    Status finish_install_snapshot(const InstallSnapshotParam& param);
 
     using RaftStepFunc = std::function<Status(RaftEffects&)>;
     Status run_raft_step(RaftStepFunc&& step);

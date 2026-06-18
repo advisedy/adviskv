@@ -38,12 +38,12 @@ class RaftReplication {
                               LogIndex follower_last_log_index);
     CommitAdvanceResult try_advance_commit_index(Term current_term);
 
-    void update_snapshot_progress(const ReplicaID& replica_id,
-                                  LogIndex snapshot_index);
+    void update_snapshot_watermark(const ReplicaID& replica_id,
+                                   LogIndex snapshot_watermark);
     void clear_snapshot_inflight(const ReplicaID& replica_id,
                                  LogIndex snapshot_index);
     LogIndex next_index(const ReplicaID& replica_id) const;
-    LogIndex confirmed_snapshot_index(const ReplicaID& replica_id) const;
+    LogIndex snapshot_watermark(const ReplicaID& replica_id) const;
     LogIndex inflight_snapshot_index(const ReplicaID& replica_id) const;
     void set_next_index_for_test(ReplicaID replica_id, LogIndex index);
 

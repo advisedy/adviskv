@@ -404,15 +404,13 @@ grpc::Status StorageServiceImpl::InstallSnapshot(
 
     fill_base_rsp(response, status);
     response->set_term(replica->current_term());
-    response->set_follower_snapshot_ahead(false);
-    response->set_snapshot_index(0);
+    response->set_snapshot_watermark(0);
 
-    if (status.fail() and param.snapshot_index <= replica->snapshot_index()) {
-        response->set_follower_snapshot_ahead(true);
-        response->set_snapshot_index(replica->snapshot_index());
-    }
-
-    if (status.fail()) {
+    if (status.ok() || status.code() == StatusCode::ALREADY_EXIST) {
+        response->set_snapshot_watermark(
+            std::max(param.snapshot_index, replica->snapshot_index()));
+    } 
+    if (status.fail() && status.code() != StatusCode::ALREADY_EXIST) {
         LOG_WARN("replica handle install snapshot failed, status:{}",
                  status.to_string());
     }

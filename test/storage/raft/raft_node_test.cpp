@@ -201,6 +201,8 @@ TEST_F(RaftNodeTest, RecoveringFinishesWhenSnapshotCoversTarget) {
 
     ASSERT_EQ(node.snapshot_index(), 5);
     ASSERT_EQ(node.commit_index(), 5);
+    ASSERT_TRUE(effects.entries_to_rewrite.has_value());
+    ASSERT_TRUE(effects.entries_to_rewrite->empty());
     ASSERT_FALSE(node.is_recovering());
 }
 
@@ -308,11 +310,65 @@ TEST_F(RaftNodeTest, InstallLeaderSnapshotStepsDownAndPersistsHigherTerm) {
     ASSERT_EQ(node.current_term(), 4);
     ASSERT_EQ(node.snapshot_index(), 10);
     ASSERT_EQ(node.commit_index(), 10);
+    ASSERT_TRUE(effects.entries_to_rewrite.has_value());
+    ASSERT_TRUE(effects.entries_to_rewrite->empty());
 
     RaftMeta meta;
     status = persist.load_raft_meta(meta);
     ASSERT_EQ(status, Status::OK());
     ASSERT_EQ(meta, (RaftMeta{4, std::nullopt}));
+}
+
+TEST_F(RaftNodeTest, PrepareInstallSnapshotRejectsCoveredLogBoundary) {
+    RaftNode node{replica_id_, members_};
+    node.update_log_entries({
+        make_entry(1, 1, WriteOpType::PUT, "k1", "v1"),
+        make_entry(1, 2, WriteOpType::PUT, "k2", "v2"),
+        make_entry(2, 3, WriteOpType::PUT, "k3", "v3"),
+    });
+
+    RaftEffects effects;
+    Status status = node.prepare_install_snapshot(3, 2, 1, effects);
+
+    ASSERT_EQ(status.code(), StatusCode::ALREADY_EXIST)
+        << status.to_string();
+    ASSERT_EQ(node.current_term(), 3);
+    ASSERT_EQ(node.snapshot_index(), 0);
+    ASSERT_EQ(node.last_log_index(), 3);
+    ASSERT_TRUE(effects.hard_state.has_value());
+}
+
+TEST_F(RaftNodeTest, PrepareInstallSnapshotRejectsCommittedSnapshot) {
+    RaftNode node{replica_id_, members_};
+    ReplicaID leader_id{101, 7, 1};
+
+    AppendEntriesResult append_result;
+    RaftEffects append_effects;
+    node.handle_append_entries(
+        AppendEntriesParam{
+            leader_id,
+            replica_id_,
+            2,
+            {
+                make_entry(2, 1, WriteOpType::PUT, "k1", "v1"),
+                make_entry(2, 2, WriteOpType::PUT, "k2", "v2"),
+                make_entry(2, 3, WriteOpType::PUT, "k3", "v3"),
+            },
+            0,
+            0,
+            3,
+        },
+        append_result, append_effects);
+    ASSERT_TRUE(append_result.success);
+    ASSERT_EQ(node.commit_index(), 3);
+
+    RaftEffects effects;
+    Status status = node.prepare_install_snapshot(2, 2, 2, effects);
+
+    ASSERT_EQ(status.code(), StatusCode::ALREADY_EXIST)
+        << status.to_string();
+    ASSERT_EQ(node.snapshot_index(), 0);
+    ASSERT_EQ(node.last_log_index(), 3);
 }
 
 }  // namespace adviskv::storage

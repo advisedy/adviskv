@@ -23,11 +23,11 @@ class RaftPeerProgress {
 
     void reset_for_leader(const RaftMembership& membership,
                           LogIndex last_log_index);
-    void update_snapshot_progress(ReplicaID replica_id,
-                                  LogIndex snapshot_index);
-    LogIndex get_confirmed_snapshot_index(ReplicaID replica_id) const;
-    bool confirmed_snapshot_index_at_least(ReplicaID replica_id,
-                                           LogIndex snapshot_index) const;
+    void update_snapshot_watermark(ReplicaID replica_id,
+                                   LogIndex snapshot_watermark);
+    LogIndex get_snapshot_watermark(ReplicaID replica_id) const;
+    bool snapshot_watermark_at_least(ReplicaID replica_id,
+                                     LogIndex snapshot_index) const;
     LogIndex get_inflight_snapshot_index(ReplicaID replica_id) const;
     bool has_inflight_snapshot(ReplicaID replica_id) const;
     bool mark_snapshot_inflight(ReplicaID replica_id, LogIndex snapshot_index);
@@ -44,8 +44,7 @@ class RaftPeerProgress {
     ReplicaID self_id_;
     std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> next_index_;
     std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> match_index_;
-    std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash>
-        confirmed_snapshot_index_;
+    std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> snapshot_watermark_;
     std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash>
         inflight_snapshot_index_;
 };

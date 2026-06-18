@@ -441,10 +441,7 @@ Status PersistEngine::append_snapshot_chunk(const InstallSnapshotParam& param) {
 }
 
 // 在快照的chunk都发送完了之后会调用这个
-Status PersistEngine::finish_snapshot_receive(const SnapshotPtr& snap) {
-    if (!snap) {
-        return Status::ERROR("snapshot is nullptr");
-    }
+Status PersistEngine::finish_snapshot_receive() {
     if (::rename(snapshot_tmp_path_.c_str(), snapshot_path_.c_str()) != 0) {
         return Status::ERROR("failed to publish received snapshot");
     }

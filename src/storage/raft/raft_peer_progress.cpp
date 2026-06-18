@@ -12,8 +12,8 @@ RaftPeerProgress::RaftPeerProgress(ReplicaID replica_id,
         if (!match_index_.count(member.replica_id)) {
             match_index_[member.replica_id] = 0;
         }
-        if (!confirmed_snapshot_index_.count(member.replica_id)) {
-            confirmed_snapshot_index_[member.replica_id] = 0;
+        if (!snapshot_watermark_.count(member.replica_id)) {
+            snapshot_watermark_[member.replica_id] = 0;
         }
         if (!inflight_snapshot_index_.count(member.replica_id)) {
             inflight_snapshot_index_[member.replica_id] = 0;
@@ -53,33 +53,31 @@ void RaftPeerProgress::reset_for_leader(const RaftMembership& membership,
         if (member.replica_id == self_id_) continue;
         next_index_[member.replica_id] = last_log_index + 1;
         match_index_[member.replica_id] = 0;
-        confirmed_snapshot_index_[member.replica_id] = 0;
+        snapshot_watermark_[member.replica_id] = 0;
         inflight_snapshot_index_[member.replica_id] = 0;
     }
 }
 
-void RaftPeerProgress::update_snapshot_progress(ReplicaID replica_id,
-                                                LogIndex snapshot_index) {
-    confirmed_snapshot_index_[replica_id] =
-        std::max(get_confirmed_snapshot_index(replica_id), snapshot_index);
+void RaftPeerProgress::update_snapshot_watermark(
+    ReplicaID replica_id, LogIndex snapshot_watermark) {
+    snapshot_watermark_[replica_id] =
+        std::max(get_snapshot_watermark(replica_id), snapshot_watermark);
     match_index_[replica_id] =
-        std::max(get_match_index(replica_id), snapshot_index);
+        std::max(get_match_index(replica_id), snapshot_watermark);
     next_index_[replica_id] =
-        std::max(get_next_index(replica_id), snapshot_index + 1);
+        std::max(get_next_index(replica_id), snapshot_watermark + 1);
 }
 
-LogIndex RaftPeerProgress::get_confirmed_snapshot_index(
-    ReplicaID replica_id) const {
-    auto it = confirmed_snapshot_index_.find(replica_id);
-    if (it == confirmed_snapshot_index_.end()) {
-        return 0;
+LogIndex RaftPeerProgress::get_snapshot_watermark(ReplicaID replica_id) const {
+    if(auto it = snapshot_watermark_.find(replica_id); it != snapshot_watermark_.end()){
+        return it->second;
     }
-    return it->second;
+    return 0;
 }
 
-bool RaftPeerProgress::confirmed_snapshot_index_at_least(
+bool RaftPeerProgress::snapshot_watermark_at_least(
     ReplicaID replica_id, LogIndex snapshot_index) const {
-    return get_confirmed_snapshot_index(replica_id) >= snapshot_index;
+    return get_snapshot_watermark(replica_id) >= snapshot_index;
 }
 
 LogIndex RaftPeerProgress::get_inflight_snapshot_index(

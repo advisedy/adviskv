@@ -218,6 +218,52 @@ TEST_F(ReplicaTest, HandleInstallSnapshotClearsOldWalBeforeAppendingNewLog) {
     EXPECT_EQ(entries[0].value, "value");
 }
 
+TEST_F(ReplicaTest, HandleInstallSnapshotRejectsCoveredBoundaryWithoutClearingWal) {
+    std::vector<LogEntry> initial_entries{
+        make_entry(1, 1, WriteOpType::PUT, "k1", "v1"),
+        make_entry(1, 2, WriteOpType::PUT, "k2", "v2"),
+        make_entry(1, 3, WriteOpType::PUT, "k3", "v3"),
+        make_entry(1, 4, WriteOpType::PUT, "k4", "v4"),
+        make_entry(1, 5, WriteOpType::PUT, "k5", "v5"),
+    };
+    {
+        PersistEngine target_persist(base_dir_.string(), replica_id_);
+        Status status = target_persist.init();
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+        status = target_persist.append_wal_batch(initial_entries);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+        ASSERT_TRUE(target_persist.close().ok());
+    }
+
+    ReplicaManager manager(base_dir_.string());
+    ReplicaPtr replica = add_single_replica(manager);
+    ASSERT_NE(replica, nullptr);
+    manager.recover();
+
+    ReplicaID source_id{201, 3, 1};
+    Status status = replica->handle_install_snapshot(InstallSnapshotParam{
+        source_id,
+        replica_id_,
+        2,
+        4,
+        1,
+        0,
+        "this chunk should not be accepted",
+        true,
+    });
+
+    ASSERT_EQ(status.code(), StatusCode::ALREADY_EXIST)
+        << test::status_debug_string(status);
+
+    PersistEngine wal_reader(base_dir_.string(), replica_id_);
+    status = wal_reader.init();
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    std::vector<LogEntry> entries;
+    status = wal_reader.read_wal_batch(entries);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    EXPECT_EQ(entries, initial_entries);
+}
+
 // 单节点replica选举为leader后，put写入的数据应能通过get读回
 TEST_F(ReplicaTest, SingleReplicaPutAndGetAfterElection) {
     ReplicaManager manager(base_dir_.string());

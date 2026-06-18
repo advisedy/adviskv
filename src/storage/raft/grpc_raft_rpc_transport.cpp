@@ -123,8 +123,7 @@ Status GrpcRaftRpcTransport::install_snapshot_chunk(
     result.term = response.term();
     result.status =
         Status{response.base_rsp().code(), response.base_rsp().msg()};
-    result.snapshot_index = response.snapshot_index();
-    result.follower_snapshot_ahead = response.follower_snapshot_ahead();
+    result.snapshot_watermark = response.snapshot_watermark();
     return Status::OK();
 }
 

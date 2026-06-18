@@ -15,6 +15,11 @@ class RaftLog {
         std::vector<LogEntry> entries_to_append;
         std::optional<std::vector<LogEntry>> entries_to_rewrite;
     };
+
+    struct InstallSnapshotResult {
+        std::vector<LogEntry> retained_entries;
+    };
+
     LogIndex snapshot_index() const { return snapshot_index_; }
     Term snapshot_term() const { return snapshot_term_; }
     const std::vector<LogEntry>& entries() const { return log_entries_; }
@@ -34,7 +39,12 @@ class RaftLog {
                                       AppendEntriesResult& result);
 
     Status truncate(LogIndex new_snapshot_index);
-    void install_snapshot(LogIndex new_snapshot_index, Term new_snapshot_term);
+
+
+    InstallSnapshotResult install_snapshot(LogIndex new_snapshot_index,
+                                           Term new_snapshot_term);
+    std::vector<LogEntry> retained_entries_after_snapshot(
+        LogIndex new_snapshot_index, Term new_snapshot_term) const;
 
     void update_entries(const std::vector<LogEntry>& entries);
 

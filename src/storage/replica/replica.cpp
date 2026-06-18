@@ -133,39 +133,21 @@ Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
 
     RETURN_IF_INVALID_STATUS(run_raft_step([&](RaftEffects& effects) {
         return raft_node_->prepare_install_snapshot(
-            param.term, param.snapshot_index, effects);
+            param.term, param.snapshot_index, param.snapshot_term, effects);
     }))
-
-    SnapshotPtr snap;
+/*
+    std::lock_guard snapshot_lock(persist_snapshot_mutex_);
+    std::lock_guard state_machine_lock(state_machine_mutex_);
+*/
     {
         std::lock_guard locker{persist_snapshot_mutex_};
+        // 这个地方有可能会被截断
+        // TODO
         RETURN_IF_INVALID_STATUS(
             fault_if_fail(persist_->append_snapshot_chunk(param)))
         if (!param.done) return Status::OK();
 
-        snap = std::make_shared<Snapshot>();
-        snap->apply_index = param.snapshot_index;
-        snap->apply_term = param.snapshot_term;
-
-        RETURN_IF_INVALID_STATUS(
-            fault_if_fail(persist_->finish_snapshot_receive(snap)));
-
-        RETURN_IF_INVALID_STATUS(fault_if_fail(persist_->clear_wal()));
-        {
-            std::lock_guard lock(state_machine_mutex_);
-
-            RETURN_IF_INVALID_STATUS(fault_if_fail(state_machine_->restore(
-                snap, [this](const KvVisitor& visitor) -> Status {
-                    return persist_->for_each_snapshot_kv(visitor);
-                })))
-
-            RETURN_IF_INVALID_STATUS(
-                fault_if_fail(run_raft_step([&](RaftEffects& effects) {
-                    return raft_node_->install_leader_snapshot(
-                        param.snapshot_index, param.snapshot_term, param.term,
-                        effects);
-                })))
-        }
+        RETURN_IF_INVALID_STATUS(finish_install_snapshot(param))
         LOG_INFO(
             "replica:{} finish install snapshot from replica:{}. "
             "The "
@@ -174,6 +156,39 @@ Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
             param.snapshot_index, param.snapshot_term);
     }
 
+    return Status::OK();
+}
+
+Status Replica::finish_install_snapshot(const InstallSnapshotParam& param) {
+    SnapshotPtr snap = std::make_shared<Snapshot>();
+    snap->apply_index = param.snapshot_index;
+    snap->apply_term = param.snapshot_term;
+
+    std::unique_lock raft_lock(raft_step_mutex_);
+
+    SnapshotInstallPlan plan{};
+    RaftEffects prepare_effects{};
+    // 这里再check一下是否满足，因为中间有段时间没有锁，有可能本地这边会有更新操作
+    Status prepare_status = raft_node_->build_install_snapshot_plan(
+        param.term, param.snapshot_index, param.snapshot_term, plan,
+        prepare_effects);
+    RETURN_IF_INVALID_STATUS(persist_raft_effects(prepare_effects))
+    RETURN_IF_INVALID_STATUS(prepare_status)
+
+    RETURN_IF_INVALID_STATUS(
+        fault_if_fail(persist_->finish_snapshot_receive()))
+
+    {
+        std::lock_guard lock(state_machine_mutex_);
+        RETURN_IF_INVALID_STATUS(fault_if_fail(state_machine_->restore(
+            snap, [this](const KvVisitor& visitor) -> Status {
+                return persist_->for_each_snapshot_kv(visitor);
+            })))
+    }
+
+    RaftEffects install_effects;
+    raft_node_->commit_install_snapshot(plan, install_effects);
+    RETURN_IF_INVALID_STATUS(persist_raft_effects(install_effects))
     return Status::OK();
 }
 

@@ -2,7 +2,11 @@
 
 #include <fmt/format.h>
 
+#include <algorithm>
+
 #include "common/log.h"
+#include "common/type.h"
+#include "storage/model/param.h"
 
 namespace adviskv::storage {
 
@@ -139,12 +143,22 @@ Status RaftLog::append_entries_from_leader(const std::vector<LogEntry>& entries,
     return Status::OK();
 }
 
+// 这个是本地做快照的时候会调用的函数
 Status RaftLog::truncate(LogIndex new_snapshot_index) {
     if (new_snapshot_index <= snapshot_index_) {
         LOG_WARN(
             "new_snapshot_index <= snapshot_index_, new_snapshot_index:{}, "
             "snapshot_index:{}",
             new_snapshot_index, snapshot_index_);
+        return StatusCode::ERROR;
+    }
+
+    if (new_snapshot_index > last_log_index()) {
+        LOG_WARN(
+            "new_snapshot_index > last_log_index, (from "
+            "self)new_snapshot_index:{}, "
+            "last_log_index:{}",
+            new_snapshot_index, last_log_index());
         return StatusCode::ERROR;
     }
 
@@ -157,11 +171,40 @@ Status RaftLog::truncate(LogIndex new_snapshot_index) {
     return Status::OK();
 }
 
-void RaftLog::install_snapshot(LogIndex new_snapshot_index,
-                               Term new_snapshot_term) {
+std::vector<LogEntry> RaftLog::retained_entries_after_snapshot(
+    LogIndex new_snapshot_index, Term new_snapshot_term) const {
+    if (new_snapshot_index >= last_log_index()) {
+        return {};
+    }
+    if (term_at(new_snapshot_index) != new_snapshot_term) {
+        return {};
+    }
+
+    int64_t keep_from = index_to_offset(new_snapshot_index + 1);
+    if (keep_from < 0 ||
+        keep_from > static_cast<int64_t>(log_entries_.size())) {
+        LOG_WARN(
+            "invalid keep_from when installing snapshot, keep_from:{}, "
+            "new_snapshot_index:{}, snapshot_index:{}, log_entries.size:{}",
+            keep_from, new_snapshot_index, snapshot_index_,
+            log_entries_.size());
+        return {};
+    }
+    return std::vector<LogEntry>(log_entries_.begin() + keep_from,
+                                 log_entries_.end());
+}
+
+RaftLog::InstallSnapshotResult RaftLog::install_snapshot(
+    LogIndex new_snapshot_index, Term new_snapshot_term) {
+    InstallSnapshotResult result;
+    result.retained_entries =
+        retained_entries_after_snapshot(new_snapshot_index, new_snapshot_term);
+
     snapshot_index_ = new_snapshot_index;
     snapshot_term_ = new_snapshot_term;
-    log_entries_.clear();
+    log_entries_ = result.retained_entries;
+
+    return result;
 }
 
 void RaftLog::update_entries(const std::vector<LogEntry>& entries) {

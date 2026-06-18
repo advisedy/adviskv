@@ -101,9 +101,9 @@ RaftReplication::CommitAdvanceResult RaftReplication::try_advance_commit_index(
     return result;
 }
 
-void RaftReplication::update_snapshot_progress(const ReplicaID& replica_id,
-                                               LogIndex snapshot_index) {
-    peer_progress_.update_snapshot_progress(replica_id, snapshot_index);
+void RaftReplication::update_snapshot_watermark(
+    const ReplicaID& replica_id, LogIndex snapshot_watermark) {
+    peer_progress_.update_snapshot_watermark(replica_id, snapshot_watermark);
 }
 
 void RaftReplication::clear_snapshot_inflight(const ReplicaID& replica_id,
@@ -115,9 +115,9 @@ LogIndex RaftReplication::next_index(const ReplicaID& replica_id) const {
     return peer_progress_.get_next_index(replica_id);
 }
 
-LogIndex RaftReplication::confirmed_snapshot_index(
+LogIndex RaftReplication::snapshot_watermark(
     const ReplicaID& replica_id) const {
-    return peer_progress_.get_confirmed_snapshot_index(replica_id);
+    return peer_progress_.get_snapshot_watermark(replica_id);
 }
 
 LogIndex RaftReplication::inflight_snapshot_index(

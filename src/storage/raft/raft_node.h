@@ -38,6 +38,7 @@ class RaftNode {
     // 处理来自storage_service_impl的RPC的请求
     void handle_request_vote(const RequestVoteParam& param,
                              RequestVoteResult& result, RaftEffects& effects);
+                             
     void handle_append_entries(const AppendEntriesParam& param,
                                AppendEntriesResult& result,
                                RaftEffects& effects);
@@ -85,6 +86,12 @@ class RaftNode {
     void install_local_snapshot(LogIndex snapshot_index, Term snapshot_term);
     Status install_leader_snapshot(LogIndex snapshot_index, Term snapshot_term,
                                    Term leader_term, RaftEffects& effects);
+    Status build_install_snapshot_plan(Term leader_term, LogIndex snapshot_index,
+                                       Term snapshot_term,
+                                       SnapshotInstallPlan& plan,
+                                       RaftEffects& effects);
+    void commit_install_snapshot(const SnapshotInstallPlan& plan,
+                                 RaftEffects& effects);
 
     // InstallSnapshot 回调
     void handle_install_snapshot_response(
@@ -95,7 +102,7 @@ class RaftNode {
         const Status& status);
 
     Status prepare_install_snapshot(Term leader_term, LogIndex snapshot_index,
-                                    RaftEffects& effects);
+                                    Term snapshot_term, RaftEffects& effects);
 
     // revocer 的时候更新用的
     void update_raft_meta(const RaftMeta& meta);
@@ -139,7 +146,14 @@ class RaftNode {
                                        RaftEffects& effects);
     void try_update_commit_index();
     bool later_than_other(Term other_term, LogIndex other_index) const;
-    void install_snapshot_unlocked(LogIndex snapshot_index, Term snapshot_term);
+    RaftLog::InstallSnapshotResult install_snapshot_unlocked(
+        LogIndex snapshot_index, Term snapshot_term);
+    void commit_install_snapshot_unlocked(const SnapshotInstallPlan& plan,
+                                          RaftEffects& effects);
+    Status prepare_install_snapshot_unlocked(Term leader_term,
+                                             LogIndex snapshot_index,
+                                             Term snapshot_term,
+                                             RaftEffects& effects);
     void finish_recovering_unlocked();
     bool has_committed_current_term_entry_unlocked() const;
     void record_hard_state_unlocked(RaftEffects& effects) const;
