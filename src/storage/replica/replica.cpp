@@ -112,6 +112,7 @@ Status Replica::put(const PutParam& param) {
     return Status::OK();
 }
 
+// 收到了来自leader的快照下载要求
 Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
     if (param.offset == 0) {
         LOG_INFO(

@@ -43,7 +43,10 @@ Term RaftLog::term_at(LogIndex index) const {
 const LogEntry* RaftLog::entry_at(LogIndex index) const {
     int64_t offset = index_to_offset(index);
     if (offset < 0 || offset >= static_cast<int64_t>(log_entries_.size())) {
-        LOG_WARN("offset is not valid, offset:{}", offset);
+        LOG_WARN(
+            "offset is not valid, offset:{}, log_entries.size:{}, "
+            "snapshot_index:{}, last_log_index:{}",
+            offset, log_entries_.size(), snapshot_index_, last_log_index());
         return nullptr;
     }
     return &log_entries_[offset];

@@ -53,6 +53,7 @@ class Replica {
                                RequestVoteResult& result);
     Status handle_append_entries(const AppendEntriesParam& param,
                                  AppendEntriesResult& result);
+    // 收到了来自leader的快照下载要求
     Status handle_install_snapshot(const InstallSnapshotParam& param);
 
     ///////////

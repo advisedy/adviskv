@@ -34,15 +34,24 @@ void RaftApply::install_snapshot(LogIndex snapshot_index) {
     }
 }
 
+// 提取出来已经commit，但是还没有apply的entry
 std::vector<LogEntry> RaftApply::extract_committed_entries() const {
     std::vector<LogEntry> entries;
     for (LogIndex i = last_applied_ + 1; i <= commit_index_; ++i) {
         const LogEntry* entry = raft_log_.entry_at(i);
         if (entry == nullptr) {
-            LOG_WARN("entry == nullptr, offset:{}", i);
+            LOG_WARN(
+                "entry == nullptr, index:{}, offset:{},  snapshot_index:{}, "
+                "commit_index:{}",
+                i, raft_log_.index_to_offset(i), raft_log_.snapshot_index(),
+                commit_index_);
             continue;
         }
-        LOG_DEBUG("entry, offset:{}, entry:[{}]", i, entry->to_string());
+        LOG_DEBUG(
+            "entry, index:{}, offset:{} entry:[{}], snapshot_index:{}, "
+            "commit_index:{}",
+            i, raft_log_.index_to_offset(i), entry->to_string(),
+            raft_log_.snapshot_index(), commit_index_);
         entries.push_back(*entry);
     }
     return entries;

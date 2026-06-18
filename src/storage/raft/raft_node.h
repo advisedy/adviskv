@@ -87,10 +87,9 @@ class RaftNode {
                                    Term leader_term, RaftEffects& effects);
 
     // InstallSnapshot 回调
-    void handle_install_snapshot_response(const ReplicaID& from,
-                                          const InstallSnapshotParam& sent_param,
-                                          const InstallSnapshotResult& result,
-                                          RaftEffects& effects);
+    void handle_install_snapshot_response(
+        const ReplicaID& from, const InstallSnapshotParam& sent_param,
+        const InstallSnapshotResult& result, RaftEffects& effects);
     void handle_install_snapshot_send_failed(
         const ReplicaID& from, const InstallSnapshotParam& sent_param,
         const Status& status);

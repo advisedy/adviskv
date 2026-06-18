@@ -326,7 +326,7 @@ void RaftNode::handle_append_entries(const AppendEntriesParam& param,
             // 在这个情况下，目前的处理是:
             // leader那边会一直prev_log_index--，然后直到达不到leader的
             // snapshot_index，然后发送快照让follower安装leader的快照。
-            LOG_WARN(
+            LOG_INFO(
                 "raft node: follower receive append entries: "
                 "param.prev_log_index:{} < snapshot_index_:{}",
                 param.prev_log_index, snapshot_index_unlocked());
@@ -479,6 +479,7 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
     return Status::OK();
 }
 
+// 提取出来已经commit，但是还没有apply的entry
 std::vector<LogEntry> RaftNode::extract_committed_entries() {
     std::lock_guard lock(mutex_);
     return raft_apply_.extract_committed_entries();
