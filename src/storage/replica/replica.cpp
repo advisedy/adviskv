@@ -16,15 +16,18 @@
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/raft_node.h"
 #include "storage/raft/raft_sender.h"
+#include "storage/replica/replica_applier.h"
+#include "storage/replica/replica_raft_effect_runner.h"
+#include "storage/replica/replica_read_index_checker.h"
+#include "storage/replica/replica_snapshot_coordinator.h"
 #include "storage/raft/state_machine/kv_state_machine.h"
 #include "storage/raft/state_machine/state_machine.h"
 
 namespace adviskv::storage {
-namespace {
 
-static constexpr int SNAPSHOT_LIMIT = 1000;
+Replica::Replica() = default;
 
-}  // namespace
+Replica::~Replica() = default;
 
 Status Replica::init(const ReplicaInitParam& param) {
     shard_id_ =
@@ -39,6 +42,28 @@ Status Replica::init(const ReplicaInitParam& param) {
 
     raft_node_ = std::make_unique<RaftNode>(param.replica_id, param.members);
     raft_sender_.set_timeout_ms(param.runtime.raft_rpc_timeout_ms);
+    context_ = std::make_unique<ReplicaContext>(ReplicaContext{
+        replica_id_,
+        *raft_node_,
+        *persist_,
+        *state_machine_,
+        raft_sender_,
+        state_machine_mutex_,
+        persist_snapshot_mutex_,
+        raft_step_mutex_,
+        [this](Status status) { return fault_if_fail(status); },
+        [this] { enter_local_state_faulted(); },
+    });
+    raft_effect_runner_ =
+        std::make_unique<ReplicaRaftEffectRunner>(*context_);
+    applier_ =
+        std::make_unique<ReplicaApplier>(*raft_node_, *state_machine_);
+    read_index_checker_ =
+        std::make_unique<ReplicaReadIndexChecker>(*context_,
+                                                  *raft_effect_runner_);
+    snapshot_coordinator_ =
+        std::make_unique<ReplicaSnapshotCoordinator>(*context_,
+                                                     *raft_effect_runner_);
 
     enter_local_state_running();
     return Status::OK();
@@ -56,13 +81,14 @@ Status Replica::put(const PutParam& param) {
 
     // 提交给 RaftNode
     LogIndex new_commit_idx = 0;
-    Status status = run_raft_step([&](RaftEffects& effects) {
-        ADVISKV_METRICS_TIMER("storage_replica_put_propose");
-        auto propose_result = raft_node_->propose(WriteOpType::PUT, param.key,
-                                                  param.value, effects);
-        new_commit_idx = propose_result.second;
-        return propose_result.first;
-    });
+    Status status =
+        raft_effect_runner_->run_raft_step([&](RaftEffects& effects) {
+            ADVISKV_METRICS_TIMER("storage_replica_put_propose");
+            auto propose_result = raft_node_->propose(
+                WriteOpType::PUT, param.key, param.value, effects);
+            new_commit_idx = propose_result.second;
+            return propose_result.first;
+        });
     RETURN_IF_INVALID_STATUS(status)
 
     // 这里有一个容易误解的点：flush_messages()
@@ -85,7 +111,8 @@ Status Replica::put(const PutParam& param) {
     {
         ADVISKV_METRICS_TIMER("storage_replica_put_apply_committed");
         std::lock_guard lock(state_machine_mutex_);
-        RETURN_IF_INVALID_STATUS(fault_if_fail(apply_committed_entries()))
+        RETURN_IF_INVALID_STATUS(
+            fault_if_fail(applier_->apply_committed_entries()))
     }
 
     if (!raft_node_->is_leader()) {
@@ -114,222 +141,10 @@ Status Replica::put(const PutParam& param) {
 
 // 收到了来自leader的快照下载要求
 Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
-    if (param.offset == 0) {
-        LOG_INFO(
-            "replica:{} start handle to install snapshot from replica:{}. "
-            "The "
-            "snapshot index:{}, snapshot term:{}",
-            param.to_replica_id.to_string(), param.from_replica_id.to_string(),
-            param.snapshot_index, param.snapshot_term);
-    }
-    LOG_DEBUG(
-        "replica:{} is handling to install snapshot from replica:{}. The "
-        "snapshot index:{}, snapshot term:{}",
-        param.to_replica_id.to_string(), param.from_replica_id.to_string(),
-        param.snapshot_index, param.snapshot_term);
-
     OperGuard guard;
     RETURN_IF_INVALID_STATUS(acquire_operation(guard))
 
-    RETURN_IF_INVALID_STATUS(run_raft_step([&](RaftEffects& effects) {
-        return raft_node_->prepare_install_snapshot(
-            param.term, param.snapshot_index, param.snapshot_term, effects);
-    }))
-/*
-    std::lock_guard snapshot_lock(persist_snapshot_mutex_);
-    std::lock_guard state_machine_lock(state_machine_mutex_);
-*/
-    {
-        std::lock_guard locker{persist_snapshot_mutex_};
-        // 这个地方有可能会被截断
-        // TODO
-        RETURN_IF_INVALID_STATUS(
-            fault_if_fail(persist_->append_snapshot_chunk(param)))
-        if (!param.done) return Status::OK();
-
-        RETURN_IF_INVALID_STATUS(finish_install_snapshot(param))
-        LOG_INFO(
-            "replica:{} finish install snapshot from replica:{}. "
-            "The "
-            "snapshot index:{}, snapshot term:{}",
-            param.to_replica_id.to_string(), param.from_replica_id.to_string(),
-            param.snapshot_index, param.snapshot_term);
-    }
-
-    return Status::OK();
-}
-
-Status Replica::finish_install_snapshot(const InstallSnapshotParam& param) {
-    SnapshotPtr snap = std::make_shared<Snapshot>();
-    snap->apply_index = param.snapshot_index;
-    snap->apply_term = param.snapshot_term;
-
-    std::unique_lock raft_lock(raft_step_mutex_);
-
-    SnapshotInstallPlan plan{};
-    RaftEffects prepare_effects{};
-    // 这里再check一下是否满足，因为中间有段时间没有锁，有可能本地这边会有更新操作
-    Status prepare_status = raft_node_->build_install_snapshot_plan(
-        param.term, param.snapshot_index, param.snapshot_term, plan,
-        prepare_effects);
-    RETURN_IF_INVALID_STATUS(persist_raft_effects(prepare_effects))
-    RETURN_IF_INVALID_STATUS(prepare_status)
-
-    RETURN_IF_INVALID_STATUS(
-        fault_if_fail(persist_->finish_snapshot_receive()))
-
-    {
-        std::lock_guard lock(state_machine_mutex_);
-        RETURN_IF_INVALID_STATUS(fault_if_fail(state_machine_->restore(
-            snap, [this](const KvVisitor& visitor) -> Status {
-                return persist_->for_each_snapshot_kv(visitor);
-            })))
-    }
-
-    RaftEffects install_effects;
-    raft_node_->commit_install_snapshot(plan, install_effects);
-    RETURN_IF_INVALID_STATUS(persist_raft_effects(install_effects))
-    return Status::OK();
-}
-
-Status Replica::persist_raft_effects(const RaftEffects& effects) {
-    if (effects.entries_to_rewrite.has_value() &&
-        !effects.entries_to_append.empty()) {
-        return Status::INVALID_ARGUMENT("cannot both rewrite and append");
-    }
-
-    if (effects.hard_state.has_value()) {
-        RETURN_IF_INVALID_STATUS(
-            fault_if_fail(persist_->save_raft_meta(*effects.hard_state)))
-    }
-
-    if (effects.entries_to_rewrite.has_value()) {
-        RETURN_IF_INVALID_STATUS(
-            fault_if_fail(persist_->rewrite_wal(*effects.entries_to_rewrite)))
-    }
-
-    if (!effects.entries_to_append.empty()) {
-        RETURN_IF_INVALID_STATUS(fault_if_fail(
-            persist_->append_wal_batch(effects.entries_to_append)))
-    }
-
-    return Status::OK();
-}
-
-Status Replica::send_raft_messages(std::vector<RaftMessage> messages) {
-    for (const RaftMessage& msg : messages) {
-        RETURN_IF_INVALID_STATUS(send_raft_message(msg))
-    }
-    return Status::OK();
-}
-
-Status Replica::send_raft_message(const RaftMessage& msg) {
-    switch (msg.type) {
-        case RaftMessageType::REQUEST_VOTE: {
-            ADVISKV_METRICS_TIMER("storage_raft_flush_messages_request_vote");
-
-            RequestVoteResult result;
-            Status status = raft_sender_.send_request_vote(
-                msg.target, msg.vote_param, result);
-            if (status.ok()) {
-                RETURN_IF_INVALID_STATUS(
-                    run_raft_step([&](RaftEffects& effects) {
-                        raft_node_->handle_vote_response(msg.target.replica_id,
-                                                         result, effects);
-                        return Status::OK();
-                    }))
-            } else {
-                LOG_WARN("[flush_messages] send_request_vote failed: {}",
-                         status.msg());
-            }
-            break;
-        }
-        case RaftMessageType::APPEND_ENTRIES: {
-            AppendEntriesResult result;
-            Status status = raft_sender_.send_append_entries(
-                msg.target, msg.append_param, result);
-            if (status.ok()) {
-                RETURN_IF_INVALID_STATUS(
-                    run_raft_step([&](RaftEffects& effects) {
-                        IGNORE_RESULT(raft_node_->handle_append_response(
-                            msg.target.replica_id, msg.append_param, result,
-                            effects));
-                        return Status::OK();
-                    }))
-            } else {
-                LOG_WARN("storage raft append entries failed, status:{}",
-                         status.to_string());
-            }
-            break;
-        }
-        case RaftMessageType::INSTALL_SNAPSHOT: {
-            ADVISKV_METRICS_TIMER(
-                "storage_raft_flush_messages_install_snapshot");
-
-            InstallSnapshotResult result;
-            Status status;
-            {
-                std::lock_guard locker{persist_snapshot_mutex_};
-                status = raft_sender_.send_install_snapshot(
-                    msg.target, msg.snapshot_param, *persist_, result);
-            }
-            if (status.ok()) {
-                RETURN_IF_INVALID_STATUS(
-                    run_raft_step([&](RaftEffects& effects) {
-                        raft_node_->handle_install_snapshot_response(
-                            msg.target.replica_id, msg.snapshot_param, result,
-                            effects);
-                        return Status::OK();
-                    }))
-            } else {
-                LOG_WARN("storage raft send install snapshot failed, status:{}",
-                         status.to_string());
-                raft_node_->handle_install_snapshot_send_failed(
-                    msg.target.replica_id, msg.snapshot_param, status);
-            }
-            break;
-        }
-    }
-
-    return Status::OK();
-}
-
-Status Replica::apply_log_entry(const LogEntry& entry) {
-    switch (entry.op_type) {
-        case WriteOpType::PUT:
-        case WriteOpType::DEL:
-        case WriteOpType::NONE:
-            return apply_kv_log_entry(entry);
-    }
-
-    return Status{StatusCode::ERROR, "unsupported raft log entry type"};
-}
-
-Status Replica::apply_kv_log_entry(const LogEntry& entry) {
-    Status status = state_machine_->apply(entry);
-    if (status.fail()) {
-        ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_failure");
-        LOG_WARN("apply_kv_log_entry failed, index={}, msg={}", entry.index,
-                 status.msg());
-        return status;
-    }
-    ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_success");
-    raft_node_->advance_last_applied(entry.index);
-
-    return Status::OK();
-}
-
-Status Replica::apply_committed_entries() {
-    ADVISKV_METRICS_TIMER("storage_replica_apply_committed_entries");
-    ADVISKV_METRICS_COUNTER("storage_replica_apply_committed_entries_request");
-
-    std::vector<LogEntry> entries = raft_node_->extract_committed_entries();
-    ADVISKV_METRICS_COUNTER("storage_replica_apply_entry",
-                            to<int64_t>(entries.size()));
-    for (const LogEntry& entry : entries) {
-        RETURN_IF_INVALID_STATUS(apply_log_entry(entry))
-    }
-    return Status::OK();
+    return snapshot_coordinator_->handle_install_snapshot(param);
 }
 
 Status Replica::get(const GetParam& param, Value& value) {
@@ -352,10 +167,12 @@ Status Replica::get(const GetParam& param, Value& value) {
     }
 
     LogIndex read_index;
-    RETURN_IF_INVALID_STATUS(check_self_leader_and_get_read_index(read_index))
+    RETURN_IF_INVALID_STATUS(
+        read_index_checker_->check_self_leader_and_get_read_index(read_index))
 
     std::lock_guard lock(state_machine_mutex_);
-    RETURN_IF_INVALID_STATUS(fault_if_fail(apply_committed_entries()))
+    RETURN_IF_INVALID_STATUS(
+        fault_if_fail(applier_->apply_committed_entries()))
     if (state_machine_->apply_index() < read_index) {
         return Status::NOT_YET_COMMIT("state machine not yet apply");
     }
@@ -383,13 +200,14 @@ Status Replica::del(const DelParam& param) {
     }
 
     LogIndex new_commit_idx = 0;
-    Status status = run_raft_step([&](RaftEffects& effects) {
-        ADVISKV_METRICS_TIMER("storage_replica_delete_propose");
-        auto propose_result =
-            raft_node_->propose(WriteOpType::DEL, param.key, "", effects);
-        new_commit_idx = propose_result.second;
-        return propose_result.first;
-    });
+    Status status =
+        raft_effect_runner_->run_raft_step([&](RaftEffects& effects) {
+            ADVISKV_METRICS_TIMER("storage_replica_delete_propose");
+            auto propose_result =
+                raft_node_->propose(WriteOpType::DEL, param.key, "", effects);
+            new_commit_idx = propose_result.second;
+            return propose_result.first;
+        });
     RETURN_IF_INVALID_STATUS(status)
 
     // delete 与 put 的完成语义保持一致：只有当当前请求对应的日志在本次返回前
@@ -402,7 +220,8 @@ Status Replica::del(const DelParam& param) {
     {
         ADVISKV_METRICS_TIMER("storage_replica_delete_apply_committed");
         std::lock_guard lock(state_machine_mutex_);
-        RETURN_IF_INVALID_STATUS(fault_if_fail(apply_committed_entries()))
+        RETURN_IF_INVALID_STATUS(
+            fault_if_fail(applier_->apply_committed_entries()))
     }
 
     if (!raft_node_->is_leader()) {
@@ -424,7 +243,7 @@ Status Replica::handle_request_vote(const RequestVoteParam& param,
     OperGuard guard;
     RETURN_IF_INVALID_STATUS(acquire_operation(guard))
 
-    return run_raft_step([&](RaftEffects& effects) {
+    return raft_effect_runner_->run_raft_step([&](RaftEffects& effects) {
         raft_node_->handle_request_vote(param, result, effects);
         return Status::OK();
     });
@@ -436,65 +255,31 @@ Status Replica::handle_append_entries(const AppendEntriesParam& param,
     RETURN_IF_INVALID_STATUS(acquire_operation(guard))
 
     // 这里是作为follower那边的handle，会更新commit_idx
-    RETURN_IF_INVALID_STATUS(run_raft_step([&](RaftEffects& effects) {
-        raft_node_->handle_append_entries(param, result, effects);
-        return Status::OK();
-    }))
+    RETURN_IF_INVALID_STATUS(
+        raft_effect_runner_->run_raft_step([&](RaftEffects& effects) {
+            raft_node_->handle_append_entries(param, result, effects);
+            return Status::OK();
+        }))
 
     // 收到 AppendEntries 后，可能有新的 committed entries 需要 apply
     {
         std::lock_guard lock(state_machine_mutex_);
-        RETURN_IF_INVALID_STATUS(fault_if_fail(apply_committed_entries()))
+        RETURN_IF_INVALID_STATUS(
+            fault_if_fail(applier_->apply_committed_entries()))
     }
 
     return Status::OK();
-}
-
-void Replica::try_take_snapshot() {
-    // LogIndex last_index = raft_node_->last_log_index();
-    // LogIndex apply_index = state_machine_->apply_index();
-    // //我勒个雷，这里写成狗屎了啊，还一直没看出来，一直到e2e测试才发现
-
-    LogIndex last_apply_index = raft_node_->last_applied(),
-             snapshot_index = raft_node_->snapshot_index();
-    if (last_apply_index - snapshot_index < SNAPSHOT_LIMIT) return;
-
-    std::lock_guard snapshot_lock(persist_snapshot_mutex_);
-    std::lock_guard state_machine_lock(state_machine_mutex_);
-    last_apply_index = raft_node_->last_applied();
-    snapshot_index = raft_node_->snapshot_index();
-    if (last_apply_index - snapshot_index < SNAPSHOT_LIMIT) return;
-
-    Status status = persist_->do_snapshot(*state_machine_);
-
-    // 现在这里的情况是，persist的执行快照有可能会失败，但是失败是有可能是因为truncate_wal里面的read_wal_from_disk里走到了：
-    //        if (has_prev_index && entry.index != prev_index + 1) {
-    // result.error = true;
-    // result.error_msg =
-    //     fmt::format("wal index is not continuous, prev={}, current={}",
-    //                 prev_index, entry.index);
-    // break;
-    // }
-    // 走到以上这块内容，但是我们没有办法回补，从而有bug
-    //
-
-    if (status.ok()) {
-        // 持久化成功了，这边得截断wal日志了。
-        raft_node_->truncate_log(state_machine_->apply_index());
-    } else {
-        LOG_WARN("replica:try_take_snapshot: status:{}", status.to_string());
-        enter_local_state_faulted();
-    }
 }
 
 void Replica::on_tick() {
     OperGuard guard;
     if (acquire_operation(guard).fail()) return;
 
-    IGNORE_RESULT(run_raft_step([&](RaftEffects& effects) {
-        raft_node_->tick(effects);
-        return Status::OK();
-    }));
+    IGNORE_RESULT(
+        raft_effect_runner_->run_raft_step([&](RaftEffects& effects) {
+            raft_node_->tick(effects);
+            return Status::OK();
+        }));
 
     // 如果put最开始的时候没有推进commit_idx（例如其他的followers都太慢了或者有问题了），
     // 后来这边跑心跳的时候才有回应，这个时候就应该apply一下commmit_entry
@@ -502,10 +287,10 @@ void Replica::on_tick() {
 
     {
         std::lock_guard lock(state_machine_mutex_);
-        if (fault_if_fail(apply_committed_entries()).fail()) return;
+        if (fault_if_fail(applier_->apply_committed_entries()).fail()) return;
     }
 
-    try_take_snapshot();
+    snapshot_coordinator_->try_take_snapshot();
 }
 
 Status Replica::recover() {
@@ -534,76 +319,6 @@ Status Replica::recover() {
     }
     enter_local_state_running();
     return Status::OK();
-}
-
-// 新 leader 刚当选时，虽然它是合法 leader，但它的 commit_index 可能还没包含旧
-// term 中已经成功提交的日志。Raft 通过让新 leader 提交一条当前 term 的 no-op
-// entry，来安全推进 commit_index；一旦当前 term 的 entry 被提交，它前面的旧
-// term 日志也会被一起提交。ReadIndex 读之前检查“当前 term 是否已有 committed
-// entry”，就是为了确保 leader 的 commit_index
-// 已经处在一个安全位置。否则即使心跳拿到了多数派确认，也可能因为状态机还没
-// apply 到那些旧的已提交写，导致读到旧值。
-Status Replica::check_self_leader_and_get_read_index(LogIndex& read_index) {
-    if (!raft_node_->is_leader()) return Status::NOT_LEADER();
-
-    // 我们需要检测一下自己是不是leader，并且需要发送给followers自己的心跳，主动发送一次
-    RaftEffects read_effects;
-    Term read_term;
-    RETURN_IF_INVALID_STATUS(raft_node_->build_append_entries_for_read(
-        read_effects, read_index, read_term))
-
-    int success_cnt = 1;
-    int limit = raft_node_->quorum_size();
-    // 达到limit就可以了
-
-    for (const RaftMessage& msg : read_effects.messages) {
-        // if (msg.type != RaftMessageType::APPEND_ENTRIES) {
-        //     continue;
-        // }
-
-        if (msg.type == RaftMessageType::APPEND_ENTRIES) {
-            AppendEntriesResult res;
-            Status status = raft_sender_.send_append_entries(
-                msg.target, msg.append_param, res);
-            if (status.fail()) continue;
-
-            // 这个handle如果失败了，就说明自己不是leader
-            RETURN_IF_INVALID_STATUS(run_raft_step([&](RaftEffects& effects) {
-                return raft_node_->handle_append_response(
-                    msg.target.replica_id, msg.append_param, res, effects);
-            }))
-            if (res.term == read_term)
-                success_cnt++;  // 这里不用写关于判断res.success，
-            // 因为我们只是需要确认leader这个身份，success可能是fail，因为prev没对齐
-        } else if (msg.type == RaftMessageType::INSTALL_SNAPSHOT) {
-            InstallSnapshotResult res;
-            Status status;
-            {
-                std::lock_guard locker{persist_snapshot_mutex_};
-                status = raft_sender_.send_install_snapshot(
-                    msg.target, msg.snapshot_param, *persist_, res);
-            }
-            if (status.fail()) {
-                raft_node_->handle_install_snapshot_send_failed(
-                    msg.target.replica_id, msg.snapshot_param, status);
-                continue;
-            }
-            RETURN_IF_INVALID_STATUS(run_raft_step([&](RaftEffects& effects) {
-                raft_node_->handle_install_snapshot_response(
-                    msg.target.replica_id, msg.snapshot_param, res, effects);
-                return Status::OK();
-            }))
-            if (res.term == read_term) success_cnt++;
-        } else {
-            LOG_WARN("replica:{} check self leader, but have request vote msg!",
-                     replica_id_.to_string());
-        }
-    }
-
-    if (success_cnt >= limit) {
-        return Status::OK();
-    }
-    return Status::NOT_LEADER("failed to confirm leader with quorum");
 }
 
 Status Replica::get_replica_state_for_test(ReplicaStateForTest& result) const {
@@ -662,18 +377,6 @@ ReplicaStatus Replica::get_status() const {
     if (raft_node_->is_ready()) return ReplicaStatus::READY;
 
     return ReplicaStatus::INITIALIZING;
-}
-
-// 持久化effect + 发送RPC消息(如果有的话)
-Status Replica::run_raft_step(RaftStepFunc&& step) {
-    RaftEffects effects;
-    {
-        std::unique_lock lock(raft_step_mutex_);
-        Status status = step(effects);
-        RETURN_IF_INVALID_STATUS(persist_raft_effects(effects))
-        RETURN_IF_INVALID_STATUS(status)
-    }
-    return send_raft_messages(std::move(effects.messages));
 }
 
 }  // namespace adviskv::storage

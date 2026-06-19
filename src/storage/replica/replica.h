@@ -23,9 +23,32 @@
 namespace adviskv::storage {
 
 class ReplicaManager;
+class ReplicaApplier;
+class ReplicaRaftEffectRunner;
+class ReplicaReadIndexChecker;
+class ReplicaSnapshotCoordinator;
+
+struct ReplicaContext {
+    ReplicaID replica_id;
+
+    RaftNode& raft_node;
+    PersistEngine& persist;
+    StateMachine& state_machine;
+    RaftSender& raft_sender;
+
+    std::mutex& state_machine_mutex;
+    std::mutex& persist_snapshot_mutex;
+    std::mutex& raft_step_mutex;
+
+    std::function<Status(Status)> fault_if_fail;
+    std::function<void()> enter_faulted;
+};
 
 class Replica {
    public:
+    Replica();
+    ~Replica();
+
     TableID get_table_id() const { return shard_id_.table_id; }
     ShardID get_shard_id() const { return shard_id_; }
     ReplicaID get_replica_id() const { return replica_id_; }
@@ -78,25 +101,6 @@ class Replica {
     friend class RaftTickTask;
     // tick 回调（Timer 定时调用）
     void on_tick();
-
-    Status persist_raft_effects(const RaftEffects& effects);
-    Status send_raft_messages(std::vector<RaftMessage> messages);
-    Status send_raft_message(const RaftMessage& msg);
-    Status finish_install_snapshot(const InstallSnapshotParam& param);
-
-    using RaftStepFunc = std::function<Status(RaftEffects&)>;
-    Status run_raft_step(RaftStepFunc&& step);
-
-    // 把已经提交但是还没有apply的entry给apply到我们的engine
-    // 调用方必须已经持有state_machine_mutex_，内部没有吃锁，放到外部了。
-    Status apply_committed_entries();
-    Status apply_log_entry(const LogEntry& entry);
-    Status apply_kv_log_entry(const LogEntry& entry);
-
-    void try_take_snapshot();
-
-    // 给readIndex准备的
-    Status check_self_leader_and_get_read_index(LogIndex& read_index);
 
     Status ensure_running() const;
 
@@ -164,6 +168,12 @@ class Replica {
     mutable std::mutex state_machine_mutex_;
     mutable std::mutex persist_snapshot_mutex_;
     mutable std::mutex raft_step_mutex_;
+
+    std::unique_ptr<ReplicaContext> context_;
+    std::unique_ptr<ReplicaRaftEffectRunner> raft_effect_runner_;
+    std::unique_ptr<ReplicaApplier> applier_;
+    std::unique_ptr<ReplicaSnapshotCoordinator> snapshot_coordinator_;
+    std::unique_ptr<ReplicaReadIndexChecker> read_index_checker_;
 };
 
 using ReplicaPtr = std::shared_ptr<Replica>;

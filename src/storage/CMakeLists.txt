@@ -1,7 +1,11 @@
 set(STORAGE_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/node_agent/node_agent.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_applier.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_raft_effect_runner.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_read_index_checker.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_snapshot_coordinator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_apply.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_log.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_membership.cpp
