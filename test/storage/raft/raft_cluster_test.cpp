@@ -342,10 +342,11 @@ class RaftCluster {
             }
 
             case RaftMessageType::INSTALL_SNAPSHOT: {
+                SnapshotInstallPlan plan;
                 RaftEffects prepare_effects;
-                Status s = nodes_[target_idx]->prepare_install_snapshot(
+                Status s = nodes_[target_idx]->build_install_snapshot_plan(
                     msg.snapshot_param.term, msg.snapshot_param.snapshot_index,
-                    msg.snapshot_param.snapshot_term, prepare_effects);
+                    msg.snapshot_param.snapshot_term, plan, prepare_effects);
                 Status prepare_status =
                     drive_raft_effects(target_idx, std::move(prepare_effects));
                 ASSERT_TRUE(prepare_status.ok()) << prepare_status.to_string();
@@ -356,10 +357,8 @@ class RaftCluster {
 
                 if (s.ok()) {
                     RaftEffects install_effects;
-                    nodes_[target_idx]->install_leader_snapshot(
-                        msg.snapshot_param.snapshot_index,
-                        msg.snapshot_param.snapshot_term,
-                        msg.snapshot_param.term, install_effects);
+                    nodes_[target_idx]->commit_install_snapshot(
+                        plan, install_effects);
                     Status install_status = drive_raft_effects(
                         target_idx, std::move(install_effects));
                     ASSERT_TRUE(install_status.ok())
@@ -471,20 +470,20 @@ class RaftClusterTest : public ::testing::Test {
 
     void tick_election(int node_idx) {
         RaftEffects effects;
-        cluster_.node_ptr(node_idx)->become_candidate(effects);
+        cluster_.node_ptr(node_idx)->become_candidate_for_test(effects);
         Status status =
             cluster_.drive_raft_effects(node_idx, std::move(effects));
         ASSERT_TRUE(status.ok()) << status.to_string();
     }
 
     void tick_heartbeat(int node_idx) {
-        cluster_.node_ptr(node_idx)->heartbeat_tick_trigger_.reset(0);
+        cluster_.node_ptr(node_idx)->reset_heartbeat_tick_for_test(0);
         cluster_.tick_node(node_idx);
-        cluster_.node_ptr(node_idx)->heartbeat_tick_trigger_.reset(3);
+        cluster_.node_ptr(node_idx)->reset_heartbeat_tick_for_test(3);
     }
 
     void set_heartbeat_tick(int node_idx, int val) {
-        cluster_.node_ptr(node_idx)->heartbeat_tick_trigger_.reset(val);
+        cluster_.node_ptr(node_idx)->reset_heartbeat_tick_for_test(val);
     }
 
     void drop_all_messages() {
@@ -584,20 +583,20 @@ class RaftClusterTest : public ::testing::Test {
     LogIndex get_node_next_index(int node_idx, const ReplicaID& target) {
         RaftNode* node = cluster_.node_ptr(node_idx);
         if (!node) return 0;
-        return node->replication_.next_index(target);
+        return node->next_index_for_test(target);
     }
 
     LogIndex get_snapshot_watermark(int node_idx, const ReplicaID& target) {
         RaftNode* node = cluster_.node_ptr(node_idx);
         if (!node) return 0;
-        return node->replication_.snapshot_watermark(target);
+        return node->snapshot_watermark_for_test(target);
     }
 
     LogIndex get_inflight_snapshot_index(int node_idx,
                                          const ReplicaID& target) {
         RaftNode* node = cluster_.node_ptr(node_idx);
         if (!node) return 0;
-        return node->replication_.inflight_snapshot_index(target);
+        return node->inflight_snapshot_index_for_test(target);
     }
 
     RaftCluster cluster_;
@@ -1315,10 +1314,11 @@ TEST_F(RaftClusterTest, ReadIndexCountsInstallSnapshotMessage) {
             ASSERT_TRUE(response_status.ok()) << response_status.to_string();
             if (res.term == read_term) success_cnt++;
         } else if (msg.type == RaftMessageType::INSTALL_SNAPSHOT) {
+            SnapshotInstallPlan plan;
             RaftEffects prepare_effects;
-            Status ps = cluster_.node_ptr(target)->prepare_install_snapshot(
+            Status ps = cluster_.node_ptr(target)->build_install_snapshot_plan(
                 msg.snapshot_param.term, msg.snapshot_param.snapshot_index,
-                msg.snapshot_param.snapshot_term, prepare_effects);
+                msg.snapshot_param.snapshot_term, plan, prepare_effects);
             Status prepare_status =
                 cluster_.drive_raft_effects(target, std::move(prepare_effects));
             ASSERT_TRUE(prepare_status.ok()) << prepare_status.to_string();
@@ -1327,17 +1327,16 @@ TEST_F(RaftClusterTest, ReadIndexCountsInstallSnapshotMessage) {
             res.status = ps;
             if (ps.ok()) {
                 RaftEffects install_effects;
-                cluster_.node_ptr(target)->install_leader_snapshot(
-                    msg.snapshot_param.snapshot_index,
-                    msg.snapshot_param.snapshot_term, msg.snapshot_param.term,
-                    install_effects);
+                cluster_.node_ptr(target)->commit_install_snapshot(
+                    plan, install_effects);
                 Status install_status = cluster_.drive_raft_effects(
                     target, std::move(install_effects));
                 ASSERT_TRUE(install_status.ok()) << install_status.to_string();
             }
             if (ps.code() == StatusCode::ALREADY_EXIST ||
-                (ps.fail() && msg.snapshot_param.snapshot_index <=
-                                  cluster_.node_ptr(target)->snapshot_index())) {
+                (ps.fail() &&
+                 msg.snapshot_param.snapshot_index <=
+                     cluster_.node_ptr(target)->snapshot_index())) {
                 if (ps.code() == StatusCode::ALREADY_EXIST) {
                     res.snapshot_watermark = msg.snapshot_param.snapshot_index;
                 } else {

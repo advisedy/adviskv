@@ -26,10 +26,7 @@ class RaftPeerProgress {
     void update_snapshot_watermark(ReplicaID replica_id,
                                    LogIndex snapshot_watermark);
     LogIndex get_snapshot_watermark(ReplicaID replica_id) const;
-    bool snapshot_watermark_at_least(ReplicaID replica_id,
-                                     LogIndex snapshot_index) const;
     LogIndex get_inflight_snapshot_index(ReplicaID replica_id) const;
-    bool has_inflight_snapshot(ReplicaID replica_id) const;
     bool mark_snapshot_inflight(ReplicaID replica_id, LogIndex snapshot_index);
     void clear_snapshot_inflight(ReplicaID replica_id,
                                  LogIndex snapshot_index);

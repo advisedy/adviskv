@@ -46,7 +46,8 @@ class RaftNodeTest : public ::testing::Test {
                 "cannot append and rewrite raft log in one effects batch");
         }
         if (effects.hard_state.has_value()) {
-            RETURN_IF_INVALID_STATUS(persist.save_raft_meta(*effects.hard_state))
+            RETURN_IF_INVALID_STATUS(
+                persist.save_raft_meta(*effects.hard_state))
         }
         if (effects.entries_to_rewrite.has_value()) {
             RETURN_IF_INVALID_STATUS(
@@ -164,14 +165,15 @@ TEST_F(RaftNodeTest, RecoveringBlocksElectionVoteAndProposeUntilCatchUp) {
     ASSERT_EQ(new_index, -1);
 
     AppendEntriesResult append_result;
-    AppendEntriesParam append_param{leader_id,
-                                    replica_id_,
-                                    1,
-                                    {make_entry(1, 1, WriteOpType::PUT, "k1", "v1"),
-                                     make_entry(1, 2, WriteOpType::PUT, "k2", "v2")},
-                                    0,
-                                    0,
-                                    2};
+    AppendEntriesParam append_param{
+        leader_id,
+        replica_id_,
+        1,
+        {make_entry(1, 1, WriteOpType::PUT, "k1", "v1"),
+         make_entry(1, 2, WriteOpType::PUT, "k2", "v2")},
+        0,
+        0,
+        2};
     RaftEffects effects;
     node.handle_append_entries(append_param, append_result, effects);
     status = drive_raft_effects(persist, effects);
@@ -193,12 +195,17 @@ TEST_F(RaftNodeTest, RecoveringFinishesWhenSnapshotCoversTarget) {
     node.enter_recovering();
     ASSERT_TRUE(node.is_recovering());
 
-    RaftEffects effects;
-    status = node.install_leader_snapshot(5, 2, 2, effects);
+    SnapshotInstallPlan plan;
+    RaftEffects prepare_effects;
+    status = node.build_install_snapshot_plan(2, 5, 2, plan, prepare_effects);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
-    status = drive_raft_effects(persist, effects);
+    status = drive_raft_effects(persist, prepare_effects);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
 
+    RaftEffects effects;
+    node.commit_install_snapshot(plan, effects);
+    status = drive_raft_effects(persist, effects);
+    ASSERT_EQ(status, Status::OK()) << status.to_string();
     ASSERT_EQ(node.snapshot_index(), 5);
     ASSERT_EQ(node.commit_index(), 5);
     ASSERT_TRUE(effects.entries_to_rewrite.has_value());
@@ -206,7 +213,8 @@ TEST_F(RaftNodeTest, RecoveringFinishesWhenSnapshotCoversTarget) {
     ASSERT_FALSE(node.is_recovering());
 }
 
-TEST_F(RaftNodeTest, HandleAppendEntriesRewritesWalWhenLeaderOverwritesConflict) {
+TEST_F(RaftNodeTest,
+       HandleAppendEntriesRewritesWalWhenLeaderOverwritesConflict) {
     PersistEngine persist = make_engine();
     Status status = persist.init();
     ASSERT_EQ(status, Status::OK());
@@ -250,7 +258,8 @@ TEST_F(RaftNodeTest, HandleAppendEntriesRewritesWalWhenLeaderOverwritesConflict)
     ASSERT_EQ(actual_entries, expected_entries);
 }
 
-TEST_F(RaftNodeTest, BecomeLeaderNoopWalAppendFailureIsReturnedByEffectsDriver) {
+TEST_F(RaftNodeTest,
+       BecomeLeaderNoopWalAppendFailureIsReturnedByEffectsDriver) {
     PersistEngine persist = make_engine();
     Status status = persist.init();
     ASSERT_EQ(status, Status::OK());
@@ -300,12 +309,17 @@ TEST_F(RaftNodeTest, InstallLeaderSnapshotStepsDownAndPersistsHigherTerm) {
     RaftNode node{replica_id_, members_};
     node.update_raft_meta(RaftMeta{3, replica_id_});
 
-    RaftEffects effects;
-    status = node.install_leader_snapshot(10, 5, 4, effects);
+    SnapshotInstallPlan plan;
+    RaftEffects prepare_effects;
+    status = node.build_install_snapshot_plan(4, 10, 5, plan, prepare_effects);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
-    status = drive_raft_effects(persist, effects);
+    status = drive_raft_effects(persist, prepare_effects);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
 
+    RaftEffects effects;
+    node.commit_install_snapshot(plan, effects);
+    status = drive_raft_effects(persist, effects);
+    ASSERT_EQ(status, Status::OK()) << status.to_string();
     ASSERT_EQ(node.role(), ReplicaRole::FOLLOWER);
     ASSERT_EQ(node.current_term(), 4);
     ASSERT_EQ(node.snapshot_index(), 10);
@@ -330,8 +344,7 @@ TEST_F(RaftNodeTest, PrepareInstallSnapshotRejectsCoveredLogBoundary) {
     RaftEffects effects;
     Status status = node.prepare_install_snapshot(3, 2, 1, effects);
 
-    ASSERT_EQ(status.code(), StatusCode::ALREADY_EXIST)
-        << status.to_string();
+    ASSERT_EQ(status.code(), StatusCode::ALREADY_EXIST) << status.to_string();
     ASSERT_EQ(node.current_term(), 3);
     ASSERT_EQ(node.snapshot_index(), 0);
     ASSERT_EQ(node.last_log_index(), 3);
@@ -365,8 +378,7 @@ TEST_F(RaftNodeTest, PrepareInstallSnapshotRejectsCommittedSnapshot) {
     RaftEffects effects;
     Status status = node.prepare_install_snapshot(2, 2, 2, effects);
 
-    ASSERT_EQ(status.code(), StatusCode::ALREADY_EXIST)
-        << status.to_string();
+    ASSERT_EQ(status.code(), StatusCode::ALREADY_EXIST) << status.to_string();
     ASSERT_EQ(node.snapshot_index(), 0);
     ASSERT_EQ(node.last_log_index(), 3);
 }

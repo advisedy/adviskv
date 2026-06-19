@@ -12,6 +12,12 @@ set(STORAGE_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_sender.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/grpc_raft_rpc_transport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_background_task.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raft/core/raft_core.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raft/core/raft_core_election.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raft/core/raft_core_append.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raft/core/raft_core_snapshot.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raft/core/raft_core_recovery.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/raft/core/raft_core_read.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/state_machine/kv_state_machine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/map_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/persist/persist_engine.cpp

@@ -79,6 +79,9 @@ struct ReplicaID {
     std::string to_string() const {
         return fmt::format("{}:{}:{}", table_id, shard_index, replica_index);
     }
+
+    ShardID get_shard_id() const { return ShardID{table_id, shard_index}; }
+
     bool operator==(const ReplicaID& other) const {
         return table_id == other.table_id && shard_index == other.shard_index &&
                replica_index == other.replica_index;

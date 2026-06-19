@@ -69,15 +69,11 @@ void RaftPeerProgress::update_snapshot_watermark(
 }
 
 LogIndex RaftPeerProgress::get_snapshot_watermark(ReplicaID replica_id) const {
-    if(auto it = snapshot_watermark_.find(replica_id); it != snapshot_watermark_.end()){
+    if (auto it = snapshot_watermark_.find(replica_id);
+        it != snapshot_watermark_.end()) {
         return it->second;
     }
     return 0;
-}
-
-bool RaftPeerProgress::snapshot_watermark_at_least(
-    ReplicaID replica_id, LogIndex snapshot_index) const {
-    return get_snapshot_watermark(replica_id) >= snapshot_index;
 }
 
 LogIndex RaftPeerProgress::get_inflight_snapshot_index(
@@ -89,13 +85,9 @@ LogIndex RaftPeerProgress::get_inflight_snapshot_index(
     return it->second;
 }
 
-bool RaftPeerProgress::has_inflight_snapshot(ReplicaID replica_id) const {
-    return get_inflight_snapshot_index(replica_id) > 0;
-}
-
 bool RaftPeerProgress::mark_snapshot_inflight(ReplicaID replica_id,
                                               LogIndex snapshot_index) {
-    if (has_inflight_snapshot(replica_id)) {
+    if (get_inflight_snapshot_index(replica_id) > 0) {
         return false;
     }
     inflight_snapshot_index_[replica_id] = snapshot_index;
