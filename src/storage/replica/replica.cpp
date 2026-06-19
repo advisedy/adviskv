@@ -1,14 +1,12 @@
 #include "storage/replica/replica.h"
 
-#include <fmt/format.h>
-
 #include <memory>
 #include <mutex>
-#include <utility>
 
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
+#include "common/oper_gate.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
@@ -16,12 +14,12 @@
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/raft_node.h"
 #include "storage/raft/raft_sender.h"
+#include "storage/raft/state_machine/kv_state_machine.h"
+#include "storage/raft/state_machine/state_machine.h"
 #include "storage/replica/replica_applier.h"
 #include "storage/replica/replica_raft_effect_runner.h"
 #include "storage/replica/replica_read_index_checker.h"
 #include "storage/replica/replica_snapshot_coordinator.h"
-#include "storage/raft/state_machine/kv_state_machine.h"
-#include "storage/raft/state_machine/state_machine.h"
 
 namespace adviskv::storage {
 
@@ -54,16 +52,12 @@ Status Replica::init(const ReplicaInitParam& param) {
         [this](Status status) { return fault_if_fail(status); },
         [this] { enter_local_state_faulted(); },
     });
-    raft_effect_runner_ =
-        std::make_unique<ReplicaRaftEffectRunner>(*context_);
-    applier_ =
-        std::make_unique<ReplicaApplier>(*raft_node_, *state_machine_);
-    read_index_checker_ =
-        std::make_unique<ReplicaReadIndexChecker>(*context_,
-                                                  *raft_effect_runner_);
-    snapshot_coordinator_ =
-        std::make_unique<ReplicaSnapshotCoordinator>(*context_,
-                                                     *raft_effect_runner_);
+    raft_effect_runner_ = std::make_unique<ReplicaRaftEffectRunner>(*context_);
+    applier_ = std::make_unique<ReplicaApplier>(*raft_node_, *state_machine_);
+    read_index_checker_ = std::make_unique<ReplicaReadIndexChecker>(
+        *context_, *raft_effect_runner_);
+    snapshot_coordinator_ = std::make_unique<ReplicaSnapshotCoordinator>(
+        *context_, *raft_effect_runner_);
 
     enter_local_state_running();
     return Status::OK();
@@ -71,10 +65,8 @@ Status Replica::init(const ReplicaInitParam& param) {
 
 Status Replica::put(const PutParam& param) {
     RETURN_IF_INVALID_PARAM(param)
-
-    OperGuard guard;
-    RETURN_IF_INVALID_STATUS(acquire_operation(guard))
-
+    RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
+    RETURN_IF_INVALID_STATUS(ensure_local_state_running())
     if (raft_node_->is_recovering()) {
         return Status::IS_RECOVERING("replica is recovering");
     }
@@ -141,17 +133,16 @@ Status Replica::put(const PutParam& param) {
 
 // 收到了来自leader的快照下载要求
 Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
-    OperGuard guard;
-    RETURN_IF_INVALID_STATUS(acquire_operation(guard))
+    RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
+    RETURN_IF_INVALID_STATUS(ensure_local_state_running())
 
     return snapshot_coordinator_->handle_install_snapshot(param);
 }
 
 Status Replica::get(const GetParam& param, Value& value) {
     RETURN_IF_INVALID_PARAM(param)
-
-    OperGuard guard;
-    RETURN_IF_INVALID_STATUS(acquire_operation(guard))
+    RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
+    RETURN_IF_INVALID_STATUS(ensure_local_state_running())
 
     if (!state_machine_) {
         LOG_WARN(
@@ -171,8 +162,7 @@ Status Replica::get(const GetParam& param, Value& value) {
         read_index_checker_->check_self_leader_and_get_read_index(read_index))
 
     std::lock_guard lock(state_machine_mutex_);
-    RETURN_IF_INVALID_STATUS(
-        fault_if_fail(applier_->apply_committed_entries()))
+    RETURN_IF_INVALID_STATUS(fault_if_fail(applier_->apply_committed_entries()))
     if (state_machine_->apply_index() < read_index) {
         return Status::NOT_YET_COMMIT("state machine not yet apply");
     }
@@ -191,9 +181,8 @@ Status Replica::get(const GetParam& param, Value& value) {
 
 Status Replica::del(const DelParam& param) {
     RETURN_IF_INVALID_PARAM(param)
-
-    OperGuard guard;
-    RETURN_IF_INVALID_STATUS(acquire_operation(guard))
+    RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
+    RETURN_IF_INVALID_STATUS(ensure_local_state_running())
 
     if (raft_node_->is_recovering()) {
         return Status::IS_RECOVERING("replica is recovering");
@@ -240,8 +229,8 @@ Status Replica::del(const DelParam& param) {
 
 Status Replica::handle_request_vote(const RequestVoteParam& param,
                                     RequestVoteResult& result) {
-    OperGuard guard;
-    RETURN_IF_INVALID_STATUS(acquire_operation(guard))
+    RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
+    RETURN_IF_INVALID_STATUS(ensure_local_state_running())
 
     return raft_effect_runner_->run_raft_step([&](RaftEffects& effects) {
         raft_node_->handle_request_vote(param, result, effects);
@@ -251,8 +240,8 @@ Status Replica::handle_request_vote(const RequestVoteParam& param,
 
 Status Replica::handle_append_entries(const AppendEntriesParam& param,
                                       AppendEntriesResult& result) {
-    OperGuard guard;
-    RETURN_IF_INVALID_STATUS(acquire_operation(guard))
+    RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
+    RETURN_IF_INVALID_STATUS(ensure_local_state_running())
 
     // 这里是作为follower那边的handle，会更新commit_idx
     RETURN_IF_INVALID_STATUS(
@@ -272,14 +261,13 @@ Status Replica::handle_append_entries(const AppendEntriesParam& param,
 }
 
 void Replica::on_tick() {
-    OperGuard guard;
-    if (acquire_operation(guard).fail()) return;
+    RETURN_IF_OPER_GUARD_ACQUIRE_FAILED_VOID(oper_gate_)
+    if (ensure_local_state_running().fail()) return;
 
-    IGNORE_RESULT(
-        raft_effect_runner_->run_raft_step([&](RaftEffects& effects) {
-            raft_node_->tick(effects);
-            return Status::OK();
-        }));
+    IGNORE_RESULT(raft_effect_runner_->run_raft_step([&](RaftEffects& effects) {
+        raft_node_->tick(effects);
+        return Status::OK();
+    }));
 
     // 如果put最开始的时候没有推进commit_idx（例如其他的followers都太慢了或者有问题了），
     // 后来这边跑心跳的时候才有回应，这个时候就应该apply一下commmit_entry
@@ -322,8 +310,8 @@ Status Replica::recover() {
 }
 
 Status Replica::get_replica_state_for_test(ReplicaStateForTest& result) const {
-    OperGuard guard;
-    RETURN_IF_INVALID_STATUS(acquire_operation(guard))
+    RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
+    RETURN_IF_INVALID_STATUS(ensure_local_state_running())
 
     result.current_term = current_term();
     result.commit_index = raft_node_->commit_index();
@@ -334,34 +322,11 @@ Status Replica::get_replica_state_for_test(ReplicaStateForTest& result) const {
 }
 
 void Replica::shutdown() {
-    stopping_.store(true);
-    std::unique_lock lock(life_mutex_);
+    enter_local_state_faulted();
+    oper_gate_.close_and_wait();
 }
 
-Status Replica::ensure_running() const {
-    if (stopping_.load() or local_state_ == LocalState::FAULTED) {
-        return Status::ERROR(fmt::format(
-            "replica is not running, reason:{}",
-            stopping_.load() ? "stopping.load()"
-                             : "local_state_ == LocalState::FAULTED"));
-    }
-    return Status::OK();
-}
-
-Status Replica::acquire_operation(OperGuard& guard) const {
-    RETURN_IF_INVALID_STATUS(ensure_running())
-
-    std::shared_lock lock(life_mutex_);
-    RETURN_IF_INVALID_STATUS(ensure_running())
-
-    guard = OperGuard(std::move(lock));
-    return Status::OK();
-}
 ReplicaStatus Replica::get_status() const {
-    if (stopping_.load()) {
-        return ReplicaStatus::FAULTED;
-    }
-
     switch (local_state_) {
         case LocalState::STARTING:
             return ReplicaStatus::INITIALIZING;

@@ -1,16 +1,17 @@
 #pragma once
 
+#include <fmt/format.h>
+
 #include <atomic>
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <shared_mutex>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "common/define.h"
 #include "common/log.h"
+#include "common/oper_gate.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
@@ -79,18 +80,6 @@ class Replica {
     // 收到了来自leader的快照下载要求
     Status handle_install_snapshot(const InstallSnapshotParam& param);
 
-    ///////////
-    // 专门给测试开了个接口
-    struct ReplicaStateForTest {
-        Term current_term;
-        LogIndex commit_index;
-        LogIndex last_applied;
-        LogIndex snapshot_index;
-        Term snapshot_term;
-    };
-    Status get_replica_state_for_test(ReplicaStateForTest& result) const;
-    ///////////
-
    private:
     friend class ReplicaManager;
 
@@ -102,8 +91,6 @@ class Replica {
     // tick 回调（Timer 定时调用）
     void on_tick();
 
-    Status ensure_running() const;
-
     void enter_local_state_faulted() {
         local_state_.store(LocalState::FAULTED);
     }
@@ -114,6 +101,15 @@ class Replica {
         local_state_.store(LocalState::RUNNING);
     }
 
+    Status ensure_local_state_running() const {
+        if (auto state = local_state_.load(); state != LocalState::RUNNING) {
+            return Status::ERROR(fmt::format(
+                "replica is not running, local_state:{}",
+                (state == LocalState::FAULTED ? "faulted" : "starting")));
+        }
+        return Status::OK();
+    }
+
     Status fault_if_fail(Status status) {
         if (status.fail()) {
             LOG_WARN("replica enter fualted: Status:{}", status.to_string());
@@ -121,21 +117,6 @@ class Replica {
         }
         return status;
     }
-
-    class OperGuard {
-       public:
-        OperGuard() = default;
-        DISALLOW_COPY_AND_ASSIGN(OperGuard)
-        ALLOW_MOVE_AND_ASSIGN(OperGuard)
-
-       private:
-        friend class Replica;
-        explicit OperGuard(std::shared_lock<std::shared_mutex>&& life_lock)
-            : life_lock_(std::move(life_lock)) {}
-
-        std::shared_lock<std::shared_mutex> life_lock_;
-    };
-    Status acquire_operation(OperGuard& guard) const;
 
     ShardID shard_id_;
     ReplicaID replica_id_;
@@ -160,11 +141,7 @@ class Replica {
     using LocalState = ReplicaLocalState;
     std::atomic<LocalState> local_state_{LocalState::STARTING};
 
-    // 定时器（驱动 tick）
-    // TimerPtr tick_timer_;
-
-    std::atomic<bool> stopping_{false};
-    mutable std::shared_mutex life_mutex_;
+    OperGate oper_gate_;
     mutable std::mutex state_machine_mutex_;
     mutable std::mutex persist_snapshot_mutex_;
     mutable std::mutex raft_step_mutex_;
@@ -174,6 +151,19 @@ class Replica {
     std::unique_ptr<ReplicaApplier> applier_;
     std::unique_ptr<ReplicaSnapshotCoordinator> snapshot_coordinator_;
     std::unique_ptr<ReplicaReadIndexChecker> read_index_checker_;
+
+   public:
+    ///////////
+    // 专门给测试开了个接口
+    struct ReplicaStateForTest {
+        Term current_term;
+        LogIndex commit_index;
+        LogIndex last_applied;
+        LogIndex snapshot_index;
+        Term snapshot_term;
+    };
+    Status get_replica_state_for_test(ReplicaStateForTest& result) const;
+    ///////////
 };
 
 using ReplicaPtr = std::shared_ptr<Replica>;
