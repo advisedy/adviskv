@@ -29,7 +29,7 @@ Status RaftSender::send_request_vote(const PeerMember& member,
                                      const RequestVoteParam& param,
                                      RequestVoteResult& result) const {
     LOG_DEBUG(
-        "candidate replica:{} send request vote to replica:{}, msg:[term:{}, "
+        "[Raft Sender] candidate replica:{} send request vote to replica:{}, msg:[term:{}, "
         "last_log_index:{}, last_log_term:{} ]",
         param.from_replica_id.to_string(), param.to_replica_id.to_string(),
         param.term, param.last_log_index, param.last_log_term);
@@ -49,8 +49,9 @@ Status RaftSender::send_append_entries(const PeerMember& member,
         ADVISKV_METRICS_COUNTER("storage_raft_append_entries_rpc_entry",
                                 static_cast<int64_t>(param.entries.size()));
     }
+
     LOG_DEBUG(
-        "leader replica:{} sned append entires to replica:{}, msg:[term:{}, "
+        "[Raft Sender] leader replica:{} sned append entires to replica:{}, msg:[term:{}, "
         "prev_log_index:{}, prev_log_term:{}, leader_commit:{}, "
         "entries_size:{}]",
         param.from_replica_id.to_string(), param.to_replica_id.to_string(),
@@ -59,7 +60,7 @@ Status RaftSender::send_append_entries(const PeerMember& member,
 
     for (int i = 0, siz = param.entries.size(); i < siz; i++) {
         LOG_DEBUG(
-            "leader replica:{} send append entires to replica:{}, "
+            "[Raft Sender] leader replica:{} send append entires to replica:{}, "
             "entries[{}]:{}",
             param.from_replica_id.to_string(), param.to_replica_id.to_string(),
             i, param.entries[i].to_string());
@@ -86,7 +87,7 @@ Status RaftSender::send_install_snapshot(const PeerMember& member,
                                          const PersistEngine& persist,
                                          InstallSnapshotResult& result) const {
     LOG_INFO(
-        "replica_id:{}, start to send install snapshot to replica_id:{}, "
+        "[Raft Sender] replica_id:{}, start to send install snapshot to replica_id:{}, "
         "snapshot_index:{}, snapshot_term:{}",
         param.from_replica_id.to_string(), param.to_replica_id.to_string(),
         param.snapshot_index, param.snapshot_term);
@@ -114,7 +115,7 @@ Status RaftSender::send_install_snapshot(const PeerMember& member,
         RETURN_IF_INVALID_STATUS(status)
         if (result.status.fail()) {
             LOG_WARN(
-                "replica_id:{}, transport install snapshot chunk result "
+                "[Raft Sender] replica_id:{}, transport install snapshot chunk result "
                 "failed, status:{}",
                 param.from_replica_id.to_string(), result.status.to_string());
             return Status::OK();
@@ -128,7 +129,7 @@ Status RaftSender::send_install_snapshot(const PeerMember& member,
     }
 
     LOG_INFO(
-        "replica_id:{}, finish send install snapshot to replica_id:{}, "
+        "[Raft Sender] replica_id:{}, finish send install snapshot to replica_id:{}, "
         "snapshot_index:{}, snapshot_term:{}",
         param.from_replica_id.to_string(), param.to_replica_id.to_string(),
         param.snapshot_index, param.snapshot_term);

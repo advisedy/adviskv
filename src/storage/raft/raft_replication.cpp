@@ -1,10 +1,12 @@
 #include "storage/raft/raft_replication.h"
 
+#include <algorithm>
 #include <optional>
 #include <utility>
 
 #include "common/log.h"
 #include "storage/model/param.h"
+#include "storage/raft/raft_log.h"
 
 namespace adviskv::storage {
 
@@ -101,8 +103,8 @@ RaftReplication::CommitAdvanceResult RaftReplication::try_advance_commit_index(
     return result;
 }
 
-void RaftReplication::update_snapshot_watermark(
-    const ReplicaID& replica_id, LogIndex snapshot_watermark) {
+void RaftReplication::update_snapshot_watermark(const ReplicaID& replica_id,
+                                                LogIndex snapshot_watermark) {
     peer_progress_.update_snapshot_watermark(replica_id, snapshot_watermark);
 }
 
@@ -135,18 +137,22 @@ RaftMessageOr RaftReplication::build_append_entries_message(
     LogIndex prev_log_index = next_index - 1;
 
     if (prev_log_index < raft_log_.snapshot_index()) {
+        // 如果快照已经在发送中了
         LogIndex snapshot_index = raft_log_.snapshot_index();
         if (!peer_progress_.mark_snapshot_inflight(member.replica_id,
                                                    snapshot_index)) {
             LOG_DEBUG(
-                "replica:{} skip install snapshot to replica:{}, "
+                "[Raft Replication] replica:{} skip install snapshot to "
+                "replica:{}, "
                 "inflight_snapshot_index:{}",
                 self_id_.to_string(), member.replica_id.to_string(),
                 peer_progress_.get_inflight_snapshot_index(member.replica_id));
             return std::nullopt;
         }
-        LOG_DEBUG(
-            "replica:{} build message, install snapshot to replica:{}, "
+
+        LOG_INFO(
+            "[Raft Replication] replica:{} build message, install snapshot to "
+            "replica:{}, "
             "snapshot_index:{}",
             self_id_.to_string(), member.replica_id.to_string(),
             snapshot_index);
@@ -160,7 +166,6 @@ RaftMessageOr RaftReplication::build_append_entries_message(
         msg.snapshot_param.snapshot_term = raft_log_.snapshot_term();
         return msg;
     }
-
     AppendEntriesParam param;
     param.from_replica_id = self_id_;
     param.to_replica_id = member.replica_id;
@@ -169,6 +174,14 @@ RaftMessageOr RaftReplication::build_append_entries_message(
     param.prev_log_term = raft_log_.term_at(prev_log_index);
     param.leader_commit = raft_apply_.commit_index();
     param.entries = raft_log_.entries_from(next_index);
+
+    LOG_DEBUG(
+        "[Raft Replication] replica:{} build message, append entries to "
+        "replica:{}, pre_log_index:{}, prev_log_term:{}, last_log_index:{}, "
+        "current_term:{}",
+        param.from_replica_id.to_string(), param.to_replica_id.to_string(),
+        param.prev_log_index, param.prev_log_term, raft_log_.last_log_index(),
+        raft_log_.last_log_term());
 
     RaftMessage msg;
     msg.type = RaftMessageType::APPEND_ENTRIES;

@@ -18,6 +18,7 @@ namespace adviskv::storage {
 例如如果是日志复制的回复的话，就可以更新对应的match_idx。
 
 然后replica侧调用apply_committed_entries，去apply到状态机上。同时也会更新raft_node的last_apply_
+
 */
 LogIndex RaftCore::append_new_entry_unlocked(WriteOpType op, const Key& key,
                                              const Value& value,
@@ -97,9 +98,11 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param,
             // leader那边会一直prev_log_index--，然后直到达不到leader的
             // snapshot_index，然后发送快照让follower安装leader的快照。
             LOG_INFO(
-                "raft node: follower receive append entries: "
+                "[RaftCore Append] handle_append_entries, replica_id:{} follower "
+                "receive append entries: "
                 "param.prev_log_index:{} < snapshot_index_:{}",
-                param.prev_log_index, raft_log_.snapshot_index());
+                self_id_.to_string(), param.prev_log_index,
+                raft_log_.snapshot_index());
         } else if (raft_log_.term_at(param.prev_log_index) !=
                    param.prev_log_term) {
             ADVISKV_METRICS_COUNTER(
@@ -125,7 +128,7 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param,
         Status append_status =
             raft_log_.append_entries_from_leader(param.entries, append_result);
         if (append_status.fail()) {
-            LOG_WARN("storage raft handle append entries failed, msg={}",
+            LOG_WARN("[RaftCore Append] storage raft handle append entries failed, msg={}",
                      append_status.msg());
             return;
         }
@@ -162,7 +165,7 @@ Status RaftCore::handle_append_response(const ReplicaID& from,
 
     if (sent_param.term != election_.current_term()) {
         LOG_DEBUG(
-            "leader replica:{} handle append response: result.term:{} != "
+            "[RaftCore Append] leader replica:{} handle append response: result.term:{} != "
             "current_term:{}",
             self_id_.to_string(), result.term, election_.current_term());
         return Status::OK();
@@ -176,7 +179,7 @@ Status RaftCore::handle_append_response(const ReplicaID& from,
 
     if (result.success) {
         ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_success");
-        LOG_DEBUG("leader replica:{} append enrties to replica:{} success.",
+        LOG_DEBUG("[RaftCore Append] leader replica:{} append enrties to replica:{} success.",
                   self_id_.to_string(), from.to_string());
         replication_.handle_append_ok(from, sent_param.prev_log_index,
                                       sent_param.entries.size());
@@ -189,7 +192,7 @@ Status RaftCore::handle_append_response(const ReplicaID& from,
         if (replication_.is_stale_append_response(from, sent_param)) {
             // 说明其实过期了，这个是旧的请求的回应，应该忽略才对
             LOG_DEBUG(
-                "leader replica:{} sent param.prev_log_index:{} + 1 != "
+                "[RaftCore Append] leader replica:{} sent param.prev_log_index:{} + 1 != "
                 "next_index_[from]:{}",
                 self_id_.to_string(), sent_param.prev_log_index,
                 replication_.next_index(from));
@@ -199,7 +202,7 @@ Status RaftCore::handle_append_response(const ReplicaID& from,
         replication_.handle_append_failed(from, result.last_log_index);
 
         LOG_DEBUG(
-            "leader replica:{} append enrties to replica:{} failed. set "
+            "[RaftCore Append] leader replica:{} append enrties to replica:{} failed. set "
             "next_index:{}",
             self_id_.to_string(), from.to_string(),
             replication_.next_index(from));

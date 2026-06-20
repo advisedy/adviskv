@@ -1460,7 +1460,7 @@ TEST_F(RaftClusterTest, InstallSnapshotCoveredWatermarkUpdatesProgress) {
 
     InstallSnapshotResult res;
     res.term = cluster_.node_ptr(0)->current_term();
-    res.status = Status::ERROR("follower already has sent snapshot");
+    res.status = Status::ALREADY_EXIST("follower already has sent snapshot");
     res.snapshot_watermark = snapshot_msg.snapshot_param.snapshot_index;
 
     RaftEffects response_effects;
@@ -1523,7 +1523,7 @@ TEST_F(RaftClusterTest, InstallSnapshotHigherWatermarkUpdatesProgress) {
 
     InstallSnapshotResult res;
     res.term = cluster_.node_ptr(0)->current_term();
-    res.status = Status::ERROR("follower already has newer snapshot");
+    res.status = Status::ALREADY_EXIST("follower already has newer snapshot");
     res.snapshot_watermark = cluster_.node_ptr(2)->snapshot_index();
 
     RaftEffects response_effects;

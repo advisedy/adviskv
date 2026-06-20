@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "common/log.h"
+
 namespace adviskv::storage {
 
 RaftPeerProgress::RaftPeerProgress(ReplicaID replica_id,
@@ -58,8 +60,26 @@ void RaftPeerProgress::reset_for_leader(const RaftMembership& membership,
     }
 }
 
-void RaftPeerProgress::update_snapshot_watermark(
-    ReplicaID replica_id, LogIndex snapshot_watermark) {
+void RaftPeerProgress::update_snapshot_watermark(ReplicaID replica_id,
+                                                 LogIndex snapshot_watermark) {
+    {  // log
+        LogIndex old_watermark = get_snapshot_watermark(replica_id);
+        LogIndex old_match = get_match_index(replica_id);
+        LogIndex old_next = get_next_index(replica_id);
+
+        LogIndex new_watermark = std::max(old_watermark, snapshot_watermark);
+        LogIndex new_match = std::max(old_match, snapshot_watermark);
+        LogIndex new_next = std::max(old_next, snapshot_watermark + 1);
+
+        LOG_DEBUG(
+            "[Raft PeerProgress] update snapshot watermark, replica_id:{}, "
+            "snapshot_watermark:[old:{}, new:{}], match_index:[old:{}, "
+            "new:{}], "
+            "next_index:[old:{}, new:{}]",
+            replica_id.to_string(), old_watermark, new_watermark, old_match,
+            new_match, old_next, new_next);
+    }
+
     snapshot_watermark_[replica_id] =
         std::max(get_snapshot_watermark(replica_id), snapshot_watermark);
     match_index_[replica_id] =
@@ -116,9 +136,9 @@ void RaftPeerProgress::handle_append_ok(ReplicaID replica_id,
     update_next_index(replica_id, get_match_index(replica_id) + 1);
 }
 
-void RaftPeerProgress::handle_append_failed(
-    ReplicaID replica_id, LogIndex follower_last_log_index,
-    LogIndex leader_last_log_index) {
+void RaftPeerProgress::handle_append_failed(ReplicaID replica_id,
+                                            LogIndex follower_last_log_index,
+                                            LogIndex leader_last_log_index) {
     LogIndex current_next = get_next_index(replica_id);
     LogIndex new_next =
         std::min(follower_last_log_index, leader_last_log_index) + 1;

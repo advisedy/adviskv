@@ -11,7 +11,8 @@ namespace adviskv::storage {
 Status RaftCore::truncate_log(LogIndex new_snapshot_index) {
     if (new_snapshot_index > raft_apply_.last_applied()) {
         LOG_WARN(
-            "new_snap_index > last_applied, new_snapshhot_index:{}, "
+            "[RaftCore Snapshot] new_snap_index > last_applied, "
+            "new_snapshhot_index:{}, "
             "last_applied:{}",
             new_snapshot_index, raft_apply_.last_applied());
         return Status::ERROR("new_snap_index > last_applied");
@@ -56,7 +57,8 @@ void RaftCore::commit_install_snapshot(const SnapshotInstallPlan& plan,
         install_snapshot_unlocked(plan.snapshot_index, plan.snapshot_term);
     if (result.retained_entries != plan.retained_entries) {
         LOG_WARN(
-            "snapshot install retained entries changed between plan and "
+            "[RaftCore Snapshot] snapshot install retained entries changed "
+            "between plan and "
             "commit, replica:{}, snapshot_index:{}",
             self_id_.to_string(), plan.snapshot_index);
     }
@@ -77,7 +79,8 @@ void RaftCore::handle_install_snapshot_response(
 
     if (sent_param.term != election_.current_term()) {
         LOG_WARN(
-            "raft replica_id:{} handle snapshot response replica_id:{}, "
+            "[RaftCore Snapshot] raft replica_id:{} handle snapshot response "
+            "replica_id:{}, "
             "sent_param.term:{} != election_.current_term:{}",
             self_id_.to_string(), from.to_string(), sent_param.term,
             election_.current_term());
@@ -86,24 +89,19 @@ void RaftCore::handle_install_snapshot_response(
 
     replication_.clear_snapshot_inflight(from, sent_param.snapshot_index);
 
-    LogIndex snapshot_watermark = result.snapshot_watermark;
-    if (result.status.ok()) {
-        snapshot_watermark =
-            std::max(snapshot_watermark, sent_param.snapshot_index);
-    }
-    if (snapshot_watermark >= sent_param.snapshot_index) {
-        replication_.update_snapshot_watermark(from, snapshot_watermark);
-        LOG_DEBUG(
-            "raft node replica_id:{} follower replica_id:{} snapshot watermark "
-            "updated, sent_snapshot_index:{}, snapshot_watermark:{}",
-            self_id_.to_string(), from.to_string(), sent_param.snapshot_index,
-            snapshot_watermark);
+    if (LogIndex watermark = result.snapshot_watermark;
+        (result.status.ok()) ||
+        (result.status.code() == StatusCode::ALREADY_EXIST &&
+         watermark >= sent_param.snapshot_index)) {
+        replication_.update_snapshot_watermark(
+            from, std::max(watermark, sent_param.snapshot_index));
         return;
     }
 
     if (result.status.fail()) {
         LOG_WARN(
-            "raft replica_id:{} handle snapshot response replica_id:{}, result "
+            "[RaftCore Snapshot] raft replica_id:{} handle snapshot response "
+            "replica_id:{}, result "
             "status.fail, status:{}",
             self_id_.to_string(), from.to_string(), result.status.to_string());
         return;
@@ -119,7 +117,8 @@ void RaftCore::handle_install_snapshot_send_failed(
 
     if (sent_param.term != election_.current_term()) {
         LOG_WARN(
-            "raft replica_id:{} handle snapshot send failed replica_id:{}, "
+            "[RaftCore Snapshot] raft replica_id:{} handle snapshot send "
+            "failed replica_id:{}, "
             "sent_param.term:{} != election_.current_term:{}, status:{}",
             self_id_.to_string(), from.to_string(), sent_param.term,
             election_.current_term(), status.to_string());
@@ -128,7 +127,8 @@ void RaftCore::handle_install_snapshot_send_failed(
 
     replication_.clear_snapshot_inflight(from, sent_param.snapshot_index);
     LOG_WARN(
-        "raft replica_id:{} clear snapshot inflight for replica_id:{} after "
+        "[RaftCore Snapshot] raft replica_id:{} clear snapshot inflight for "
+        "replica_id:{} after "
         "send failed, snapshot_index:{}, status:{}",
         self_id_.to_string(), from.to_string(), sent_param.snapshot_index,
         status.to_string());
@@ -139,9 +139,9 @@ Status RaftCore::prepare_install_snapshot(Term leader_term,
                                           Term new_snapshot_term,
                                           RaftEffects& effects) {
     if (leader_term < election_.current_term()) {  // 发送过来的leader的term低
-        return Status::ERROR(
-            fmt::format("leade term:{} is oldear than current term:{}",
-                        leader_term, election_.current_term()));
+        return Status::ERROR(fmt::format(
+            "[RaftCore Snapshot] leade term:{} is oldear than current term:{}",
+            leader_term, election_.current_term()));
     }
 
     if (leader_term > election_.current_term() || !election_.is_follower()) {
@@ -152,7 +152,8 @@ Status RaftCore::prepare_install_snapshot(Term leader_term,
 
     if (new_snapshot_index <= raft_apply_.commit_index()) {
         return Status::ALREADY_EXIST(fmt::format(
-            "prepare_install_snapshot: leader snapshot_index:{} <= "
+            "[RaftCore Snapshot] prepare_install_snapshot: leader "
+            "snapshot_index:{} <= "
             "commit_index:{}, snapshot_index:{}, last_applied:{}",
             new_snapshot_index, raft_apply_.commit_index(),
             raft_log_.snapshot_index(), raft_apply_.last_applied()));
@@ -162,7 +163,8 @@ Status RaftCore::prepare_install_snapshot(Term leader_term,
         new_snapshot_index <= raft_log_.last_log_index() &&
         raft_log_.term_at(new_snapshot_index) == new_snapshot_term) {
         return Status::ALREADY_EXIST(
-            fmt::format("follower already has the log, leader snapshot can not "
+            fmt::format("[RaftCore Snapshot] follower already has the log, "
+                        "leader snapshot can not "
                         "bring something new, snapshot_index:{}, "
                         "snapshot_term:{}",
                         new_snapshot_index, new_snapshot_term));
