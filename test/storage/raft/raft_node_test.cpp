@@ -38,6 +38,17 @@ class RaftNodeTest : public ::testing::Test {
         return LogEntry{term, index, op_type, std::move(key), std::move(value)};
     }
 
+    InstallSnapshotParam make_install_snapshot_param(Term term,
+                                                     LogIndex snapshot_index,
+                                                     Term snapshot_term) const {
+        InstallSnapshotParam param;
+        param.to_replica_id = replica_id_;
+        param.term = term;
+        param.snapshot_index = snapshot_index;
+        param.snapshot_term = snapshot_term;
+        return param;
+    }
+
     static Status drive_raft_effects(PersistEngine& persist,
                                      const RaftEffects& effects) {
         if (effects.entries_to_rewrite.has_value() &&
@@ -197,7 +208,8 @@ TEST_F(RaftNodeTest, RecoveringFinishesWhenSnapshotCoversTarget) {
 
     SnapshotInstallPlan plan;
     RaftEffects prepare_effects;
-    status = node.build_install_snapshot_plan(2, 5, 2, plan, prepare_effects);
+    status = node.build_install_snapshot_plan(
+        make_install_snapshot_param(2, 5, 2), plan, prepare_effects);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
     status = drive_raft_effects(persist, prepare_effects);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
@@ -311,7 +323,8 @@ TEST_F(RaftNodeTest, InstallLeaderSnapshotStepsDownAndPersistsHigherTerm) {
 
     SnapshotInstallPlan plan;
     RaftEffects prepare_effects;
-    status = node.build_install_snapshot_plan(4, 10, 5, plan, prepare_effects);
+    status = node.build_install_snapshot_plan(
+        make_install_snapshot_param(4, 10, 5), plan, prepare_effects);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
     status = drive_raft_effects(persist, prepare_effects);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
@@ -342,7 +355,8 @@ TEST_F(RaftNodeTest, PrepareInstallSnapshotRejectsCoveredLogBoundary) {
     });
 
     RaftEffects effects;
-    Status status = node.prepare_install_snapshot(3, 2, 1, effects);
+    Status status = node.prepare_install_snapshot(
+        make_install_snapshot_param(3, 2, 1), effects);
 
     ASSERT_EQ(status.code(), StatusCode::ALREADY_EXIST) << status.to_string();
     ASSERT_EQ(node.current_term(), 3);
@@ -376,7 +390,8 @@ TEST_F(RaftNodeTest, PrepareInstallSnapshotRejectsCommittedSnapshot) {
     ASSERT_EQ(node.commit_index(), 3);
 
     RaftEffects effects;
-    Status status = node.prepare_install_snapshot(2, 2, 2, effects);
+    Status status = node.prepare_install_snapshot(
+        make_install_snapshot_param(2, 2, 2), effects);
 
     ASSERT_EQ(status.code(), StatusCode::ALREADY_EXIST) << status.to_string();
     ASSERT_EQ(node.snapshot_index(), 0);

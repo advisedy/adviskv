@@ -264,6 +264,32 @@ TEST_F(ReplicaTest, HandleInstallSnapshotRejectsCoveredBoundaryWithoutClearingWa
     EXPECT_EQ(entries, initial_entries);
 }
 
+TEST_F(ReplicaTest, HandleInstallSnapshotRejectsStaleChunkAfterTmpReplaced) {
+    ReplicaManager manager(base_dir_.string());
+    ReplicaPtr replica = add_single_replica(manager);
+    ASSERT_NE(replica, nullptr);
+
+    ReplicaID source_a{201, 3, 1};
+    ReplicaID source_b{201, 3, 2};
+
+    Status status = replica->handle_install_snapshot(InstallSnapshotParam{
+        source_a, replica_id_, 8, 10, 8, 0, "aaaa", false});
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+
+    status = replica->handle_install_snapshot(InstallSnapshotParam{
+        source_b, replica_id_, 8, 11, 8, 0, "bbbb", false});
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+
+    status = replica->handle_install_snapshot(InstallSnapshotParam{
+        source_a, replica_id_, 8, 10, 8, 4, "cccc", false});
+    ASSERT_EQ(status.code(), StatusCode::ERROR)
+        << test::status_debug_string(status);
+
+    status = replica->handle_install_snapshot(InstallSnapshotParam{
+        source_b, replica_id_, 8, 11, 8, 4, "dddd", false});
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+}
+
 // 单节点replica选举为leader后，put写入的数据应能通过get读回
 TEST_F(ReplicaTest, SingleReplicaPutAndGetAfterElection) {
     ReplicaManager manager(base_dir_.string());

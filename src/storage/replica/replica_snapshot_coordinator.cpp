@@ -1,5 +1,7 @@
 #include "storage/replica/replica_snapshot_coordinator.h"
 
+#include <fmt/format.h>
+
 #include <memory>
 #include <mutex>
 
@@ -25,23 +27,24 @@ Status ReplicaSnapshotCoordinator::handle_install_snapshot(
     const InstallSnapshotParam& param) {
     if (param.offset == 0) {
         LOG_INFO(
-            "[Replica Snapshot] replica:{} start handle to install snapshot from replica:{}. "
+            "[Replica Snapshot] replica:{} start handle to install snapshot "
+            "from replica:{}. "
             "The "
             "snapshot index:{}, snapshot term:{}",
             param.to_replica_id.to_string(), param.from_replica_id.to_string(),
             param.snapshot_index, param.snapshot_term);
     }
-    
+
     LOG_DEBUG(
-        "[Replica Snapshot] replica:{} is handling to install snapshot from replica:{}. The "
+        "[Replica Snapshot] replica:{} is handling to install snapshot from "
+        "replica:{}. The "
         "snapshot index:{}, snapshot term:{}",
         param.to_replica_id.to_string(), param.from_replica_id.to_string(),
         param.snapshot_index, param.snapshot_term);
 
     RETURN_IF_INVALID_STATUS(
         effect_runner_.run_raft_step([&](RaftEffects& effects) {
-            return context_.raft_node.prepare_install_snapshot(
-                param.term, param.snapshot_index, param.snapshot_term, effects);
+            return context_.raft_node.prepare_install_snapshot(param, effects);
         }))
     /*
         std::lock_guard snapshot_lock(persist_snapshot_mutex_);
@@ -49,15 +52,18 @@ Status ReplicaSnapshotCoordinator::handle_install_snapshot(
     */
     {
         std::lock_guard locker{context_.persist_snapshot_mutex};
-        // 这个地方有可能会被截断
-        // TODO
+        RETURN_IF_INVALID_STATUS(check_snapshot_receive_session(param))
         RETURN_IF_INVALID_STATUS(context_.fault_if_fail(
             context_.persist.append_snapshot_chunk(param)))
+        advance_snapshot_receive_session(param);
         if (!param.done) return Status::OK();
 
-        RETURN_IF_INVALID_STATUS(finish_install_snapshot(param))
+        Status finish_status = finish_install_snapshot(param);
+        receiving_snapshot_.reset();
+        RETURN_IF_INVALID_STATUS(finish_status)
         LOG_INFO(
-            "[Replica Snapshot] replica:{} finish install snapshot from replica:{}. "
+            "[Replica Snapshot] replica:{} finish install snapshot from "
+            "replica:{}. "
             "The "
             "snapshot index:{}, snapshot term:{}",
             param.to_replica_id.to_string(), param.from_replica_id.to_string(),
@@ -65,6 +71,58 @@ Status ReplicaSnapshotCoordinator::handle_install_snapshot(
     }
 
     return Status::OK();
+}
+
+Status ReplicaSnapshotCoordinator::check_snapshot_receive_session(
+    const InstallSnapshotParam& param) {
+    if (param.offset == 0) {
+        receiving_snapshot_ = ReceivingSnapshotSession{
+            param.from_replica_id, param.term, param.snapshot_index,
+            param.snapshot_term,   0,
+        };
+        return Status::OK();
+    }
+
+    if (receiving_snapshot_.is_empty()) {
+        return Status::ERROR(fmt::format(
+            "[Replica Snapshot] replica:{} received snapshot chunk without "
+            "session, from:{}, snapshot_index:{}, snapshot_term:{}, offset:{}",
+            param.to_replica_id.to_string(), param.from_replica_id.to_string(),
+            param.snapshot_index, param.snapshot_term, param.offset));
+    }
+
+    const ReceivingSnapshotSession& session = receiving_snapshot_.value();
+    if (session.from_replica_id != param.from_replica_id ||
+        session.term != param.term ||
+        session.snapshot_index != param.snapshot_index ||
+        session.snapshot_term != param.snapshot_term) {
+        return Status::ERROR(fmt::format(
+            "[Replica Snapshot] replica:{} received snapshot chunk from "
+            "different session, chunk:[from:{}, term:{}, snapshot_index:{}, "
+            "snapshot_term:{}], session:[from:{}, term:{}, snapshot_index:{}, "
+            "snapshot_term:{}]",
+            param.to_replica_id.to_string(), param.from_replica_id.to_string(),
+            param.term, param.snapshot_index, param.snapshot_term,
+            session.from_replica_id.to_string(), session.term,
+            session.snapshot_index, session.snapshot_term));
+    }
+
+    if (session.next_offset != param.offset) {
+        return Status::ERROR(fmt::format(
+            "[Replica Snapshot] replica:{} received snapshot chunk with "
+            "unexpected offset, from:{}, snapshot_index:{}, "
+            "expected_offset:{}, "
+            "actual_offset:{}",
+            param.to_replica_id.to_string(), param.from_replica_id.to_string(),
+            param.snapshot_index, session.next_offset, param.offset));
+    }
+
+    return Status::OK();
+}
+
+void ReplicaSnapshotCoordinator::advance_snapshot_receive_session(
+    const InstallSnapshotParam& param) {
+    receiving_snapshot_->next_offset = param.offset + param.data.size();
 }
 
 Status ReplicaSnapshotCoordinator::finish_install_snapshot(
@@ -79,8 +137,7 @@ Status ReplicaSnapshotCoordinator::finish_install_snapshot(
     RaftEffects prepare_effects{};
     // 这里再check一下是否满足，因为中间有段时间没有锁，有可能本地这边会有更新操作
     Status prepare_status = context_.raft_node.build_install_snapshot_plan(
-        param.term, param.snapshot_index, param.snapshot_term, plan,
-        prepare_effects);
+        param, plan, prepare_effects);
     RETURN_IF_INVALID_STATUS(
         effect_runner_.persist_raft_effects(prepare_effects))
     RETURN_IF_INVALID_STATUS(prepare_status)
@@ -157,7 +214,8 @@ void ReplicaSnapshotCoordinator::try_take_snapshot() {
             context_.state_machine.apply_term());
 
     } else {
-        LOG_WARN("[Replica Snapshot] replica:try_take_snapshot: status:{}", status.to_string());
+        LOG_WARN("[Replica Snapshot] replica:try_take_snapshot: status:{}",
+                 status.to_string());
         context_.enter_faulted();
     }
 }

@@ -34,20 +34,18 @@ void RaftCore::install_local_snapshot(LogIndex new_snapshot_index,
     install_snapshot_unlocked(new_snapshot_index, new_snapshot_term);
 }
 
-Status RaftCore::build_install_snapshot_plan(Term leader_term,
-                                             LogIndex new_snapshot_index,
-                                             Term new_snapshot_term,
+Status RaftCore::build_install_snapshot_plan(
+    const InstallSnapshotParam& param,
                                              SnapshotInstallPlan& plan,
                                              RaftEffects& effects) {
     plan = SnapshotInstallPlan{};
 
-    RETURN_IF_INVALID_STATUS(prepare_install_snapshot(
-        leader_term, new_snapshot_index, new_snapshot_term, effects))
+    RETURN_IF_INVALID_STATUS(prepare_install_snapshot(param, effects))
 
-    plan.snapshot_index = new_snapshot_index;
-    plan.snapshot_term = new_snapshot_term;
+    plan.snapshot_index = param.snapshot_index;
+    plan.snapshot_term = param.snapshot_term;
     plan.retained_entries = raft_log_.retained_entries_after_snapshot(
-        new_snapshot_index, new_snapshot_term);
+        param.snapshot_index, param.snapshot_term);
     return Status::OK();
 }
 
@@ -134,40 +132,38 @@ void RaftCore::handle_install_snapshot_send_failed(
         status.to_string());
 }
 
-Status RaftCore::prepare_install_snapshot(Term leader_term,
-                                          LogIndex new_snapshot_index,
-                                          Term new_snapshot_term,
+Status RaftCore::prepare_install_snapshot(const InstallSnapshotParam& param,
                                           RaftEffects& effects) {
-    if (leader_term < election_.current_term()) {  // 发送过来的leader的term低
+    if (param.term < election_.current_term()) {  // 发送过来的leader的term低
         return Status::ERROR(fmt::format(
             "[RaftCore Snapshot] leade term:{} is oldear than current term:{}",
-            leader_term, election_.current_term()));
+            param.term, election_.current_term()));
     }
 
-    if (leader_term > election_.current_term() || !election_.is_follower()) {
-        become_follower(leader_term, effects);
+    if (param.term > election_.current_term() || !election_.is_follower()) {
+        become_follower(param.term, effects);
     }
 
     election_tick_trigger_.clear();
 
-    if (new_snapshot_index <= raft_apply_.commit_index()) {
+    if (param.snapshot_index <= raft_apply_.commit_index()) {
         return Status::ALREADY_EXIST(fmt::format(
             "[RaftCore Snapshot] prepare_install_snapshot: leader "
             "snapshot_index:{} <= "
             "commit_index:{}, snapshot_index:{}, last_applied:{}",
-            new_snapshot_index, raft_apply_.commit_index(),
+            param.snapshot_index, raft_apply_.commit_index(),
             raft_log_.snapshot_index(), raft_apply_.last_applied()));
     }
 
     if (state_ == State::READY &&
-        new_snapshot_index <= raft_log_.last_log_index() &&
-        raft_log_.term_at(new_snapshot_index) == new_snapshot_term) {
+        param.snapshot_index <= raft_log_.last_log_index() &&
+        raft_log_.term_at(param.snapshot_index) == param.snapshot_term) {
         return Status::ALREADY_EXIST(
             fmt::format("[RaftCore Snapshot] follower already has the log, "
                         "leader snapshot can not "
                         "bring something new, snapshot_index:{}, "
                         "snapshot_term:{}",
-                        new_snapshot_index, new_snapshot_term));
+                        param.snapshot_index, param.snapshot_term));
     }
 
     return Status::OK();

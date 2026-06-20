@@ -67,9 +67,7 @@ class RaftCore {
     // 快照相关
     Status truncate_log(LogIndex index);
     void install_local_snapshot(LogIndex snapshot_index, Term snapshot_term);
-    Status build_install_snapshot_plan(Term leader_term,
-                                       LogIndex snapshot_index,
-                                       Term snapshot_term,
+    Status build_install_snapshot_plan(const InstallSnapshotParam& param,
                                        SnapshotInstallPlan& plan,
                                        RaftEffects& effects);
     void commit_install_snapshot(const SnapshotInstallPlan& plan,
@@ -82,8 +80,8 @@ class RaftCore {
         const ReplicaID& from, const InstallSnapshotParam& sent_param,
         const Status& status);
 
-    Status prepare_install_snapshot(Term leader_term, LogIndex snapshot_index,
-                                    Term snapshot_term, RaftEffects& effects);
+    Status prepare_install_snapshot(const InstallSnapshotParam& param,
+                                    RaftEffects& effects);
 
     // recovery 的时候会用到的更新
     void update_raft_meta(const RaftMeta& meta);

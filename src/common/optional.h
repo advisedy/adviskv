@@ -19,6 +19,9 @@ class Optional : public std::optional<T> {
 
     const T* ptr() const { return has_value() ? &this->value() : nullptr; }
 
+    T& value() { return std::optional<T>::value(); }
+    const T& value() const { return std::optional<T>::value(); }
+
     std::optional<T>& self() { return *this; }
 
     const std::optional<T>& self() const { return *this; }

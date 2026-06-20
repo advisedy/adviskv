@@ -173,15 +173,12 @@ void RaftNode::install_local_snapshot(LogIndex snapshot_index,
     core_.install_local_snapshot(snapshot_index, snapshot_term);
 }
 
-Status RaftNode::build_install_snapshot_plan(Term leader_term,
-                                             LogIndex snapshot_index,
-                                             Term snapshot_term,
+Status RaftNode::build_install_snapshot_plan(const InstallSnapshotParam& param,
                                              SnapshotInstallPlan& plan,
                                              RaftEffects& effects) {
     std::lock_guard lock(mutex_);
     effects = RaftEffects{};
-    return core_.build_install_snapshot_plan(leader_term, snapshot_index,
-                                             snapshot_term, plan, effects);
+    return core_.build_install_snapshot_plan(param, plan, effects);
 }
 
 void RaftNode::commit_install_snapshot(const SnapshotInstallPlan& plan,
@@ -206,14 +203,11 @@ void RaftNode::handle_install_snapshot_send_failed(
     core_.handle_install_snapshot_send_failed(from, sent_param, status);
 }
 
-Status RaftNode::prepare_install_snapshot(Term leader_term,
-                                          LogIndex snapshot_index,
-                                          Term snapshot_term,
+Status RaftNode::prepare_install_snapshot(const InstallSnapshotParam& param,
                                           RaftEffects& effects) {
     std::lock_guard lock(mutex_);
     effects = RaftEffects{};
-    return core_.prepare_install_snapshot(leader_term, snapshot_index,
-                                          snapshot_term, effects);
+    return core_.prepare_install_snapshot(param, effects);
 }
 
 // ============================================================================

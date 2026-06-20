@@ -345,8 +345,7 @@ class RaftCluster {
                 SnapshotInstallPlan plan;
                 RaftEffects prepare_effects;
                 Status s = nodes_[target_idx]->build_install_snapshot_plan(
-                    msg.snapshot_param.term, msg.snapshot_param.snapshot_index,
-                    msg.snapshot_param.snapshot_term, plan, prepare_effects);
+                    msg.snapshot_param, plan, prepare_effects);
                 Status prepare_status =
                     drive_raft_effects(target_idx, std::move(prepare_effects));
                 ASSERT_TRUE(prepare_status.ok()) << prepare_status.to_string();
@@ -1317,8 +1316,7 @@ TEST_F(RaftClusterTest, ReadIndexCountsInstallSnapshotMessage) {
             SnapshotInstallPlan plan;
             RaftEffects prepare_effects;
             Status ps = cluster_.node_ptr(target)->build_install_snapshot_plan(
-                msg.snapshot_param.term, msg.snapshot_param.snapshot_index,
-                msg.snapshot_param.snapshot_term, plan, prepare_effects);
+                msg.snapshot_param, plan, prepare_effects);
             Status prepare_status =
                 cluster_.drive_raft_effects(target, std::move(prepare_effects));
             ASSERT_TRUE(prepare_status.ok()) << prepare_status.to_string();
