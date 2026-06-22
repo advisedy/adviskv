@@ -2,6 +2,7 @@ build/
 build-*/
 
 .adviskv_deps/
+CMakeUserPresets.json
 
 .venv/
 .pytest_cache/

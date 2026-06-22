@@ -26,6 +26,8 @@ STORAGE_CONFS = [
     ROOT_DIR / "conf" / "storage-1.yaml",
     ROOT_DIR / "conf" / "storage-2.yaml",
     ROOT_DIR / "conf" / "storage-3.yaml",
+    ROOT_DIR / "conf" / "storage-4.yaml",
+    ROOT_DIR / "conf" / "storage-5.yaml",
 ]
 
 

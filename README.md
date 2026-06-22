@@ -1,6 +1,6 @@
 # AdvisKV
 
-AdvisKV 是一个使用 **C++17 + gRPC + Protocol Buffers + Raft** 实现的分布式 Key-Value 存储项目。项目采用控制面与数据面拆分的架构：`Meta` 负责 DDL 与 catalog，`SDM` 负责部署、路由、节点与副本状态管理，`Storage` 负责 KV 数据读写、Raft 复制和本地持久化，`SDK` 对外提供基于 `db + table + key` 的访问接口。
+AdvisKV 是一个使用 **C++17 + gRPC + Protobuf + Raft** 实现的分布式 Key-Value 存储项目。项目采用控制面与数据面拆分的架构：`Meta` 负责 DDL 与 catalog，`SDM` 负责部署、路由、节点与副本状态管理，`Storage` 负责 KV 数据读写、Raft 复制和本地持久化，`SDK` 对外提供基于 `db + table + key` 的访问接口。
 
 当前项目是一个可构建、可运行、可测试、持续演进中的分布式 KV 系统原型。它已经具备建库、建表、路由解析、KV 读写、Raft 副本、WAL、snapshot、恢复、单测、E2E 和 benchmark 客户端等主干能力；尚未完成控制面高可用、动态扩缩容、Raft config change、自动 rebalance 等生产级能力。
 
@@ -194,39 +194,60 @@ git submodule update --init --recursive
 
 ### 4. 编译项目
 
-仓库提供统一构建脚本：
+依赖初始化完成后，推荐使用 CMake presets 构建：
 
 ```bash
-./scripts/build.sh
+cmake --preset debug
+cmake --build --preset debug
 ```
 
-脚本会执行以下工作：
+运行测试：
 
-- 检查 `.adviskv_deps/vcpkg/installed/` 中是否已有 vcpkg 依赖。
-- 生成 `proto/*.proto` 对应的 C++ 和 gRPC 代码到 `build/generated/`。
-- 使用 CMake 配置并编译项目。
+```bash
+ctest --preset debug
+```
 
-如果依赖目录不存在或缺少 `protoc`、`grpc_cpp_plugin`，请先执行：
+CMake 会执行以下工作：
+
+- 检查并使用 `.adviskv_deps/vcpkg/installed/` 中已有的 vcpkg 依赖。
+- 生成 `proto/*.proto` 对应的 C++ 和 gRPC 代码到当前构建目录的 `generated/` 下。
+- 使用 Ninja 编译项目。
+
+如果依赖目录不存在，请先执行：
 
 ```bash
 ./scripts/setup.sh
 ```
 
-默认构建参数：
+可用 presets：
 
-- `BUILD_DIR=build`
-- `BUILD_TYPE=Release`
-- `GENERATOR=Ninja`
-- `VCPKG_TOOLCHAIN_FILE=third_party/vcpkg/scripts/buildsystems/vcpkg.cmake`
-- `VCPKG_INSTALL_ROOT=.adviskv_deps/vcpkg/installed`
+- `debug`：Debug 构建，输出到 `build/debug/`。
+- `release`：Release 构建，输出到 `build/release/`。
 
-可通过环境变量覆盖：
+也可以继续使用兼容脚本：
 
 ```bash
-BUILD_TYPE=Debug BUILD_DIR=build-debug ./scripts/build.sh
+BUILD_TYPE=Debug ./scripts/build.sh
+```
+
+脚本默认 `BUILD_TYPE=Release`，输出到 `build/release/`；设置 `BUILD_TYPE=Debug` 时输出到 `build/debug/`。脚本会复用 CMake 中的 proto 生成规则，不再单独手动生成 protobuf/gRPC 代码。
+
+如果希望使用传统 CMake 命令，也可以在执行 `./scripts/setup.sh` 后运行：
+
+```bash
+mkdir -p build
+cd build
+cmake ..
+cmake --build . --parallel
 ```
 
 只构建指定 target：
+
+```bash
+cmake --build --preset debug --target meta
+```
+
+或使用兼容脚本：
 
 ```bash
 BUILD_TARGETS="meta sdm storage" ./scripts/build.sh
@@ -234,14 +255,14 @@ BUILD_TARGETS="meta sdm storage" ./scripts/build.sh
 
 ### 5. 编译产物
 
-主要二进制默认位于 `build/bin/`：
+主要二进制默认位于 `build/release/bin/`；Debug 构建位于 `build/debug/bin/`：
 
-- `build/bin/meta`
-- `build/bin/sdm`
-- `build/bin/storage`
-- `build/bin/adviskvctl`
-- `build/bin/e2e_client`
-- `build/bin/bench_client`
+- `build/release/bin/meta`
+- `build/release/bin/sdm`
+- `build/release/bin/storage`
+- `build/release/bin/adviskvctl`
+- `build/release/bin/e2e_client`
+- `build/release/bin/bench_client`
 
 主要 library target：
 
@@ -288,15 +309,15 @@ BUILD_TARGETS="meta sdm storage" ./scripts/build.sh
 建议在三个终端中按顺序启动：
 
 ```bash
-./build/bin/sdm --conf=conf/sdm.yaml
+./build/release/bin/sdm --conf=conf/sdm.yaml
 ```
 
 ```bash
-./build/bin/storage --conf=conf/storage-1.yaml
+./build/release/bin/storage --conf=conf/storage-1.yaml
 ```
 
 ```bash
-./build/bin/meta --conf=conf/meta.yaml
+./build/release/bin/meta --conf=conf/meta.yaml
 ```
 
 注意：`meta`、`sdm` 和 `storage` 都必须显式使用 `--conf=...` 传入配置文件；相对路径会按项目根目录解析。
@@ -306,7 +327,7 @@ BUILD_TARGETS="meta sdm storage" ./scripts/build.sh
 启动 `adviskvctl` 交互式 shell：
 
 ```bash
-./build/bin/adviskvctl
+./build/release/bin/adviskvctl
 ```
 
 默认读取 `conf/client.yaml`；该文件只描述 CLI/SDK 客户端连接信息和 RPC 超时，不用于启动服务端进程。
@@ -337,7 +358,7 @@ quit
 在集群运行状态下执行：
 
 ```bash
-./build/bin/e2e_client --conf=conf/meta.yaml --case=basic_kv --replica_count=1
+./build/release/bin/e2e_client --conf=conf/meta.yaml --case=basic_kv --replica_count=1
 ```
 
 `e2e_client` 参数使用 `--name=value` 格式。常用参数：
@@ -513,7 +534,7 @@ SDK 行为：
 `adviskvctl` 是推荐的统一演示入口，启动后进入交互式 shell。
 
 ```bash
-./build/bin/adviskvctl
+./build/release/bin/adviskvctl
 ```
 
 默认读取 `conf/client.yaml`；如需连接另一套集群，可使用 `--conf=<client.yaml>` 指定客户端配置。
@@ -698,7 +719,7 @@ ctest --test-dir build --output-on-failure
 运行示例：
 
 ```bash
-./build/bin/bench_client \
+./build/release/bin/bench_client \
   --meta_host=127.0.0.1 \
   --meta_port=50048 \
   --sdm_host=127.0.0.1 \
@@ -737,8 +758,10 @@ ctest --test-dir build --output-on-failure
 也可以通过脚本入口运行：
 
 ```bash
-./scripts/bench.sh --workload=put --requests=1000 --replica_count=1
+./scripts/bench.sh --workload=put --requests=1000 --replica_count=5
 ```
+
+`scripts/bench.sh` 会启动 `conf/storage-1.yaml` 到 `conf/storage-5.yaml` 共 5 个 Storage 节点。`--replica_count=5` 表示每个 shard 放 5 个副本；如果只想启动 5 个节点但每个 shard 放 3 个副本，可以保留默认 `--replica_count=3`。
 
 ## 开发状态与限制
 

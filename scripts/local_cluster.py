@@ -10,7 +10,15 @@ from typing import Optional
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-BUILD_DIR = ROOT_DIR / os.environ.get("BUILD_DIR", "build")
+BUILD_TYPE = os.environ.get("BUILD_TYPE", "Release")
+BUILD_DIR_NAME = os.environ.get(
+    "BUILD_DIR",
+    {
+        "Debug": "build/debug",
+        "Release": "build/release",
+    }.get(BUILD_TYPE, f"build/{BUILD_TYPE}"),
+)
+BUILD_DIR = ROOT_DIR / BUILD_DIR_NAME
 BIN_DIR = BUILD_DIR / "bin"
 
 

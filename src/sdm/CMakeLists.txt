@@ -19,13 +19,6 @@ set(SDM_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/reconcile/replica_phase_projection.cpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/client/storage_client.cpp
-
-    # binary dir
-    ${PROJECT_BINARY_DIR}/generated/sdm.pb.cc
-    ${PROJECT_BINARY_DIR}/generated/sdm.grpc.pb.cc
-    ${PROJECT_BINARY_DIR}/generated/storage.pb.cc
-    ${PROJECT_BINARY_DIR}/generated/storage.grpc.pb.cc
-    
 )
 
 add_executable(sdm
@@ -54,7 +47,6 @@ target_link_libraries(adviskv_sdm_lib PUBLIC
 
 target_include_directories(adviskv_sdm_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/src
-    ${PROJECT_BINARY_DIR}/generated
 )
 
 add_library(adviskv_sdm_test_lib
@@ -67,7 +59,6 @@ target_link_libraries(adviskv_sdm_test_lib PUBLIC
 
 target_include_directories(adviskv_sdm_test_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/src
-    ${PROJECT_BINARY_DIR}/generated
 )
 
 target_compile_definitions(adviskv_sdm_test_lib PRIVATE

@@ -4,6 +4,7 @@ set(STORAGE_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_applier.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_raft_effect_runner.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_raft_loop.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_read_index_checker.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_snapshot_coordinator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_apply.cpp
@@ -27,11 +28,6 @@ set(STORAGE_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/persist/persist_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/persist/replica_meta_persist_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/handler/storage_service.cpp
-    ${PROJECT_BINARY_DIR}/generated/common.pb.cc
-    ${PROJECT_BINARY_DIR}/generated/storage.pb.cc
-    ${PROJECT_BINARY_DIR}/generated/storage.grpc.pb.cc
-    ${PROJECT_BINARY_DIR}/generated/sdm.pb.cc
-    ${PROJECT_BINARY_DIR}/generated/sdm.grpc.pb.cc
 )
 
 add_executable(storage
@@ -53,7 +49,6 @@ target_link_libraries(adviskv_storage_lib PUBLIC
 
 target_include_directories(adviskv_storage_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/src
-    ${PROJECT_BINARY_DIR}/generated
 )
 
 add_library(adviskv_storage_test_lib
@@ -66,7 +61,6 @@ target_link_libraries(adviskv_storage_test_lib PUBLIC
 
 target_include_directories(adviskv_storage_test_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/src
-    ${PROJECT_BINARY_DIR}/generated
 )
 
 target_compile_definitions(adviskv_storage_test_lib PRIVATE
