@@ -5,7 +5,7 @@ namespace adviskv::storage {
 // 判判断当前这个term，这个leader是否已经提交过entry了
 // 原因的话是因为如果他没有提交过的话，那这个commit
 // index就还没有这个及时的更新到，那么就有可能会导致客户端最终那边会读到旧的数据。
-bool RaftCore::has_committed_current_term_entry_unlocked() const {
+bool RaftCore::has_committed_current_term_entry() const {
     return raft_apply_.has_committed_current_term_entry(
         election_.current_term());
 }
@@ -16,7 +16,7 @@ bool RaftCore::has_committed_current_term_entry_unlocked() const {
 Status RaftCore::build_append_entries_for_read(RaftEffects& effects,
                                                LogIndex& read_index,
                                                Term& read_term) {
-    RETURN_IF_INVALID_STATUS(ensure_ready_unlocked())
+    RETURN_IF_INVALID_STATUS(ensure_ready())
 
     if (!election_.is_leader()) return Status::NOT_LEADER("not leader");
     if (!has_committed_current_term_entry_unlocked()) {

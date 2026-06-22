@@ -23,9 +23,29 @@
 
 namespace adviskv::storage {
 
+namespace {
+
+constexpr Milliseconds kReplicaApplyTaskInterval{5};
+
+
+}  // namespace
+
+class ReplicaApplyTask : public BackgroundTask {
+   public:
+    explicit ReplicaApplyTask(Replica* replica) : replica_(replica) {}
+
+    void run() override {
+        if (!replica_) return;
+        replica_->apply_committed_entries_from_task();
+    }
+
+   private:
+    Replica* replica_{nullptr};
+};
+
 Replica::Replica() = default;
 
-Replica::~Replica() = default;
+Replica::~Replica() { shutdown(); }
 
 Status Replica::init(const ReplicaInitParam& param) {
     shard_id_ =
@@ -54,12 +74,11 @@ Status Replica::init(const ReplicaInitParam& param) {
     });
     raft_effect_runner_ = std::make_unique<ReplicaRaftEffectRunner>(*context_);
     applier_ = std::make_unique<ReplicaApplier>(*raft_node_, *state_machine_);
-    read_index_checker_ = std::make_unique<ReplicaReadIndexChecker>(
-        *context_, *raft_effect_runner_);
-    snapshot_coordinator_ = std::make_unique<ReplicaSnapshotCoordinator>(
-        *context_, *raft_effect_runner_);
+    apply_task_ = std::make_unique<ReplicaApplyTask>(this);
+
 
     enter_local_state_running();
+    apply_task_->start(kReplicaApplyTaskInterval);
     return Status::OK();
 }
 
@@ -260,6 +279,46 @@ Status Replica::handle_append_entries(const AppendEntriesParam& param,
     return Status::OK();
 }
 
+void Replica::notify_apply_task() {
+    if (apply_task_) {
+        apply_task_->notify();
+    }
+}
+
+void Replica::apply_committed_entries_from_task() {
+    ADVISKV_METRICS_TIMER("storage_replica_async_apply_committed");
+    ADVISKV_METRICS_COUNTER("storage_replica_async_apply_committed_request");
+
+    OperGate::Guard guard;
+    if (oper_gate_.acquire(guard).fail()) {
+        ADVISKV_METRICS_COUNTER(
+            "storage_replica_async_apply_committed_skipped");
+        return;
+    }
+    if (ensure_local_state_running().fail() || !raft_node_ || !applier_) {
+        ADVISKV_METRICS_COUNTER(
+            "storage_replica_async_apply_committed_skipped");
+        return;
+    }
+
+    if (raft_node_->commit_index() <= raft_node_->last_applied()) {
+        ADVISKV_METRICS_COUNTER("storage_replica_async_apply_committed_none");
+        return;
+    }
+
+    std::lock_guard lock(state_machine_mutex_);
+    Status status = fault_if_fail(applier_->apply_committed_entries());
+    if (status.fail()) {
+        ADVISKV_METRICS_COUNTER(
+            "storage_replica_async_apply_committed_failure");
+        LOG_WARN(
+            "async apply committed entries failed, replica_id={}, status={}",
+            replica_id_.to_string(), status.to_string());
+        return;
+    }
+    ADVISKV_METRICS_COUNTER("storage_replica_async_apply_committed_success");
+}
+
 void Replica::on_tick() {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED_VOID(oper_gate_)
     if (ensure_local_state_running().fail()) return;
@@ -323,6 +382,9 @@ Status Replica::get_replica_state_for_test(ReplicaStateForTest& result) const {
 
 void Replica::shutdown() {
     enter_local_state_faulted();
+    if (apply_task_) {
+        apply_task_->stop();
+    }
     oper_gate_.close_and_wait();
 }
 

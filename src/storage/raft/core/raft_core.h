@@ -25,8 +25,7 @@ class RaftCore {
 
     // tick 和外层写请求
     void tick(RaftEffects& effects);
-    std::pair<Status, LogIndex> propose(WriteOpType op, const Key& key,
-                                        const Value& value,
+    std::pair<Status, LogIndex> propose(const ProposeParam& param,
                                         RaftEffects& effects);
 
     // 处理别的 replica 发过来的 Raft RPC 请求
@@ -132,9 +131,9 @@ class RaftCore {
     };
 
     // 基础状态工具函数
-    Status ensure_ready_unlocked() const;
+    Status ensure_ready() const;
     bool later_than_other(Term other_term, LogIndex other_index) const;
-    void record_hard_state_unlocked(RaftEffects& effects) const;
+    void record_hard_state(RaftEffects& effects) const;
 
     // 角色切换和选举相关
     void become_follower(Term later_term, RaftEffects& effects);
@@ -143,9 +142,9 @@ class RaftCore {
     void send_request_vote_to(const PeerMember& member, RaftEffects& effects);
 
     // 日志复制相关
-    LogIndex append_new_entry_unlocked(WriteOpType op, const Key& key,
-                                       const Value& value,
-                                       RaftEffects& effects);
+    LogIndex append_new_entry(const ProposeParam& param, RaftEffects& effects);
+
+    Status validate_proposal(const ProposeParam& param) const;
     void try_update_commit_index();
     void broadcast_append_entries(RaftEffects& effects);
 
@@ -154,8 +153,8 @@ class RaftCore {
         LogIndex snapshot_index, Term snapshot_term);
 
     // recovery 和 read index 内部工具
-    void finish_recovering_unlocked();
-    bool has_committed_current_term_entry_unlocked() const;
+    void finish_recovering();
+    bool has_committed_current_term_entry() const;
 
     ReplicaID self_id_;
     RaftElection election_;

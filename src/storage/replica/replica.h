@@ -25,6 +25,7 @@ namespace adviskv::storage {
 
 class ReplicaManager;
 class ReplicaApplier;
+class ReplicaApplyTask;
 class ReplicaRaftEffectRunner;
 class ReplicaReadIndexChecker;
 class ReplicaSnapshotCoordinator;
@@ -86,6 +87,8 @@ class Replica {
     Status init(const ReplicaInitParam& param);
     Status recover();
     void shutdown();
+    void notify_apply_task();
+    void apply_committed_entries_from_task();
 
     friend class RaftTickTask;
     // tick 回调（Timer 定时调用）
@@ -149,6 +152,7 @@ class Replica {
     std::unique_ptr<ReplicaContext> context_;
     std::unique_ptr<ReplicaRaftEffectRunner> raft_effect_runner_;
     std::unique_ptr<ReplicaApplier> applier_;
+    std::unique_ptr<ReplicaApplyTask> apply_task_;
     std::unique_ptr<ReplicaSnapshotCoordinator> snapshot_coordinator_;
     std::unique_ptr<ReplicaReadIndexChecker> read_index_checker_;
 

@@ -14,8 +14,14 @@ class RaftMembership {
                    const std::vector<PeerMember>& members);
 
     const std::vector<PeerMember>& get_members() const;
-    int quorum_size_unlocked() const;
-    bool has_quorum_unlocked(int ack_count) const;
+    const std::vector<PeerMember>& all_members() const;
+    std::vector<PeerMember> voters() const;
+    const PeerMember* find_member(const ReplicaID& replica_id) const;
+    bool contains(const ReplicaID& replica_id) const;
+    bool is_voter(const ReplicaID& replica_id) const;
+    void update_members(const std::vector<PeerMember>& members);
+    int quorum_size() const;
+    bool has_quorum(int ack_count) const;
 
    private:
     ReplicaID self_id_;

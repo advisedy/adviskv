@@ -4,6 +4,8 @@
 
 #include <cstdint>
 #include <optional>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "common/define.h"
@@ -16,6 +18,25 @@ namespace adviskv::storage {
 using LogIndex = int64_t;
 
 enum class WriteOpType : int32_t { PUT = 0, DEL = 1, NONE = 2 };
+
+struct WriteProposal {
+    WriteOpType op{WriteOpType::NONE};
+    Key key;
+    Value value;
+};
+
+struct NoopProposal {};
+
+struct ProposeParam {
+    std::variant<WriteProposal, NoopProposal> payload;
+
+    static ProposeParam write(WriteOpType op, Key key, Value value) {
+        return ProposeParam{
+            WriteProposal{op, std::move(key), std::move(value)}};
+    }
+
+    static ProposeParam noop() { return ProposeParam{NoopProposal{}}; }
+};
 
 struct RaftMeta {
     Term current_term;
@@ -32,8 +53,8 @@ struct LogEntry {
     Term term{0};
     LogIndex index{0};
     WriteOpType op_type;
-    Key key;
-    Value value;
+    Key key{""};
+    Value value{""};
 
     bool operator==(const LogEntry& other) const {
         return term == other.term and index == other.index and

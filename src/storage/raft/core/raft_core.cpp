@@ -31,7 +31,7 @@ LogIndex RaftCore::last_log_index() const { return raft_log_.last_log_index(); }
 Term RaftCore::last_log_term() const { return raft_log_.last_log_term(); }
 
 
-int RaftCore::quorum_size() const { return membership_.quorum_size_unlocked(); }
+int RaftCore::quorum_size() const { return membership_.quorum_size(); }
 
 ReplicaRole RaftCore::role() const { return election_.role(); }
 
@@ -59,7 +59,7 @@ bool RaftCore::later_than_other(Term other_term, LogIndex other_index) const {
     return raft_log_.last_log_index() > other_index;
 }
 
-Status RaftCore::ensure_ready_unlocked() const {
+Status RaftCore::ensure_ready() const {
     if (state_ == State::RECOVERING) {
         return Status::IS_RECOVERING("raft node is recovering");
     }
@@ -69,7 +69,7 @@ Status RaftCore::ensure_ready_unlocked() const {
     return Status::OK();
 }
 
-void RaftCore::record_hard_state_unlocked(RaftEffects& effects) const {
+void RaftCore::record_hard_state(RaftEffects& effects) const {
     effects.hard_state = election_.hard_state();
 }
 

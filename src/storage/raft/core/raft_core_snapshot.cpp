@@ -20,18 +20,18 @@ Status RaftCore::truncate_log(LogIndex new_snapshot_index) {
     return raft_log_.truncate(new_snapshot_index);
 }
 
-RaftLog::InstallSnapshotResult RaftCore::install_snapshot_unlocked(
+RaftLog::InstallSnapshotResult RaftCore::install_snapshot(
     LogIndex new_snapshot_index, Term new_snapshot_term) {
     RaftLog::InstallSnapshotResult result =
         raft_log_.install_snapshot(new_snapshot_index, new_snapshot_term);
     raft_apply_.install_snapshot(new_snapshot_index);
-    finish_recovering_unlocked();
+    finish_recovering();
     return result;
 }
 
 void RaftCore::install_local_snapshot(LogIndex new_snapshot_index,
                                       Term new_snapshot_term) {
-    install_snapshot_unlocked(new_snapshot_index, new_snapshot_term);
+    install_snapshot(new_snapshot_index, new_snapshot_term);
 }
 
 Status RaftCore::build_install_snapshot_plan(
@@ -52,7 +52,7 @@ Status RaftCore::build_install_snapshot_plan(
 void RaftCore::commit_install_snapshot(const SnapshotInstallPlan& plan,
                                        RaftEffects& effects) {
     RaftLog::InstallSnapshotResult result =
-        install_snapshot_unlocked(plan.snapshot_index, plan.snapshot_term);
+        install_snapshot(plan.snapshot_index, plan.snapshot_term);
     if (result.retained_entries != plan.retained_entries) {
         LOG_WARN(
             "[RaftCore Snapshot] snapshot install retained entries changed "
@@ -66,7 +66,7 @@ void RaftCore::commit_install_snapshot(const SnapshotInstallPlan& plan,
 void RaftCore::handle_install_snapshot_response(
     const ReplicaID& from, const InstallSnapshotParam& sent_param,
     const InstallSnapshotResult& result, RaftEffects& effects) {
-    if (ensure_ready_unlocked().fail()) return;
+    if (ensure_ready().fail()) return;
 
     if (result.term > election_.current_term()) {
         become_follower(result.term, effects);
@@ -109,7 +109,7 @@ void RaftCore::handle_install_snapshot_response(
 void RaftCore::handle_install_snapshot_send_failed(
     const ReplicaID& from, const InstallSnapshotParam& sent_param,
     const Status& status) {
-    if (ensure_ready_unlocked().fail()) return;
+    if (ensure_ready().fail()) return;
 
     if (!election_.is_leader()) return;
 

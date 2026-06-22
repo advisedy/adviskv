@@ -17,7 +17,7 @@ void RaftCore::enter_recovering() {
     heartbeat_tick_trigger_.stop();
 }
 
-void RaftCore::finish_recovering_unlocked() {
+void RaftCore::finish_recovering() {
     if (state_ != State::RECOVERING) return;
 
     state_ = State::READY;

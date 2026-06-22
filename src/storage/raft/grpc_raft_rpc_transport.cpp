@@ -5,6 +5,9 @@
 
 #include <chrono>
 
+#include "common/proto/replica_id_proto.h"
+#include "storage/proto/storage_model_proto.h"
+
 namespace adviskv::storage {
 namespace {
 
@@ -17,14 +20,8 @@ Status GrpcRaftRpcTransport::request_vote(const PeerMember& target,
                                           int32_t timeout_ms,
                                           RequestVoteResult& result) const {
     rpc::RequestVoteRequest request;
-    request.mutable_from()->set_table_id(param.from_replica_id.table_id);
-    request.mutable_from()->set_shard_index(param.from_replica_id.shard_index);
-    request.mutable_from()->set_replica_index(
-        param.from_replica_id.replica_index);
-
-    request.mutable_to()->set_table_id(param.to_replica_id.table_id);
-    request.mutable_to()->set_shard_index(param.to_replica_id.shard_index);
-    request.mutable_to()->set_replica_index(param.to_replica_id.replica_index);
+    encode_pb_replica_id(param.from_replica_id, *request.mutable_from());
+    encode_pb_replica_id(param.to_replica_id, *request.mutable_to());
 
     request.set_term(param.term);
     request.set_last_log_index(param.last_log_index);
@@ -51,14 +48,8 @@ Status GrpcRaftRpcTransport::append_entries(const PeerMember& target,
                                             int32_t timeout_ms,
                                             AppendEntriesResult& result) const {
     rpc::AppendEntriesRequest request;
-    request.mutable_from()->set_table_id(param.from_replica_id.table_id);
-    request.mutable_from()->set_shard_index(param.from_replica_id.shard_index);
-    request.mutable_from()->set_replica_index(
-        param.from_replica_id.replica_index);
-
-    request.mutable_to()->set_table_id(param.to_replica_id.table_id);
-    request.mutable_to()->set_shard_index(param.to_replica_id.shard_index);
-    request.mutable_to()->set_replica_index(param.to_replica_id.replica_index);
+    encode_pb_replica_id(param.from_replica_id, *request.mutable_from());
+    encode_pb_replica_id(param.to_replica_id, *request.mutable_to());
 
     request.set_term(param.term);
     request.set_prev_log_index(param.prev_log_index);
@@ -66,12 +57,10 @@ Status GrpcRaftRpcTransport::append_entries(const PeerMember& target,
     request.set_leader_commit(param.leader_commit);
 
     for (const LogEntry& entry : param.entries) {
-        auto* one = request.add_entries();
-        one->set_index(entry.index);
-        one->set_term(entry.term);
-        one->set_op_type(static_cast<int32_t>(entry.op_type));
-        one->set_key(entry.key);
-        one->set_value(entry.value);
+        auto* out_entry = request.add_entries();
+        if (!encode_pb_log_entry(entry, *out_entry)) {
+            return Status::INVALID_ARGUMENT("invalid append entries log entry");
+        }
     }
 
     rpc::AppendEntriesResponse response;
@@ -94,14 +83,8 @@ Status GrpcRaftRpcTransport::install_snapshot_chunk(
     const PeerMember& target, const InstallSnapshotParam& param,
     int32_t timeout_ms, InstallSnapshotResult& result) const {
     rpc::InstallSnapshotRequest request;
-    request.mutable_from()->set_table_id(param.from_replica_id.table_id);
-    request.mutable_from()->set_shard_index(param.from_replica_id.shard_index);
-    request.mutable_from()->set_replica_index(
-        param.from_replica_id.replica_index);
-
-    request.mutable_to()->set_table_id(param.to_replica_id.table_id);
-    request.mutable_to()->set_shard_index(param.to_replica_id.shard_index);
-    request.mutable_to()->set_replica_index(param.to_replica_id.replica_index);
+    encode_pb_replica_id(param.from_replica_id, *request.mutable_from());
+    encode_pb_replica_id(param.to_replica_id, *request.mutable_to());
 
     request.set_term(param.term);
     request.set_apply_index(param.snapshot_index);
