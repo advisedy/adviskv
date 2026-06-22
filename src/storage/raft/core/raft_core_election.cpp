@@ -7,7 +7,7 @@
 namespace adviskv::storage {
 
 void RaftCore::tick(RaftEffects& effects) {
-    if (ensure_ready_unlocked().fail()) return;
+    if (ensure_ready().fail()) return;
 
     if (election_.is_leader()) {
         heartbeat_tick_trigger_.tick(
@@ -18,22 +18,22 @@ void RaftCore::tick(RaftEffects& effects) {
 }
 
 void RaftCore::become_candidate(RaftEffects& effects) {
-    if (ensure_ready_unlocked().fail()) return;
+    if (ensure_ready().fail()) return;
     LOG_INFO("replica:{} start become cadidate", self_id_.to_string());
     election_.become_candidate();
-    record_hard_state_unlocked(effects);
+    record_hard_state(effects);
 
     heartbeat_tick_trigger_.stop();
     election_tick_trigger_.reset();
 
     // 如果只有一个节点的话，就直接当选
-    if (membership_.has_quorum_unlocked(election_.granted_vote_count())) {
+    if (membership_.has_quorum(election_.granted_vote_count())) {
         become_leader(effects);
         return;
     }
 
     // 给所有 peer 发 RequestVote
-    for (const PeerMember& member : membership_.get_members()) {
+    for (const PeerMember& member : membership_.voters()) {
         if (member.replica_id == self_id_) continue;
         send_request_vote_to(member, effects);
     }
@@ -76,7 +76,7 @@ void RaftCore::handle_request_vote(const RequestVoteParam& param,
         result.term = election_.current_term();
     }
 
-    if (ensure_ready_unlocked().fail()) {
+    if (ensure_ready().fail()) {
         return;
     }
 
@@ -93,7 +93,7 @@ void RaftCore::handle_request_vote(const RequestVoteParam& param,
         LOG_DEBUG("replica:{} vote to {}, current_term:{}",
                   self_id_.to_string(), param.from_replica_id.to_string(),
                   election_.current_term());
-        record_hard_state_unlocked(effects);
+        record_hard_state(effects);
         result.vote_granted = true;
         election_tick_trigger_.clear();
     }
@@ -102,7 +102,7 @@ void RaftCore::handle_request_vote(const RequestVoteParam& param,
 void RaftCore::handle_vote_response(const ReplicaID& from,
                                     const RequestVoteResult& result,
                                     RaftEffects& effects) {
-    if (ensure_ready_unlocked().fail()) return;
+    if (ensure_ready().fail()) return;
 
     // 已经不是 CANDIDATE 了，就直接忽略之前的发起内容
     if (!election_.is_candidate()) return;
@@ -129,7 +129,7 @@ void RaftCore::handle_vote_response(const ReplicaID& from,
         "count++ to {}",
         self_id_.to_string(), from.to_string(), election_.granted_vote_count());
 
-    if (membership_.has_quorum_unlocked(election_.granted_vote_count())) {
+    if (membership_.has_quorum(election_.granted_vote_count())) {
         become_leader(effects);
     }
 }
@@ -144,12 +144,12 @@ void RaftCore::become_follower(Term later_term, RaftEffects& effects) {
     election_tick_trigger_.reset();
 
     if (election_.become_follower(later_term)) {
-        record_hard_state_unlocked(effects);
+        record_hard_state(effects);
     }
 }
 
 void RaftCore::become_leader(RaftEffects& effects) {
-    if (ensure_ready_unlocked().fail()) return;
+    if (ensure_ready().fail()) return;
 
     LOG_INFO("replica:{} become leader", self_id_.to_string());
     election_.become_leader();
@@ -160,13 +160,11 @@ void RaftCore::become_leader(RaftEffects& effects) {
     // TODO 为什么当上了leader之后需要把这些全都初始化呢？ 保留原来的值不行吗？
     replication_.reset_for_leader();
 
-    append_new_entry_unlocked(
-        WriteOpType::NONE, "for debug: this is a no-op entry key",
-        "for debug: this is a no-op entry value", effects);
+    append_new_entry(ProposeParam::noop(), effects);
     // 立即广播（含 no-op），相当于心跳 + 日志复制合一
     broadcast_append_entries(effects);
 
-    if (membership_.has_quorum_unlocked(1)) {
+    if (membership_.has_quorum(1)) {
         try_update_commit_index();
     }
 }

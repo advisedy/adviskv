@@ -20,11 +20,10 @@ namespace adviskv::storage {
 然后replica侧调用apply_committed_entries，去apply到状态机上。同时也会更新raft_node的last_apply_
 
 */
-LogIndex RaftCore::append_new_entry_unlocked(WriteOpType op, const Key& key,
-                                             const Value& value,
+LogIndex RaftCore::append_new_entry(const ProposeParam& param,
                                              RaftEffects& effects) {
     LogIndex new_index =
-        raft_log_.append_new_entry(election_.current_term(), op, key, value);
+        raft_log_.append_new_entry(election_.current_term(), param);
     const LogEntry* entry = raft_log_.entry_at(new_index);
 
     if (entry != nullptr) {
@@ -33,22 +32,36 @@ LogIndex RaftCore::append_new_entry_unlocked(WriteOpType op, const Key& key,
     return new_index;
 }
 
-std::pair<Status, LogIndex> RaftCore::propose(WriteOpType op, const Key& key,
-                                              const Value& value,
+Status RaftCore::validate_proposal(const ProposeParam& param) const {
+    if (const auto* write = std::get_if<WriteProposal>(&param.payload)) {
+        if (write->op != WriteOpType::PUT && write->op != WriteOpType::DEL) {
+            return Status::INVALID_ARGUMENT("invalid write proposal op");
+        }
+        return Status::OK();
+    }
+    if (const auto* noop = std::get_if<NoopProposal>(&param.payload)) {
+        UNUSED(noop);
+        return Status::OK();
+    }
+    return Status::INVALID_ARGUMENT("unknown proposal type");
+}
+
+std::pair<Status, LogIndex> RaftCore::propose(const ProposeParam& param,
                                               RaftEffects& effects) {
-    Status ready_status = ensure_ready_unlocked();
+    Status ready_status = ensure_ready();
     if (ready_status.fail()) return {ready_status, -1};
 
     if (!election_.is_leader()) {
         return {Status{StatusCode::NOT_LEADER, "not leader"}, -1};
     }
 
-    LogIndex new_commit_idx =
-        append_new_entry_unlocked(op, key, value, effects);
+    Status validate_status = validate_proposal(param);
+    if (validate_status.fail()) return {validate_status, -1};
 
+    LogIndex new_commit_idx = append_new_entry(param, effects);
     broadcast_append_entries(effects);
 
-    if (election_.is_leader() and membership_.has_quorum_unlocked(1)) {
+    if (election_.is_leader() and membership_.has_quorum(1)) {
         try_update_commit_index();
     }
 
@@ -98,7 +111,8 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param,
             // leader那边会一直prev_log_index--，然后直到达不到leader的
             // snapshot_index，然后发送快照让follower安装leader的快照。
             LOG_INFO(
-                "[RaftCore Append] handle_append_entries, replica_id:{} follower "
+                "[RaftCore Append] handle_append_entries, replica_id:{} "
+                "follower "
                 "receive append entries: "
                 "param.prev_log_index:{} < snapshot_index_:{}",
                 self_id_.to_string(), param.prev_log_index,
@@ -128,7 +142,9 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param,
         Status append_status =
             raft_log_.append_entries_from_leader(param.entries, append_result);
         if (append_status.fail()) {
-            LOG_WARN("[RaftCore Append] storage raft handle append entries failed, msg={}",
+            LOG_WARN(
+                "[RaftCore Append] storage raft handle append entries failed, "
+                "msg={}",
                      append_status.msg());
             return;
         }
@@ -143,7 +159,7 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param,
 
     // 不管是否有entry，也就是不管是日志追加还是心跳，都会需要更新commit_idx
     raft_apply_.advance_commit_index_from_leader(param.leader_commit);
-    finish_recovering_unlocked();
+    finish_recovering();
 
     result.success = true;
     result.term = election_.current_term();
@@ -154,7 +170,7 @@ Status RaftCore::handle_append_response(const ReplicaID& from,
                                         const AppendEntriesParam& sent_param,
                                         const AppendEntriesResult& result,
                                         RaftEffects& effects) {
-    RETURN_IF_INVALID_STATUS(ensure_ready_unlocked())
+    RETURN_IF_INVALID_STATUS(ensure_ready())
 
     if (result.term > election_.current_term()) {
         ADVISKV_METRICS_COUNTER(
@@ -165,7 +181,8 @@ Status RaftCore::handle_append_response(const ReplicaID& from,
 
     if (sent_param.term != election_.current_term()) {
         LOG_DEBUG(
-            "[RaftCore Append] leader replica:{} handle append response: result.term:{} != "
+            "[RaftCore Append] leader replica:{} handle append response: "
+            "result.term:{} != "
             "current_term:{}",
             self_id_.to_string(), result.term, election_.current_term());
         return Status::OK();
@@ -179,7 +196,9 @@ Status RaftCore::handle_append_response(const ReplicaID& from,
 
     if (result.success) {
         ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_success");
-        LOG_DEBUG("[RaftCore Append] leader replica:{} append enrties to replica:{} success.",
+        LOG_DEBUG(
+            "[RaftCore Append] leader replica:{} append enrties to replica:{} "
+            "success.",
                   self_id_.to_string(), from.to_string());
         replication_.handle_append_ok(from, sent_param.prev_log_index,
                                       sent_param.entries.size());
@@ -192,7 +211,8 @@ Status RaftCore::handle_append_response(const ReplicaID& from,
         if (replication_.is_stale_append_response(from, sent_param)) {
             // 说明其实过期了，这个是旧的请求的回应，应该忽略才对
             LOG_DEBUG(
-                "[RaftCore Append] leader replica:{} sent param.prev_log_index:{} + 1 != "
+                "[RaftCore Append] leader replica:{} sent "
+                "param.prev_log_index:{} + 1 != "
                 "next_index_[from]:{}",
                 self_id_.to_string(), sent_param.prev_log_index,
                 replication_.next_index(from));
@@ -202,7 +222,8 @@ Status RaftCore::handle_append_response(const ReplicaID& from,
         replication_.handle_append_failed(from, result.last_log_index);
 
         LOG_DEBUG(
-            "[RaftCore Append] leader replica:{} append enrties to replica:{} failed. set "
+            "[RaftCore Append] leader replica:{} append enrties to replica:{} "
+            "failed. set "
             "next_index:{}",
             self_id_.to_string(), from.to_string(),
             replication_.next_index(from));
@@ -213,7 +234,7 @@ Status RaftCore::handle_append_response(const ReplicaID& from,
 // raftnode 作为leader，需要更新自己的commit_idx
 // 当收到了follower们关于日志复制的回应时，就调用一下这个函数，去更新自己的commit_idx
 void RaftCore::try_update_commit_index() {
-    if (ensure_ready_unlocked().fail()) return;
+    if (ensure_ready().fail()) return;
 
     RaftReplication::CommitAdvanceResult result =
         replication_.try_advance_commit_index(election_.current_term());

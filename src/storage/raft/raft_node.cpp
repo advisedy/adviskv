@@ -25,12 +25,11 @@ void RaftNode::tick(RaftEffects& effects) {
     core_.tick(effects);
 }
 
-std::pair<Status, LogIndex> RaftNode::propose(WriteOpType op, const Key& key,
-                                              const Value& value,
+std::pair<Status, LogIndex> RaftNode::propose(const ProposeParam& param,
                                               RaftEffects& effects) {
     std::lock_guard lock(mutex_);
     effects = RaftEffects{};
-    return core_.propose(op, key, value, effects);
+    return core_.propose(param, effects);
 }
 
 // ============================================================================

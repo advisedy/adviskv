@@ -69,14 +69,18 @@ std::vector<LogEntry> RaftLog::entries_from(LogIndex index) const {
     return entries;
 }
 
-LogIndex RaftLog::append_new_entry(Term term, WriteOpType op, const Key& key,
-                                   const Value& value) {
+LogIndex RaftLog::append_new_entry(Term term, const ProposeParam& param) {
     LogEntry entry;
     entry.term = term;
     entry.index = last_log_index() + 1;
-    entry.op_type = op;
-    entry.key = key;
-    entry.value = value;
+
+    if (const auto* write = std::get_if<WriteProposal>(&param.payload)) {
+        entry.op_type = write->op;
+        entry.key = write->key;
+        entry.value = write->value;
+    } else {
+        entry.op_type = WriteOpType::NONE;
+    }
 
     LogIndex new_index = entry.index;
     log_entries_.push_back(std::move(entry));

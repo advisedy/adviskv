@@ -17,8 +17,7 @@ class RaftNode {
 
     // tick 和外层写请求
     void tick(RaftEffects& effects);
-    std::pair<Status, LogIndex> propose(WriteOpType op, const Key& key,
-                                        const Value& value,
+    std::pair<Status, LogIndex> propose(const ProposeParam& param,
                                         RaftEffects& effects);
 
     // 处理别的 replica 发过来的 Raft RPC 请求
