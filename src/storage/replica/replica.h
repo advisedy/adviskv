@@ -18,7 +18,6 @@
 #include "storage/model/replica_status.h"
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/raft_node.h"
-#include "storage/raft/raft_sender.h"
 #include "storage/raft/state_machine/state_machine.h"
 
 namespace adviskv::storage {
@@ -26,7 +25,7 @@ namespace adviskv::storage {
 class ReplicaManager;
 class ReplicaApplier;
 class ReplicaApplyTask;
-class ReplicaRaftEffectRunner;
+class ReplicaRaftLoop;
 class ReplicaReadIndexChecker;
 class ReplicaSnapshotCoordinator;
 
@@ -36,7 +35,6 @@ struct ReplicaContext {
     RaftNode& raft_node;
     PersistEngine& persist;
     StateMachine& state_machine;
-    RaftSender& raft_sender;
 
     std::mutex& state_machine_mutex;
     std::mutex& persist_snapshot_mutex;
@@ -83,6 +81,7 @@ class Replica {
 
    private:
     friend class ReplicaManager;
+    friend class ReplicaApplyTask;
 
     Status init(const ReplicaInitParam& param);
     Status recover();
@@ -133,9 +132,6 @@ class Replica {
 
     std::unique_ptr<PersistEngine> persist_;
 
-    // 通信
-    RaftSender raft_sender_;
-
     enum class ReplicaLocalState {
         STARTING = 0,  // 代表目前还无法和外界正常服务
         RUNNING = 1,   // 可以和外界存在正常服务，不保证所有正常服务都OK
@@ -150,7 +146,7 @@ class Replica {
     mutable std::mutex raft_step_mutex_;
 
     std::unique_ptr<ReplicaContext> context_;
-    std::unique_ptr<ReplicaRaftEffectRunner> raft_effect_runner_;
+    std::unique_ptr<ReplicaRaftLoop> raft_loop_;
     std::unique_ptr<ReplicaApplier> applier_;
     std::unique_ptr<ReplicaApplyTask> apply_task_;
     std::unique_ptr<ReplicaSnapshotCoordinator> snapshot_coordinator_;

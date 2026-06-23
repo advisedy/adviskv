@@ -3,6 +3,8 @@
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <utility>
+#include <variant>
 
 #include "common/log.h"
 #include "common/type.h"
@@ -57,15 +59,26 @@ const LogEntry* RaftLog::entry_at(LogIndex index) const {
 }
 
 std::vector<LogEntry> RaftLog::entries_from(LogIndex index) const {
+    return entries_from(index, last_log_index() - index + 1);
+}
+
+std::vector<LogEntry> RaftLog::entries_from(LogIndex index,
+                                            int64 max_count) const {
     std::vector<LogEntry> entries;
-    if (index > last_log_index()) return entries;
-    int64_t offset = index_to_offset(index);
-    if (offset < 0 || offset >= static_cast<int64_t>(log_entries_.size())) {
-        LOG_WARN("offset is not valid, offset:{}", offset);
+    if (max_count < 0) {
+        LOG_WARN("[RaftLog] max count < 0");
+        return entries;
+    } else if (index > last_log_index() || max_count == 0) {
         return entries;
     }
+    int64_t offset = index_to_offset(index);
+    if (offset < 0 || offset >= to<int64_t>(log_entries_.size())) {
+        LOG_WARN("offset is not valid, offset:{}", offset);
+        return {};
+    }
     entries.insert(entries.end(), log_entries_.begin() + offset,
-                   log_entries_.end());
+                   log_entries_.begin() + std::min(offset + max_count,
+                                                   (int64)log_entries_.size()));
     return entries;
 }
 

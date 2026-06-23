@@ -7,17 +7,19 @@
 
 namespace adviskv::storage {
 
+class ReplicaRaftLoop;
+
 // 负责 ReadIndex 读之前的 leader 身份确认。
 class ReplicaReadIndexChecker {
    public:
     ReplicaReadIndexChecker(ReplicaContext& context,
-                            ReplicaRaftEffectRunner& effect_runner);
+                            ReplicaRaftLoop& raft_loop);
 
     Status check_self_leader_and_get_read_index(LogIndex& read_index);
 
    private:
     ReplicaContext& context_;
-    ReplicaRaftEffectRunner& effect_runner_;
+    ReplicaRaftLoop& raft_loop_;
 };
 
 }  // namespace adviskv::storage

@@ -8,11 +8,13 @@
 
 namespace adviskv::storage {
 
+class ReplicaRaftLoop;
+
 // 负责 follower 接收 leader 快照，以及本地自然生成快照。
 class ReplicaSnapshotCoordinator {
    public:
     ReplicaSnapshotCoordinator(ReplicaContext& context,
-                               ReplicaRaftEffectRunner& effect_runner);
+                               ReplicaRaftLoop& raft_loop);
 
     Status handle_install_snapshot(const InstallSnapshotParam& param);
     void try_take_snapshot();
@@ -31,7 +33,7 @@ class ReplicaSnapshotCoordinator {
     Status finish_install_snapshot(const InstallSnapshotParam& param);
 
     ReplicaContext& context_;
-    ReplicaRaftEffectRunner& effect_runner_;
+    ReplicaRaftLoop& raft_loop_;
     Optional<ReceivingSnapshotSession> receiving_snapshot_;
 };
 

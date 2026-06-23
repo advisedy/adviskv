@@ -35,6 +35,9 @@ class RaftNode {
                                   const AppendEntriesParam& sent_param,
                                   const AppendEntriesResult& result,
                                   RaftEffects& effects);
+    void handle_append_send_failed(const ReplicaID& from,
+                                   const AppendEntriesParam& sent_param,
+                                   const Status& status);
 
     // 查询状态
     ReplicaRole role() const;

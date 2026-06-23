@@ -43,6 +43,9 @@ class RaftCore {
                                   const AppendEntriesParam& sent_param,
                                   const AppendEntriesResult& result,
                                   RaftEffects& effects);
+    void handle_append_send_failed(const ReplicaID& from,
+                                   const AppendEntriesParam& sent_param,
+                                   const Status& status);
 
     // 查询当前 raft 的状态
     ReplicaRole role() const;

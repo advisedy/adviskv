@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <vector>
 
@@ -32,14 +33,14 @@ class RaftLog {
 
     const LogEntry* entry_at(LogIndex index) const;
     std::vector<LogEntry> entries_from(LogIndex index) const;
+    std::vector<LogEntry> entries_from(LogIndex index,
+                                       int64 max_count) const;
 
-    LogIndex append_new_entry(Term term, WriteOpType op, const Key& key,
-                              const Value& value);
+    LogIndex append_new_entry(Term term, const ProposeParam& param);
     Status append_entries_from_leader(const std::vector<LogEntry>& entries,
                                       AppendEntriesResult& result);
 
     Status truncate(LogIndex new_snapshot_index);
-
 
     InstallSnapshotResult install_snapshot(LogIndex new_snapshot_index,
                                            Term new_snapshot_term);

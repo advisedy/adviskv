@@ -2,7 +2,9 @@
 
 #include <memory>
 #include <mutex>
+#include <utility>
 
+#include "common/background_task.h"
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
@@ -13,11 +15,10 @@
 #include "storage/model/replica_status.h"
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/raft_node.h"
-#include "storage/raft/raft_sender.h"
 #include "storage/raft/state_machine/kv_state_machine.h"
 #include "storage/raft/state_machine/state_machine.h"
 #include "storage/replica/replica_applier.h"
-#include "storage/replica/replica_raft_effect_runner.h"
+#include "storage/replica/replica_raft_loop.h"
 #include "storage/replica/replica_read_index_checker.h"
 #include "storage/replica/replica_snapshot_coordinator.h"
 
@@ -26,7 +27,7 @@ namespace adviskv::storage {
 namespace {
 
 constexpr Milliseconds kReplicaApplyTaskInterval{5};
-
+constexpr Milliseconds kReplicaProposalCommitTimeout{1000};
 
 }  // namespace
 
@@ -59,23 +60,26 @@ Status Replica::init(const ReplicaInitParam& param) {
     state_machine_ = std::make_unique<KvStateMachine>(param.engine_type);
 
     raft_node_ = std::make_unique<RaftNode>(param.replica_id, param.members);
-    raft_sender_.set_timeout_ms(param.runtime.raft_rpc_timeout_ms);
     context_ = std::make_unique<ReplicaContext>(ReplicaContext{
         replica_id_,
         *raft_node_,
         *persist_,
         *state_machine_,
-        raft_sender_,
         state_machine_mutex_,
         persist_snapshot_mutex_,
         raft_step_mutex_,
         [this](Status status) { return fault_if_fail(status); },
         [this] { enter_local_state_faulted(); },
     });
-    raft_effect_runner_ = std::make_unique<ReplicaRaftEffectRunner>(*context_);
+    raft_loop_ = std::make_unique<ReplicaRaftLoop>(
+        *context_, param.runtime.raft_rpc_timeout_ms);
+    raft_loop_->start();
     applier_ = std::make_unique<ReplicaApplier>(*raft_node_, *state_machine_);
     apply_task_ = std::make_unique<ReplicaApplyTask>(this);
-
+    read_index_checker_ =
+        std::make_unique<ReplicaReadIndexChecker>(*context_, *raft_loop_);
+    snapshot_coordinator_ =
+        std::make_unique<ReplicaSnapshotCoordinator>(*context_, *raft_loop_);
 
     enter_local_state_running();
     apply_task_->start(kReplicaApplyTaskInterval);
@@ -90,63 +94,67 @@ Status Replica::put(const PutParam& param) {
         return Status::IS_RECOVERING("replica is recovering");
     }
 
-    // 提交给 RaftNode
-    LogIndex new_commit_idx = 0;
-    Status status =
-        raft_effect_runner_->run_raft_step([&](RaftEffects& effects) {
-            ADVISKV_METRICS_TIMER("storage_replica_put_propose");
-            auto propose_result = raft_node_->propose(
-                WriteOpType::PUT, param.key, param.value, effects);
-            new_commit_idx = propose_result.second;
-            return propose_result.first;
-        });
+    Status status = raft_loop_->propose_and_wait(
+        ProposeParam::write(WriteOpType::PUT, param.key, param.value),
+        kReplicaProposalCommitTimeout);
     RETURN_IF_INVALID_STATUS(status)
 
-    // 这里有一个容易误解的点：flush_messages()
-    //  虽然是同步发送 RPC， apply_committed_entries() 也会立刻把已经 committed
-    //  的日志应用到状态机， 但这并不意味着本次 propose 出来的 target_index
-    //  一定已经 committed。
-    //
-    //  原因是 flush_messages() 只发送当前这一轮 pending messages。
-    //  如果 follower 日志落后，第一次 AppendEntries 可能会因为
-    //  prev_log_index / prev_log_term 不匹配而失败；leader 这时通常只是回退
-    //  该 follower 的 next_index，需要后续多轮 AppendEntries 才能把 follower
-    //  补齐并拿到多数派确认。
-    //
-    //  因此，一轮 flush 后 commit_index 可能仍然小于 target_index。
-    //  apply_committed_entries() 只能 apply 到当前 commit_index，不能把尚未
-    //  committed 的 target_index 应用到状态机。 apply_committed_entries();
+    // // 这里有一个容易误解的点：flush_messages()
+    // //  虽然是同步发送 RPC， apply_committed_entries() 也会立刻把已经
+    // committed
+    // //  的日志应用到状态机， 但这并不意味着本次 propose 出来的 target_index
+    // //  一定已经 committed。
+    // //
+    // //  原因是 flush_messages() 只发送当前这一轮 pending messages。
+    // //  如果 follower 日志落后，第一次 AppendEntries 可能会因为
+    // //  prev_log_index / prev_log_term 不匹配而失败；leader 这时通常只是回退
+    // //  该 follower 的 next_index，需要后续多轮 AppendEntries 才能把 follower
+    // //  补齐并拿到多数派确认。
+    // //
+    // //  因此，一轮 flush 后 commit_index 可能仍然小于 target_index。
+    // //  apply_committed_entries() 只能 apply 到当前 commit_index，不能把尚未
+    // //  committed 的 target_index 应用到状态机。 apply_committed_entries();
 
-    // apply 已提交的日志到 engine
-    // 这里推动raftnode里的apply_index是交给了replica外层去控制。
-    {
-        ADVISKV_METRICS_TIMER("storage_replica_put_apply_committed");
-        std::lock_guard lock(state_machine_mutex_);
-        RETURN_IF_INVALID_STATUS(
-            fault_if_fail(applier_->apply_committed_entries()))
-    }
+    // // apply 已提交的日志到 engine
+    // // 这里推动raftnode里的apply_index是交给了replica外层去控制。
+    // {
+    //     ADVISKV_METRICS_TIMER("storage_replica_put_apply_committed");
+    //     std::lock_guard lock(state_machine_mutex_);
+    //     RETURN_IF_INVALID_STATUS(
+    //         fault_if_fail(applier_->apply_committed_entries()))
+    // }
 
-    if (!raft_node_->is_leader()) {
-        return Status{StatusCode::NOT_LEADER, "leader changed during propose"};
-    }
+    // if (!raft_node_->is_leader()) {
+    //     return Status{StatusCode::NOT_LEADER, "leader changed during
+    //     propose"};
+    // }
 
-    if (raft_node_->commit_index() < new_commit_idx) {
-        // 日志已经进入当前 leader 本地
-        // log，但这次请求返回前还没确认被多数派提交。
-        //  所以是有多种情况，有可能会在之后的这个操作里面，然后把当前的这个没有提交
-        // 的操作给提交掉。但是也有可能会被新的leader然后到时候给覆盖掉。所以这里其
-        // 实真正的语义是希望让客户那边去重试，或者说是用Get自己去判断一下这个结果，
-        // 我们这边的结果其实返回的应该是未知。
-        //
-        // 至于发生的原因的话，有可能是follower那边的prev_log_index没有对齐，导致一次发送append_entries不够。
-        // 但是或者也有可能是因为自己的message被别的线程的PUT操作给吃掉，然后一起发送了，
-        // 那自己这边的flush_message就是空的，就会很快结束进入下一阶段，可能这个
-        // 时候commit_Idx还没有被别的线程给推进，所以就会此时这边的判断就还会小于
-        // commit_idx
-        // TODO 那这边以后想办法看要不要搞搞优化啥的
-        return Status{StatusCode::NOT_YET_COMMIT, "this put is not yet commit"};
-    }
+    // if (raft_node_->commit_index() < new_commit_idx) {
+    //     // 日志已经进入当前 leader 本地
+    //     // log，但这次请求返回前还没确认被多数派提交。
+    //     //
+    //     所以是有多种情况，有可能会在之后的这个操作里面，然后把当前的这个没有提交
+    //     //
+    //     的操作给提交掉。但是也有可能会被新的leader然后到时候给覆盖掉。所以这里其
+    //     //
+    //     实真正的语义是希望让客户那边去重试，或者说是用Get自己去判断一下这个结果，
+    //     // 我们这边的结果其实返回的应该是未知。
+    //     //
+    //     //
+    //     至于发生的原因的话，有可能是follower那边的prev_log_index没有对齐，导致一次发送append_entries不够。
+    //     //
+    //     但是或者也有可能是因为自己的message被别的线程的PUT操作给吃掉，然后一起发送了，
+    //     //
+    //     那自己这边的flush_message就是空的，就会很快结束进入下一阶段，可能这个
+    //     //
+    //     时候commit_Idx还没有被别的线程给推进，所以就会此时这边的判断就还会小于
+    //     // commit_idx
+    //     // TODO 那这边以后想办法看要不要搞搞优化啥的
+    //     return Status{StatusCode::NOT_YET_COMMIT, "this put is not yet
+    //     commit"};
+    // }
 
+    notify_apply_task();
     return Status::OK();
 }
 
@@ -207,41 +215,36 @@ Status Replica::del(const DelParam& param) {
         return Status::IS_RECOVERING("replica is recovering");
     }
 
-    LogIndex new_commit_idx = 0;
-    Status status =
-        raft_effect_runner_->run_raft_step([&](RaftEffects& effects) {
-            ADVISKV_METRICS_TIMER("storage_replica_delete_propose");
-            auto propose_result =
-                raft_node_->propose(WriteOpType::DEL, param.key, "", effects);
-            new_commit_idx = propose_result.second;
-            return propose_result.first;
-        });
+    Status status = raft_loop_->propose_and_wait(
+        ProposeParam::write(WriteOpType::DEL, param.key, ""),
+        kReplicaProposalCommitTimeout);
     RETURN_IF_INVALID_STATUS(status)
 
-    // delete 与 put 的完成语义保持一致：只有当当前请求对应的日志在本次返回前
-    // 已经达到 committed 条件时，才返回 OK。
-    //
-    // 如果这轮 flush 之后 commit_index 仍然小于本次 propose 的目标 index，
-    // 说明当前 leader 已经接受了这条删除日志，但还没有办法在这个返回点确认它
-    // 已经被多数派提交。此时它后续可能提交成功，也可能在 leader 变化后失效，
-    // 因此对客户端而言属于“结果未决”，而不是普通失败。
-    {
-        ADVISKV_METRICS_TIMER("storage_replica_delete_apply_committed");
-        std::lock_guard lock(state_machine_mutex_);
-        RETURN_IF_INVALID_STATUS(
-            fault_if_fail(applier_->apply_committed_entries()))
-    }
+    notify_apply_task();
+    // // delete 与 put 的完成语义保持一致：只有当当前请求对应的日志在本次返回前
+    // // 已经达到 committed 条件时，才返回 OK。
+    // //
+    // // 如果这轮 flush 之后 commit_index 仍然小于本次 propose 的目标 index，
+    // // 说明当前 leader 已经接受了这条删除日志，但还没有办法在这个返回点确认它
+    // // 已经被多数派提交。此时它后续可能提交成功，也可能在 leader 变化后失效，
+    // // 因此对客户端而言属于“结果未决”，而不是普通失败。
+    // {
+    //     ADVISKV_METRICS_TIMER("storage_replica_delete_apply_committed");
+    //     std::lock_guard lock(state_machine_mutex_);
+    //     RETURN_IF_INVALID_STATUS(
+    //         fault_if_fail(applier_->apply_committed_entries()))
+    // }
 
-    if (!raft_node_->is_leader()) {
-        return Status{StatusCode::NOT_LEADER,
-                      "leader changed during delete propose"};
-    }
+    // if (!raft_node_->is_leader()) {
+    //     return Status{StatusCode::NOT_LEADER,
+    //                   "leader changed during delete propose"};
+    // }
 
-    if (raft_node_->commit_index() < new_commit_idx) {
-        return Status{
-            StatusCode::NOT_YET_COMMIT,
-            "delete accepted by leader but commit is not yet confirmed"};
-    }
+    // if (raft_node_->commit_index() < new_commit_idx) {
+    //     return Status{
+    //         StatusCode::NOT_YET_COMMIT,
+    //         "delete accepted by leader but commit is not yet confirmed"};
+    // }
 
     return Status::OK();
 }
@@ -251,7 +254,7 @@ Status Replica::handle_request_vote(const RequestVoteParam& param,
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
     RETURN_IF_INVALID_STATUS(ensure_local_state_running())
 
-    return raft_effect_runner_->run_raft_step([&](RaftEffects& effects) {
+    return raft_loop_->sync_submit_step([&](RaftEffects& effects) {
         raft_node_->handle_request_vote(param, result, effects);
         return Status::OK();
     });
@@ -263,18 +266,17 @@ Status Replica::handle_append_entries(const AppendEntriesParam& param,
     RETURN_IF_INVALID_STATUS(ensure_local_state_running())
 
     // 这里是作为follower那边的handle，会更新commit_idx
-    RETURN_IF_INVALID_STATUS(
-        raft_effect_runner_->run_raft_step([&](RaftEffects& effects) {
-            raft_node_->handle_append_entries(param, result, effects);
-            return Status::OK();
-        }))
-
-    // 收到 AppendEntries 后，可能有新的 committed entries 需要 apply
     {
-        std::lock_guard lock(state_machine_mutex_);
+        ADVISKV_METRICS_TIMER(
+            "storage_replica_handle_append_entries_raft_step");
         RETURN_IF_INVALID_STATUS(
-            fault_if_fail(applier_->apply_committed_entries()))
+            raft_loop_->sync_submit_step([&](RaftEffects& effects) {
+                raft_node_->handle_append_entries(param, result, effects);
+                return Status::OK();
+            }))
     }
+
+    notify_apply_task();
 
     return Status::OK();
 }
@@ -323,19 +325,25 @@ void Replica::on_tick() {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED_VOID(oper_gate_)
     if (ensure_local_state_running().fail()) return;
 
-    IGNORE_RESULT(raft_effect_runner_->run_raft_step([&](RaftEffects& effects) {
-        raft_node_->tick(effects);
-        return Status::OK();
-    }));
+    raft_loop_->async_submit_tick();
+    notify_apply_task();
 
+    // IGNORE_RESULT(raft_effect_runner_->run_raft_step([&](RaftEffects&
+    // effects) {
+    //     raft_node_->tick(effects);
+    //     return Status::OK();
+    // }));
+
+    // //
     // 如果put最开始的时候没有推进commit_idx（例如其他的followers都太慢了或者有问题了），
-    // 后来这边跑心跳的时候才有回应，这个时候就应该apply一下commmit_entry
-    // 所以这个是专门为了raft_node是leader去发送心跳的时候准备的。
+    // // 后来这边跑心跳的时候才有回应，这个时候就应该apply一下commmit_entry
+    // // 所以这个是专门为了raft_node是leader去发送心跳的时候准备的。
 
-    {
-        std::lock_guard lock(state_machine_mutex_);
-        if (fault_if_fail(applier_->apply_committed_entries()).fail()) return;
-    }
+    // {
+    //     std::lock_guard lock(state_machine_mutex_);
+    //     if (fault_if_fail(applier_->apply_committed_entries()).fail())
+    //     return;
+    // }
 
     snapshot_coordinator_->try_take_snapshot();
 }
@@ -386,6 +394,9 @@ void Replica::shutdown() {
         apply_task_->stop();
     }
     oper_gate_.close_and_wait();
+    if (raft_loop_) {
+        raft_loop_->stop();
+    }
 }
 
 ReplicaStatus Replica::get_status() const {

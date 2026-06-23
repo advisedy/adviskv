@@ -10,7 +10,7 @@
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/raft_node.h"
 #include "storage/raft/state_machine/state_machine.h"
-#include "storage/replica/replica_raft_effect_runner.h"
+#include "storage/replica/replica_raft_loop.h"
 
 namespace adviskv::storage {
 namespace {
@@ -20,8 +20,8 @@ static constexpr int SNAPSHOT_LIMIT = 1000;
 }  // namespace
 
 ReplicaSnapshotCoordinator::ReplicaSnapshotCoordinator(
-    ReplicaContext& context, ReplicaRaftEffectRunner& effect_runner)
-    : context_(context), effect_runner_(effect_runner) {}
+    ReplicaContext& context, ReplicaRaftLoop& raft_loop)
+    : context_(context), raft_loop_(raft_loop) {}
 
 Status ReplicaSnapshotCoordinator::handle_install_snapshot(
     const InstallSnapshotParam& param) {
@@ -43,7 +43,7 @@ Status ReplicaSnapshotCoordinator::handle_install_snapshot(
         param.snapshot_index, param.snapshot_term);
 
     RETURN_IF_INVALID_STATUS(
-        effect_runner_.run_raft_step([&](RaftEffects& effects) {
+        raft_loop_.sync_submit_step([&](RaftEffects& effects) {
             return context_.raft_node.prepare_install_snapshot(param, effects);
         }))
     /*
@@ -131,16 +131,13 @@ Status ReplicaSnapshotCoordinator::finish_install_snapshot(
     snap->apply_index = param.snapshot_index;
     snap->apply_term = param.snapshot_term;
 
-    std::unique_lock raft_lock(context_.raft_step_mutex);
-
     SnapshotInstallPlan plan{};
-    RaftEffects prepare_effects{};
     // 这里再check一下是否满足，因为中间有段时间没有锁，有可能本地这边会有更新操作
-    Status prepare_status = context_.raft_node.build_install_snapshot_plan(
-        param, plan, prepare_effects);
     RETURN_IF_INVALID_STATUS(
-        effect_runner_.persist_raft_effects(prepare_effects))
-    RETURN_IF_INVALID_STATUS(prepare_status)
+        raft_loop_.sync_submit_step([&](RaftEffects& effects) {
+            return context_.raft_node.build_install_snapshot_plan(param, plan,
+                                                                  effects);
+        }))
 
     RETURN_IF_INVALID_STATUS(
         context_.fault_if_fail(context_.persist.finish_snapshot_receive()))
@@ -154,10 +151,11 @@ Status ReplicaSnapshotCoordinator::finish_install_snapshot(
                 })))
     }
 
-    RaftEffects install_effects;
-    context_.raft_node.commit_install_snapshot(plan, install_effects);
     RETURN_IF_INVALID_STATUS(
-        effect_runner_.persist_raft_effects(install_effects))
+        raft_loop_.sync_submit_step([&](RaftEffects& effects) {
+            context_.raft_node.commit_install_snapshot(plan, effects);
+            return Status::OK();
+        }))
 
     LOG_INFO(
         "[Replica Snapshot] replica:{} finish snapshot, snapshot_index:{}, "
@@ -203,8 +201,18 @@ void ReplicaSnapshotCoordinator::try_take_snapshot() {
     //
 
     if (status.ok()) {
-        // 持久化成功了，这边得截断wal日志了。
-        context_.raft_node.truncate_log(context_.state_machine.apply_index());
+        // 持久化成功了，这边得截断wal日志了ƒ。
+        LogIndex apply_index = context_.state_machine.apply_index();
+        status = raft_loop_.sync_submit_task(
+            [&] { return context_.raft_node.truncate_log(apply_index); });
+        if (status.fail()) {
+            LOG_WARN(
+                "[Replica Snapshot] replica:try_take_snapshot truncate log "
+                "failed, apply_index:{}, status:{}",
+                apply_index, status.to_string());
+            context_.enter_faulted();
+            return;
+        }
 
         LOG_INFO(
             "[Replica Snapshot] replica_id:{} try take snapshot finish, "

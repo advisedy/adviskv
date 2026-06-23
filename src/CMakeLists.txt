@@ -2,6 +2,7 @@ add_library(adviskv_common
     ${CMAKE_CURRENT_SOURCE_DIR}/common/log.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/common/metrics/metrics.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/common/background_task.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/common/serial_task_runner.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/common/thread_pool.cpp
 )
 

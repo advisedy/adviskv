@@ -89,6 +89,13 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
     return core_.handle_append_response(from, sent_param, result, effects);
 }
 
+void RaftNode::handle_append_send_failed(
+    const ReplicaID& from, const AppendEntriesParam& sent_param,
+    const Status& status) {
+    std::lock_guard lock(mutex_);
+    core_.handle_append_send_failed(from, sent_param, status);
+}
+
 // ============================================================================
 // 查询当前 raft 的状态
 // ============================================================================
