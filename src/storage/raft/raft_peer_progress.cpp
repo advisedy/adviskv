@@ -51,6 +51,10 @@ void RaftPeerProgress::update_match_index(ReplicaID replica_id,
 
 void RaftPeerProgress::reset_for_leader(const RaftMembership& membership,
                                         LogIndex last_log_index) {
+    next_index_.clear();
+    match_index_.clear();
+    snapshot_watermark_.clear();
+    inflight_snapshot_index_.clear();
     for (const PeerMember& member : membership.get_members()) {
         if (member.replica_id == self_id_) continue;
         next_index_[member.replica_id] = last_log_index + 1;

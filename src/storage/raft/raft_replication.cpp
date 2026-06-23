@@ -5,10 +5,17 @@
 #include <utility>
 
 #include "common/log.h"
+#include "common/metrics/metrics.h"
 #include "storage/model/param.h"
 #include "storage/raft/raft_log.h"
 
 namespace adviskv::storage {
+
+namespace {
+
+constexpr size_t kMaxAppendEntriesPerMessage = 256;
+
+}  // namespace
 
 RaftReplication::RaftReplication(const ReplicaID& self_id,
                                  const RaftMembership& membership,
@@ -25,14 +32,13 @@ void RaftReplication::reset_for_leader() {
 
 void RaftReplication::broadcast_append_entries(Term current_term,
                                                RaftEffects& effects) {
-    for (const PeerMember& member : membership_.get_members()) {
+    for (const PeerMember& member : membership_.all_members()) {
         if (member.replica_id == self_id_) continue;
 
         if (peer_progress_.get_next_index(member.replica_id) == 0) {
             peer_progress_.update_next_index(member.replica_id,
                                              raft_log_.last_log_index() + 1);
         }
-
         LogIndex next_idx = peer_progress_.get_next_index(member.replica_id);
 
         RaftMessageOr msg =
@@ -91,7 +97,7 @@ RaftReplication::CommitAdvanceResult RaftReplication::try_advance_commit_index(
             }
         }
 
-        if (membership_.has_quorum_unlocked(success_cnt)) {
+        if (membership_.has_quorum(success_cnt)) {
             LOG_DEBUG("replica:{} commit_index pushed success. from {} to {}.",
                       self_id_.to_string(), raft_apply_.commit_index(), idx);
             raft_apply_.set_commit_index(idx);
@@ -166,6 +172,7 @@ RaftMessageOr RaftReplication::build_append_entries_message(
         msg.snapshot_param.snapshot_term = raft_log_.snapshot_term();
         return msg;
     }
+
     AppendEntriesParam param;
     param.from_replica_id = self_id_;
     param.to_replica_id = member.replica_id;
@@ -173,7 +180,8 @@ RaftMessageOr RaftReplication::build_append_entries_message(
     param.prev_log_index = prev_log_index;
     param.prev_log_term = raft_log_.term_at(prev_log_index);
     param.leader_commit = raft_apply_.commit_index();
-    param.entries = raft_log_.entries_from(next_index);
+    param.entries =
+        raft_log_.entries_from(next_index, kMaxAppendEntriesPerMessage);
 
     LOG_DEBUG(
         "[Raft Replication] replica:{} build message, append entries to "

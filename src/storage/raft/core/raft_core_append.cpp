@@ -250,6 +250,20 @@ Status RaftCore::handle_append_response(const ReplicaID& from,
     return Status::OK();
 }
 
+void RaftCore::handle_append_send_failed(const ReplicaID& from,
+                                         const AppendEntriesParam&,
+                                         const Status& status) {
+    if (ensure_ready().fail()) return;
+    if (!election_.is_leader()) return;
+    if (!membership_.contains(from)) return;
+
+    ADVISKV_METRICS_COUNTER("storage_raft_append_entries_send_failed");
+    LOG_WARN(
+        "[RaftCore Append] leader replica:{} append entries send to "
+        "replica:{} failed, status:{}",
+        self_id_.to_string(), from.to_string(), status.to_string());
+}
+
 // raftnode 作为leader，需要更新自己的commit_idx
 // 当收到了follower们关于日志复制的回应时，就调用一下这个函数，去更新自己的commit_idx
 void RaftCore::try_update_commit_index() {

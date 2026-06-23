@@ -15,18 +15,15 @@ namespace adviskv::storage {
 // 负责Raft的复制相关内容
 class RaftReplication {
    public:
-
-   // 这个类其实只是给外部的RaftNode提供打点用的
+    // 这个类其实只是给外部的RaftNode提供打点用的
     struct CommitAdvanceResult {
         bool advanced{false};
         LogIndex old_commit_index{0};
         LogIndex new_commit_index{0};
     };
 
-    RaftReplication(const ReplicaID& self_id,
-                    const RaftMembership& membership, const RaftLog& raft_log,
-                    RaftApply& raft_apply);
-
+    RaftReplication(const ReplicaID& self_id, const RaftMembership& membership,
+                    const RaftLog& raft_log, RaftApply& raft_apply);
     void reset_for_leader();
     void broadcast_append_entries(Term current_term, RaftEffects& effects);
 
@@ -48,8 +45,9 @@ class RaftReplication {
     void set_next_index_for_test(ReplicaID replica_id, LogIndex index);
 
    private:
-    RaftMessageOr build_append_entries_message(
-        const PeerMember& member, LogIndex next_index, Term current_term);
+    RaftMessageOr build_append_entries_message(const PeerMember& member,
+                                               LogIndex next_index,
+                                               Term current_term);
 
     ReplicaID self_id_;
     const RaftMembership& membership_;
