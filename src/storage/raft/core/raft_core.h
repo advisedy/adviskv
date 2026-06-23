@@ -152,8 +152,8 @@ class RaftCore {
     void broadcast_append_entries(RaftEffects& effects);
 
     // 快照相关
-    RaftLog::InstallSnapshotResult install_snapshot_unlocked(
-        LogIndex snapshot_index, Term snapshot_term);
+    RaftLog::InstallSnapshotResult install_snapshot(LogIndex snapshot_index,
+                                                    Term snapshot_term);
 
     // recovery 和 read index 内部工具
     void finish_recovering();

@@ -3,6 +3,7 @@
 #include <cassert>
 #include <functional>
 
+#include "common/log.h"
 #include "common/type.h"
 
 namespace adviskv {
@@ -31,7 +32,12 @@ class TickTrigger {
 
     template <typename Func>
     bool tick(Func&& on_fire) {
-        if (!tick()) return false;
+        // int32 cur_cnt = cur_cnt_, limit_cnt = limit_cnt_;
+        bool res = tick();
+        // LOG_DEBUG("[TickTrigger] one tick, cur_cnt:{}, limit_cnt:{}, res:{}",
+        //           cur_cnt, limit_cnt, res);
+
+        if (!res) return false;
         on_fire();
         return true;
     }
@@ -61,6 +67,9 @@ class TickTrigger {
     }
 
     void stop() { stop_flag_ = true; }
+
+    int32 get_cur_cnt() const { return cur_cnt_; }
+    int32 get_limit_cnt() const { return limit_cnt_; }
 
    private:
     static int32 checked_limit(int32 limit_cnt) {

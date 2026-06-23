@@ -33,7 +33,6 @@ class SerialTaskRunner {
     std::deque<Task> queue_;
     bool running_{false};
     std::thread thread_;
-
 };
 
 }  // namespace adviskv

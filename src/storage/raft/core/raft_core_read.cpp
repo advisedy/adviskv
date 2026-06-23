@@ -19,7 +19,7 @@ Status RaftCore::build_append_entries_for_read(RaftEffects& effects,
     RETURN_IF_INVALID_STATUS(ensure_ready())
 
     if (!election_.is_leader()) return Status::NOT_LEADER("not leader");
-    if (!has_committed_current_term_entry_unlocked()) {
+    if (!has_committed_current_term_entry()) {
         return Status::NOT_YET_COMMIT("current term entry is not committed");
     }
 

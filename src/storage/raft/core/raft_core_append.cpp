@@ -92,6 +92,10 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param,
     if (param.term < election_.current_term()) {
         ADVISKV_METRICS_COUNTER(
             "storage_raft_handle_append_entries_stale_term");
+        LOG_INFO(
+            "[RaftCore Append] handle_append_entries, param.term:{} < "
+            "election_.current_term:{}",
+            param.term, election_.current_term());
         return;
     }
 
@@ -104,6 +108,11 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param,
 
     result.term = election_.current_term();
     election_tick_trigger_.clear();
+    LOG_DEBUG(
+        "[RaftCore Append] handle_append_entries: clear election_tick_trigger, "
+        "cur_cnt:{}, limit_cnt:{}",
+        election_tick_trigger_.get_cur_cnt(),
+        election_tick_trigger_.get_limit_cnt())
 
     if (param.prev_log_index > 0) {
         if (param.prev_log_index < raft_log_.snapshot_index()) {
@@ -137,6 +146,12 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param,
 
     if (param.entries.empty()) {
         // 这里是心跳
+        LOG_DEBUG(
+            "[RaftCore Append] handle_append_entries: this is heartbeat, from "
+            "replica_id:{}, term:{}, prev_log_index:{}, prev_log_term:{}, "
+            "leader_commit:{}",
+            param.from_replica_id.to_string(), param.term, param.prev_log_index,
+            param.prev_log_term, param.leader_commit)
     } else {
         RaftLog::AppendEntriesResult append_result;
         Status append_status =
@@ -155,6 +170,10 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param,
             effects.entries_to_append =
                 std::move(append_result.entries_to_append);
         }
+        LOG_DEBUG(
+            "[RaftCore Append] handle_append_entries: effects finish, "
+            "effect:{}",
+            effects.to_string())
     }
 
     // 不管是否有entry，也就是不管是日志追加还是心跳，都会需要更新commit_idx
@@ -184,7 +203,7 @@ Status RaftCore::handle_append_response(const ReplicaID& from,
             "[RaftCore Append] leader replica:{} handle append response: "
             "result.term:{} != "
             "current_term:{}",
-            self_id_.to_string(), result.term, election_.current_term());
+            self_id_.to_string(), sent_param.term, election_.current_term());
         return Status::OK();
     }
 

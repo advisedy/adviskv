@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -41,6 +42,13 @@ struct ProposeParam {
 struct RaftMeta {
     Term current_term;
     std::optional<ReplicaID> voted_for;
+
+    std::string to_string() const {
+        return fmt::format("[term:{}, voted_for:{}]", current_term,
+                           voted_for.has_value() ? voted_for->to_string()
+                                                 : "none");
+    }
+
     bool operator==(const RaftMeta& other) const {
         if (!(current_term == other.current_term)) return false;
         if (!(voted_for == other.voted_for)) return false;
@@ -189,6 +197,32 @@ struct RaftMessage {
     RequestVoteParam vote_param{};
     AppendEntriesParam append_param{};
     InstallSnapshotParam snapshot_param{};
+
+    std::string to_string() const {
+        switch (type) {
+            case RaftMessageType::REQUEST_VOTE:
+                return fmt::format(
+                    "[type:request_vote, target:{}, term:{}, last_log:{}:{}]",
+                    target.replica_id.to_string(), vote_param.term,
+                    vote_param.last_log_index, vote_param.last_log_term);
+            case RaftMessageType::APPEND_ENTRIES:
+                return fmt::format(
+                    "[type:append_entries, target:{}, term:{}, prev:{}:{}, "
+                    "leader_commit:{}, entries:{}]",
+                    target.replica_id.to_string(), append_param.term,
+                    append_param.prev_log_index, append_param.prev_log_term,
+                    append_param.leader_commit, append_param.entries.size());
+            case RaftMessageType::INSTALL_SNAPSHOT:
+                return fmt::format(
+                    "[type:install_snapshot, target:{}, term:{}, snapshot:{}:{}, "
+                    "offset:{}, bytes:{}, done:{}]",
+                    target.replica_id.to_string(), snapshot_param.term,
+                    snapshot_param.snapshot_index, snapshot_param.snapshot_term,
+                    snapshot_param.offset, snapshot_param.data.size(),
+                    snapshot_param.done);
+        }
+        return "[type:unknown]";
+    }
 };
 
 using RaftMessageOr = Optional<RaftMessage>;
@@ -199,6 +233,48 @@ struct RaftEffects {
     std::vector<LogEntry> entries_to_append;
     std::optional<std::vector<LogEntry>> entries_to_rewrite;
     std::vector<RaftMessage> messages;
+
+    std::string to_string() const {
+        std::string result = fmt::format(
+            "[hard_state:{}, append_entries:{}, rewrite_entries:{}, "
+            "messages:{}",
+            hard_state.has_value() ? hard_state->to_string() : "none",
+            entries_to_append.size(),
+            entries_to_rewrite.has_value()
+                ? std::to_string(entries_to_rewrite->size())
+                : "none",
+            messages.size());
+
+        if (!entries_to_append.empty()) {
+            result += ", append=[";
+            for (size_t i = 0; i < entries_to_append.size(); i++) {
+                if (i > 0) result += ", ";
+                result += entries_to_append[i].to_string();
+            }
+            result += "]";
+        }
+
+        if (entries_to_rewrite.has_value() && !entries_to_rewrite->empty()) {
+            result += ", rewrite=[";
+            for (size_t i = 0; i < entries_to_rewrite->size(); i++) {
+                if (i > 0) result += ", ";
+                result += (*entries_to_rewrite)[i].to_string();
+            }
+            result += "]";
+        }
+
+        if (!messages.empty()) {
+            result += ", messages=[";
+            for (size_t i = 0; i < messages.size(); i++) {
+                if (i > 0) result += ", ";
+                result += messages[i].to_string();
+            }
+            result += "]";
+        }
+
+        result += "]";
+        return result;
+    }
 };
 
 }  // namespace adviskv::storage
