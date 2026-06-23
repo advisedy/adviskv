@@ -1,3 +1,5 @@
+#include "storage/raft/state_machine/kv_state_machine.h"
+
 #include <gtest/gtest.h>
 
 #include <filesystem>
@@ -5,16 +7,14 @@
 #include <string>
 #include <vector>
 
-#include "storage/persist/persist_engine.h"
 #include "storage/model/param.h"
-#include "storage/raft/state_machine/kv_state_machine.h"
+#include "storage/persist/persist_engine.h"
 #include "test/test_env.h"
 
 namespace adviskv::storage {
 namespace {
 
 namespace fs = std::filesystem;
-
 
 LogEntry make_entry(Term term, LogIndex index, WriteOpType op_type,
                     std::string key, std::string value) {
@@ -24,8 +24,8 @@ LogEntry make_entry(Term term, LogIndex index, WriteOpType op_type,
 class KvStateMachineTest : public ::testing::Test {
    protected:
     void SetUp() override {
-        base_dir_ =
-            adviskv::test::make_unique_test_dir("kv_state_machine", sequence_++);
+        base_dir_ = adviskv::test::make_unique_test_dir("kv_state_machine",
+                                                        sequence_++);
         ASSERT_TRUE(fs::create_directories(base_dir_)) << base_dir_.string();
     }
 
@@ -43,7 +43,7 @@ class KvStateMachineTest : public ::testing::Test {
     fs::path base_dir_;
 };
 
-// 测试PUT/DEL/NONE三种操作对状态机的更新是否正确
+// 测试PUT/DEL/NONE三种操作对状态机水位的更新是否正确
 TEST_F(KvStateMachineTest, ApplyPutDeleteAndNoneUpdateState) {
     KvStateMachine state_machine(EngineType::MAP);
 
@@ -58,28 +58,27 @@ TEST_F(KvStateMachineTest, ApplyPutDeleteAndNoneUpdateState) {
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(value, "v1");
 
-    status =
-        state_machine.apply(make_entry(2, 2, WriteOpType::DEL, "k1", ""));
+    status = state_machine.apply(make_entry(2, 2, WriteOpType::DEL, "k1", ""));
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(state_machine.apply_index(), 2);
     EXPECT_EQ(state_machine.apply_term(), 2);
     status = state_machine.get("k1", value);
     EXPECT_FALSE(status.ok());
 
-    status =
-        state_machine.apply(make_entry(3, 3, WriteOpType::NONE, "", ""));
+    status = state_machine.apply(make_entry(3, 3, WriteOpType::NONE, "", ""));
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(state_machine.apply_index(), 3);
     EXPECT_EQ(state_machine.apply_term(), 3);
+
 }
 
 // 状态机做快照后，新创建的状态机通过restore应能恢复快照中的数据
 TEST_F(KvStateMachineTest, SnapshotAndRestoreRoundTrip) {
     KvStateMachine source(EngineType::MAP);
-    ASSERT_TRUE(source.apply(make_entry(4, 10, WriteOpType::PUT, "a", "1"))
-                    .ok());
-    ASSERT_TRUE(source.apply(make_entry(4, 11, WriteOpType::PUT, "b", "2"))
-                    .ok());
+    ASSERT_TRUE(
+        source.apply(make_entry(4, 10, WriteOpType::PUT, "a", "1")).ok());
+    ASSERT_TRUE(
+        source.apply(make_entry(4, 11, WriteOpType::PUT, "b", "2")).ok());
 
     PersistEngine persist = make_engine();
     ASSERT_TRUE(persist.init().ok());

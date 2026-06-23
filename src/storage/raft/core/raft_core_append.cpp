@@ -1,7 +1,12 @@
+#include <optional>
 #include <utility>
+#include <variant>
 
+#include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
+#include "common/type.h"
+#include "storage/model/param.h"
 #include "storage/raft/core/raft_core.h"
 
 namespace adviskv::storage {
@@ -21,11 +26,10 @@ namespace adviskv::storage {
 
 */
 LogIndex RaftCore::append_new_entry(const ProposeParam& param,
-                                             RaftEffects& effects) {
+                                    RaftEffects& effects) {
     LogIndex new_index =
         raft_log_.append_new_entry(election_.current_term(), param);
     const LogEntry* entry = raft_log_.entry_at(new_index);
-
     if (entry != nullptr) {
         effects.entries_to_append.push_back(*entry);
     }
@@ -68,13 +72,67 @@ std::pair<Status, LogIndex> RaftCore::propose(const ProposeParam& param,
     return {Status::OK(), new_commit_idx};
 }
 
+std::vector<std::pair<Status, LogIndex>> RaftCore::propose_batch(
+    const std::vector<ProposeParam>& params, RaftEffects& effects) {
+    std::vector<std::pair<Status, LogIndex>> results;
+    if (params.empty()) {
+        return results;
+    }
+
+    results.reserve(params.size());
+
+    if (Status status = ensure_ready(); status.fail()) {
+        for (size_t i = 0; i < params.size(); i++) {
+            results.emplace_back(status, -1);
+        }
+        return results;
+    }
+
+    if (!election_.is_leader()) {
+        Status status{StatusCode::NOT_LEADER, "not leader"};
+        for (size_t i = 0; i < params.size(); i++) {
+            results.emplace_back(status, -1);
+        }
+        return results;
+    }
+
+    if (!membership_.is_voter(self_id_)) {
+        Status status = Status::NOT_LEADER("self is not voter");
+        for (size_t i = 0; i < params.size(); i++) {
+            results.emplace_back(status, -1);
+        }
+        return results;
+    }
+
+    bool append_flag = false;
+    for (const ProposeParam& param : params) {
+        Status validate_status = validate_proposal(param);
+        if (validate_status.fail()) {
+            results.emplace_back(validate_status, -1);
+            continue;
+        }
+
+        LogIndex new_index = append_new_entry(param, effects);
+        results.emplace_back(Status::OK(), new_index);
+        append_flag = true;
+    }
+
+    if (append_flag) {
+        broadcast_append_entries(effects);
+        if (election_.is_leader() and membership_.has_quorum(1)) {
+            try_update_commit_index();
+        }
+    }
+    return results;
+}
+
 /*
 注意，在广播的时候，我们会把每一个follower的 从他们next_idx开始到最新的消息
 都发送给他们。 具体是会放到pending_message队列里面。
 所以每一次广播之后，我们的pending_message就会更新。
 */
 void RaftCore::broadcast_append_entries(RaftEffects& effects) {
-    if (ensure_ready_unlocked().fail()) return;
+    if (ensure_ready().fail()) return;
     if (!election_.is_leader()) return;
 
     replication_.broadcast_append_entries(election_.current_term(), effects);
@@ -160,7 +218,7 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param,
             LOG_WARN(
                 "[RaftCore Append] storage raft handle append entries failed, "
                 "msg={}",
-                     append_status.msg());
+                append_status.msg());
             return;
         }
         if (append_result.entries_to_rewrite.has_value()) {
@@ -218,7 +276,7 @@ Status RaftCore::handle_append_response(const ReplicaID& from,
         LOG_DEBUG(
             "[RaftCore Append] leader replica:{} append enrties to replica:{} "
             "success.",
-                  self_id_.to_string(), from.to_string());
+            self_id_.to_string(), from.to_string());
         replication_.handle_append_ok(from, sent_param.prev_log_index,
                                       sent_param.entries.size());
         try_update_commit_index();
@@ -251,11 +309,11 @@ Status RaftCore::handle_append_response(const ReplicaID& from,
 }
 
 void RaftCore::handle_append_send_failed(const ReplicaID& from,
-                                         const AppendEntriesParam&,
+                                         const AppendEntriesParam& param,
                                          const Status& status) {
     if (ensure_ready().fail()) return;
     if (!election_.is_leader()) return;
-    if (!membership_.contains(from)) return;
+    UNUSED(param);
 
     ADVISKV_METRICS_COUNTER("storage_raft_append_entries_send_failed");
     LOG_WARN(

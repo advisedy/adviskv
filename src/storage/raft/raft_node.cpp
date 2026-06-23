@@ -32,6 +32,15 @@ std::pair<Status, LogIndex> RaftNode::propose(const ProposeParam& param,
     return core_.propose(param, effects);
 }
 
+Status RaftNode::propose_batch(
+    const std::vector<ProposeParam>& params,
+    std::vector<std::pair<Status, LogIndex>>& results, RaftEffects& effects) {
+    std::lock_guard lock(mutex_);
+    effects = RaftEffects{};
+    results = core_.propose_batch(params, effects);
+    return Status::OK();
+}
+
 // ============================================================================
 // 处理别的 replica 发过来的 Raft RPC 请求
 // ============================================================================
@@ -89,9 +98,9 @@ Status RaftNode::handle_append_response(const ReplicaID& from,
     return core_.handle_append_response(from, sent_param, result, effects);
 }
 
-void RaftNode::handle_append_send_failed(
-    const ReplicaID& from, const AppendEntriesParam& sent_param,
-    const Status& status) {
+void RaftNode::handle_append_send_failed(const ReplicaID& from,
+                                         const AppendEntriesParam& sent_param,
+                                         const Status& status) {
     std::lock_guard lock(mutex_);
     core_.handle_append_send_failed(from, sent_param, status);
 }

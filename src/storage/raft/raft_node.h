@@ -19,6 +19,9 @@ class RaftNode {
     void tick(RaftEffects& effects);
     std::pair<Status, LogIndex> propose(const ProposeParam& param,
                                         RaftEffects& effects);
+    Status propose_batch(const std::vector<ProposeParam>& params,
+                         std::vector<std::pair<Status, LogIndex>>& results,
+                         RaftEffects& effects);
 
     // 处理别的 replica 发过来的 Raft RPC 请求
     void handle_request_vote(const RequestVoteParam& param,
@@ -91,7 +94,6 @@ class RaftNode {
     //============================================================
     // 测试用的入口
     //============================================================
-
 
     const std::vector<LogEntry>& log_entries_for_test() const {
         std::lock_guard lock(mutex_);

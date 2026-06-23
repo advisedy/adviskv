@@ -42,6 +42,7 @@ class RaftNodeTest : public ::testing::Test {
                                                      LogIndex snapshot_index,
                                                      Term snapshot_term) const {
         InstallSnapshotParam param;
+        param.from_replica_id = replica_id_;
         param.to_replica_id = replica_id_;
         param.term = term;
         param.snapshot_index = snapshot_index;
@@ -117,7 +118,7 @@ TEST_F(RaftNodeTest, test_2) {
     ASSERT_EQ(node.role(), ReplicaRole::LEADER);
     RaftEffects effects;
     auto [status, new_index] =
-        node.propose(WriteOpType::PUT, "1", "1", effects);
+        node.propose(ProposeParam::write(WriteOpType::PUT, "1", "1"), effects);
     ASSERT_EQ(status, Status::OK());
     status = drive_raft_effects(persist, effects);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
@@ -170,8 +171,8 @@ TEST_F(RaftNodeTest, RecoveringBlocksElectionVoteAndProposeUntilCatchUp) {
     ASSERT_FALSE(vote_result.vote_granted);
 
     RaftEffects propose_effects;
-    auto [status, new_index] =
-        node.propose(WriteOpType::PUT, "k", "v", propose_effects);
+    auto [status, new_index] = node.propose(
+        ProposeParam::write(WriteOpType::PUT, "k", "v"), propose_effects);
     ASSERT_TRUE(status.fail());
     ASSERT_EQ(new_index, -1);
 
@@ -201,7 +202,12 @@ TEST_F(RaftNodeTest, RecoveringFinishesWhenSnapshotCoversTarget) {
     Status status = persist.init();
     ASSERT_EQ(status, Status::OK());
 
-    RaftNode node{replica_id_, members_};
+    ReplicaID leader_id{101, 7, 1};
+    std::vector<PeerMember> members{
+        PeerMember{"leader", leader_id, {}},
+        PeerMember{"self", replica_id_, {}},
+    };
+    RaftNode node{replica_id_, members};
 
     node.enter_recovering();
     ASSERT_TRUE(node.is_recovering());
@@ -239,7 +245,12 @@ TEST_F(RaftNodeTest,
     status = persist.append_wal_batch(initial_entries);
     ASSERT_EQ(status, Status::OK());
 
-    RaftNode node{replica_id_, members_};
+    ReplicaID leader_id{101, 7, 1};
+    std::vector<PeerMember> members{
+        PeerMember{"leader", leader_id, {}},
+        PeerMember{"self", replica_id_, {}},
+    };
+    RaftNode node{replica_id_, members};
     node.update_raft_meta(RaftMeta{2, std::nullopt});
     node.update_log_entries(initial_entries);
 
@@ -247,7 +258,6 @@ TEST_F(RaftNodeTest,
         make_entry(2, 2, WriteOpType::PUT, "k2", "new2"),
         make_entry(2, 3, WriteOpType::PUT, "k3", "new3"),
     };
-    ReplicaID leader_id{101, 7, 1};
     AppendEntriesResult result;
     RaftEffects effects;
     node.handle_append_entries(
@@ -347,7 +357,12 @@ TEST_F(RaftNodeTest, InstallLeaderSnapshotStepsDownAndPersistsHigherTerm) {
 }
 
 TEST_F(RaftNodeTest, PrepareInstallSnapshotRejectsCoveredLogBoundary) {
-    RaftNode node{replica_id_, members_};
+    ReplicaID leader_id{101, 7, 1};
+    std::vector<PeerMember> members{
+        PeerMember{"leader", leader_id, {}},
+        PeerMember{"self", replica_id_, {}},
+    };
+    RaftNode node{replica_id_, members};
     node.update_log_entries({
         make_entry(1, 1, WriteOpType::PUT, "k1", "v1"),
         make_entry(1, 2, WriteOpType::PUT, "k2", "v2"),
@@ -355,8 +370,9 @@ TEST_F(RaftNodeTest, PrepareInstallSnapshotRejectsCoveredLogBoundary) {
     });
 
     RaftEffects effects;
-    Status status = node.prepare_install_snapshot(
-        make_install_snapshot_param(3, 2, 1), effects);
+    InstallSnapshotParam param = make_install_snapshot_param(3, 2, 1);
+    param.from_replica_id = leader_id;
+    Status status = node.prepare_install_snapshot(param, effects);
 
     ASSERT_EQ(status.code(), StatusCode::ALREADY_EXIST) << status.to_string();
     ASSERT_EQ(node.current_term(), 3);
@@ -366,8 +382,12 @@ TEST_F(RaftNodeTest, PrepareInstallSnapshotRejectsCoveredLogBoundary) {
 }
 
 TEST_F(RaftNodeTest, PrepareInstallSnapshotRejectsCommittedSnapshot) {
-    RaftNode node{replica_id_, members_};
     ReplicaID leader_id{101, 7, 1};
+    std::vector<PeerMember> members{
+        PeerMember{"leader", leader_id, {}},
+        PeerMember{"self", replica_id_, {}},
+    };
+    RaftNode node{replica_id_, members};
 
     AppendEntriesResult append_result;
     RaftEffects append_effects;
@@ -390,8 +410,9 @@ TEST_F(RaftNodeTest, PrepareInstallSnapshotRejectsCommittedSnapshot) {
     ASSERT_EQ(node.commit_index(), 3);
 
     RaftEffects effects;
-    Status status = node.prepare_install_snapshot(
-        make_install_snapshot_param(2, 2, 2), effects);
+    InstallSnapshotParam param = make_install_snapshot_param(2, 2, 2);
+    param.from_replica_id = leader_id;
+    Status status = node.prepare_install_snapshot(param, effects);
 
     ASSERT_EQ(status.code(), StatusCode::ALREADY_EXIST) << status.to_string();
     ASSERT_EQ(node.snapshot_index(), 0);

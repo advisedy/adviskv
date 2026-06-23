@@ -102,7 +102,7 @@ TEST_F(ReplicaTest, HandleInstallSnapshotUpdatesReadableState) {
         status = source_persist.read_snapshot_chunk(offset, 8, data, eof);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
-        InstallSnapshotParam param{source_id,
+        InstallSnapshotParam param{replica_id_,
                                    replica_id_,
                                    8,
                                    source_state.apply_index(),
@@ -176,7 +176,7 @@ TEST_F(ReplicaTest, HandleInstallSnapshotClearsOldWalBeforeAppendingNewLog) {
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
         status = replica->handle_install_snapshot(InstallSnapshotParam{
-            source_id, replica_id_, 8, source_state.apply_index(),
+            replica_id_, replica_id_, 8, source_state.apply_index(),
             source_state.apply_term(), offset, data, eof});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         if (eof) break;
@@ -195,7 +195,7 @@ TEST_F(ReplicaTest, HandleInstallSnapshotClearsOldWalBeforeAppendingNewLog) {
 
     AppendEntriesResult result;
     status = replica->handle_append_entries(
-        AppendEntriesParam{source_id,
+        AppendEntriesParam{replica_id_,
                            replica_id_,
                            8,
                            {make_entry(8, 7, WriteOpType::PUT, "new", "value")},
@@ -218,7 +218,8 @@ TEST_F(ReplicaTest, HandleInstallSnapshotClearsOldWalBeforeAppendingNewLog) {
     EXPECT_EQ(entries[0].value, "value");
 }
 
-TEST_F(ReplicaTest, HandleInstallSnapshotRejectsCoveredBoundaryWithoutClearingWal) {
+TEST_F(ReplicaTest,
+       HandleInstallSnapshotRejectsCoveredBoundaryWithoutClearingWal) {
     std::vector<LogEntry> initial_entries{
         make_entry(1, 1, WriteOpType::PUT, "k1", "v1"),
         make_entry(1, 2, WriteOpType::PUT, "k2", "v2"),
@@ -240,9 +241,8 @@ TEST_F(ReplicaTest, HandleInstallSnapshotRejectsCoveredBoundaryWithoutClearingWa
     ASSERT_NE(replica, nullptr);
     manager.recover();
 
-    ReplicaID source_id{201, 3, 1};
     Status status = replica->handle_install_snapshot(InstallSnapshotParam{
-        source_id,
+        replica_id_,
         replica_id_,
         2,
         4,
@@ -269,24 +269,21 @@ TEST_F(ReplicaTest, HandleInstallSnapshotRejectsStaleChunkAfterTmpReplaced) {
     ReplicaPtr replica = add_single_replica(manager);
     ASSERT_NE(replica, nullptr);
 
-    ReplicaID source_a{201, 3, 1};
-    ReplicaID source_b{201, 3, 2};
-
     Status status = replica->handle_install_snapshot(InstallSnapshotParam{
-        source_a, replica_id_, 8, 10, 8, 0, "aaaa", false});
+        replica_id_, replica_id_, 8, 10, 8, 0, "aaaa", false});
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     status = replica->handle_install_snapshot(InstallSnapshotParam{
-        source_b, replica_id_, 8, 11, 8, 0, "bbbb", false});
+        replica_id_, replica_id_, 8, 11, 8, 0, "bbbb", false});
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     status = replica->handle_install_snapshot(InstallSnapshotParam{
-        source_a, replica_id_, 8, 10, 8, 4, "cccc", false});
+        replica_id_, replica_id_, 8, 10, 8, 4, "cccc", false});
     ASSERT_EQ(status.code(), StatusCode::ERROR)
         << test::status_debug_string(status);
 
     status = replica->handle_install_snapshot(InstallSnapshotParam{
-        source_b, replica_id_, 8, 11, 8, 4, "dddd", false});
+        replica_id_, replica_id_, 8, 11, 8, 4, "dddd", false});
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 }
 
@@ -426,7 +423,7 @@ TEST_F(ReplicaTest, WalCatchupRecoveryRejectsRequestsUntilEntriesApplied) {
 
     AppendEntriesResult result;
     status = replica->handle_append_entries(
-        AppendEntriesParam{ReplicaID{201, 3, 1},
+        AppendEntriesParam{replica_id_,
                            replica_id_,
                            2,
                            {make_entry(2, 3, WriteOpType::PUT, "k3", "v3")},
@@ -507,7 +504,7 @@ TEST_F(ReplicaTest, SnapshotCatchupRecoveryFinishesWhenSnapshotCoversTarget) {
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
         status = replica->handle_install_snapshot(InstallSnapshotParam{
-            source_id, replica_id_, 8, source_state.apply_index(),
+            replica_id_, replica_id_, 8, source_state.apply_index(),
             source_state.apply_term(), offset, data, eof});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         if (eof) break;

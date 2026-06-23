@@ -27,6 +27,8 @@ class RaftCore {
     void tick(RaftEffects& effects);
     std::pair<Status, LogIndex> propose(const ProposeParam& param,
                                         RaftEffects& effects);
+    std::vector<std::pair<Status, LogIndex>> propose_batch(
+        const std::vector<ProposeParam>& params, RaftEffects& effects);
 
     // 处理别的 replica 发过来的 Raft RPC 请求
     void handle_request_vote(const RequestVoteParam& param,

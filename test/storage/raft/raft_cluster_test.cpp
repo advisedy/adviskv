@@ -224,7 +224,9 @@ class RaftCluster {
     std::pair<Status, LogIndex> propose(int node_idx, WriteOpType op_type,
                                         Key key, Value value) {
         RaftEffects effects;
-        auto result = nodes_[node_idx]->propose(op_type, key, value, effects);
+        auto result = nodes_[node_idx]->propose(
+            ProposeParam::write(op_type, std::move(key), std::move(value)),
+            effects);
         if (result.first.fail()) return result;
 
         Status status = drive_raft_effects(node_idx, std::move(effects));
