@@ -30,7 +30,7 @@ class ReplicaMetaCodec {
     void encode_payload(const ObjectType& meta, EncodeBuffer& buf) const {
         buf.write(meta.init_param.replica_id.table_id);
         buf.write(meta.init_param.replica_id.shard_index);
-        buf.write(meta.init_param.replica_id.replica_index);
+        buf.write(meta.init_param.replica_id.replica_seq);
         buf.write(static_cast<int32>(meta.init_param.engine_type));
         buf.write(meta.init_param.local_endpoint.ip);
         buf.write(meta.init_param.local_endpoint.port);
@@ -39,7 +39,7 @@ class ReplicaMetaCodec {
             buf.write(member.node_id);
             buf.write(member.replica_id.table_id);
             buf.write(member.replica_id.shard_index);
-            buf.write(member.replica_id.replica_index);
+            buf.write(member.replica_id.replica_seq);
             buf.write(member.endpoint.ip);
             buf.write(member.endpoint.port);
         }
@@ -49,7 +49,7 @@ class ReplicaMetaCodec {
         meta = {};
         RETURN_IF_INVALID_READ(buf, meta.init_param.replica_id.table_id)
         RETURN_IF_INVALID_READ(buf, meta.init_param.replica_id.shard_index)
-        RETURN_IF_INVALID_READ(buf, meta.init_param.replica_id.replica_index)
+        RETURN_IF_INVALID_READ(buf, meta.init_param.replica_id.replica_seq)
         int32 engine_type{0};
         RETURN_IF_INVALID_READ(buf, engine_type)
         meta.init_param.engine_type = static_cast<EngineType>(engine_type);
@@ -69,7 +69,7 @@ class ReplicaMetaCodec {
             RETURN_IF_INVALID_READ(buf, member.node_id)
             RETURN_IF_INVALID_READ(buf, member.replica_id.table_id)
             RETURN_IF_INVALID_READ(buf, member.replica_id.shard_index)
-            RETURN_IF_INVALID_READ(buf, member.replica_id.replica_index)
+            RETURN_IF_INVALID_READ(buf, member.replica_id.replica_seq)
             RETURN_IF_INVALID_READ(buf, member.endpoint.ip)
             RETURN_IF_INVALID_READ(buf, member.endpoint.port)
             meta.init_param.members.push_back(std::move(member));

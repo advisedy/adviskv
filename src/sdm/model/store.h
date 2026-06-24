@@ -68,6 +68,15 @@ struct Replica {
 
 using ReplicaPtr = std::shared_ptr<Replica>;
 
+struct ShardReplicaGroup {
+    ShardID shard_id;
+    int32_t target_replica_count{0};
+    std::vector<ReplicaID> desired_members;
+    ReplicaSeq next_replica_seq{0};
+};
+
+using ShardReplicaGroupPtr = std::shared_ptr<ShardReplicaGroup>;
+
 //////////////////////////////
 // node
 
@@ -152,6 +161,7 @@ using ShardRoutePtr = std::shared_ptr<ShardRoute>;
 
 using ResourcePoolOr = Optional<ResourcePool>;
 using ReplicaOr = Optional<Replica>;
+using ShardReplicaGroupOr = Optional<ShardReplicaGroup>;
 using NodeOr = Optional<Node>;
 using TableOr = Optional<Table>;
 using ShardRouteOr = Optional<ShardRoute>;

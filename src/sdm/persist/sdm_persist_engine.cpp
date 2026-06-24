@@ -131,13 +131,13 @@ class SdmMetaCodec {
     static void encode_replica_id(const ReplicaID& id, EncodeBuffer& buf) {
         buf.write(id.table_id);
         buf.write(id.shard_index);
-        buf.write(id.replica_index);
+        buf.write(id.replica_seq);
     }
 
     static Status decode_replica_id(DecodeBuffer& buf, ReplicaID& id) {
         RETURN_IF_INVALID_READ(buf, id.table_id)
         RETURN_IF_INVALID_READ(buf, id.shard_index)
-        RETURN_IF_INVALID_READ(buf, id.replica_index)
+        RETURN_IF_INVALID_READ(buf, id.replica_seq)
         return Status::OK();
     }
 

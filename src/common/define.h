@@ -14,6 +14,9 @@
 
 #include <chrono>
 #include <utility>
+
+namespace adviskv {
+
 #define RETURN_IF_INVALID_CONDITION(cond, msg)            \
     if (!(cond)) {                                        \
         return Status{StatusCode::INVALID_ARGUMENT, msg}; \
@@ -21,7 +24,7 @@
 
 #define RETURN_IF_INVALID_STATUS(s1)                     \
     if (auto&& advis_status = s1; advis_status.fail()) { \
-        return advis_status;                               \
+        return advis_status;                             \
     }
 
 #define RETURN_IF_INVALID_PARAM(param)                     \
@@ -76,10 +79,9 @@
 #define DEFINE_OPERATOR_NOT_EQUAL(type) \
     bool operator!=(const type& other) const { return !(*this == other); }
 
-using Milliseconds = std::chrono::milliseconds;
-using Seconds = std::chrono::seconds;
-
 template <typename To, typename From>
 constexpr To to(From&& x) noexcept {
     return static_cast<To>(std::forward<From>(x));
 }
+
+}  // namespace adviskv

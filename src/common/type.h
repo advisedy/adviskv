@@ -31,9 +31,14 @@ using DatabaseID = int32_t;
 using TableID = int32_t;
 using ShardIndex = int32_t;
 using ReplicaIndex = int32_t;
+using ReplicaSeq = int32_t;
 using NodeID = std::string;
 
 using Term = int64;
+
+using Milliseconds = std::chrono::milliseconds;
+using Microseconds = std::chrono::microseconds;
+using Seconds = std::chrono::seconds;
 
 struct ShardID {
     TableID table_id{-1};
@@ -67,24 +72,23 @@ using ShardKeyHash = ShardIDHash;
 struct ReplicaID {
     TableID table_id{-1};
     ShardIndex shard_index{-1};
-    ReplicaIndex replica_index{-1};
+    ReplicaSeq replica_seq{-1};
 
     ReplicaID() = default;
-    ReplicaID(TableID table_id, ShardIndex shard_index,
-              ReplicaIndex replica_index)
+    ReplicaID(TableID table_id, ShardIndex shard_index, ReplicaSeq replica_seq)
         : table_id(table_id),
           shard_index(shard_index),
-          replica_index(replica_index) {}
+          replica_seq(replica_seq) {}
 
     std::string to_string() const {
-        return fmt::format("{}:{}:{}", table_id, shard_index, replica_index);
+        return fmt::format("{}:{}:{}", table_id, shard_index, replica_seq);
     }
 
     ShardID get_shard_id() const { return ShardID{table_id, shard_index}; }
 
     bool operator==(const ReplicaID& other) const {
         return table_id == other.table_id && shard_index == other.shard_index &&
-               replica_index == other.replica_index;
+               replica_seq == other.replica_seq;
     }
 
     DEFINE_OPERATOR_NOT_EQUAL(ReplicaID)
@@ -94,7 +98,7 @@ struct ReplicaIDHash {
     size_t operator()(const ReplicaID& key) const {
         size_t h1 = std::hash<TableID>{}(key.table_id);
         size_t h2 = std::hash<ShardIndex>{}(key.shard_index);
-        size_t h3 = std::hash<ReplicaIndex>{}(key.replica_index);
+        size_t h3 = std::hash<ReplicaSeq>{}(key.replica_seq);
         return h1 ^ (h2 << 1) ^ (h3 << 2);
     }
 };

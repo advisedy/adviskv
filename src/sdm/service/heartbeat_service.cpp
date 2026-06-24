@@ -45,8 +45,7 @@ Status HeartBeatService::update_node_state(const HeartBeatParam& param) {
 
 Status HeartBeatService::apply_reported_replicas(const HeartBeatParam& param) {
     for (const auto& info : param.replica_list) {
-        ReplicaID key{info.shard_id.table_id, info.shard_id.shard_index,
-                      info.replica_index};
+        ReplicaID key = info.replica_id;
         ReplicaOr replica;
         Status status = sdm_store_->get_replica(key, replica);
         RETURN_IF_INVALID_STATUS(status)

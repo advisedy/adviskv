@@ -7,6 +7,7 @@
 
 #include "common/define.h"
 #include "common/log.h"
+#include "common/proto/replica_id_proto.h"
 #include "common/proto/raft_role_proto.h"
 #include "common/proto/storage_replica_status_proto.h"
 #include "common/status.h"
@@ -122,9 +123,7 @@ rpc::HeartBeatRequest NodeAgent::make_heartbeat_request() const {
         }
         auto* info = request.add_replica_info_list();
         const ReplicaID replica_id = replica->get_replica_id();
-        info->set_table_id(replica_id.table_id);
-        info->set_shard_id(replica_id.shard_index);
-        info->set_replica_index(replica_id.replica_index);
+        encode_pb_replica_id(replica_id, *info->mutable_replica_id());
         info->set_role(to_pb_raft_role(replica->get_role()));
         info->set_status(to_pb_storage_replica_status(replica->get_status()));
         info->set_term(replica->current_term());

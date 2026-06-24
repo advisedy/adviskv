@@ -10,6 +10,7 @@
 
 #include "common/define.h"
 #include "common/status.h"
+#include "common/type.h"
 
 namespace adviskv {
 
@@ -24,7 +25,7 @@ class BackgroundTask {
     virtual ~BackgroundTask() { stop(); }
 
    public:
-    Status prepare(); // 如果setup是空的，可以不调用这个
+    Status prepare();  // 如果setup是空的，可以不调用这个
     void start(Milliseconds interval);
     void notify();
     void stop();

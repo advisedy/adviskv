@@ -89,7 +89,7 @@ std::vector<ReplicaID> sorted_replica_ids(
                   if (lhs.shard_index != rhs.shard_index) {
                       return lhs.shard_index < rhs.shard_index;
                   }
-                  return lhs.replica_index < rhs.replica_index;
+                  return lhs.replica_seq < rhs.replica_seq;
               });
     return ids;
 }

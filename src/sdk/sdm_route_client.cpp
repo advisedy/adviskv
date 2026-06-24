@@ -7,6 +7,7 @@
 #include <chrono>
 
 #include "common/define.h"
+#include "common/proto/replica_id_proto.h"
 #include "common/proto/raft_role_proto.h"
 #include "sdk/config.h"
 #include "sdk/log.h"
@@ -69,6 +70,7 @@ Status SdmRouteClient::get_route(const Key& key, RouteInfo* route) const {
     route->replicas.reserve(response.replicas_size());
     for (const auto& replica : response.replicas()) {
         RouteReplica route_replica;
+        route_replica.replica_id = decode_pb_replica_id(replica.replica_id());
         route_replica.endpoint =
             Endpoint{replica.endpoint().ip(), replica.endpoint().port()};
         ReplicaRole role = ReplicaRole::FOLLOWER;
@@ -82,8 +84,9 @@ Status SdmRouteClient::get_route(const Key& key, RouteInfo* route) const {
         std::string route_res;
         for (const RouteReplica& one : route->replicas) {
             std::string one_str{fmt::format(
-                "replica:[ip:{}, port:{}, role:{}], ", one.endpoint.ip,
-                one.endpoint.port, (int8)one.role)};
+                "replica:[id:{}, ip:{}, port:{}, role:{}], ",
+                one.replica_id.to_string(), one.endpoint.ip, one.endpoint.port,
+                (int8)one.role)};
             route_res.append(std::move(one_str));
         }
         ADVISKV_SDK_LOG(LogLevel::INFO, "get route ok, route: {}", route_res);

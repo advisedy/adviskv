@@ -71,7 +71,7 @@ Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
             fmt::format("replica already exists, "
                         "table_id: {}, shard_index: {}, replica_index: {}",
                         replica_id.table_id, replica_id.shard_index,
-                        replica_id.replica_index)};
+                        replica_id.replica_seq)};
     }
 
     if (shard_primary_index_.count(shard_id)) {

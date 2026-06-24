@@ -167,7 +167,7 @@ Status SdmStore::del_shard_route_entry(const ShardID& shard_id,
     func::ad_erase_if(route->replicas, [&replica_key](const RouteEntry& entry) {
         return entry.replica_id.table_id == replica_key.table_id &&
                entry.replica_id.shard_index == replica_key.shard_index &&
-               entry.replica_id.replica_index == replica_key.replica_index;
+               entry.replica_id.replica_seq == replica_key.replica_seq;
     });
     status = meta_store_->upsert_shard_route(*route);
     RETURN_IF_INVALID_STATUS(status)

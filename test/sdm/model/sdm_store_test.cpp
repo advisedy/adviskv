@@ -73,7 +73,7 @@ std::vector<ReplicaID> replica_ids(std::vector<Replica> replicas) {
                   if (lhs.shard_index != rhs.shard_index) {
                       return lhs.shard_index < rhs.shard_index;
                   }
-                  return lhs.replica_index < rhs.replica_index;
+                  return lhs.replica_seq < rhs.replica_seq;
               });
     return ids;
 }

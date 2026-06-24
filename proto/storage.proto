@@ -6,10 +6,9 @@ import "common.proto";
 
 
 message PutRequest {
-  int32 table_id = 1;
-  int32 shard_id = 2;
-  bytes key = 3;
-  bytes value = 4;
+  adviskv.pb.ReplicaID replica_id = 1;
+  bytes key = 2;
+  bytes value = 3;
 }
 
 message PutResponse {
@@ -17,9 +16,8 @@ message PutResponse {
 }
 
 message GetRequest {
-  int32 table_id = 1;
-  int32 shard_id = 2;
-  bytes key = 3;
+  adviskv.pb.ReplicaID replica_id = 1;
+  bytes key = 2;
 }
 
 message GetResponse {
@@ -28,9 +26,8 @@ message GetResponse {
 }
 
 message DeleteRequest {
-  int32 table_id = 1;
-  int32 shard_id = 2;
-  bytes key = 3;
+  adviskv.pb.ReplicaID replica_id = 1;
+  bytes key = 2;
 }
 
 message DeleteResponse {
@@ -40,11 +37,9 @@ message DeleteResponse {
 
 
 message CreateReplicaRequest {
-  int32 table_id = 1;
-  int32 shard_index = 2;
-  int32 replica_index = 3;
-  int32 engine_type = 4;
-  repeated adviskv.pb.PeerMember members = 5;
+  adviskv.pb.ReplicaID replica_id = 1;
+  int32 engine_type = 2;
+  repeated adviskv.pb.PeerMember initial_members = 3;
 }
 
 message CreateReplicaResponse {
@@ -52,9 +47,7 @@ message CreateReplicaResponse {
 }
 
 message DeleteReplicaRequest {
-  int32 table_id = 1;
-  int32 shard_id = 2;
-  int32 replica_id = 3;
+  adviskv.pb.ReplicaID replica_id = 1;
 }
 
 message DeleteReplicaResponse {
@@ -62,9 +55,7 @@ message DeleteReplicaResponse {
 }
 
 message GetReplicaInfoRequest {
-  int32 table_id = 1;
-  int32 shard_id = 2;
-  int32 replica_id = 3;
+  adviskv.pb.ReplicaID replica_id = 1;
 }
 
 message GetReplicaInfoResponse {

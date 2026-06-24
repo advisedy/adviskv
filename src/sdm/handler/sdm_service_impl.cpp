@@ -9,6 +9,7 @@
 #include "common/define.h"
 #include "common/func.h"
 #include "common/log.h"
+#include "common/proto/replica_id_proto.h"
 #include "common/proto/raft_role_proto.h"
 #include "common/proto/sdm_table_status_proto.h"
 #include "common/proto/storage_replica_status_proto.h"
@@ -108,9 +109,7 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
         }
 
         HeartBeatReplicaInfo one;
-        one.shard_id =
-            ShardID{replica_info.table_id(), replica_info.shard_id()};
-        one.replica_index = replica_info.replica_index();
+        one.replica_id = decode_pb_replica_id(replica_info.replica_id());
         one.role = role;
         one.storage_status = storage_status;
         one.term = replica_info.term();
@@ -169,6 +168,8 @@ grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context,
         response->set_shard_id(route.shard_id.shard_index);
         for (const auto& replica : route.replicas) {
             auto* route_replica = response->add_replicas();
+            encode_pb_replica_id(replica.replica_id,
+                                 *route_replica->mutable_replica_id());
             auto* endpoint = route_replica->mutable_endpoint();
             endpoint->set_ip(replica.ip);
             endpoint->set_port(replica.port);

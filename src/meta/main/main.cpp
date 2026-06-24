@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
                                                         sdm_client.get());
         auto table_ddl_reconciler = std::make_unique<TableDdlReconciler>(
             catalog_manager.get(), sdm_client.get());
-        table_ddl_reconciler->start(Milliseconds(3000));
+        table_ddl_reconciler->start(adviskv::Milliseconds(3000));
 
         auto meta_service =
             std::make_unique<MetaServiceImpl>(ddl_service.get());

@@ -126,11 +126,11 @@ TEST(RouteUpdateCheckTaskTest, PutShardRouteWhenLeaderCountEqualsOne) {
     ASSERT_TRUE(store.get_shard_route(test_shard_id(), route).ok());
     ASSERT_FALSE(route.is_empty());
     ASSERT_EQ(route->replicas.size(), 3U);
-    EXPECT_EQ(route->replicas[0].replica_id.replica_index, 0);
+    EXPECT_EQ(route->replicas[0].replica_id.replica_seq, 0);
     EXPECT_EQ(route->replicas[0].role, ReplicaRole::LEADER);
-    EXPECT_EQ(route->replicas[1].replica_id.replica_index, 1);
+    EXPECT_EQ(route->replicas[1].replica_id.replica_seq, 1);
     EXPECT_EQ(route->replicas[1].role, ReplicaRole::FOLLOWER);
-    EXPECT_EQ(route->replicas[2].replica_id.replica_index, 2);
+    EXPECT_EQ(route->replicas[2].replica_id.replica_seq, 2);
     EXPECT_EQ(route->replicas[2].role, ReplicaRole::FOLLOWER);
 }
 
@@ -204,15 +204,15 @@ TEST(RouteUpdateCheckTaskTest,
     ASSERT_FALSE(route.is_empty());
     ASSERT_EQ(route->replicas.size(), 4U);
 
-    EXPECT_EQ(route->replicas[0].replica_id.replica_index, 1);
+    EXPECT_EQ(route->replicas[0].replica_id.replica_seq, 1);
     EXPECT_EQ(route->replicas[0].role, ReplicaRole::LEADER);
     EXPECT_EQ(route->replicas[0].term, 30);
 
-    EXPECT_EQ(route->replicas[1].replica_id.replica_index, 0);
+    EXPECT_EQ(route->replicas[1].replica_id.replica_seq, 0);
     EXPECT_EQ(route->replicas[1].role, ReplicaRole::FOLLOWER);
-    EXPECT_EQ(route->replicas[2].replica_id.replica_index, 2);
+    EXPECT_EQ(route->replicas[2].replica_id.replica_seq, 2);
     EXPECT_EQ(route->replicas[2].role, ReplicaRole::FOLLOWER);
-    EXPECT_EQ(route->replicas[3].replica_id.replica_index, 3);
+    EXPECT_EQ(route->replicas[3].replica_id.replica_seq, 3);
     EXPECT_EQ(route->replicas[3].role, ReplicaRole::FOLLOWER);
 }
 
@@ -281,10 +281,10 @@ TEST(RouteUpdateCheckTaskTest,
     ASSERT_TRUE(store.get_shard_route(test_shard_id(), route).ok());
     ASSERT_FALSE(route.is_empty());
     ASSERT_EQ(route->replicas.size(), 2U);
-    EXPECT_EQ(route->replicas[0].replica_id.replica_index, 1);
+    EXPECT_EQ(route->replicas[0].replica_id.replica_seq, 1);
     EXPECT_EQ(route->replicas[0].role, ReplicaRole::LEADER);
     EXPECT_EQ(route->replicas[0].term, 12);
-    EXPECT_EQ(route->replicas[1].replica_id.replica_index, 0);
+    EXPECT_EQ(route->replicas[1].replica_id.replica_seq, 0);
     EXPECT_EQ(route->replicas[1].role, ReplicaRole::FOLLOWER);
     EXPECT_EQ(route->replicas[1].term, 12);
 }

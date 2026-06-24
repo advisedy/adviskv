@@ -101,7 +101,7 @@ struct CreateReplicaParam {
             replica_id.shard_index >= 0,
             "shard_index should be greater than or equal to 0")
         RETURN_IF_INVALID_CONDITION(
-            replica_id.replica_index >= 0,
+            replica_id.replica_seq >= 0,
             "replica_index should be greater than or equal to 0")
         RETURN_IF_INVALID_CONDITION(!members.empty(),
                                     "members should not empty")
@@ -125,7 +125,7 @@ struct DeleteReplicaParam {
             replica_id.shard_index >= 0,
             "shard_index should be greater than or equal to 0")
         RETURN_IF_INVALID_CONDITION(
-            replica_id.replica_index >= 0,
+            replica_id.replica_seq >= 0,
             "replica_index should be greater than or equal to 0")
         RETURN_IF_INVALID_CONDITION(!endpoint.ip.empty(),
                                     "endpoint ip should not empty")
@@ -147,7 +147,7 @@ struct GetReplicaInfoParam {
             replica_id.shard_index >= 0,
             "shard_index should be greater than or equal to 0")
         RETURN_IF_INVALID_CONDITION(
-            replica_id.replica_index >= 0,
+            replica_id.replica_seq >= 0,
             "replica_index should be greater than or equal to 0")
         RETURN_IF_INVALID_CONDITION(!endpoint.ip.empty(),
                                     "endpoint ip should not empty")
@@ -192,8 +192,7 @@ struct GetRouteParam {
 };
 
 struct HeartBeatReplicaInfo {
-    ShardID shard_id;
-    ReplicaIndex replica_index;
+    ReplicaID replica_id;
     ReplicaRole role;
     StorageReplicaStatus storage_status;
     Term term;  // 用来帮助判断leader，term高的优先被认定是leader
@@ -216,17 +215,48 @@ struct HeartBeatParam {
                                     "resource_pool should not empty");
         RETURN_IF_INVALID_CONDITION(!dc.empty(), "dc should not empty");
         for (const HeartBeatReplicaInfo& info : replica_list) {
-            RETURN_IF_INVALID_CONDITION(info.replica_index >= 0,
-                                        "info replica index should >= 0");
-            RETURN_IF_INVALID_CONDITION(info.shard_id.table_id >= 0,
+            RETURN_IF_INVALID_CONDITION(info.replica_id.replica_seq >= 0,
+                                        "info replica seq should >= 0");
+            RETURN_IF_INVALID_CONDITION(info.replica_id.table_id >= 0,
                                         "info table id should >= 0");
-            RETURN_IF_INVALID_CONDITION(info.shard_id.shard_index >= 0,
+            RETURN_IF_INVALID_CONDITION(info.replica_id.shard_index >= 0,
                                         "info shard index should >= 0");
             RETURN_IF_INVALID_CONDITION(info.term >= 0,
-                                        "info replica index should >= 0");
+                                        "info term should >= 0");
         }
         return Status::OK();
     }
+};
+
+enum class ExpectedReplicaType {
+    PRESENT = 1,
+    ABSENT = 2,
+    ADD_MEMBER = 3,
+    REMOVE_MEMBER = 4,
+};
+
+struct ExpectedReplica {
+    ExpectedReplicaType type{ExpectedReplicaType::PRESENT};
+    ReplicaID replica_id;
+    EngineType engine_type{EngineType::MAP};
+    std::vector<PeerMember> initial_members;
+
+    Status validate() const {
+        RETURN_IF_INVALID_CONDITION(
+            replica_id.table_id >= 0,
+            "replica table id should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(
+            replica_id.shard_index >= 0,
+            "replica shard index should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(
+            replica_id.replica_seq >= 0,
+            "replica index should be greater than or equal to 0")
+        return Status::OK();
+    }
+};
+
+struct HeartBeatResult {
+    std::vector<ExpectedReplica> instructions;
 };
 
 }  // namespace adviskv::sdm

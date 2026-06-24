@@ -123,9 +123,9 @@ int main(int argc, char* argv[]) {
             std::make_unique<RouteUpdateCheckTask>(sdm_store.get());
         auto heartbeat_check_task =
             std::make_unique<HeartBeatCheckTask>(sdm_store.get());
-        table_reconciler->start(Milliseconds(3000));
-        route_task->start(Milliseconds(3000));
-        heartbeat_check_task->start(Milliseconds(3000));
+        table_reconciler->start(adviskv::Milliseconds(3000));
+        route_task->start(adviskv::Milliseconds(3000));
+        heartbeat_check_task->start(adviskv::Milliseconds(3000));
 
         grpc::ServerBuilder builder;
         builder.AddListeningPort(fmt::format("{}:{}", listen_host, listen_port),

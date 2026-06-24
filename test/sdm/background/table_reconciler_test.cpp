@@ -133,7 +133,7 @@ void make_table_ready_in_storage(SdmStore& store, FakeStorageClient& storage) {
     for (const Replica& replica : replicas) {
         storage.replica_infos.push_back(StorageReplicaInfo{
             replica.replica_id,
-            replica.replica_id.replica_index == 0 ? ReplicaRole::LEADER
+            replica.replica_id.replica_seq == 0 ? ReplicaRole::LEADER
                                                   : ReplicaRole::FOLLOWER,
             StorageReplicaStatus::READY,
             replica.state.observed_endpoint,
@@ -193,8 +193,7 @@ void report_replica_heartbeat(SdmStore& store, const NodeID& node_id,
     param.dc = "dc-a";
     param.last_heartbeat_ts = 1000 + replica_index + term;
     param.replica_list.push_back(HeartBeatReplicaInfo{
-        ShardID{1001, 0},
-        replica_index,
+        ReplicaID{1001, 0, replica_index},
         role,
         status,
         term,
@@ -473,12 +472,12 @@ TEST(TableReconcilerTest, RouteIsRepublishedAfterHeartbeatRecoversLeader) {
     status = route_service.get_route(make_get_route_param(), &route);
     ASSERT_TRUE(status.ok()) << status.msg();
     ASSERT_EQ(route.replicas.size(), 2U);
-    EXPECT_EQ(route.replicas[0].replica_id.replica_index, 0);
+    EXPECT_EQ(route.replicas[0].replica_id.replica_seq, 0);
     EXPECT_EQ(route.replicas[0].role, ReplicaRole::LEADER);
     EXPECT_EQ(route.replicas[0].term, 11);
     EXPECT_EQ(route.replicas[0].ip, "127.0.0.1");
     EXPECT_EQ(route.replicas[0].port, 18080);
-    EXPECT_EQ(route.replicas[1].replica_id.replica_index, 1);
+    EXPECT_EQ(route.replicas[1].replica_id.replica_seq, 1);
     EXPECT_EQ(route.replicas[1].role, ReplicaRole::FOLLOWER);
 
     ASSERT_TRUE(reconciler.reconcile_once().ok());

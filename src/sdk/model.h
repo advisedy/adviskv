@@ -8,6 +8,7 @@
 namespace adviskv::sdk {
 
 struct RouteReplica {
+    ReplicaID replica_id;
     Endpoint endpoint;
     ReplicaRole role{ReplicaRole::FOLLOWER};
 };

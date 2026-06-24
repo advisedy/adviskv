@@ -85,7 +85,7 @@ class RaftMetaCodec {
             const ReplicaID& replica_id = meta.voted_for.value();
             buf.write(replica_id.table_id);
             buf.write(replica_id.shard_index);
-            buf.write(replica_id.replica_index);
+            buf.write(replica_id.replica_seq);
         }
     }
 
@@ -98,7 +98,7 @@ class RaftMetaCodec {
             ReplicaID replica_id;
             RETURN_IF_INVALID_READ(buf, replica_id.table_id)
             RETURN_IF_INVALID_READ(buf, replica_id.shard_index)
-            RETURN_IF_INVALID_READ(buf, replica_id.replica_index)
+            RETURN_IF_INVALID_READ(buf, replica_id.replica_seq)
             meta.voted_for = replica_id;
         }
         return Status::OK();
@@ -124,7 +124,7 @@ Status PersistEngine::init() {
             "persist engine init error: data_dir is epmty");
     }
     if (ReplicaID& id = replica_id_;
-        id.replica_index == -1 or id.shard_index == -1 or id.table_id == -1) {
+        id.replica_seq == -1 or id.shard_index == -1 or id.table_id == -1) {
         return Status::INVALID_ARGUMENT(
             fmt::format("persist engine init error: replica_id:{} invalid",
                         replica_id_.to_string()));

@@ -35,7 +35,7 @@ HeartBeatParam make_heartbeat_param() {
         19090,
         "pool-a",
         "dc-a",
-        {HeartBeatReplicaInfo{ShardID{1001, 0}, 0, ReplicaRole::LEADER,
+        {HeartBeatReplicaInfo{ReplicaID{1001, 0, 0}, ReplicaRole::LEADER,
                               StorageReplicaStatus::READY, 7}},
         987654,
     };
@@ -81,15 +81,13 @@ TEST(HeartBeatServiceTest, HeartbeatIgnoresMissingAndOtherNodeReplicas) {
 
     HeartBeatParam param = make_heartbeat_param();
     param.replica_list.push_back(HeartBeatReplicaInfo{
-        ShardID{1001, 0},
-        1,
+        ReplicaID{1001, 0, 1},
         ReplicaRole::LEADER,
         StorageReplicaStatus::READY,
         9,
     });
     param.replica_list.push_back(HeartBeatReplicaInfo{
-        ShardID{9999, 0},
-        0,
+        ReplicaID{9999, 0, 0},
         ReplicaRole::LEADER,
         StorageReplicaStatus::READY,
         9,

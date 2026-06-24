@@ -8,15 +8,16 @@
 
 #include "common/define.h"
 #include "common/metrics/metrics.h"
+#include "common/proto/replica_id_proto.h"
 #include "sdk/log.h"
 
 namespace adviskv::sdk {
 
 StorageClient::StorageClient(const KVClientConf& conf) : conf_(conf) {}
 
-Status StorageClient::select_endpoint(const RouteInfo& route,
-                                      Endpoint* endpoint) {
-    RETURN_IF_NULLPTR(endpoint, "endpoint should not be nullptr")
+Status StorageClient::select_leader_replica(const RouteInfo& route,
+                                            RouteReplica* selected) {
+    RETURN_IF_NULLPTR(selected, "selected replica should not be nullptr")
     RETURN_IF_INVALID_CONDITION(route.table_id >= 0, "route.table_id invalid")
     RETURN_IF_INVALID_CONDITION(route.shard_id >= 0, "route.shard_id invalid")
     RETURN_IF_INVALID_CONDITION(!route.replicas.empty(),
@@ -30,7 +31,7 @@ Status StorageClient::select_endpoint(const RouteInfo& route,
                                     "leader replica ip invalid")
         RETURN_IF_INVALID_CONDITION(replica.endpoint.port > 0,
                                     "leader replica port invalid")
-        *endpoint = replica.endpoint;
+        *selected = replica;
         return Status::OK();
     }
 
@@ -58,27 +59,26 @@ Status StorageClient::put(const RouteInfo& route, const Key& key,
     ADVISKV_METRICS_TIMER("sdk_storage_put");
     ADVISKV_METRICS_COUNTER("sdk_storage_put_request");
 
-    Endpoint endpoint;
-    Status status = select_endpoint(route, &endpoint);
+    RouteReplica leader;
+    Status status = select_leader_replica(route, &leader);
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("sdk_storage_put_select_endpoint_failure");
         ADVISKV_SDK_LOG(LogLevel::WARN,
-                        "select storage endpoint for put failed, table_id={}, "
+                        "select leader replica for put failed, table_id={}, "
                         "shard_id={}, key={}, status={}",
                         route.table_id, route.shard_id, key,
                         status.to_string());
         return status;
     }
 
-    rpc::StorageService::Stub* stub = make_stub(endpoint);
+    rpc::StorageService::Stub* stub = make_stub(leader.endpoint);
     if (stub == nullptr) {
         ADVISKV_METRICS_COUNTER("sdk_storage_put_stub_missing");
         return Status{StatusCode::INVALID_ARGUMENT, "storage stub is nullptr"};
     }
 
     rpc::PutRequest request;
-    request.set_table_id(route.table_id);
-    request.set_shard_id(route.shard_id);
+    encode_pb_replica_id(leader.replica_id, *request.mutable_replica_id());
     request.set_key(key);
     request.set_value(value);
 
@@ -96,9 +96,11 @@ Status StorageClient::put(const RouteInfo& route, const Key& key,
         ADVISKV_METRICS_COUNTER("sdk_storage_put_rpc_failure");
         ADVISKV_SDK_LOG(LogLevel::ERROR,
                         "Storage Put RPC failed, endpoint={}:{}, table_id={}, "
-                        "shard_id={}, key={}, grpc_code={}, msg={}",
-                        endpoint.ip, endpoint.port, route.table_id,
-                        route.shard_id, key,
+                        "shard_id={}, replica_id={}, key={}, grpc_code={}, "
+                        "msg={}",
+                        leader.endpoint.ip, leader.endpoint.port,
+                        route.table_id, route.shard_id,
+                        leader.replica_id.to_string(), key,
                         static_cast<int>(grpc_status.error_code()),
                         grpc_status.error_message());
         return Status::ERROR(
@@ -110,10 +112,12 @@ Status StorageClient::put(const RouteInfo& route, const Key& key,
         status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "Storage Put returns non-ok, endpoint={}:{}, "
-                        "table_id={}, shard_id={}, key={}, code={}, msg={}",
-                        endpoint.ip, endpoint.port, route.table_id,
-                        route.shard_id, key, response.base_rsp().code(),
-                        response.base_rsp().msg());
+                        "table_id={}, shard_id={}, replica_id={}, key={}, "
+                        "code={}, msg={}",
+                        leader.endpoint.ip, leader.endpoint.port,
+                        route.table_id, route.shard_id,
+                        leader.replica_id.to_string(), key,
+                        response.base_rsp().code(), response.base_rsp().msg());
         return status;
     }
 
@@ -124,27 +128,26 @@ Status StorageClient::del(const RouteInfo& route, const Key& key) const {
     ADVISKV_METRICS_TIMER("sdk_storage_delete");
     ADVISKV_METRICS_COUNTER("sdk_storage_delete_request");
 
-    Endpoint endpoint;
-    Status status = select_endpoint(route, &endpoint);
+    RouteReplica leader;
+    Status status = select_leader_replica(route, &leader);
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("sdk_storage_delete_select_endpoint_failure");
         ADVISKV_SDK_LOG(LogLevel::WARN,
-                        "select storage endpoint for delete failed, "
+                        "select leader replica for delete failed, "
                         "table_id={}, shard_id={}, key={}, status={}",
                         route.table_id, route.shard_id, key,
                         status.to_string());
         return status;
     }
 
-    rpc::StorageService::Stub* stub = make_stub(endpoint);
+    rpc::StorageService::Stub* stub = make_stub(leader.endpoint);
     if (stub == nullptr) {
         ADVISKV_METRICS_COUNTER("sdk_storage_delete_stub_missing");
         return Status{StatusCode::INVALID_ARGUMENT, "storage stub is nullptr"};
     }
 
     rpc::DeleteRequest request;
-    request.set_table_id(route.table_id);
-    request.set_shard_id(route.shard_id);
+    encode_pb_replica_id(leader.replica_id, *request.mutable_replica_id());
     request.set_key(key);
 
     rpc::DeleteResponse response;
@@ -161,10 +164,11 @@ Status StorageClient::del(const RouteInfo& route, const Key& key) const {
         ADVISKV_METRICS_COUNTER("sdk_storage_delete_rpc_failure");
         ADVISKV_SDK_LOG(LogLevel::ERROR,
                         "Storage Delete RPC failed, endpoint={}:{}, "
-                        "table_id={}, shard_id={}, key={}, grpc_code={}, "
-                        "msg={}",
-                        endpoint.ip, endpoint.port, route.table_id,
-                        route.shard_id, key,
+                        "table_id={}, shard_id={}, replica_id={}, key={}, "
+                        "grpc_code={}, msg={}",
+                        leader.endpoint.ip, leader.endpoint.port,
+                        route.table_id, route.shard_id,
+                        leader.replica_id.to_string(), key,
                         static_cast<int>(grpc_status.error_code()),
                         grpc_status.error_message());
         return Status::ERROR(
@@ -176,10 +180,12 @@ Status StorageClient::del(const RouteInfo& route, const Key& key) const {
         status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "Storage Delete returns non-ok, endpoint={}:{}, "
-                        "table_id={}, shard_id={}, key={}, code={}, msg={}",
-                        endpoint.ip, endpoint.port, route.table_id,
-                        route.shard_id, key, response.base_rsp().code(),
-                        response.base_rsp().msg());
+                        "table_id={}, shard_id={}, replica_id={}, key={}, "
+                        "code={}, msg={}",
+                        leader.endpoint.ip, leader.endpoint.port,
+                        route.table_id, route.shard_id,
+                        leader.replica_id.to_string(), key,
+                        response.base_rsp().code(), response.base_rsp().msg());
         return status;
     }
 
@@ -189,23 +195,22 @@ Status StorageClient::del(const RouteInfo& route, const Key& key) const {
 Status StorageClient::get(const RouteInfo& route, const Key& key,
                           Value* value) const {
     RETURN_IF_NULLPTR(value, "value should not be nullptr")
-    Endpoint endpoint;
-    Status status = select_endpoint(route, &endpoint);
+    RouteReplica leader;
+    Status status = select_leader_replica(route, &leader);
     if (status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
-                        "select storage endpoint for get failed, table_id={}, "
+                        "select leader replica for get failed, table_id={}, "
                         "shard_id={}, key={}, status={}",
                         route.table_id, route.shard_id, key,
                         status.to_string());
         return status;
     }
 
-    rpc::StorageService::Stub* stub = make_stub(endpoint);
+    rpc::StorageService::Stub* stub = make_stub(leader.endpoint);
     RETURN_IF_NULLPTR(stub, "storage stub is nullptr")
 
     rpc::GetRequest request;
-    request.set_table_id(route.table_id);
-    request.set_shard_id(route.shard_id);
+    encode_pb_replica_id(leader.replica_id, *request.mutable_replica_id());
     request.set_key(key);
 
     rpc::GetResponse response;
@@ -217,9 +222,11 @@ Status StorageClient::get(const RouteInfo& route, const Key& key,
     if (!grpc_status.ok()) {
         ADVISKV_SDK_LOG(LogLevel::ERROR,
                         "Storage Get RPC failed, endpoint={}:{}, table_id={}, "
-                        "shard_id={}, key={}, grpc_code={}, msg={}",
-                        endpoint.ip, endpoint.port, route.table_id,
-                        route.shard_id, key,
+                        "shard_id={}, replica_id={}, key={}, grpc_code={}, "
+                        "msg={}",
+                        leader.endpoint.ip, leader.endpoint.port,
+                        route.table_id, route.shard_id,
+                        leader.replica_id.to_string(), key,
                         static_cast<int>(grpc_status.error_code()),
                         grpc_status.error_message());
         return Status::ERROR(
@@ -232,10 +239,12 @@ Status StorageClient::get(const RouteInfo& route, const Key& key,
         status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "Storage Get returns non-ok, endpoint={}:{}, "
-                        "table_id={}, shard_id={}, key={}, code={}, msg={}",
-                        endpoint.ip, endpoint.port, route.table_id,
-                        route.shard_id, key, response.base_rsp().code(),
-                        response.base_rsp().msg());
+                        "table_id={}, shard_id={}, replica_id={}, key={}, "
+                        "code={}, msg={}",
+                        leader.endpoint.ip, leader.endpoint.port,
+                        route.table_id, route.shard_id,
+                        leader.replica_id.to_string(), key,
+                        response.base_rsp().code(), response.base_rsp().msg());
         return status;
     }
 

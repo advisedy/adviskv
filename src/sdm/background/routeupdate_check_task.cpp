@@ -134,8 +134,8 @@ Status RouteUpdateCheckTask::check_shard_route(const Table& table,
 
     std::sort(follower_entries.begin(), follower_entries.end(),
               [](const RouteEntry& lhs, const RouteEntry& rhs) {
-                  return lhs.replica_id.replica_index <
-                         rhs.replica_id.replica_index;
+                  return lhs.replica_id.replica_seq <
+                         rhs.replica_id.replica_seq;
               });
 
     ShardRoute route;

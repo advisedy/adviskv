@@ -8,11 +8,11 @@ namespace adviskv {
 inline void encode_pb_replica_id(const ReplicaID& in, pb::ReplicaID& out) {
     out.set_table_id(in.table_id);
     out.set_shard_index(in.shard_index);
-    out.set_replica_index(in.replica_index);
+    out.set_replica_seq(in.replica_seq);
 }
 
 inline ReplicaID decode_pb_replica_id(const pb::ReplicaID& in) {
-    return ReplicaID{in.table_id(), in.shard_index(), in.replica_index()};
+    return ReplicaID{in.table_id(), in.shard_index(), in.replica_seq()};
 }
 
 inline void encode_pb_endpoint(const Endpoint& in, pb::Endpoint& out) {

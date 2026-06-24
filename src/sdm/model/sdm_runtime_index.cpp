@@ -224,7 +224,7 @@ Status SdmRuntimeIndex::del_shard_route_entry(const ShardID& shard_id,
     func::ad_erase_if(replicas, [&replica_id](const RouteEntry& entry) {
         return entry.replica_id.table_id == replica_id.table_id &&
                entry.replica_id.shard_index == replica_id.shard_index &&
-               entry.replica_id.replica_index == replica_id.replica_index;
+               entry.replica_id.replica_seq == replica_id.replica_seq;
     });
     return Status::OK();
 }

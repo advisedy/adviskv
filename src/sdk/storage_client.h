@@ -23,7 +23,8 @@ class StorageClient {
     Status del(const RouteInfo& route, const Key& key) const;
 
    private:
-    static Status select_endpoint(const RouteInfo& route, Endpoint* endpoint);
+    static Status select_leader_replica(const RouteInfo& route,
+                                        RouteReplica* replica);
     rpc::StorageService::Stub* make_stub(const Endpoint& endpoint) const;
 
     KVClientConf conf_;

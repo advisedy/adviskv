@@ -7,6 +7,7 @@
 
 #include "common.pb.h"
 #include "common/define.h"
+#include "common/proto/replica_id_proto.h"
 #include "common/proto/raft_role_proto.h"
 #include "common/proto/storage_replica_status_proto.h"
 #include "common/status.h"
@@ -41,20 +42,10 @@ Status StorageClient::create_replica(const CreateReplicaParam& param) {
     }
 
     rpc::CreateReplicaRequest request;
-    request.set_table_id(param.replica_id.table_id);
-    request.set_shard_index(param.replica_id.shard_index);
-    request.set_replica_index(param.replica_id.replica_index);
+    encode_pb_replica_id(param.replica_id, *request.mutable_replica_id());
     request.set_engine_type(static_cast<int32_t>(param.engine_type));
     for (const PeerMember& member : param.members) {
-        auto* pb_member = request.add_members();
-        pb_member->set_node_id(member.node_id);
-        auto* rid = pb_member->mutable_replica_id();
-        rid->set_table_id(member.replica_id.table_id);
-        rid->set_shard_index(member.replica_id.shard_index);
-        rid->set_replica_index(member.replica_id.replica_index);
-        auto* ep = pb_member->mutable_endpoint();
-        ep->set_ip(member.endpoint.ip);
-        ep->set_port(member.endpoint.port);
+        encode_pb_peer_member(member, *request.add_initial_members());
     }
 
     rpc::CreateReplicaResponse response;
@@ -83,9 +74,7 @@ Status StorageClient::delete_replica(const DeleteReplicaParam& param) {
     }
 
     rpc::DeleteReplicaRequest request;
-    request.set_table_id(param.replica_id.table_id);
-    request.set_shard_id(param.replica_id.shard_index);
-    request.set_replica_id(param.replica_id.replica_index);
+    encode_pb_replica_id(param.replica_id, *request.mutable_replica_id());
 
     rpc::DeleteReplicaResponse response;
     grpc::ClientContext context;
@@ -114,9 +103,7 @@ Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
     }
 
     rpc::GetReplicaInfoRequest request;
-    request.set_table_id(param.replica_id.table_id);
-    request.set_shard_id(param.replica_id.shard_index);
-    request.set_replica_id(param.replica_id.replica_index);
+    encode_pb_replica_id(param.replica_id, *request.mutable_replica_id());
 
     rpc::GetReplicaInfoResponse response;
     grpc::ClientContext context;
@@ -135,7 +122,7 @@ Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
     const auto& replica = response.replica();
 
     out.replica_id =
-        ReplicaID{replica.table_id(), replica.shard_id(), replica.replica_id()};
+        ReplicaID{replica.table_id(), replica.shard_id(), replica.replica_seq()};
     ReplicaRole role = ReplicaRole::FOLLOWER;
     RETURN_IF_INVALID_CONDITION(decode_pb_raft_role(replica.role(), role),
                                 "replica role is not valid")
