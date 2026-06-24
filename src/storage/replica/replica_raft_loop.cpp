@@ -20,8 +20,8 @@ namespace adviskv::storage {
 
 namespace {
 
-constexpr size_t kMaxProposalBatchSize = 64;
-constexpr auto kProposalBatchCoalesceDelay = std::chrono::microseconds(500);
+constexpr size_t kMaxProposalBatchSize = 256;
+constexpr auto kProposalBatchCoalesceDelay = Milliseconds(200);
 constexpr size_t kReplicaRaftRpcWorkerCount = 4;
 
 }  // namespace
