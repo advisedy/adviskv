@@ -66,6 +66,12 @@ class SdmMetaCodec {
             UNUSED(shard_id);
             encode_shard_route(route, buf);
         }
+
+        buf.write(static_cast<int32>(record.replica_groups.size()));
+        for (const auto& [shard_id, group] : record.replica_groups) {
+            UNUSED(shard_id);
+            encode_replica_group(group, buf);
+        }
     }
 
     static Status decode_record(DecodeBuffer& buf, ObjectType& record) {
@@ -112,6 +118,15 @@ class SdmMetaCodec {
             ShardRoute route;
             RETURN_IF_INVALID_STATUS(decode_shard_route(buf, route))
             record.shard_routes[route.shard_id] = std::move(route);
+        }
+
+        int32 group_count{0};
+        RETURN_IF_INVALID_READ(buf, group_count)
+        if (group_count < 0) return Status::ERROR("invalid group_count");
+        for (int32 i = 0; i < group_count; ++i) {
+            ReplicaGroup group;
+            RETURN_IF_INVALID_STATUS(decode_replica_group(buf, group))
+            record.replica_groups[group.shard_id] = std::move(group);
         }
 
         return Status::OK();
@@ -325,6 +340,53 @@ class SdmMetaCodec {
         }
         return Status::OK();
     }
+
+    static void encode_replica_group(const ReplicaGroup& group,
+                                     EncodeBuffer& buf) {
+        encode_shard_id(group.shard_id, buf);
+        buf.write(static_cast<int32>(group.phase));
+        buf.write(group.target_replica_count);
+        buf.write<int32>(static_cast<int32>(group.desired_members.size()));
+        for (const ReplicaID& replica_id : group.desired_members) {
+            encode_replica_id(replica_id, buf);
+        }
+        buf.write(group.seq_allocator.current_id());
+    }
+
+    static Status decode_replica_group(DecodeBuffer& buf,
+                                       ReplicaGroup& group) {
+        group = {};
+        RETURN_IF_INVALID_STATUS(decode_shard_id(buf, group.shard_id))
+        int32 phase{0};
+        RETURN_IF_INVALID_READ(buf, phase)
+        switch (static_cast<ReplicaGroupPhase>(phase)) {
+            case ReplicaGroupPhase::TABLE_RECONCILE:
+            case ReplicaGroupPhase::REPLICA_GROUP_RECONCILE:
+                group.phase = static_cast<ReplicaGroupPhase>(phase);
+                break;
+            default:
+                return Status::ERROR("invalid replica group phase");
+        }
+        RETURN_IF_INVALID_READ(buf, group.target_replica_count)
+
+        int32 member_count{0};
+        RETURN_IF_INVALID_READ(buf, member_count)
+        if (member_count < 0) {
+            return Status::ERROR("invalid replica group member_count");
+        }
+        group.desired_members.clear();
+        group.desired_members.reserve(static_cast<size_t>(member_count));
+        for (int32 i = 0; i < member_count; ++i) {
+            ReplicaID replica_id;
+            RETURN_IF_INVALID_STATUS(decode_replica_id(buf, replica_id))
+            group.desired_members.push_back(replica_id);
+        }
+
+        ReplicaSeq next_replica_seq{0};
+        RETURN_IF_INVALID_READ(buf, next_replica_seq)
+        group.seq_allocator = IDAllocator<ReplicaSeq>(next_replica_seq);
+        return Status::OK();
+    }
 };
 
 }  // namespace
@@ -393,9 +455,10 @@ Status SdmPersistEngine::save_sdm_meta(const SdmPersistedRecord& record) {
 
     LOG_DEBUG(
         "sdm persist engine save_meta success, tables={}, nodes={}, "
-        "replicas={}, pools={}, routes={}",
+        "replicas={}, pools={}, routes={}, replica_groups={}",
         record.tables.size(), record.nodes.size(), record.replicas.size(),
-        record.resource_pools.size(), record.shard_routes.size());
+        record.resource_pools.size(), record.shard_routes.size(),
+        record.replica_groups.size());
     return Status::OK();
 }
 
@@ -423,9 +486,10 @@ Status SdmPersistEngine::load_sdm_meta(SdmPersistedRecord& record) {
 
     LOG_DEBUG(
         "sdm persist engine load_meta success, tables={}, nodes={}, "
-        "replicas={}, pools={}, routes={}",
+        "replicas={}, pools={}, routes={}, replica_groups={}",
         record.tables.size(), record.nodes.size(), record.replicas.size(),
-        record.resource_pools.size(), record.shard_routes.size());
+        record.resource_pools.size(), record.shard_routes.size(),
+        record.replica_groups.size());
     return Status::OK();
 }
 

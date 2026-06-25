@@ -59,6 +59,8 @@ class SdmStore {
                                  std::vector<Replica>& out) const;
     Status delete_table(TableID table_id);
 
+
+
    private:
     Status rebuild_runtime_index();
     Status maybe_repair_runtime_index(Status index_status);

@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -39,6 +40,8 @@ struct TableNameKeyHash {
 class SdmRuntimeIndex {
    public:
     virtual ~SdmRuntimeIndex() = default;
+
+    virtual std::unique_ptr<SdmRuntimeIndex> clone() const;
 
     virtual Status on_table_upsert(const Table* old_table,
                                    const Table& new_table);

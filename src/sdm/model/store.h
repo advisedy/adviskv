@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "common/define.h"
+#include "common/id_allocator.h"
 #include "common/optional.h"
 #include "common/type.h"
 #include "sdm/model/table_status.h"
@@ -68,14 +69,20 @@ struct Replica {
 
 using ReplicaPtr = std::shared_ptr<Replica>;
 
-struct ShardReplicaGroup {
-    ShardID shard_id;
-    int32_t target_replica_count{0};
-    std::vector<ReplicaID> desired_members;
-    ReplicaSeq next_replica_seq{0};
+enum class ReplicaGroupPhase : int32 {
+    TABLE_RECONCILE = 1,
+    REPLICA_GROUP_RECONCILE = 2,
 };
 
-using ShardReplicaGroupPtr = std::shared_ptr<ShardReplicaGroup>;
+struct ReplicaGroup {
+    ShardID shard_id;
+    ReplicaGroupPhase phase{ReplicaGroupPhase::TABLE_RECONCILE};
+    int32_t target_replica_count{0};
+    std::vector<ReplicaID> desired_members;
+    IDAllocator<ReplicaSeq> seq_allocator;
+};
+
+using ReplicaGroupPtr = std::shared_ptr<ReplicaGroup>;
 
 //////////////////////////////
 // node
@@ -161,7 +168,7 @@ using ShardRoutePtr = std::shared_ptr<ShardRoute>;
 
 using ResourcePoolOr = Optional<ResourcePool>;
 using ReplicaOr = Optional<Replica>;
-using ShardReplicaGroupOr = Optional<ShardReplicaGroup>;
+using ReplicaGroupOr = Optional<ReplicaGroup>;
 using NodeOr = Optional<Node>;
 using TableOr = Optional<Table>;
 using ShardRouteOr = Optional<ShardRoute>;

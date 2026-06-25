@@ -40,6 +40,10 @@ enum class SdmMetaStoreType {
           const)                                                              \
     X(Status delete_shard_route(const ShardID& shard_id))                     \
     X(Status list_shard_routes(std::vector<ShardRoutePtr>& out) const)        \
+    X(Status upsert_replica_group(const ReplicaGroup& group))                 \
+    X(Status delete_replica_group(const ShardID& shard_id))                   \
+    X(Status get_replica_group(const ShardID& shard_id,                       \
+                               ReplicaGroupPtr& out) const)                  \
     X(std::unique_ptr<ISdmMetaStore> clone_memory_snapshot()                  \
           const) /*内存数据快照，用来做恢复处理的*/
 
@@ -64,6 +68,7 @@ class MemoryMetaStore : public ISdmMetaStore {
     std::unordered_map<ReplicaID, ReplicaPtr, ReplicaIDHash> replicas_;
     std::unordered_map<std::string, ResourcePoolPtr> resource_pools_;
     std::unordered_map<ShardID, ShardRoutePtr, ShardIDHash> shard_routes_;
+    std::unordered_map<ShardID, ReplicaGroup, ShardIDHash> replica_groups_;
 };
 
 class PersistentMetaStore : public ISdmMetaStore {

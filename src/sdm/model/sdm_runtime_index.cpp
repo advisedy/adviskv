@@ -1,6 +1,7 @@
 #include "sdm/model/sdm_runtime_index.h"
 
 #include <algorithm>
+#include <memory>
 
 #include "common/define.h"
 #include "common/func.h"
@@ -227,6 +228,10 @@ Status SdmRuntimeIndex::del_shard_route_entry(const ShardID& shard_id,
                entry.replica_id.replica_seq == replica_id.replica_seq;
     });
     return Status::OK();
+}
+
+std::unique_ptr<SdmRuntimeIndex> SdmRuntimeIndex::clone() const {
+    return std::make_unique<SdmRuntimeIndex>(*this);
 }
 
 }  // namespace adviskv::sdm

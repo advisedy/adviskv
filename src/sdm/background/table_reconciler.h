@@ -32,6 +32,7 @@ class TableReconciler : public BackgroundTask {
 
     // 确保storage那边的replicas都是搞好了
     Status ensure_storage_replicas(Table& table);
+    Status ensure_replica_groups(Table& table);
     Status refresh_storage_replica_info(Table& table);
     Status ensure_routes_absent(const Table& table);
     Status ensure_storage_replicas_absent(const Table& table);

@@ -333,8 +333,33 @@ Status TableReconciler::ensure_replica_metadata(Table& table) {
     return Status::OK();
 }
 
+Status TableReconciler::ensure_replica_groups(Table& table) {
+    for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count;
+         shard_index++) {
+        ShardID shard_id{table.table_id, shard_index};
+        // 搞出来ReplicaGroup，持久化，
+
+        
+
+        ReplicaGroup group;
+        //if(store_->get_replica_group(shard_id,group).fail()){
+
+        //}
+        group.target_replica_count = table.spec.replica_count;
+        group.shard_id = shard_id;
+    }
+    return Status::OK();
+}
+
 Status TableReconciler::ensure_storage_replicas(Table& table) {
     RETURN_IF_NULLPTR(storage_client_, "storage_client is nullptr")
+
+    // for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count;
+    //      shard_index++) {
+    //     ShardID shard_id{table.table_id, shard_index};
+    //     // 搞出来ReplicaGroup，持久化，
+    // }
+
     for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count;
          ++shard_index) {
         std::vector<Replica> replicas;

@@ -8,6 +8,7 @@
 #include <unordered_set>
 #include "common.pb.h"
 #include "common/define.h"
+#include "common/id_allocator.h"
 #include "common/type.h"
 #include "common/status.h"
 #include "meta/catalog/meta_types.h"
@@ -16,24 +17,6 @@
 namespace adviskv::meta {
 
 class IMetaPersistEngine;
-
-template<typename T>
-class IDAllocator{
-    static_assert(std::is_integral_v<T>, "IDAllocator<T> requires integral T");
-public:
-
-    T get_next_id(){
-        return cur_id_++;
-    }
-
-    IDAllocator() = default;
-    explicit IDAllocator(T start_id):cur_id_(start_id){}
-
-    T current_id() const { return cur_id_; }
-
-private:
-    T cur_id_{0};
-};
 
 class CatalogManager{
 
