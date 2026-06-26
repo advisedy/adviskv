@@ -179,7 +179,7 @@ struct AlterTablePolicy {
         if (is_sdm_phase(sdm_status, SdmTablePhase::FAILED)) {
             return ReconcileAction::FAILED;
         }
-        if (is_sdm_phase(sdm_status, SdmTablePhase::CREATING)) {
+        if (is_sdm_phase(sdm_status, SdmTablePhase::RESIZING)) {
             return ReconcileAction::WAIT;
         }
         return ReconcileAction::RESUBMIT;

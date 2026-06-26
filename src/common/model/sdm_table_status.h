@@ -15,6 +15,7 @@ enum class SdmTablePhase : int32_t {
     DELETING = 3,
     DELETED = 4,
     FAILED = 5,
+    RESIZING = 6,
 };
 
 }  // namespace adviskv

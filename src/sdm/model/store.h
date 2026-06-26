@@ -71,16 +71,14 @@ struct Replica {
 
 using ReplicaPtr = std::shared_ptr<Replica>;
 
-// TODO111
-enum class ReplicaGroupPhase : int32 {
-    TABLE_RECONCILE = 1,
-    REPLICA_GROUP_RECONCILE = 2,
+enum class ReplicaGroupMode : int32 {
+    BOOTSTRAP = 1,     
+    RAFT_RECONFIG = 2, 
 };
 
 struct ReplicaGroup {
     ShardID shard_id;
-    ReplicaGroupPhase phase{
-        ReplicaGroupPhase::TABLE_RECONCILE};  // ReplicaGroupService
+    ReplicaGroupMode mode{ReplicaGroupMode::BOOTSTRAP};  // ReplicaGroupService
     int32_t target_replica_count{0};          // ReplicaGroupService
     std::vector<ReplicaID> desired_members;   // ReplicaGroupService
     IDAllocator<ReplicaSeq> seq_allocator;    // ReplicaGroupService

@@ -132,8 +132,9 @@ Status RouteService::check_shard_route(const Table& table,
             current_table->state.desired != TableDesired::PRESENT ||
             // 从 table
             // 是creating的时候就得开始准备了，创建table的要求是route都ok了
-            (current_table->state.phase != TablePhase::CREATING &&
-             current_table->state.phase != TablePhase::READY) ||
+              (current_table->state.phase != TablePhase::CREATING &&
+               current_table->state.phase != TablePhase::RESIZING &&
+               current_table->state.phase != TablePhase::READY) ||
             shard_index < 0 || shard_index >= current_table->spec.shard_count) {
             RETURN_IF_INVALID_STATUS(txn.delete_shard_route(shard_id))
             return Status::OK();

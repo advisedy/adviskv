@@ -333,7 +333,7 @@ class SdmMetaCodec {
     static void encode_replica_group(const ReplicaGroup& group,
                                      EncodeBuffer& buf) {
         encode_shard_id(group.shard_id, buf);
-        buf.write(static_cast<int32>(group.phase));
+        buf.write(static_cast<int32>(group.mode));
         buf.write(group.target_replica_count);
         buf.write<int32>(static_cast<int32>(group.desired_members.size()));
         for (const ReplicaID& replica_id : group.desired_members) {
@@ -345,15 +345,15 @@ class SdmMetaCodec {
     static Status decode_replica_group(DecodeBuffer& buf, ReplicaGroup& group) {
         group = {};
         RETURN_IF_INVALID_STATUS(decode_shard_id(buf, group.shard_id))
-        int32 phase{0};
-        RETURN_IF_INVALID_READ(buf, phase)
-        switch (static_cast<ReplicaGroupPhase>(phase)) {
-            case ReplicaGroupPhase::TABLE_RECONCILE:
-            case ReplicaGroupPhase::REPLICA_GROUP_RECONCILE:
-                group.phase = static_cast<ReplicaGroupPhase>(phase);
+        int32 mode{0};
+        RETURN_IF_INVALID_READ(buf, mode)
+        switch (to<ReplicaGroupMode>(mode)) {
+            case ReplicaGroupMode::BOOTSTRAP:
+            case ReplicaGroupMode::RAFT_RECONFIG:
+                group.mode = to<ReplicaGroupMode>(mode);
                 break;
             default:
-                return Status::ERROR("invalid replica group phase");
+                return Status::ERROR("invalid replica group mode");
         }
         RETURN_IF_INVALID_READ(buf, group.target_replica_count)
 

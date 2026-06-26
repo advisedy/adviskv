@@ -122,13 +122,23 @@ int main(int argc, char* argv[]) {
         agent_conf.manager_port = CONF_GET_INT("manager_port");
         agent_conf.heartbeat_interval_ms =
             CONF_GET_INT("heartbeat_interval_ms");
+        agent_conf.replica_ops.list_replicas = [replica_manager_ptr]() {
+            return replica_manager_ptr->get_replicas();
+        };
+        agent_conf.replica_ops.create_replica =
+            [replica_manager_ptr](const ReplicaInitParam& param) {
+                return replica_manager_ptr->add_replica(param);
+            };
+        agent_conf.replica_ops.delete_replica =
+            [replica_manager_ptr](const adviskv::ReplicaID& replica_id) {
+                return replica_manager_ptr->delete_replica(replica_id);
+            };
 
         auto service =
             std::make_unique<StorageServiceImpl>(std::move(replica_manager));
 
         NodeAgent node_agent;
-        adviskv::Status agent_status =
-            node_agent.init(agent_conf, replica_manager_ptr);
+        adviskv::Status agent_status = node_agent.init(agent_conf);
         if (agent_status.ok()) {
             agent_status = node_agent.start();
         }

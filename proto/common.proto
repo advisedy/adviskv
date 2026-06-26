@@ -39,6 +39,7 @@ enum SdmTablePhase {
   SDM_TABLE_PHASE_DELETING = 3;
   SDM_TABLE_PHASE_DELETED = 4;
   SDM_TABLE_PHASE_FAILED = 5;
+  SDM_TABLE_PHASE_RESIZING = 6;
 }
 
 enum NodeStatus {

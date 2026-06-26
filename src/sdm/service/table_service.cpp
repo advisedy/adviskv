@@ -115,7 +115,7 @@ Status TableService::drop_table(const DropTableParam& param) {
         return txn.put_table(*existing);
     });
 
-    // TODO
+    // TODO111
     if (status.ok()) {
         LOG_INFO("[TableService] the table ok");
     } else {
@@ -163,9 +163,7 @@ Status TableService::alter_table_replica_count(
 
         existing->spec.replica_count = param.replica_count;
         existing->spec.operation_id = param.operation_id;
-        existing->state.phase = TablePhase::
-            CREATING;  // TODO111
-                       // 感觉好像这里应该新开一个状态才对，不能跟CREATING混在一起
+        existing->state.phase = TablePhase::RESIZING;
         existing->state.last_error_msg.clear();
         existing->state.update_ts = func::get_current_ts_ms();
         return txn.put_table(*existing);
@@ -230,9 +228,21 @@ Status TableService::reconcile_table(Table& table) {
         table.spec.table_name, table.table_id, (int32)table.state.desired,
         (int32)table.state.phase);
 
-    switch (table.state.desired) {
-        case TableDesired::PRESENT: {
-            Status status = finalize_present_table(table);
+    if (table.state.desired == TableDesired::ABSENT) {
+        Status status = finalize_absent_table(table);
+        if (status.ok() and table.state.phase == TablePhase::DELETED) {
+            LOG_INFO(
+                "[TableService] table delete finish, phase is deleted. "
+                "table_id:{}, "
+                "name:{}",
+                table.table_id, table.spec.table_name);
+        }
+        return status;
+    }
+    // else if (table.state.desired == TableDesired::PRESENT)
+    switch (table.state.phase) {
+        case TablePhase::CREATING: {
+            Status status = finalize_creating_table(table);
             if (status.ok() and table.state.phase == TablePhase::READY) {
                 LOG_INFO(
                     "[TableService] table create finish, phase is ready. "
@@ -241,24 +251,36 @@ Status TableService::reconcile_table(Table& table) {
             }
             return status;
         }
-        case TableDesired::ABSENT: {
-            Status status = finalize_absent_table(table);
-            if (status.ok() and table.state.phase == TablePhase::DELETED) {
+        case TablePhase::RESIZING: {
+            Status status = finalize_resizing_table(table);
+            if (status.ok() and table.state.phase == TablePhase::READY) {
                 LOG_INFO(
-                    "[TableService] table delete finish, phase is deleted. "
-                    "table_id:{}, "
-                    "name:{}",
+                    "[TableService] table resize finish, phase is ready. "
+                    "table_id:{}, name:{}",
                     table.table_id, table.spec.table_name);
             }
             return status;
         }
+        default:
+            LOG_WARN(
+                "[TableService] unexpected PRESENT table phase, "
+                "table_id={}, phase={}",
+                table.table_id, to<int32>(table.state.phase));
+            return Status::OK();
     }
-    LOG_WARN("[TableService] unknown table desired state");
-    return mark_table_error(table,
-                            Status::ERROR("unknown table desired state"));
+    return Status::OK();
 }
 
-Status TableService::finalize_present_table(Table& table) {
+Status TableService::finalize_creating_table(Table& table) {
+    return finalize_table_until_ready(table, TablePhase::CREATING);
+}
+
+Status TableService::finalize_resizing_table(Table& table) {
+    return finalize_table_until_ready(table, TablePhase::RESIZING);
+}
+
+Status TableService::finalize_table_until_ready(Table& table,
+                                                TablePhase waiting_phase) {
     return store_->write_with([&](SdmStoreTxn& txn) -> Status {
         TableOr current;
         RETURN_IF_INVALID_STATUS(txn.get_table(table.table_id, current));
@@ -266,9 +288,14 @@ Status TableService::finalize_present_table(Table& table) {
             return Status::OK();
         }
 
+        // TODO111 这个desired真有的存在的必要吗？
         if (current->state.desired != TableDesired::PRESENT ||
             current->state.phase == TablePhase::FAILED ||
             current->state.phase == TablePhase::READY) {
+            table = *current;
+            return Status::OK();
+        }
+        if (current->state.phase != waiting_phase) {
             table = *current;
             return Status::OK();
         }
@@ -284,7 +311,7 @@ Status TableService::finalize_present_table(Table& table) {
         }
 
         current->state.phase =
-            all_shards_ready_flag ? TablePhase::READY : TablePhase::CREATING;
+            all_shards_ready_flag ? TablePhase::READY : waiting_phase;
         if (all_shards_ready_flag) {
             current->state.last_error_msg.clear();
         }
@@ -350,12 +377,11 @@ Status TableService::ensure_all_shards_ok(SdmStoreTxn& txn, Table& table,
         {
             ReplicaGroupOr group;
             RETURN_IF_INVALID_STATUS(txn.get_replica_group(shard_id, group))
-            bool group_phase_ok =
+            bool group_mode_ok =
                 !group.is_empty() &&
-                (group->phase == ReplicaGroupPhase::TABLE_RECONCILE ||
-                 group->phase ==
-                     ReplicaGroupPhase::REPLICA_GROUP_RECONCILE);  // TODO
-            if (!group_phase_ok ||
+                (group->mode == ReplicaGroupMode::BOOTSTRAP ||
+                 group->mode == ReplicaGroupMode::RAFT_RECONFIG);
+            if (!group_mode_ok ||
                 group->target_replica_count != table.spec.replica_count ||
                 to<int32>(group->desired_members.size()) !=
                     table.spec.replica_count) {
@@ -371,10 +397,10 @@ Status TableService::ensure_all_shards_ok(SdmStoreTxn& txn, Table& table,
                         "[TableService] shard not ready: replica group "
                         "mismatch, "
                         "table_id={}, shard_index={}, group_empty=false, "
-                        "phase={}, "
+                        "mode={}, "
                         "target_replica_count={}, desired_members={}, "
                         "expected_replica_count={}",
-                        table.table_id, shard_index, to<int32>(group->phase),
+                        table.table_id, shard_index, to<int32>(group->mode),
                         group->target_replica_count,
                         to<int32>(group->desired_members.size()),
                         table.spec.replica_count);
@@ -492,21 +518,6 @@ Status TableService::ensure_all_shards_deleted(SdmStoreTxn& txn, Table& table,
         }
     }
     return Status::OK();
-}
-
-Status TableService::mark_table_error(Table& table, const Status& status) {
-    return store_->write_with([&](SdmStoreTxn& txn) -> Status {
-        TableOr current;
-        RETURN_IF_INVALID_STATUS(txn.get_table(table.table_id, current))
-        if (current.is_empty()) {
-            return Status::OK();
-        }
-        current->state.phase = TablePhase::FAILED;
-        current->state.last_error_msg = status.to_string();
-        current->state.update_ts = func::get_current_ts_ms();
-        table = *current;
-        return txn.put_table(*current);
-    });
 }
 
 }  // namespace adviskv::sdm

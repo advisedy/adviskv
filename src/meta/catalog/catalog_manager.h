@@ -57,8 +57,7 @@ class CatalogManager {
     Status lookup_table_by_id(TableID table_id, TableMeta* table_meta);
 
     Status put_table_meta(TableMeta table_meta);
-
-    // TODO111 put_db_meta
+    Status put_db_meta(DBMeta db_meta);
 
     IMetaPersistEngine* persist_engine_;
 

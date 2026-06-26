@@ -60,6 +60,9 @@ inline bool decode_pb_sdm_table_phase(pb::SdmTablePhase in,
         case pb::SdmTablePhase::SDM_TABLE_PHASE_FAILED:
             out = SdmTablePhase::FAILED;
             return true;
+        case pb::SdmTablePhase::SDM_TABLE_PHASE_RESIZING:
+            out = SdmTablePhase::RESIZING;
+            return true;
         case pb::SdmTablePhase::SDM_TABLE_PHASE_UNSPECIFIED:
         default:
             return false;
@@ -83,6 +86,9 @@ inline bool encode_pb_sdm_table_phase(SdmTablePhase in,
             return true;
         case SdmTablePhase::FAILED:
             out = pb::SdmTablePhase::SDM_TABLE_PHASE_FAILED;
+            return true;
+        case SdmTablePhase::RESIZING:
+            out = pb::SdmTablePhase::SDM_TABLE_PHASE_RESIZING;
             return true;
         default:
             return false;

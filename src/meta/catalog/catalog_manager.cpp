@@ -133,15 +133,7 @@ Status CatalogManager::create_db(const CreateDBParam& param,
     new_db_meta.db_id = db_id_allocator_.get_next_id();
     new_db_meta.db_name = db_name;
     new_db_meta.zone = param.zone;
-    db_meta_map_[new_db_meta.db_id] = new_db_meta;
-    db_name2db_id_[db_name] = new_db_meta.db_id;
-
-    status = persist_meta();
-    if (status.fail()) {
-        db_meta_map_.erase(new_db_meta.db_id);
-        db_name2db_id_.erase(db_name);
-        return status;
-    }
+    RETURN_IF_INVALID_STATUS(put_db_meta(new_db_meta))
 
     if (db_meta != nullptr) {
         *db_meta = new_db_meta;
@@ -543,6 +535,41 @@ Status CatalogManager::put_table_meta(TableMeta new_table_meta) {
         table_id2table_meta_.erase(new_table_meta.table_id);
         remove_table_name_index(new_table_meta);
         db_id2table_ids_[db_meta.db_id].erase(new_table_meta.table_id);
+        return persist_status;
+    }
+    return Status::OK();
+}
+
+Status CatalogManager::put_db_meta(DBMeta new_db_meta) {
+    auto old_it = db_meta_map_.find(new_db_meta.db_id);
+    bool had_old = old_it != db_meta_map_.end();
+    DBMeta old_db_meta;
+    if (had_old) {
+        old_db_meta = old_it->second;
+    }
+
+    auto name_it = db_name2db_id_.find(new_db_meta.db_name);
+    if (name_it != db_name2db_id_.end() &&
+        name_it->second != new_db_meta.db_id) {
+        return Status{StatusCode::ALREADY_EXIST,
+                      fmt::format("db_name:{} already exists",
+                                  new_db_meta.db_name)};
+    }
+
+    if (had_old && old_db_meta.db_name != new_db_meta.db_name) {
+        db_name2db_id_.erase(old_db_meta.db_name);
+    }
+    db_meta_map_[new_db_meta.db_id] = new_db_meta;
+    db_name2db_id_[new_db_meta.db_name] = new_db_meta.db_id;
+
+    Status persist_status = persist_meta();
+    if (persist_status.fail()) {
+        db_meta_map_.erase(new_db_meta.db_id);
+        db_name2db_id_.erase(new_db_meta.db_name);
+        if (had_old) {
+            db_meta_map_[old_db_meta.db_id] = old_db_meta;
+            db_name2db_id_[old_db_meta.db_name] = old_db_meta.db_id;
+        }
         return persist_status;
     }
     return Status::OK();

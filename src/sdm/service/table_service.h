@@ -26,15 +26,15 @@ class TableService {
    private:
     Status reconcile_table(Table& table);
 
-    Status finalize_present_table(Table& table);
+    Status finalize_creating_table(Table& table);
+    Status finalize_resizing_table(Table& table);
+    Status finalize_table_until_ready(Table& table, TablePhase waiting_phase);
     Status ensure_all_shards_ok(SdmStoreTxn& txn, Table& table,
                                 bool& all_shards_ok);
 
     Status finalize_absent_table(Table& table);
     Status ensure_all_shards_deleted(SdmStoreTxn& txn, Table& table,
                                      bool& all_shards_deleted);
-
-    Status mark_table_error(Table& table, const Status& status);
 
     SdmStore* store_{nullptr};
 };
