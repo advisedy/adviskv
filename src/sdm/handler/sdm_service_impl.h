@@ -9,18 +9,13 @@
 #include "common/status.h"
 #include "common/type.h"
 #include "sdm.grpc.pb.h"
-#include "sdm/service/heartbeat_service.h"
-#include "sdm/service/node_service.h"
-#include "sdm/service/route_service.h"
-#include "sdm/service/table_service.h"
 namespace adviskv::sdm {
+
+class ServiceManager;
 
 class SdmServiceImpl final : public rpc::ShardingManagerService::Service {
    public:
-    explicit SdmServiceImpl(TableService* table_service,
-                            NodeService* node_service,
-                            HeartBeatService* heartbeat_service,
-                            RouteService* route_service);
+    explicit SdmServiceImpl(ServiceManager* service_manager);
 
 #define DEFINE_METHOD(method_name)                                 \
     grpc::Status method_name(grpc::ServerContext* context,         \
@@ -37,10 +32,7 @@ class SdmServiceImpl final : public rpc::ShardingManagerService::Service {
 #undef DEFINE_METHOD
 
    private:
-    TableService* table_service_{nullptr};
-    NodeService* node_service_{nullptr};
-    HeartBeatService* heartbeat_service_{nullptr};
-    RouteService* route_service_{nullptr};
+    ServiceManager* service_manager_{nullptr};
 };
 
 }  // namespace adviskv::sdm

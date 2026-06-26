@@ -14,17 +14,12 @@
 #include "common/log.h"
 #include "common/path_util.h"
 #include "common/type.h"
-#include "sdm/background/heartbeat_check_task.h"
-#include "sdm/background/routeupdate_check_task.h"
-#include "sdm/background/table_reconciler.h"
+#include "sdm/background/background.h"
 #include "sdm/client/storage_client.h"
 #include "sdm/handler/sdm_service_impl.h"
 #include "sdm/model/sdm_store.h"
 #include "sdm/selector/node_selector/node_selector.h"
-#include "sdm/service/heartbeat_service.h"
-#include "sdm/service/node_service.h"
-#include "sdm/service/route_service.h"
-#include "sdm/service/table_service.h"
+#include "sdm/service/service_manager.h"
 
 namespace {
 void print_usage() { fmt::print(stderr, "usage: sdm --conf=<conf.yaml>\n"); }
@@ -107,25 +102,24 @@ int main(int argc, char* argv[]) {
         auto node_selector =
             std::make_unique<DefaultNodeSelector>(sdm_store.get());
 
-        auto table_service = std::make_unique<TableService>(sdm_store.get());
-        auto node_service = std::make_unique<NodeService>(sdm_store.get());
-        auto heartbeat_service =
-            std::make_unique<HeartBeatService>(sdm_store.get());
-        auto route_service = std::make_unique<RouteService>(sdm_store.get());
+        auto service_manager = std::make_unique<ServiceManager>(
+            sdm_store.get(), node_selector.get());
 
-        auto sdm_service = std::make_unique<SdmServiceImpl>(
-            table_service.get(), node_service.get(), heartbeat_service.get(),
-            route_service.get());
+        auto sdm_service =
+            std::make_unique<SdmServiceImpl>(service_manager.get());
 
-        auto table_reconciler = std::make_unique<TableReconciler>(
-            sdm_store.get(), storage_client.get(), node_selector.get());
+        auto table_reconcile_task =
+            std::make_unique<TableReconcileTask>(service_manager.get());
+        auto replica_group_reconcile_task =
+            std::make_unique<ReplicaGroupReconcileTask>(service_manager.get());
         auto route_task =
-            std::make_unique<RouteUpdateCheckTask>(sdm_store.get());
+            std::make_unique<RouteUpdateCheckTask>(service_manager.get());
         auto heartbeat_check_task =
-            std::make_unique<HeartBeatCheckTask>(sdm_store.get());
-        table_reconciler->start(adviskv::Milliseconds(3000));
-        route_task->start(adviskv::Milliseconds(3000));
+            std::make_unique<HeartBeatCheckTask>(service_manager.get());
         heartbeat_check_task->start(adviskv::Milliseconds(3000));
+        table_reconcile_task->start(adviskv::Milliseconds(3000));
+        replica_group_reconcile_task->start(adviskv::Milliseconds(3000));
+        route_task->start(adviskv::Milliseconds(3000));
 
         grpc::ServerBuilder builder;
         builder.AddListeningPort(fmt::format("{}:{}", listen_host, listen_port),
@@ -135,10 +129,11 @@ int main(int argc, char* argv[]) {
         std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
         LOG_INFO("SDM server listening on {}:{}", listen_host, listen_port);
 
-        server->Wait();
-        heartbeat_check_task->stop();
-        table_reconciler->stop();
         route_task->stop();
+        replica_group_reconcile_task->stop();
+        table_reconcile_task->stop();
+        heartbeat_check_task->stop();
+        server->Wait();
     }
 
     return 0;

@@ -52,13 +52,16 @@ struct ReplicaSpec {
 // 这边replca的status，RPC发送的时候会有，我们在心跳服务里面处理了， 这边就
 // 不会再存起来了。
 struct ReplicaState {
-    ReplicaDesired desired{ReplicaDesired::PRESENT};
-    ReplicaPhase phase{ReplicaPhase::PENDING};
-    ReplicaRole observed_raft_role{ReplicaRole::FOLLOWER};
-    Endpoint observed_endpoint;
-    std::string last_error_msg;
-    int64 update_ts{0};
-    Term term{0};
+    ReplicaDesired desired{ReplicaDesired::PRESENT};  // ReplicaGroupService
+    ReplicaPhase phase{ReplicaPhase::PENDING};        // ReplicaGroupService
+    ReplicaRole observed_raft_role{ReplicaRole::FOLLOWER};  // NodeService
+    Endpoint observed_endpoint;                             // NodeService
+    StorageReplicaStatus observed_storage_status{
+        // NodeService
+        StorageReplicaStatus::INITIALIZING};
+    std::string last_error_msg;  // ReplicaGroupService
+    int64 update_ts{0};          // evertone
+    Term term{0};                // NodeService
 };
 
 struct Replica {
@@ -76,10 +79,11 @@ enum class ReplicaGroupPhase : int32 {
 
 struct ReplicaGroup {
     ShardID shard_id;
-    ReplicaGroupPhase phase{ReplicaGroupPhase::TABLE_RECONCILE};
-    int32_t target_replica_count{0};
-    std::vector<ReplicaID> desired_members;
-    IDAllocator<ReplicaSeq> seq_allocator;
+    ReplicaGroupPhase phase{
+        ReplicaGroupPhase::TABLE_RECONCILE};  // ReplicaGroupService
+    int32_t target_replica_count{0};          // ReplicaGroupService
+    std::vector<ReplicaID> desired_members;   // ReplicaGroupService
+    IDAllocator<ReplicaSeq> seq_allocator;    // ReplicaGroupService
 };
 
 using ReplicaGroupPtr = std::shared_ptr<ReplicaGroup>;
@@ -89,8 +93,8 @@ using ReplicaGroupPtr = std::shared_ptr<ReplicaGroup>;
 
 enum class NodeStatus {
     ONLINE = 1,
-    OFFLINE = 2,
-    SUSPECT = 3,
+    SUSPECT = 2,
+    OFFLINE = 3,
 };
 // 注意，node那边只会发送过来心跳时间， 状态是sdm决定的
 struct NodeSpec {

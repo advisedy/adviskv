@@ -5,6 +5,8 @@ set(SDM_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/service/node_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/service/table_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/service/heartbeat_service.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/service/replica_group_service.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/service/service_manager.cpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/selector/node_selector/node_selector.cpp
 
@@ -14,9 +16,7 @@ set(SDM_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/model/sdm_runtime_index.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/persist/sdm_persist_engine.cpp
 
-    ${CMAKE_CURRENT_SOURCE_DIR}/background/heartbeat_check_task.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/background/routeupdate_check_task.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/background/table_reconciler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/background/background.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/reconcile/replica_phase_projection.cpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/client/storage_client.cpp

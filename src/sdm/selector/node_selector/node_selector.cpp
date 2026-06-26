@@ -79,28 +79,28 @@ Status DefaultNodeSelector::select_table_nodes(
     RETURN_IF_INVALID_PARAM(param)
     RETURN_IF_NULLPTR(store_, "store should not nullptr")
 
-    std::vector<Node> candidate_nodes;
-    Status status = store_->list_nodes_by_resource_pool(param.resource_pool,
-                                                        candidate_nodes);
-    RETURN_IF_INVALID_STATUS(status)
-
-    func::ad_erase_if(candidate_nodes,
-                      [](const Node& node) { return !is_valid_node(node); });
-
-
-    if ((int32)(candidate_nodes.size()) < param.replica_count) {
-        return Status::RESOURCE_EXHAUSTED(fmt::format(
-            "not enough nodes in resource_pool '{}', need {} but have {}",
-            param.resource_pool, param.replica_count, candidate_nodes.size()));
-    }
-
     std::vector<NodeView> views;
-    {  // 获得node的视图
+    std::vector<Node> candidate_nodes;
+    Status status = store_->read_with([&](const SdmStoreTxn& txn) -> Status {
+        RETURN_IF_INVALID_STATUS(txn.list_nodes_by_resource_pool(
+            param.resource_pool, candidate_nodes))
+
+        func::ad_erase_if(candidate_nodes, [](const Node& node) {
+            return !is_valid_node(node);
+        });
+
+        if ((int32)(candidate_nodes.size()) < param.replica_count) {
+            return Status::RESOURCE_EXHAUSTED(fmt::format(
+                "not enough nodes in resource_pool '{}', need {} but have {}",
+                param.resource_pool, param.replica_count,
+                candidate_nodes.size()));
+        }
+
         views.reserve(candidate_nodes.size());
         for (const Node& node : candidate_nodes) {
             std::vector<Replica> replicas;
-            status = store_->list_replicas_by_node(node.id, replicas);
-            RETURN_IF_INVALID_STATUS(status)
+            RETURN_IF_INVALID_STATUS(
+                txn.list_replicas_by_node(node.id, replicas))
 
             NodeView view;
             view.node = node;
@@ -111,7 +111,9 @@ Status DefaultNodeSelector::select_table_nodes(
             view.dc = node.spec.dc;
             views.push_back(std::move(view));
         }
-    }
+        return Status::OK();
+    });
+    RETURN_IF_INVALID_STATUS(status)
 
     res.shards.clear();
     res.shards.reserve(param.shard_count);

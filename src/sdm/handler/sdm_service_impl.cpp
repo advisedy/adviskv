@@ -17,17 +17,12 @@
 #include "sdm.pb.h"
 #include "sdm/model/service_param.h"
 #include "sdm/model/store.h"
+#include "sdm/service/service_manager.h"
 
 namespace adviskv::sdm {
 
-SdmServiceImpl::SdmServiceImpl(TableService* table_service,
-                               NodeService* node_service,
-                               HeartBeatService* heartbeat_service,
-                               RouteService* route_service)
-    : table_service_(table_service),
-      node_service_(node_service),
-      heartbeat_service_(heartbeat_service),
-      route_service_(route_service) {}
+SdmServiceImpl::SdmServiceImpl(ServiceManager* service_manager)
+    : service_manager_(service_manager) {}
 
 grpc::Status SdmServiceImpl::PlaceTable(grpc::ServerContext* context,
                                         const rpc::PlaceTableRequest* request,
@@ -44,7 +39,7 @@ grpc::Status SdmServiceImpl::PlaceTable(grpc::ServerContext* context,
     param.resource_pool = request->resource_pool();
     param.operation_id = request->operation_id();
 
-    Status status = table_service_->place_table(param);
+    Status status = service_manager_->place_table(param);
 
     fill_base_rsp(response, status);
 
@@ -58,7 +53,7 @@ grpc::Status SdmServiceImpl::DropTable(grpc::ServerContext* context,
     DropTableParam param;
     param.table_id = request->table_id();
     param.operation_id = request->operation_id();
-    Status status = table_service_->drop_table(param);
+    Status status = service_manager_->drop_table(param);
     fill_base_rsp(response, status);
     return grpc::Status::OK;
 }
@@ -73,7 +68,7 @@ grpc::Status SdmServiceImpl::GetTableStatus(
     param.table_id = request->table_id();
 
     Table table;
-    Status status = table_service_->get_table_status(param, &table);
+    Status status = service_manager_->get_table_status(param, &table);
     fill_base_rsp(response, status);
     if (status.ok()) {
         response->set_table_id(table.table_id);
@@ -124,7 +119,7 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
     param.replica_list = std::move(replica_info_list);
     param.last_heartbeat_ts = func::get_current_ts_ms();
 
-    Status status = heartbeat_service_->heartbeat(param);
+    Status status = service_manager_->heartbeat(param);
 
     fill_base_rsp(response, status);
     return grpc::Status::OK;
@@ -141,7 +136,7 @@ grpc::Status SdmServiceImpl::RegisterNode(
     param.resource_pool = request->resource_pool();
     param.dc = request->dc();
     param.last_heartbeat_ts = func::get_current_ts_ms();
-    Status status = node_service_->register_node(param);
+    Status status = service_manager_->register_node(param);
     fill_base_rsp(response, status);
     return grpc::Status::OK;
 }
@@ -155,7 +150,7 @@ grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context,
     param.table_name = request->table_name();
     param.key = request->key();
     ShardRoute route;
-    Status status = route_service_->get_route(param, &route);
+    Status status = service_manager_->get_route(param, &route);
     fill_base_rsp(response, status);
     if (status.fail()) {
         LOG_WARN("GetRoute failed, db={}, table={}, key={}, status={}",
