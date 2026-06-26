@@ -43,11 +43,12 @@ class SdmMetaCodec {
             encode_table(table, buf);
         }
 
-        buf.write(static_cast<int32>(record.nodes.size()));
-        for (const auto& [node_id, node] : record.nodes) {
-            UNUSED(node_id);
-            encode_node(node, buf);
-        }
+        // buf.write(static_cast<int32>(record.nodes.size()));
+        // for (const auto& [node_id, node] : record.nodes) {
+        //     UNUSED(node_id);
+        //     encode_node(node, buf);
+        // }
+
 
         buf.write(static_cast<int32>(record.replicas.size()));
         for (const auto& [replica_id, replica] : record.replicas) {
@@ -84,14 +85,13 @@ class SdmMetaCodec {
             record.tables[table.table_id] = std::move(table);
         }
 
-        int32 node_count{0};
-        RETURN_IF_INVALID_READ(buf, node_count)
-        if (node_count < 0) return Status::ERROR("invalid node_count");
-        for (int32 i = 0; i < node_count; ++i) {
-            Node node;
-            RETURN_IF_INVALID_STATUS(decode_node(buf, node))
-            record.nodes[node.id] = std::move(node);
-        }
+        // int32 node_count{0};
+        // RETURN_IF_INVALID_READ(buf, node_count)
+        // if (node_count < 0) return Status::ERROR("invalid node_count");
+        // for (int32 i = 0; i < node_count; ++i) {
+        //     Node node;
+        //     RETURN_IF_INVALID_STATUS(decode_node(buf, node))
+        // }
 
         int32 replica_count{0};
         RETURN_IF_INVALID_READ(buf, replica_count)
@@ -206,33 +206,22 @@ class SdmMetaCodec {
         return Status::OK();
     }
 
-    static void encode_node(const Node& node, EncodeBuffer& buf) {
-        buf.write(node.id);
-        buf.write(node.meta.resource_pool);
-        buf.write(node.meta.dc);
-        buf.write(static_cast<int32>(node.state.status));
-        encode_endpoint(node.state.endpoint, buf);
-        buf.write(node.state.last_heartbeat_ts);
-        buf.write(node.derived.owned_replica_count);
-        buf.write(node.derived.owned_leader_count);
-    }
+    // static Status decode_node(DecodeBuffer& buf, Node& node) {
+    //     node = {};
+    //     RETURN_IF_INVALID_READ(buf, node.id)
+    //     RETURN_IF_INVALID_READ(buf, node.meta.resource_pool)
+    //     RETURN_IF_INVALID_READ(buf, node.meta.dc)
 
-    static Status decode_node(DecodeBuffer& buf, Node& node) {
-        node = {};
-        RETURN_IF_INVALID_READ(buf, node.id)
-        RETURN_IF_INVALID_READ(buf, node.meta.resource_pool)
-        RETURN_IF_INVALID_READ(buf, node.meta.dc)
+    //     int32 status{0};
+    //     RETURN_IF_INVALID_READ(buf, status)
+    //     node.state.status = static_cast<NodeStatus>(status);
 
-        int32 status{0};
-        RETURN_IF_INVALID_READ(buf, status)
-        node.state.status = static_cast<NodeStatus>(status);
-
-        RETURN_IF_INVALID_STATUS(decode_endpoint(buf, node.state.endpoint))
-        RETURN_IF_INVALID_READ(buf, node.state.last_heartbeat_ts)
-        RETURN_IF_INVALID_READ(buf, node.derived.owned_replica_count)
-        RETURN_IF_INVALID_READ(buf, node.derived.owned_leader_count)
-        return Status::OK();
-    }
+    //     RETURN_IF_INVALID_STATUS(decode_endpoint(buf, node.state.endpoint))
+    //     RETURN_IF_INVALID_READ(buf, node.state.last_heartbeat_ts)
+    //     RETURN_IF_INVALID_READ(buf, node.derived.owned_replica_count)
+    //     RETURN_IF_INVALID_READ(buf, node.derived.owned_leader_count)
+    //     return Status::OK();
+    // }
 
     static void encode_replica(const Replica& replica, EncodeBuffer& buf) {
         encode_replica_id(replica.replica_id, buf);
@@ -353,8 +342,7 @@ class SdmMetaCodec {
         buf.write(group.seq_allocator.current_id());
     }
 
-    static Status decode_replica_group(DecodeBuffer& buf,
-                                       ReplicaGroup& group) {
+    static Status decode_replica_group(DecodeBuffer& buf, ReplicaGroup& group) {
         group = {};
         RETURN_IF_INVALID_STATUS(decode_shard_id(buf, group.shard_id))
         int32 phase{0};
@@ -454,9 +442,9 @@ Status SdmPersistEngine::save_sdm_meta(const SdmPersistedRecord& record) {
     }
 
     LOG_DEBUG(
-        "sdm persist engine save_meta success, tables={}, nodes={}, "
-        "replicas={}, pools={}, routes={}, replica_groups={}",
-        record.tables.size(), record.nodes.size(), record.replicas.size(),
+        "sdm persist engine save_meta success, tables={}, replicas={}, "
+        "pools={}, routes={}, replica_groups={}",
+        record.tables.size(), record.replicas.size(),
         record.resource_pools.size(), record.shard_routes.size(),
         record.replica_groups.size());
     return Status::OK();
@@ -485,9 +473,9 @@ Status SdmPersistEngine::load_sdm_meta(SdmPersistedRecord& record) {
     RETURN_IF_INVALID_STATUS(status)
 
     LOG_DEBUG(
-        "sdm persist engine load_meta success, tables={}, nodes={}, "
-        "replicas={}, pools={}, routes={}, replica_groups={}",
-        record.tables.size(), record.nodes.size(), record.replicas.size(),
+        "sdm persist engine load_meta success, tables={}, replicas={}, "
+        "pools={}, routes={}, replica_groups={}",
+        record.tables.size(), record.replicas.size(),
         record.resource_pools.size(), record.shard_routes.size(),
         record.replica_groups.size());
     return Status::OK();

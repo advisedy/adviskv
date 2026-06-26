@@ -11,7 +11,6 @@ namespace adviskv::sdm {
 
 struct SdmPersistedRecord {
     std::unordered_map<TableID, Table> tables;
-    std::unordered_map<NodeID, Node> nodes;
     std::unordered_map<ReplicaID, Replica, ReplicaIDHash> replicas;
     std::unordered_map<std::string, ResourcePool> resource_pools;
     std::unordered_map<ShardID, ShardRoute, ShardIDHash> shard_routes; // TODO 回头把这个持久化删了

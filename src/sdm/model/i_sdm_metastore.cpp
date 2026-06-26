@@ -287,10 +287,6 @@ Status PersistentMetaStore::load() {
         UNUSED(_);
         memory_store_->upsert_table(table);
     }
-    for (const auto& [_, node] : record.nodes) {
-        UNUSED(_);
-        memory_store_->upsert_node(node);
-    }
     for (const auto& [_, replica] : record.replicas) {
         UNUSED(_);
         memory_store_->upsert_replica(replica);
@@ -319,12 +315,6 @@ Status PersistentMetaStore::build_record_from_store(
     RETURN_IF_INVALID_STATUS(store.list_tables(tables))
     for (const auto& t : tables) {
         record.tables[t->table_id] = *t;
-    }
-
-    std::vector<NodePtr> nodes;
-    RETURN_IF_INVALID_STATUS(store.list_nodes(nodes))
-    for (const auto& n : nodes) {
-        record.nodes[n->id] = *n;
     }
 
     std::vector<ReplicaPtr> replicas;
@@ -405,8 +395,7 @@ Status PersistentMetaStore::list_tables(std::vector<TablePtr>& out) const {
 }
 
 Status PersistentMetaStore::upsert_node(const Node& node) {
-    return commit_with(
-        [&node](ISdmMetaStore& store) { return store.upsert_node(node); });
+    return memory_store_->upsert_node(node);
 }
 
 Status PersistentMetaStore::get_node(const NodeID& node_id,

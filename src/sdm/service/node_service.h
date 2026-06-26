@@ -29,10 +29,10 @@ class NodeService {
     void set_start_ts_ms_for_test(int64_t ts) { start_ts_ms_ = ts; }
 
    private:
-    Status update_node_heartbeat(SdmStoreTxn& txn,
-                                 const HeartBeatParam& param);
+    Status update_node_heartbeat(SdmStoreTxn& txn, const HeartBeatParam& param);
     Status apply_reported_replicas(SdmStoreTxn& txn,
                                    const HeartBeatParam& param);
+    Status mark_deleted_replicas(SdmStoreTxn& txn, const HeartBeatParam& param);
     Status check_and_modify_node(SdmStoreTxn& txn, Node& node);
     Status mark_node_offline(SdmStoreTxn& txn, Node& node);
     Status mark_node_suspect(SdmStoreTxn& txn, Node& node);

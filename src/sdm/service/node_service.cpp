@@ -1,6 +1,7 @@
 #include "sdm/service/node_service.h"
 
 #include <algorithm>
+#include <unordered_set>
 
 #include "common/define.h"
 #include "common/func.h"
@@ -39,7 +40,9 @@ Status NodeService::heartbeat(const HeartBeatParam& param) {
 
     Status status = store_->write_with([&](SdmStoreTxn& txn) -> Status {
         RETURN_IF_INVALID_STATUS(update_node_heartbeat(txn, param))
-        return apply_reported_replicas(txn, param);
+        RETURN_IF_INVALID_STATUS(apply_reported_replicas(txn, param))
+        RETURN_IF_INVALID_STATUS(mark_deleted_replicas(txn, param))
+        return Status::OK();
     });
     RETURN_IF_INVALID_STATUS(status)
 
@@ -88,6 +91,45 @@ Status NodeService::apply_reported_replicas(SdmStoreTxn& txn,
                       replica->replica_id.to_string());
         }
     }
+    return Status::OK();
+}
+
+// 收到某个node的heartbeat后，如果这个node被分配的replica处于ABSENT+
+// DELETING，但这次heartbeat没上报它，就说明storage已经删掉了，把它标成
+// DELETED
+Status NodeService::mark_deleted_replicas(SdmStoreTxn& txn,
+                                          const HeartBeatParam& param) {
+    std::unordered_set<ReplicaID, ReplicaIDHash> reported_replica_ids;
+    reported_replica_ids.reserve(param.replica_list.size());
+    for (const HeartBeatReplicaInfo& info : param.replica_list) {
+        reported_replica_ids.insert(info.replica_id);
+    }
+
+    std::vector<Replica> node_replicas;
+    RETURN_IF_INVALID_STATUS(
+        txn.list_replicas_by_node(param.node_id, node_replicas))
+
+    for (Replica& replica : node_replicas) {
+        if (reported_replica_ids.find(replica.replica_id) !=
+            reported_replica_ids.end()) {
+            continue;
+        }
+        if (replica.state.desired != ReplicaDesired::ABSENT ||
+            replica.state.phase != ReplicaPhase::DELETING) {
+            continue;
+        }
+
+        LOG_INFO(
+            "[NodeService] mark_deleted_replicas: node_id:{}, mark replica is "
+            "deleted, replica_id:{}",
+            param.node_id, replica.replica_id.to_string());
+
+        replica.state.phase = ReplicaPhase::DELETED;
+        replica.state.last_error_msg.clear();
+        replica.state.update_ts = func::get_current_ts_ms();
+        RETURN_IF_INVALID_STATUS(txn.put_replica(replica))
+    }
+
     return Status::OK();
 }
 
