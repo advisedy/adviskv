@@ -15,6 +15,8 @@ class DdlService {
     // 负责一些会涉及到catalog和sdm的操作
     Status create_table(const CreateTableParam& param, TableMeta* table_meta);
     Status drop_table(const DropTableParam& param, TableMeta* table_meta);
+    Status alter_table_replica_count(const AlterTableReplicaCountParam& param,
+                                     TableMeta* table_meta);
     Status create_db(const CreateDBParam& param, DBMeta* db_meta);
     Status drop_db(const DropDBParam& param, DBMeta* db_meta);
     Status get_table(const GetTableParam& param, TableMeta* table_meta);

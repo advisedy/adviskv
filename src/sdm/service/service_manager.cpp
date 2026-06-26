@@ -18,6 +18,11 @@ Status ServiceManager::drop_table(const DropTableParam& param) {
     return table_service_.drop_table(param);
 }
 
+Status ServiceManager::alter_table_replica_count(
+    const AlterReplicaCountParam& param) {
+    return table_service_.alter_table_replica_count(param);
+}
+
 Status ServiceManager::get_table_status(const GetTableStatusParam& param,
                                         Table* out_table) {
     return table_service_.get_table_status(param, out_table);

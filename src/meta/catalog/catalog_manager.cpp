@@ -111,7 +111,7 @@ Status CatalogManager::add_table_name_index(const TableMeta& table_meta) {
     return Status::OK();
 }
 
-Status CatalogManager::create_db(const CreateDBMetaParam& param,
+Status CatalogManager::create_db(const CreateDBParam& param,
                                  DBMeta* db_meta) {
     const std::string& db_name = param.db_name;
 
@@ -150,7 +150,7 @@ Status CatalogManager::create_db(const CreateDBMetaParam& param,
     return Status::OK();
 }
 
-Status CatalogManager::create_table(const CreateTableMetaParam& param,
+Status CatalogManager::create_table(const CreateTableParam& param,
                                     TableMeta* table_meta) {
     const std::string& db_name = param.db_name;
     const std::string& table_name = param.table_name;
@@ -192,24 +192,82 @@ Status CatalogManager::create_table(const CreateTableMetaParam& param,
         fmt::format("create-table-{}-{}", new_table_meta.table_id,
                     new_table_meta.create_ts);
 
-    table_id2table_meta_[new_table_meta.table_id] = new_table_meta;
-
-    RETURN_IF_INVALID_STATUS(add_table_name_index(new_table_meta))
-
-    db_id2table_ids_[db_meta.db_id].insert(new_table_meta.table_id);
-
-    Status persist_status = persist_meta();
-    if (persist_status.fail()) {
-        table_id2table_meta_.erase(new_table_meta.table_id);
-        remove_table_name_index(new_table_meta);
-        db_id2table_ids_[db_meta.db_id].erase(new_table_meta.table_id);
-        return persist_status;
-    }
+    RETURN_IF_INVALID_STATUS(put_table_meta(new_table_meta))
 
     if (table_meta != nullptr) {
         *table_meta = new_table_meta;
     }
 
+    return Status::OK();
+}
+
+Status CatalogManager::alter_table_replica_count(
+    const AlterTableReplicaCountParam& param, TableMeta* table_meta) {
+    RETURN_IF_INVALID_PARAM(param)
+
+    std::unique_lock lock(mutex_);
+
+    TableMeta old_table_meta;
+    RETURN_IF_INVALID_STATUS(
+        lookup_table_by_name(param.db_name, param.table_name, &old_table_meta));
+
+    if (old_table_meta.state == TableState::DELETED) {
+        return Status{StatusCode::TABLE_NOT_FOUND,
+                      fmt::format("table_name:{}.{} does not exist",
+                                  param.db_name, param.table_name)};
+    }
+
+    if (old_table_meta.state == TableState::ALTERING) {
+        if (old_table_meta.replica_count != param.replica_count) {
+            LOG_WARN(
+                "[CatalogManager] alter_table_replica_count: table_id:{} is "
+                "already altering replica_count to {}",
+                old_table_meta.table_id, old_table_meta.replica_count);
+
+            return Status::INVALID_ARGUMENT(fmt::format(
+                "table_id:{} is already altering replica_count to {}",
+                old_table_meta.table_id, old_table_meta.replica_count));
+        }
+        if (table_meta != nullptr) {
+            *table_meta = old_table_meta;
+        }
+        return Status::OK();
+    }
+
+    if (old_table_meta.state != TableState::NORMAL) {
+        LOG_WARN(
+            "[CatalogManager] alter_table_replica_count: table_id:{} state is "
+            "not NORMAL for alter replica_count",
+            old_table_meta.table_id);
+        return Status::INVALID_ARGUMENT(fmt::format(
+            "table_id:{} state is not NORMAL for alter replica_count",
+            old_table_meta.table_id));
+    }
+
+    if (old_table_meta.replica_count == param.replica_count) {
+        LOG_INFO(
+            "[CatalogManager] alter_table_replica_count: table_id:{} old "
+            "replica count = new replica count");
+        if (table_meta != nullptr) {
+            *table_meta = old_table_meta;
+        }
+        return Status::OK();
+    }
+
+    TableMeta new_table_meta = old_table_meta;
+    new_table_meta.replica_count = param.replica_count;
+    new_table_meta.state = TableState::ALTERING;
+    new_table_meta.operation_id =
+        fmt::format("alter-table-replica-count-{}-{}", new_table_meta.table_id,
+                    func::get_current_ts_ms());
+    new_table_meta.last_error_msg.clear();
+    new_table_meta.update_ts = func::get_current_ts_ms();
+
+    RETURN_IF_INVALID_STATUS(put_table_meta(new_table_meta))
+
+    if (table_meta != nullptr) {
+        *table_meta = new_table_meta;
+    }
     return Status::OK();
 }
 
@@ -462,6 +520,31 @@ Status CatalogManager::lookup_table_by_name(const std::string& db_name,
             fmt::format("internal error: table_id:{} should exist", table_id)};
     }
     *table_meta = table_meta_it->second;
+    return Status::OK();
+}
+
+Status CatalogManager::put_table_meta(TableMeta new_table_meta) {
+    DBMeta db_meta;
+    if (auto it = db_meta_map_.find(new_table_meta.db_id);
+        it != db_meta_map_.end()) {
+        db_meta = it->second;
+    } else {
+        return Status::ERROR("");
+    }
+
+    table_id2table_meta_[new_table_meta.table_id] = new_table_meta;
+
+    RETURN_IF_INVALID_STATUS(add_table_name_index(new_table_meta))
+
+    db_id2table_ids_[db_meta.db_id].insert(new_table_meta.table_id);
+
+    Status persist_status = persist_meta();
+    if (persist_status.fail()) {
+        table_id2table_meta_.erase(new_table_meta.table_id);
+        remove_table_name_index(new_table_meta);
+        db_id2table_ids_[db_meta.db_id].erase(new_table_meta.table_id);
+        return persist_status;
+    }
     return Status::OK();
 }
 

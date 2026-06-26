@@ -50,6 +50,35 @@ enum class ReconcileAction {
     ERROR,
 };
 
+/*
+Policy:
+
+前情提要：
+
+在TableDdlReconciler::run里面添加新加入的Policy
+
+source_state: （由于catalog_manager.list_tables_by_state(Policy::source_state,
+&tables)，要利用这个函数去遍历所有处于我们这个状态的Table，所以需要添加source_state）
+
+done_state: 规定好这个Policy认定的可以结束的状态
+
+source_name
+resubmit_action
+done_action
+failed_msg
+以上这几个是给日志打印用的，随便填就好
+
+static Status resubmit(ISdmClient& client, const TableMeta& table):
+    代表你需要再一次用SdmClient执行一遍你的policy要代表的操作，
+    例如AddTablePolicy的是client.call_place_table(table)
+
+tatic ReconcileAction decide(const Status& status,const SdmTableStatus&
+sdm_status)函数:
+    前面的status代表的是get_table_status返回的status，后者是这次函数返回的 const
+    SdmTableStatus&
+    sdm_status，也就是说要实现一个decide函数，针对status和sdm_status进行判断，该进入ReconcileAction的哪一个环节
+*/
+
 struct AddTablePolicy {
     static constexpr const char* source_name = "ADDING";
     static constexpr TableState source_state = TableState::ADDING;
@@ -120,6 +149,43 @@ struct DropTablePolicy {
     }
 };
 
+struct AlterTablePolicy {
+    static constexpr const char* source_name = "ALTERING";
+    static constexpr TableState source_state = TableState::ALTERING;
+
+    static constexpr TableState done_state = TableState::NORMAL;
+
+    static constexpr const char* resubmit_action =
+        "resubmit SDM alter table replica_count";
+    static constexpr const char* done_action =
+        "mark table NORMAL, finish change replica count";
+    static constexpr const char* failed_msg = "SDM table alter failed";
+
+    static Status resubmit(ISdmClient& client, const TableMeta& table) {
+        return client.call_alter_table_replica_count(table);
+    }
+
+    static ReconcileAction decide(const Status& status,
+                                  const SdmTableStatus& sdm_status) {
+        if (status.code() == StatusCode::TABLE_NOT_FOUND) {
+            return ReconcileAction::FAILED;
+        }
+        if (status.fail()) {
+            return ReconcileAction::ERROR;
+        }
+        if (is_sdm_phase(sdm_status, SdmTablePhase::READY)) {
+            return ReconcileAction::DONE;
+        }
+        if (is_sdm_phase(sdm_status, SdmTablePhase::FAILED)) {
+            return ReconcileAction::FAILED;
+        }
+        if (is_sdm_phase(sdm_status, SdmTablePhase::CREATING)) {
+            return ReconcileAction::WAIT;
+        }
+        return ReconcileAction::RESUBMIT;
+    }
+};
+
 template <typename Policy>
 void resubmit_or_record_error(CatalogManager& catalog_manager,
                               ISdmClient& sdm_client, const TableMeta& table) {
@@ -160,6 +226,12 @@ void reconcile_table(CatalogManager& catalog_manager, ISdmClient& sdm_client,
                                         "get SDM table status");
             return;
         case ReconcileAction::WAIT:
+            LOG_DEBUG(
+                "{} table waits SDM convergence, table_id={}, "
+                "operation_id={}, sdm_phase={}, sdm_last_error={}",
+                Policy::source_name, table.table_id, table.operation_id,
+                static_cast<int32>(sdm_status.phase),
+                sdm_status.last_error_msg);
             return;
     }
 }
@@ -192,6 +264,7 @@ void TableDdlReconciler::run() {
     }
 
     reconcile_tables<AddTablePolicy>(*catalog_manager_, *sdm_client_);
+    reconcile_tables<AlterTablePolicy>(*catalog_manager_, *sdm_client_);
     reconcile_tables<DropTablePolicy>(*catalog_manager_, *sdm_client_);
 }
 

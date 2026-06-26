@@ -13,25 +13,23 @@ class MetaServiceImpl final : public rpc::MetaService::Service {
     MetaServiceImpl() = default;
     explicit MetaServiceImpl(DdlService* ddl_service);
 
-    grpc::Status CreateTable(grpc::ServerContext* context,
-                             const rpc::CreateTableRequest* request,
-                             rpc::CreateTableResponse* response) override;
+#define DEFINE_METHOD(method_name)                                 \
+    grpc::Status method_name(grpc::ServerContext* context,         \
+                             const rpc::method_name##Request* req, \
+                             rpc::method_name##Response* response) override;
+
+    DEFINE_METHOD(CreateTable)
+    // DEFINE_METHOD(DropTable)
+    DEFINE_METHOD(AlterTableReplicaCount)
+    DEFINE_METHOD(CreateDB)
+    DEFINE_METHOD(DropDB)
+    DEFINE_METHOD(GetTable)
 
     grpc::Status DropTable(grpc::ServerContext* context,
                            const rpc::MetaDropTableRequest* request,
                            rpc::MetaDropTableResponse* response) override;
 
-    grpc::Status CreateDB(grpc::ServerContext* context,
-                          const rpc::CreateDBRequest* request,
-                          rpc::CreateDBResponse* response) override;
-
-    grpc::Status DropDB(grpc::ServerContext* context,
-                        const rpc::DropDBRequest* request,
-                        rpc::DropDBResponse* response) override;
-
-    grpc::Status GetTable(grpc::ServerContext* context,
-                          const rpc::GetTableRequest* request,
-                          rpc::GetTableResponse* response) override;
+#undef DEFINE_METHOD
 
    private:
     DdlService* ddl_service_;

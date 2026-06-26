@@ -9,8 +9,9 @@
 #include "common/define.h"
 #include "common/func.h"
 #include "common/log.h"
-#include "common/proto/replica_id_proto.h"
+#include "common/proto/expected_replica_proto.h"
 #include "common/proto/raft_role_proto.h"
+#include "common/proto/replica_id_proto.h"
 #include "common/proto/sdm_table_status_proto.h"
 #include "common/proto/storage_replica_status_proto.h"
 #include "common/status.h"
@@ -54,6 +55,22 @@ grpc::Status SdmServiceImpl::DropTable(grpc::ServerContext* context,
     param.table_id = request->table_id();
     param.operation_id = request->operation_id();
     Status status = service_manager_->drop_table(param);
+    fill_base_rsp(response, status);
+    return grpc::Status::OK;
+}
+
+grpc::Status SdmServiceImpl::AlterTableReplicaCount(
+    grpc::ServerContext* context,
+    const rpc::SdmAlterTableReplicaCountRequest* request,
+    rpc::SdmAlterTableReplicaCountResponse* response) {
+    UNUSED(context);
+
+    AlterReplicaCountParam param;
+    param.table_id = request->table_id();
+    param.replica_count = request->replica_count();
+    param.operation_id = request->operation_id();
+
+    Status status = service_manager_->alter_table_replica_count(param);
     fill_base_rsp(response, status);
     return grpc::Status::OK;
 }
@@ -119,7 +136,20 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
     param.replica_list = std::move(replica_info_list);
     param.last_heartbeat_ts = func::get_current_ts_ms();
 
-    Status status = service_manager_->heartbeat(param);
+    HeartBeatResult result;
+    Status status = service_manager_->heartbeat(param, &result);
+    if (status.ok()) {
+        for (const ExpectedReplica& instruction : result.instructions) {
+            auto* expect = response->add_expects();
+            expect->set_type(to_pb_expected_replica_type(instruction.type));
+            encode_pb_replica_id(instruction.replica_id,
+                                 *expect->mutable_replica_id());
+            expect->set_engine_type(to<int8>(instruction.engine_type));
+            for (const PeerMember& member : instruction.initial_members) {
+                encode_pb_peer_member(member, *expect->add_initial_members());
+            }
+        }
+    }
 
     fill_base_rsp(response, status);
     return grpc::Status::OK;

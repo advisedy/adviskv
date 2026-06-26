@@ -23,6 +23,7 @@ enum MetaTableState {
   META_TABLE_STATE_FAILED = 3;
   META_TABLE_STATE_DROPPING = 4;
   META_TABLE_STATE_DELETED = 5;
+  META_TABLE_STATE_ALTERING = 6;
 }
 
 enum SdmTableDesired {

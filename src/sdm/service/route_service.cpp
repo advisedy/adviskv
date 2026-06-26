@@ -148,10 +148,18 @@ Status RouteService::check_shard_route(const Table& table,
         for (const Replica& replica : replicas) {
             if (replica.state.desired != ReplicaDesired::PRESENT ||
                 replica.state.phase != ReplicaPhase::READY) {
+                LOG_INFO(
+                    "[RouteService] replica_id:{} not present or phase is not "
+                    "ready, replica.state.desired:{}, replica.state.phase:{}",
+                    to<int8>(replica.state.desired),
+                    to<int8>(replica.state.phase));
                 continue;
             }
 
             if (replica.spec.assign_node_id.empty()) {
+                LOG_INFO(
+                    "[RouteService] replica_id:{} "
+                    "replica.spec.assign_node_id.empty()");
                 continue;
             }
 
@@ -160,6 +168,11 @@ Status RouteService::check_shard_route(const Table& table,
                 txn.get_node(replica.spec.assign_node_id, node))
 
             if (node.is_empty() || node->state.status != NodeStatus::ONLINE) {
+                LOG_INFO(
+                    "[RouteService] replica_id:{}, node.is_empty() or "
+                    "node->state.status != NodeStatus::ONLINE, "
+                    "node.is_empty():{}, node->state.status:{}",
+                    node.is_empty(), to<int8>(node->state.status));
                 continue;
             }
 

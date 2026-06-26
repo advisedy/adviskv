@@ -61,6 +61,22 @@ struct DropTableParam {
     }
 };
 
+struct AlterReplicaCountParam {
+    TableID table_id{-1};
+    int32_t replica_count{0};
+    std::string operation_id;
+
+    Status validate() const {
+        RETURN_IF_INVALID_CONDITION(
+            table_id >= 0, "table_id should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(replica_count > 0,
+                                    "replica_count should be greater than 0")
+        RETURN_IF_INVALID_CONDITION(!operation_id.empty(),
+                                    "operation_id should not empty")
+        return Status::OK();
+    }
+};
+
 struct PlaceNodesParam {
     std::string resource_pool;
     int32_t shard_count{0};
@@ -228,7 +244,7 @@ struct HeartBeatParam {
     }
 };
 
-enum class ExpectedReplicaType {
+enum class ExpectedReplicaType : int8 {
     PRESENT = 1,
     ABSENT = 2,
     ADD_MEMBER = 3,

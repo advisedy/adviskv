@@ -31,6 +31,11 @@ class SdmServiceImpl final : public rpc::ShardingManagerService::Service {
 
 #undef DEFINE_METHOD
 
+    grpc::Status AlterTableReplicaCount(
+        grpc::ServerContext* context,
+        const rpc::SdmAlterTableReplicaCountRequest* request,
+        rpc::SdmAlterTableReplicaCountResponse* response) override;
+
    private:
     ServiceManager* service_manager_{nullptr};
 };

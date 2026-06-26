@@ -60,6 +60,16 @@ message DropTableResponse{
     adviskv.pb.BaseRsp base_rsp = 1;
 }
 
+message SdmAlterTableReplicaCountRequest{
+    int32 table_id = 1;
+    int32 replica_count = 2;
+    string operation_id = 3;
+}
+
+message SdmAlterTableReplicaCountResponse{
+    adviskv.pb.BaseRsp base_rsp = 1;
+}
+
 message GetTableStatusRequest{
     string operation_id = 1;
     int32 table_id = 2;
@@ -114,6 +124,7 @@ service ShardingManagerService{
     rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
     rpc PlaceTable(PlaceTableRequest) returns (PlaceTableResponse);
     rpc DropTable(DropTableRequest) returns (DropTableResponse);
+    rpc AlterTableReplicaCount(SdmAlterTableReplicaCountRequest) returns (SdmAlterTableReplicaCountResponse);
     rpc GetTableStatus(GetTableStatusRequest) returns (GetTableStatusResponse);
     rpc HeartBeat(HeartBeatRequest) returns (HeartBeatResponse);
 }

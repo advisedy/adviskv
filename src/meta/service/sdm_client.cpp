@@ -89,4 +89,27 @@ Status SdmClient::call_drop_table(const TableMeta& table_meta) {
     return Status::OK();
 }
 
+Status SdmClient::call_alter_table_replica_count(const TableMeta& table_meta) {
+    rpc::SdmAlterTableReplicaCountRequest request;
+    request.set_table_id(table_meta.table_id);
+    request.set_replica_count(table_meta.replica_count);
+    request.set_operation_id(table_meta.operation_id);
+    rpc::SdmAlterTableReplicaCountResponse
+        response;  // TODO111 对于SDM和META的RPC起名需要搞一下
+    grpc::ClientContext context;
+    grpc::Status status =
+        stub_->AlterTableReplicaCount(&context, request, &response);
+
+    if (!status.ok()) {
+        return Status{
+            StatusCode::ERROR,
+            fmt::format("call sdm alter_table_replica_count failed, grpc "
+                        "code = {}, msg = {}",
+                        static_cast<int>(status.error_code()),
+                        status.error_message())};
+    }
+    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
+    return Status::OK();
+}
+
 }  // namespace adviskv::meta

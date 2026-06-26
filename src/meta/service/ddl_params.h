@@ -77,4 +77,20 @@ struct DropTableParam {
     }
 };
 
+struct AlterTableReplicaCountParam {
+    std::string db_name;
+    std::string table_name;
+    int32_t replica_count{0};
+
+    Status validate() const {
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(),
+                                    "db_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!table_name.empty(),
+                                    "table_name should not empty")
+        RETURN_IF_INVALID_CONDITION(replica_count > 0,
+                                    "replica_count should > 0")
+        return Status::OK();
+    }
+};
+
 }  // namespace adviskv::meta

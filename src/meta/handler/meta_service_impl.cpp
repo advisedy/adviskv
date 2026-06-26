@@ -8,7 +8,9 @@
 
 #include "common/define.h"
 #include "common/status.h"
+#include "meta/catalog/meta_types.h"
 #include "meta/proto/table_state_proto.h"
+#include "meta/service/ddl_params.h"
 #include "meta/service/ddl_service.h"
 
 namespace adviskv::meta {
@@ -81,6 +83,28 @@ grpc::Status MetaServiceImpl::DropTable(
 
     TableMeta table_meta;
     Status status = ddl_service_->drop_table(param, &table_meta);
+    fill_base_rsp(response, status);
+    if (status.fail()) {
+        return grpc::Status::OK;
+    }
+    response->set_table_id(table_meta.table_id);
+    response->set_table_state(to_pb_meta_table_state(table_meta.state));
+    response->set_operation_id(table_meta.operation_id);
+    return grpc::Status::OK;
+}
+
+grpc::Status MetaServiceImpl::AlterTableReplicaCount(
+    grpc::ServerContext* context,
+    const rpc::AlterTableReplicaCountRequest* request,
+    rpc::AlterTableReplicaCountResponse* response) {
+    UNUSED(context);
+    AlterTableReplicaCountParam param;
+    param.db_name = request->db_name();
+    param.table_name = request->table_name();
+    param.replica_count = request->replica_count();
+
+    TableMeta table_meta;
+    Status status = ddl_service_->alter_table_replica_count(param, &table_meta);
     fill_base_rsp(response, status);
     if (status.fail()) {
         return grpc::Status::OK;

@@ -50,6 +50,19 @@ message MetaDropTableResponse {
   string operation_id = 4;
 }
 
+message AlterTableReplicaCountRequest {
+  string db_name = 1;
+  string table_name = 2;
+  int32 replica_count = 3;
+}
+
+message AlterTableReplicaCountResponse {
+  adviskv.pb.BaseRsp base_rsp = 1;
+  int32 table_id = 2;
+  adviskv.pb.MetaTableState table_state = 3;
+  string operation_id = 4;
+}
+
 message GetTableRequest {
   string db_name = 1;
   string table_name = 2;
@@ -74,5 +87,6 @@ service MetaService {
   rpc DropDB(DropDBRequest) returns (DropDBResponse);
   rpc CreateTable(CreateTableRequest) returns (CreateTableResponse);
   rpc DropTable(MetaDropTableRequest) returns (MetaDropTableResponse);
+  rpc AlterTableReplicaCount(AlterTableReplicaCountRequest) returns (AlterTableReplicaCountResponse);
   rpc GetTable(GetTableRequest) returns (GetTableResponse);
 }

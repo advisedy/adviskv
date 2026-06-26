@@ -16,16 +16,8 @@ Status DdlService::create_table(const CreateTableParam& param,
                                 TableMeta* table_meta) {
     RETURN_IF_INVALID_PARAM(param)
 
-    CreateTableMetaParam meta_param;
-    meta_param.db_name = param.db_name;
-    meta_param.table_name = param.table_name;
-    meta_param.shard_count = param.shard_count;
-    meta_param.replica_count = param.replica_count;
-    meta_param.resource_pool = param.resource_pool;
-
     TableMeta created_table_meta;
-    Status status =
-        catalog_manager_->create_table(meta_param, &created_table_meta);
+    Status status = catalog_manager_->create_table(param, &created_table_meta);
 
     RETURN_IF_INVALID_STATUS(status)
 
@@ -108,14 +100,49 @@ Status DdlService::drop_table(const DropTableParam& param,
     return Status::OK();
 }
 
-Status DdlService::create_db(const CreateDBParam& param, DBMeta* db_meta) {
+Status DdlService::alter_table_replica_count(
+    const AlterTableReplicaCountParam& param, TableMeta* table_meta) {
     RETURN_IF_INVALID_PARAM(param)
 
-    CreateDBMetaParam meta_param;
-    meta_param.db_name = param.db_name;
-    meta_param.zone = param.zone;
+    TableMeta table;
 
-    return catalog_manager_->create_db(meta_param, db_meta);
+    RETURN_IF_INVALID_STATUS(
+        catalog_manager_->alter_table_replica_count(param, &table))
+
+    if (table.state == TableState::NORMAL) {
+        if (table_meta != nullptr) {
+            *table_meta = table;
+        }
+        return Status::OK();
+    }
+
+    if (!sdm_client_) {
+        const std::string err_msg = "sdm_client is nullptr";
+        RETURN_IF_INVALID_STATUS(catalog_manager_->update_table_state(
+            table.table_id, TableState::ALTERING, err_msg))
+        table.last_error_msg = err_msg;
+        if (table_meta != nullptr) {
+            *table_meta = table;
+        }
+        return Status::OK();
+    }
+
+    Status status = sdm_client_->call_alter_table_replica_count(table);
+    if (status.fail()) {
+        RETURN_IF_INVALID_STATUS(catalog_manager_->update_table_state(
+            table.table_id, TableState::ALTERING, status.to_string()))
+        table.last_error_msg = status.to_string();
+    }
+
+    if (table_meta != nullptr) {
+        *table_meta = table;
+    }
+    return Status::OK();
+}
+
+Status DdlService::create_db(const CreateDBParam& param, DBMeta* db_meta) {
+    RETURN_IF_INVALID_PARAM(param)
+    return catalog_manager_->create_db(param, db_meta);
 }
 
 Status DdlService::drop_db(const DropDBParam& param, DBMeta* db_meta) {

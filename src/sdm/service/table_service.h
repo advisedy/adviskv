@@ -16,6 +16,8 @@ class TableService {
 
     Status place_table(const PlaceTableParam& param);
     Status drop_table(const DropTableParam& param);
+    Status alter_table_replica_count(
+        const AlterReplicaCountParam& param);
     Status get_table_status(const GetTableStatusParam& param,
                             Table* out_table) const;
 

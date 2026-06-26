@@ -125,6 +125,53 @@ Status TableService::drop_table(const DropTableParam& param) {
     return status;
 }
 
+Status TableService::alter_table_replica_count(
+    const AlterReplicaCountParam& param) {
+    RETURN_IF_INVALID_PARAM(param)
+    RETURN_IF_NULLPTR(store_, "store is nullptr")
+
+    return store_->write_with([&](SdmStoreTxn& txn) -> Status {
+        TableOr existing;
+        RETURN_IF_INVALID_STATUS(txn.get_table(param.table_id, existing))
+        if (existing.is_empty()) {
+            return Status::TABLE_NOT_FOUND(
+                fmt::format("table_id {} not found", param.table_id));
+        }
+        if (existing->state.desired != TableDesired::PRESENT ||
+            existing->state.phase == TablePhase::DELETING ||
+            existing->state.phase == TablePhase::DELETED) {
+            return Status::INVALID_ARGUMENT(fmt::format(
+                "table_id {} is not present for alter replica_count",
+                param.table_id));
+        }
+        if (existing->state.phase == TablePhase::FAILED) {
+            return Status::INVALID_ARGUMENT(
+                fmt::format("table_id {} is FAILED for alter replica_count",
+                            param.table_id));
+        }
+        if (existing->spec.operation_id == param.operation_id) {
+            return Status::OK();
+        }
+        if (existing->state.phase != TablePhase::READY) {
+            return Status::ALREADY_EXIST(
+                fmt::format("table_id {} is not READY for alter replica_count",
+                            param.table_id));
+        }
+        if (existing->spec.replica_count == param.replica_count) {
+            return Status::OK();
+        }
+
+        existing->spec.replica_count = param.replica_count;
+        existing->spec.operation_id = param.operation_id;
+        existing->state.phase = TablePhase::
+            CREATING;  // TODO111
+                       // 感觉好像这里应该新开一个状态才对，不能跟CREATING混在一起
+        existing->state.last_error_msg.clear();
+        existing->state.update_ts = func::get_current_ts_ms();
+        return txn.put_table(*existing);
+    });
+}
+
 // 语义： 这个接口是给 meta 侧在创建 table 的时候可以及时抓取查看 table
 // 的信息而写的接口，并不是专门给用户看的
 Status TableService::get_table_status(const GetTableStatusParam& param,
@@ -257,6 +304,12 @@ Status TableService::ensure_all_shards_ok(SdmStoreTxn& txn, Table& table,
         std::vector<Replica> replicas;
         RETURN_IF_INVALID_STATUS(txn.list_replicas_by_shard(shard_id, replicas))
         if (to<int32>(replicas.size()) != table.spec.replica_count) {
+            LOG_WARN(
+                "[TableService] shard not ready: replica count mismatch, "
+                "table_id={}, shard_index={}, replicas.size()={}, "
+                "table.spec.replica_count={}",
+                table.table_id, shard_index, replicas.size(),
+                table.spec.replica_count);
             all_shards_ok = false;
             return Status::OK();
         }
@@ -275,6 +328,18 @@ Status TableService::ensure_all_shards_ok(SdmStoreTxn& txn, Table& table,
             if (replica.state.desired != ReplicaDesired::PRESENT ||
                 replica.state.phase != ReplicaPhase::READY) {
                 // 必须desired是PRESENT，并且phase是READY才可以
+                LOG_WARN(
+                    "[TableService] shard not ready: replica not ready, "
+                    "table_id={}, shard_index={}, replica_id={}, desired={}, "
+                    "phase={}, storage_status={}, role={}, term={}, "
+                    "endpoint={}:{}",
+                    table.table_id, shard_index, replica.replica_id.to_string(),
+                    static_cast<int32>(replica.state.desired),
+                    static_cast<int32>(replica.state.phase),
+                    static_cast<int32>(replica.state.observed_storage_status),
+                    static_cast<int32>(replica.state.observed_raft_role),
+                    replica.state.term, replica.state.observed_endpoint.ip,
+                    replica.state.observed_endpoint.port);
                 all_shards_ok = false;
                 return Status::OK();
             }
@@ -294,12 +359,38 @@ Status TableService::ensure_all_shards_ok(SdmStoreTxn& txn, Table& table,
                 group->target_replica_count != table.spec.replica_count ||
                 to<int32>(group->desired_members.size()) !=
                     table.spec.replica_count) {
+                if (group.is_empty()) {
+                    LOG_WARN(
+                        "[TableService] shard not ready: replica group "
+                        "mismatch, "
+                        "table_id={}, shard_index={}, group_empty=true, "
+                        "expected_replica_count={}",
+                        table.table_id, shard_index, table.spec.replica_count);
+                } else {
+                    LOG_WARN(
+                        "[TableService] shard not ready: replica group "
+                        "mismatch, "
+                        "table_id={}, shard_index={}, group_empty=false, "
+                        "phase={}, "
+                        "target_replica_count={}, desired_members={}, "
+                        "expected_replica_count={}",
+                        table.table_id, shard_index, to<int32>(group->phase),
+                        group->target_replica_count,
+                        to<int32>(group->desired_members.size()),
+                        table.spec.replica_count);
+                }
+
                 all_shards_ok = false;
                 return Status::OK();
             }
             for (const ReplicaID& replica_id : group->desired_members) {
                 if (ready_replica_ids.find(replica_id) ==
                     ready_replica_ids.end()) {
+                    LOG_WARN(
+                        "[TableService] shard not ready: desired member is "
+                        "not ready, table_id={}, shard_index={}, "
+                        "replica_id={}",
+                        table.table_id, shard_index, replica_id.to_string());
                     all_shards_ok = false;
                     return Status::OK();
                 }
@@ -311,6 +402,11 @@ Status TableService::ensure_all_shards_ok(SdmStoreTxn& txn, Table& table,
         RETURN_IF_INVALID_STATUS(txn.get_shard_route(shard_id, route))
         if (route.is_empty() || route->replicas.empty() ||
             !has_exactly_one_writable_leader(*route)) {
+            LOG_WARN(
+                "[TableService] shard not ready: route not writable, "
+                "table_id={}, shard_index={}, route_empty={}, entries={}",
+                table.table_id, shard_index, route.is_empty(),
+                route.is_empty() ? -1 : route->replicas.size());
             all_shards_ok = false;
             return Status::OK();
         }

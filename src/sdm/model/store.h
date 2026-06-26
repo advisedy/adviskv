@@ -6,6 +6,7 @@
 
 #include "common/define.h"
 #include "common/id_allocator.h"
+#include "common/model/storage_replica_status.h"
 #include "common/optional.h"
 #include "common/type.h"
 #include "sdm/model/table_status.h"
@@ -28,12 +29,12 @@ struct ResourcePool {
 };
 using ResourcePoolPtr = std::shared_ptr<ResourcePool>;
 
-enum class ReplicaDesired {
+enum class ReplicaDesired : int8 {
     PRESENT = 1,
     ABSENT = 2,
 };
 
-enum class ReplicaPhase {
+enum class ReplicaPhase : int8 {
     PENDING = 1,
     CREATING = 2,
     READY = 3,
@@ -49,8 +50,7 @@ struct ReplicaSpec {
     EngineType engine_type{EngineType::MAP};
     std::vector<PeerMember> members;
 };
-// 这边replca的status，RPC发送的时候会有，我们在心跳服务里面处理了， 这边就
-// 不会再存起来了。
+
 struct ReplicaState {
     ReplicaDesired desired{ReplicaDesired::PRESENT};  // ReplicaGroupService
     ReplicaPhase phase{ReplicaPhase::PENDING};        // ReplicaGroupService
@@ -71,6 +71,7 @@ struct Replica {
 
 using ReplicaPtr = std::shared_ptr<Replica>;
 
+// TODO111
 enum class ReplicaGroupPhase : int32 {
     TABLE_RECONCILE = 1,
     REPLICA_GROUP_RECONCILE = 2,
@@ -90,7 +91,7 @@ using ReplicaGroupPtr = std::shared_ptr<ReplicaGroup>;
 //////////////////////////////
 // node
 
-enum class NodeStatus {
+enum class NodeStatus : int8 {
     ONLINE = 1,
     SUSPECT = 2,
     OFFLINE = 3,

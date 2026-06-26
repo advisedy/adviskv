@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.pb.h"
+#include "common/define.h"
 #include "meta/catalog/meta_types.h"
 
 namespace adviskv::meta {
@@ -21,6 +22,9 @@ inline bool decode_pb_meta_table_state(pb::MetaTableState in, TableState& out) {
             return true;
         case pb::MetaTableState::META_TABLE_STATE_DELETED:
             out = TableState::DELETED;
+            return true;
+        case pb::MetaTableState::META_TABLE_STATE_ALTERING:
+            out = TableState::ALTERING;
             return true;
         case pb::MetaTableState::META_TABLE_STATE_UNSPECIFIED:
         default:
@@ -45,6 +49,9 @@ inline bool encode_pb_meta_table_state(TableState in, pb::MetaTableState& out) {
         case TableState::DELETED:
             out = pb::MetaTableState::META_TABLE_STATE_DELETED;
             return true;
+        case TableState::ALTERING:
+            out = pb::MetaTableState::META_TABLE_STATE_ALTERING;
+            return true;
         default:
             return false;
     }
@@ -52,7 +59,7 @@ inline bool encode_pb_meta_table_state(TableState in, pb::MetaTableState& out) {
 
 inline pb::MetaTableState to_pb_meta_table_state(TableState state) {
     pb::MetaTableState out = pb::MetaTableState::META_TABLE_STATE_UNSPECIFIED;
-    (void)encode_pb_meta_table_state(state, out);
+    IGNORE_RESULT(encode_pb_meta_table_state(state, out));
     return out;
 }
 

@@ -26,6 +26,8 @@ class ISdmClient {
 
     virtual Status call_place_table(const TableMeta& table_meta) = 0;
     virtual Status call_drop_table(const TableMeta& table_meta) = 0;
+    virtual Status call_alter_table_replica_count(
+        const TableMeta& table_meta) = 0;
     virtual Status get_table_status(const TableMeta& table_meta,
                                     SdmTableStatus* table_status) = 0;
 };
@@ -37,6 +39,8 @@ class SdmClient : public ISdmClient {
 
     Status call_place_table(const TableMeta& table_meta) override;
     Status call_drop_table(const TableMeta& table_meta) override;
+    Status call_alter_table_replica_count(
+        const TableMeta& table_meta) override;
     Status get_table_status(const TableMeta& table_meta,
                             SdmTableStatus* table_status) override;
 
