@@ -208,9 +208,9 @@ class SdmMetaCodec {
 
     static void encode_node(const Node& node, EncodeBuffer& buf) {
         buf.write(node.id);
-        buf.write(node.spec.resource_pool);
-        buf.write(node.spec.dc);
-        buf.write(static_cast<int32>(node.spec.status));
+        buf.write(node.meta.resource_pool);
+        buf.write(node.meta.dc);
+        buf.write(static_cast<int32>(node.state.status));
         encode_endpoint(node.state.endpoint, buf);
         buf.write(node.state.last_heartbeat_ts);
         buf.write(node.derived.owned_replica_count);
@@ -220,12 +220,12 @@ class SdmMetaCodec {
     static Status decode_node(DecodeBuffer& buf, Node& node) {
         node = {};
         RETURN_IF_INVALID_READ(buf, node.id)
-        RETURN_IF_INVALID_READ(buf, node.spec.resource_pool)
-        RETURN_IF_INVALID_READ(buf, node.spec.dc)
+        RETURN_IF_INVALID_READ(buf, node.meta.resource_pool)
+        RETURN_IF_INVALID_READ(buf, node.meta.dc)
 
         int32 status{0};
         RETURN_IF_INVALID_READ(buf, status)
-        node.spec.status = static_cast<NodeStatus>(status);
+        node.state.status = static_cast<NodeStatus>(status);
 
         RETURN_IF_INVALID_STATUS(decode_endpoint(buf, node.state.endpoint))
         RETURN_IF_INVALID_READ(buf, node.state.last_heartbeat_ts)

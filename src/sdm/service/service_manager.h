@@ -3,7 +3,6 @@
 #include "common/status.h"
 #include "sdm/model/service_param.h"
 #include "sdm/model/store.h"
-#include "sdm/service/heartbeat_service.h"
 #include "sdm/service/node_service.h"
 #include "sdm/service/replica_group_service.h"
 #include "sdm/service/route_service.h"
@@ -35,7 +34,6 @@ class ServiceManager {
 
     TableService& table_service() { return table_service_; }
     NodeService& node_service() { return node_service_; }
-    HeartBeatService& heartbeat_service() { return heartbeat_service_; }
     RouteService& route_service() { return route_service_; }
     ReplicaGroupService& replica_group_service() {
         return replica_group_service_;
@@ -44,7 +42,6 @@ class ServiceManager {
    private:
     TableService table_service_;
     NodeService node_service_;
-    HeartBeatService heartbeat_service_;
     RouteService route_service_;
     ReplicaGroupService replica_group_service_;
 };

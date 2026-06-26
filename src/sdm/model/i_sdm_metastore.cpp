@@ -1,6 +1,7 @@
 #include "sdm/model/i_sdm_metastore.h"
 
 #include <memory>
+#include <utility>
 
 #include "common/define.h"
 #include "common/log.h"
@@ -27,7 +28,26 @@ std::unique_ptr<ISdmMetaStore> MemoryMetaStore::clone_memory_snapshot() const {
     for (const auto& [id, route] : shard_routes_) {
         copied->shard_routes_[id] = std::make_shared<ShardRoute>(*route);
     }
+    for (const auto& [id, group] : replica_groups_) {
+        copied->replica_groups_[id] = std::make_shared<ReplicaGroup>(*group);
+    }
     return copied;
+}
+
+Status MemoryMetaStore::commit_memory_snapshot(
+    std::unique_ptr<ISdmMetaStore> next_memory_store) {
+    RETURN_IF_NULLPTR(next_memory_store, "next_memory_store is nullptr");
+
+    auto* next = dynamic_cast<MemoryMetaStore*>(next_memory_store.get());
+    RETURN_IF_NULLPTR(next, "next_memory_store should be MemoryMetaStore");
+
+    tables_ = std::move(next->tables_);
+    nodes_ = std::move(next->nodes_);
+    replicas_ = std::move(next->replicas_);
+    resource_pools_ = std::move(next->resource_pools_);
+    shard_routes_ = std::move(next->shard_routes_);
+    replica_groups_ = std::move(next->replica_groups_);
+    return Status::OK();
 }
 
 Status MemoryMetaStore::upsert_table(const Table& table) {
@@ -183,6 +203,38 @@ Status MemoryMetaStore::list_shard_routes(
     return Status::OK();
 }
 
+Status MemoryMetaStore::upsert_replica_group(const ReplicaGroup& group) {
+    replica_groups_[group.shard_id] = std::make_shared<ReplicaGroup>(group);
+    return Status::OK();
+}
+
+Status MemoryMetaStore::delete_replica_group(const ShardID& shard_id) {
+    replica_groups_.erase(shard_id);
+    return Status::OK();
+}
+
+Status MemoryMetaStore::get_replica_group(const ShardID& shard_id,
+                                          ReplicaGroupPtr& out) const {
+    auto it = replica_groups_.find(shard_id);
+    if (it == replica_groups_.end()) {
+        out.reset();
+        return Status::OK();
+    }
+    out = it->second;
+    return Status::OK();
+}
+
+Status MemoryMetaStore::list_replica_groups(
+    std::vector<ReplicaGroupPtr>& out) const {
+    out.clear();
+    out.reserve(replica_groups_.size());
+    for (const auto& [_, group] : replica_groups_) {
+        UNUSED(_);
+        out.push_back(group);
+    }
+    return Status::OK();
+}
+
 PersistentMetaStore::PersistentMetaStore(std::filesystem::path data_dir)
     : memory_store_(std::make_unique<MemoryMetaStore>()),
       persist_engine_(std::make_unique<SdmPersistEngine>(data_dir.string())) {
@@ -213,6 +265,19 @@ std::unique_ptr<ISdmMetaStore> PersistentMetaStore::clone_memory_snapshot()
     return memory_store_->clone_memory_snapshot();
 }
 
+Status PersistentMetaStore::commit_memory_snapshot(
+    std::unique_ptr<ISdmMetaStore> next_memory_store) {
+    RETURN_IF_NULLPTR(next_memory_store, "next_memory_store is nullptr");
+
+    SdmPersistedRecord record;
+    RETURN_IF_INVALID_STATUS(
+        build_record_from_store(*next_memory_store, record))
+    RETURN_IF_INVALID_STATUS(persist_record(record))
+
+    memory_store_ = std::move(next_memory_store);
+    return Status::OK();
+}
+
 Status PersistentMetaStore::load() {
     SdmPersistedRecord record;
     Status status = persist_engine_->load_sdm_meta(record);
@@ -237,6 +302,10 @@ Status PersistentMetaStore::load() {
     for (const auto& [_, route] : record.shard_routes) {
         UNUSED(_);
         memory_store_->upsert_shard_route(route);
+    }
+    for (const auto& [_, group] : record.replica_groups) {
+        UNUSED(_);
+        memory_store_->upsert_replica_group(group);
     }
 
     return Status::OK();
@@ -276,6 +345,12 @@ Status PersistentMetaStore::build_record_from_store(
         record.shard_routes[r->shard_id] = *r;
     }
 
+    std::vector<ReplicaGroupPtr> groups;
+    RETURN_IF_INVALID_STATUS(store.list_replica_groups(groups))
+    for (const auto& group : groups) {
+        record.replica_groups[group->shard_id] = *group;
+    }
+
     return Status::OK();
 }
 
@@ -293,6 +368,7 @@ Status PersistentMetaStore::persist() {
     return persist_record(record);
 }
 
+// 这个函数没有上锁的意思，只是说去做COW保证写操作不会有问题而已
 Status PersistentMetaStore::commit_with(
     const std::function<Status(ISdmMetaStore&)>& mutate) {
     // 如果是先走内存后走持久化，或者说反过来的话，然后后者的操作失败了，需要进行回滚，处理起来比较麻烦
@@ -411,6 +487,28 @@ Status PersistentMetaStore::delete_shard_route(const ShardID& shard_id) {
 Status PersistentMetaStore::list_shard_routes(
     std::vector<ShardRoutePtr>& out) const {
     return memory_store_->list_shard_routes(out);
+}
+
+Status PersistentMetaStore::upsert_replica_group(const ReplicaGroup& group) {
+    return commit_with([&group](ISdmMetaStore& store) {
+        return store.upsert_replica_group(group);
+    });
+}
+
+Status PersistentMetaStore::delete_replica_group(const ShardID& shard_id) {
+    return commit_with([&shard_id](ISdmMetaStore& store) {
+        return store.delete_replica_group(shard_id);
+    });
+}
+
+Status PersistentMetaStore::get_replica_group(const ShardID& shard_id,
+                                              ReplicaGroupPtr& out) const {
+    return memory_store_->get_replica_group(shard_id, out);
+}
+
+Status PersistentMetaStore::list_replica_groups(
+    std::vector<ReplicaGroupPtr>& out) const {
+    return memory_store_->list_replica_groups(out);
 }
 
 }  // namespace adviskv::sdm

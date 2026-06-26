@@ -4,7 +4,6 @@ set(SDM_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/service/route_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/service/node_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/service/table_service.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/service/heartbeat_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/service/replica_group_service.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/service/service_manager.cpp
 

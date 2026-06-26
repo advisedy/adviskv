@@ -129,11 +129,11 @@ int main(int argc, char* argv[]) {
         std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
         LOG_INFO("SDM server listening on {}:{}", listen_host, listen_port);
 
+        server->Wait();
         route_task->stop();
         replica_group_reconcile_task->stop();
         table_reconcile_task->stop();
         heartbeat_check_task->stop();
-        server->Wait();
     }
 
     return 0;

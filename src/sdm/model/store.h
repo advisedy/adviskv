@@ -44,8 +44,8 @@ enum class ReplicaPhase {
 };
 
 struct ReplicaSpec {
-    std::string dc;
-    NodeID assign_node_id{""};
+    std::string dc;             // 虽然会修改，但是需要持久化
+    NodeID assign_node_id{""};  // 虽然会修改，但是需要持久化
     EngineType engine_type{EngineType::MAP};
     std::vector<PeerMember> members;
 };
@@ -57,11 +57,10 @@ struct ReplicaState {
     ReplicaRole observed_raft_role{ReplicaRole::FOLLOWER};  // NodeService
     Endpoint observed_endpoint;                             // NodeService
     StorageReplicaStatus observed_storage_status{
-        // NodeService
-        StorageReplicaStatus::INITIALIZING};
-    std::string last_error_msg;  // ReplicaGroupService
-    int64 update_ts{0};          // evertone
-    Term term{0};                // NodeService
+        StorageReplicaStatus::INITIALIZING};  // NodeService
+    std::string last_error_msg;               // ReplicaGroupService
+    int64 update_ts{0};                       // evertone
+    Term term{0};                             // NodeService
 };
 
 struct Replica {
@@ -96,16 +95,15 @@ enum class NodeStatus {
     SUSPECT = 2,
     OFFLINE = 3,
 };
-// 注意，node那边只会发送过来心跳时间， 状态是sdm决定的
-struct NodeSpec {
-    std::string resource_pool;
-    std::string dc;
-    NodeStatus status;
+struct NodeMeta {
+    std::string resource_pool;  // NodeService
+    std::string dc;             // NodeService
 };
 
 struct NodeState {
-    Endpoint endpoint;
-    int64_t last_heartbeat_ts{0};
+    NodeStatus status{NodeStatus::ONLINE};  // NodeService
+    Endpoint endpoint;                      // NodeService
+    int64_t last_heartbeat_ts{0};           // NodeService
 };
 
 struct NodeDerived {
@@ -115,7 +113,7 @@ struct NodeDerived {
 
 struct Node {
     NodeID id;
-    NodeSpec spec;
+    NodeMeta meta;
     NodeState state;
     NodeDerived derived;
 };
@@ -124,6 +122,7 @@ using NodePtr = std::shared_ptr<Node>;
 //////////////////////////////
 // table
 
+// 创建的时候就定下来的：// TableService
 struct TableSpec {
     std::string table_name;
     DatabaseID db_id;
@@ -135,10 +134,10 @@ struct TableSpec {
 };
 
 struct TableState {
-    TableDesired desired{TableDesired::PRESENT};
-    TablePhase phase{TablePhase::CREATING};
-    std::string last_error_msg;
-    int64_t update_ts{0};
+    TableDesired desired{TableDesired::PRESENT};  // TableService
+    TablePhase phase{TablePhase::CREATING};       // TableService
+    std::string last_error_msg;                   // TableService
+    int64_t update_ts{0};                         // everyone
 };
 
 struct Table {
@@ -163,7 +162,7 @@ struct RouteEntry {
 
 struct ShardRoute {
     ShardID shard_id;
-    std::vector<RouteEntry> replicas;
+    std::vector<RouteEntry> replicas;  // RouteService
 };
 
 using ShardRoutePtr = std::shared_ptr<ShardRoute>;

@@ -7,7 +7,6 @@ namespace adviskv::sdm {
 ServiceManager::ServiceManager(SdmStore* store, NodeSelector* selector)
     : table_service_(store),
       node_service_(store),
-      heartbeat_service_(store),
       route_service_(store),
       replica_group_service_(store, selector) {}
 
@@ -30,7 +29,7 @@ Status ServiceManager::register_node(const RegisterNodeParam& param) {
 
 Status ServiceManager::heartbeat(const HeartBeatParam& param,
                                  HeartBeatResult* result) {
-    Status status = heartbeat_service_.heartbeat(param);
+    Status status = node_service_.heartbeat(param);
     RETURN_IF_INVALID_STATUS(status)
     if (result == nullptr) {
         return Status::OK();

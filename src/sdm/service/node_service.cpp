@@ -24,13 +24,71 @@ Status NodeService::register_node(const RegisterNodeParam& param) {
 
     Node node;
     node.id = param.node_id;
-    node.spec.dc = param.dc;
-    node.spec.resource_pool = param.resource_pool;
-    node.spec.status = NodeStatus::ONLINE;
+    node.meta.dc = param.dc;
+    node.meta.resource_pool = param.resource_pool;
+    node.state.status = NodeStatus::ONLINE;
     node.state.endpoint = Endpoint{param.ip, param.port};
     node.state.last_heartbeat_ts = param.last_heartbeat_ts;
     return store_->write_with(
         [&](SdmStoreTxn& txn) { return txn.put_node(node); });
+}
+
+Status NodeService::heartbeat(const HeartBeatParam& param) {
+    RETURN_IF_INVALID_PARAM(param)
+    RETURN_IF_NULLPTR(store_, "store is nullptr")
+
+    Status status = store_->write_with([&](SdmStoreTxn& txn) -> Status {
+        RETURN_IF_INVALID_STATUS(update_node_heartbeat(txn, param))
+        return apply_reported_replicas(txn, param);
+    });
+    RETURN_IF_INVALID_STATUS(status)
+
+    LOG_DEBUG(
+        "[NodeService] get node_id:{} heartbeat, port:{}, "
+        "replica_list_size:{}",
+        param.node_id, param.port, param.replica_list.size());
+    return Status::OK();
+}
+
+Status NodeService::update_node_heartbeat(SdmStoreTxn& txn,
+                                          const HeartBeatParam& param) {
+    NodeOr node;
+    RETURN_IF_INVALID_STATUS(txn.get_node(param.node_id, node))
+    RETURN_IF_INVALID_CONDITION(!node.is_empty(), "node not found")
+
+    node->state.endpoint = Endpoint{param.ip, param.port};
+    node->state.last_heartbeat_ts = param.last_heartbeat_ts;
+    return txn.put_node(*node);
+}
+
+Status NodeService::apply_reported_replicas(SdmStoreTxn& txn,
+                                            const HeartBeatParam& param) {
+    for (const auto& info : param.replica_list) {
+        ReplicaID key = info.replica_id;
+        ReplicaOr replica;
+        RETURN_IF_INVALID_STATUS(txn.get_replica(key, replica))
+
+        if (replica.is_empty()) {
+            continue;
+        }
+        if (replica->spec.assign_node_id != param.node_id) {
+            LOG_WARN("[NodeService] replica:assign_node_id != node_id");
+            continue;
+        }
+
+        replica->state.observed_raft_role = info.role;
+        replica->state.observed_endpoint = Endpoint{param.ip, param.port};
+        replica->state.observed_storage_status = info.storage_status;
+        replica->state.term = info.term;
+        replica->state.update_ts = func::get_current_ts_ms();
+        RETURN_IF_INVALID_STATUS(txn.put_replica(*replica))
+
+        if (replica->state.observed_raft_role == ReplicaRole::LEADER) {
+            LOG_DEBUG("[NodeService] replica_id:{} is leader",
+                      replica->replica_id.to_string());
+        }
+    }
+    return Status::OK();
 }
 
 Status NodeService::reconcile_all() {
@@ -79,10 +137,11 @@ Status NodeService::reconcile_all() {
 Status NodeService::check_and_modify_node(SdmStoreTxn& txn, Node& node) {
     int64_t current_ts_ms = func::get_current_ts_ms();
     int64_t diff = current_ts_ms - node.state.last_heartbeat_ts;
-    bool in_startup_grace = (current_ts_ms - start_ts_ms_ <= STARTUP_GRACE_MS);
+    bool in_startup_grace =
+        (current_ts_ms - start_ts_ms_ <= HEARTBEAT_STARTUP_GRACE_MS);
 
-    if (diff <= SUSPECT_TIMEOUT_MS) {
-        if (node.spec.status != NodeStatus::ONLINE) {
+    if (diff <= HEARTBEAT_SUSPECT_TIMEOUT_MS) {
+        if (node.state.status != NodeStatus::ONLINE) {
             return mark_node_online(txn, node);
         }
         return Status::OK();
@@ -92,12 +151,12 @@ Status NodeService::check_and_modify_node(SdmStoreTxn& txn, Node& node) {
         return Status::OK();
     }
 
-    if (diff > OFFLINE_TIMEOUT_MS) {
-        if (node.spec.status != NodeStatus::OFFLINE) {
+    if (diff > HEARTBEAT_OFFLINE_TIMEOUT_MS) {
+        if (node.state.status != NodeStatus::OFFLINE) {
             return mark_node_offline(txn, node);
         }
     } else {
-        if (node.spec.status == NodeStatus::ONLINE) {
+        if (node.state.status == NodeStatus::ONLINE) {
             return mark_node_suspect(txn, node);
         }
     }
@@ -107,19 +166,19 @@ Status NodeService::check_and_modify_node(SdmStoreTxn& txn, Node& node) {
 
 Status NodeService::mark_node_offline(SdmStoreTxn& txn, Node& node) {
     LOG_WARN("[NodeService] node offline, node_id:{}", node.id);
-    node.spec.status = NodeStatus::OFFLINE;
+    node.state.status = NodeStatus::OFFLINE;
     return txn.put_node(node);
 }
 
 Status NodeService::mark_node_suspect(SdmStoreTxn& txn, Node& node) {
     LOG_WARN("[NodeService] node suspect, node_id:{}", node.id);
-    node.spec.status = NodeStatus::SUSPECT;
+    node.state.status = NodeStatus::SUSPECT;
     return txn.put_node(node);
 }
 
 Status NodeService::mark_node_online(SdmStoreTxn& txn, Node& node) {
     LOG_INFO("[NodeService] node online, node_id:{}", node.id);
-    node.spec.status = NodeStatus::ONLINE;
+    node.state.status = NodeStatus::ONLINE;
     return txn.put_node(node);
 }
 

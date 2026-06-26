@@ -159,7 +159,7 @@ Status RouteService::check_shard_route(const Table& table,
             RETURN_IF_INVALID_STATUS(
                 txn.get_node(replica.spec.assign_node_id, node))
 
-            if (node.is_empty() || node->spec.status != NodeStatus::ONLINE) {
+            if (node.is_empty() || node->state.status != NodeStatus::ONLINE) {
                 continue;
             }
 

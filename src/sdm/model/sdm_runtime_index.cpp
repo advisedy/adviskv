@@ -66,7 +66,7 @@ Status SdmRuntimeIndex::on_table_upsert(const Table* old_table,
 Status SdmRuntimeIndex::on_node_upsert(const Node* old_node,
                                        const Node& new_node) {
     if (old_node != nullptr) {
-        const std::string& old_pool = old_node->spec.resource_pool;
+        const std::string& old_pool = old_node->meta.resource_pool;
         auto pool_it = pool_nodes_index_.find(old_pool);
         if (pool_it != pool_nodes_index_.end()) {
             pool_it->second.erase(old_node->id);
@@ -75,8 +75,8 @@ Status SdmRuntimeIndex::on_node_upsert(const Node* old_node,
         node_pool_index_.erase(old_node->id);
     }
 
-    pool_nodes_index_[new_node.spec.resource_pool].insert(new_node.id);
-    node_pool_index_[new_node.id] = new_node.spec.resource_pool;
+    pool_nodes_index_[new_node.meta.resource_pool].insert(new_node.id);
+    node_pool_index_[new_node.id] = new_node.meta.resource_pool;
     return Status::OK();
 }
 
@@ -117,10 +117,10 @@ Status SdmRuntimeIndex::on_table_delete(const Table& table) {
 }
 
 Status SdmRuntimeIndex::on_node_delete(const Node& node) {
-    auto pool_it = pool_nodes_index_.find(node.spec.resource_pool);
+    auto pool_it = pool_nodes_index_.find(node.meta.resource_pool);
     if (pool_it != pool_nodes_index_.end()) {
         pool_it->second.erase(node.id);
-        cleanup_empty_pool_set(pool_nodes_index_, node.spec.resource_pool);
+        cleanup_empty_pool_set(pool_nodes_index_, node.meta.resource_pool);
     }
     node_pool_index_.erase(node.id);
     return Status::OK();

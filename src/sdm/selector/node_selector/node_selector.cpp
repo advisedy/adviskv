@@ -27,7 +27,7 @@ bool is_valid_node(const Node& node) {
     if (node.state.endpoint.ip.empty() || node.state.endpoint.port <= 0) {
         return false;
     }
-    return node.spec.status == NodeStatus::ONLINE;
+    return node.state.status == NodeStatus::ONLINE;
 }
 
 bool better_candidate(
@@ -108,7 +108,7 @@ Status DefaultNodeSelector::select_table_nodes(
                 replicas.begin(), replicas.end(), [](const Replica& replica) {
                     return replica.state.desired == ReplicaDesired::PRESENT;
                 });
-            view.dc = node.spec.dc;
+            view.dc = node.meta.dc;
             views.push_back(std::move(view));
         }
         return Status::OK();

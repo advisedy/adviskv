@@ -236,8 +236,8 @@ enum class ExpectedReplicaType {
 };
 
 struct ExpectedReplica {
-    ExpectedReplicaType type{ExpectedReplicaType::PRESENT};
     ReplicaID replica_id;
+    ExpectedReplicaType type{ExpectedReplicaType::PRESENT};
     EngineType engine_type{EngineType::MAP};
     std::vector<PeerMember> initial_members;
 
