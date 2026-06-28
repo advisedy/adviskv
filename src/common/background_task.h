@@ -16,7 +16,7 @@ namespace adviskv {
 
 /*
 主要就是继承实现run函数。
-使用就是prepare + start，或者手动notify唤醒
+使用就是setup + start，或者手动notify唤醒
 */
 class BackgroundTask {
    public:
@@ -25,13 +25,12 @@ class BackgroundTask {
     virtual ~BackgroundTask() { stop(); }
 
    public:
-    Status prepare();  // 如果setup是空的，可以不调用这个
+    virtual Status setup() { return Status::OK(); };
     void start(Milliseconds interval);
     void notify();
     void stop();
 
    protected:
-    virtual Status setup() { return Status::OK(); };
     virtual void run() = 0;
     virtual void teardown() {};
 

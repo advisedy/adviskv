@@ -2,14 +2,37 @@
 
 #include <grpcpp/channel.h>
 
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "common/background_task.h"
 #include "common/define.h"
+#include "common/model/expected_replica.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "sdm.grpc.pb.h"
-#include "storage/replica/replica_manager.h"
+#include "storage/replica/replica.h"
 
 namespace adviskv::storage {
+
+struct NodeAgentReplicaOps {
+    std::function<std::vector<ReplicaPtr>()> list_replicas;
+    std::function<Status(const ReplicaInitParam&)> create_replica;
+    std::function<Status(const ReplicaID&)> delete_replica;
+
+    Status validate() const {
+        RETURN_IF_INVALID_CONDITION(to<bool>(list_replicas),
+                                    "list_replicas callback is empty")
+        RETURN_IF_INVALID_CONDITION(to<bool>(create_replica),
+                                    "create_replica callback is empty")
+        RETURN_IF_INVALID_CONDITION(to<bool>(delete_replica),
+                                    "delete_replica callback is empty")
+        return Status::OK();
+    }
+};
 
 struct NodeAgentConf {
     NodeID node_id;
@@ -23,8 +46,10 @@ struct NodeAgentConf {
     int32_t manager_port{-1};
 
     int32_t heartbeat_interval_ms{3000};
+    int32_t register_interval_ms{30 * 1000};
     int32_t first_sync_retry_ms{1000};
-    int32 first_heart_retry_cnt{10};
+    NodeAgentReplicaOps replica_ops;
+
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(!node_id.empty(),
                                     "node_id should not empty")
@@ -38,38 +63,44 @@ struct NodeAgentConf {
         RETURN_IF_INVALID_CONDITION(manager_port > 0, "manager_port should > 0")
         RETURN_IF_INVALID_CONDITION(heartbeat_interval_ms > 0,
                                     "heartbeat_interval_ms should > 0")
+        RETURN_IF_INVALID_CONDITION(register_interval_ms > 0,
+                                    "register_interval_ms should > 0")
         RETURN_IF_INVALID_CONDITION(first_sync_retry_ms > 0,
                                     "first_sync_retry_ms should > 0")
-        RETURN_IF_INVALID_CONDITION(first_heart_retry_cnt >= 0,
-                                    "first_heart_retry_cnt should >= 0")
-        // first_heart_retry_cnt 这个如果等于0就代表注册节点后不尝试进行心跳
-        // // 否则代表注册节点后第一次心跳最多尝试的次数
+        RETURN_IF_INVALID_STATUS(replica_ops.validate())
         return Status::OK();
     }
 };
 
-class NodeAgent : public BackgroundTask {
+class NodeAgent {
    public:
-    NodeAgent() = default;
-    Status init(const NodeAgentConf& conf, ReplicaManager* replica_manager);
+    NodeAgent();
+    ~NodeAgent();
+
+    Status init(NodeAgentConf conf);
     Status start();
     Status stop();
 
-    void run() override;
-
-   protected:
-    Status setup() override;
-
    private:
+    class HeartbeatTask;
+    class RegisterTask;
+
     Status heartbeat_once();
+    Status send_heartbeat_once(rpc::HeartBeatResponse* response);
+
     Status register_node();
+
+    Status apply_expected_replica(const ExpectedReplica& instruction);
+    ReplicaInitParam make_replica_init_param(
+        const ExpectedReplica& expects) const;
     rpc::HeartBeatRequest make_heartbeat_request() const;
 
     NodeAgentConf conf_;
 
     std::shared_ptr<grpc::Channel> channel_;
     std::unique_ptr<rpc::ShardingManagerService::Stub> stub_;
-    ReplicaManager* replica_manager_{nullptr};
+    std::unique_ptr<HeartbeatTask> heartbeat_task_;
+    std::unique_ptr<RegisterTask> register_task_;
     bool initialized_{false};
 };
 

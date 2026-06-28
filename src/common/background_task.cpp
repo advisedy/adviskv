@@ -6,15 +6,6 @@
 
 namespace adviskv {
 
-Status BackgroundTask::prepare() {
-    Status status = setup();
-    if (!status.ok()) {
-        return status;
-    }
-    run();
-    return Status::OK();
-}
-
 void BackgroundTask::start(Milliseconds interval) {
     if (interval.count() <= 0) {
         return;

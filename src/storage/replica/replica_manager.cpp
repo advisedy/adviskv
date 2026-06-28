@@ -49,29 +49,11 @@ Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
     std::unique_lock locker(mutex_);
 
     if (replica_map_.count(replica_id)) {
-        ReplicaMetaPayload old_payload;
-        RETURN_IF_INVALID_STATUS(
-            meta_persist_.load_replica_meta(replica_id, old_payload))
-        if (old_payload.init_param.same_persisted_spec(param)) {
-            LOG_INFO(
-                "[ReplicaManager] add_replica: receive the same spec, "
-                "replica_id:{}, endpoint:{}",
-                replica_id.to_string(), param.local_endpoint.to_string());
-            return Status::OK();
-        }
-        LOG_WARN(
-            "[ReplicaManager] add_replica: the replica has benn created, "
-            "replica_id:{}, "
-            "have saved:[endpoint:{}], the param:[endpoint:{}]",
-            replica_id.to_string(),
-            old_payload.init_param.local_endpoint.to_string(),
-            param.local_endpoint.to_string());
-        return Status{
-            StatusCode::ALREADY_EXIST,
-            fmt::format("replica already exists, "
-                        "table_id: {}, shard_index: {}, replica_index: {}",
-                        replica_id.table_id, replica_id.shard_index,
-                        replica_id.replica_seq)};
+        LOG_INFO(
+            "[ReplicaManager] add_replica: replica already exists, "
+            "return OK, replica_id:{}, endpoint:{}",
+            replica_id.to_string(), param.local_endpoint.to_string());
+        return Status::OK();
     }
 
     if (shard_primary_index_.count(shard_id)) {

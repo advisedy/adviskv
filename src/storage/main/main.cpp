@@ -122,6 +122,8 @@ int main(int argc, char* argv[]) {
         agent_conf.manager_port = CONF_GET_INT("manager_port");
         agent_conf.heartbeat_interval_ms =
             CONF_GET_INT("heartbeat_interval_ms");
+        agent_conf.register_interval_ms =
+            CONF_GET_INT("register_interval_ms", 30 * 1000);
         agent_conf.replica_ops.list_replicas = [replica_manager_ptr]() {
             return replica_manager_ptr->get_replicas();
         };

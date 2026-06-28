@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "common/define.h"
+#include "common/model/expected_replica.h"
 #include "common/model/storage_replica_status.h"
 #include "common/status.h"
 #include "common/type.h"
@@ -244,35 +245,8 @@ struct HeartBeatParam {
     }
 };
 
-enum class ExpectedReplicaType : int8 {
-    PRESENT = 1,
-    ABSENT = 2,
-    ADD_MEMBER = 3,
-    REMOVE_MEMBER = 4,
-};
-
-struct ExpectedReplica {
-    ReplicaID replica_id;
-    ExpectedReplicaType type{ExpectedReplicaType::PRESENT};
-    EngineType engine_type{EngineType::MAP};
-    std::vector<PeerMember> initial_members;
-
-    Status validate() const {
-        RETURN_IF_INVALID_CONDITION(
-            replica_id.table_id >= 0,
-            "replica table id should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(
-            replica_id.shard_index >= 0,
-            "replica shard index should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(
-            replica_id.replica_seq >= 0,
-            "replica index should be greater than or equal to 0")
-        return Status::OK();
-    }
-};
-
 struct HeartBeatResult {
-    std::vector<ExpectedReplica> instructions;
+    std::vector<ExpectedReplica> expects;
 };
 
 }  // namespace adviskv::sdm

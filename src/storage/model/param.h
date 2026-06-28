@@ -122,13 +122,6 @@ struct ReplicaInitParam {
         return true;
     }
 
-    bool same_persisted_spec(const ReplicaInitParam& other) const {
-        return replica_id == other.replica_id &&
-               engine_type == other.engine_type &&
-               local_endpoint == other.local_endpoint &&
-               members == other.members;
-    }
-
     DEFINE_OPERATOR_NOT_EQUAL(ReplicaInitParam)
 };
 

@@ -139,15 +139,9 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
     HeartBeatResult result;
     Status status = service_manager_->heartbeat(param, &result);
     if (status.ok()) {
-        for (const ExpectedReplica& instruction : result.instructions) {
-            auto* expect = response->add_expects();
-            expect->set_type(to_pb_expected_replica_type(instruction.type));
-            encode_pb_replica_id(instruction.replica_id,
-                                 *expect->mutable_replica_id());
-            expect->set_engine_type(to<int8>(instruction.engine_type));
-            for (const PeerMember& member : instruction.initial_members) {
-                encode_pb_peer_member(member, *expect->add_initial_members());
-            }
+        for (const ExpectedReplica& expect : result.expects) {
+            auto* expect_pb = response->add_expects();
+            encode_pb_expected_replica(expect, *expect_pb);
         }
     }
 
