@@ -6,6 +6,7 @@
 
 #include "common/define.h"
 #include "common/id_allocator.h"
+#include "common/model/raft_member_type.h"
 #include "common/model/storage_replica_status.h"
 #include "common/optional.h"
 #include "common/type.h"
@@ -41,26 +42,25 @@ enum class ReplicaPhase : int8 {
     DELETING = 4,
     DELETED = 5,
     LOST = 6,
-    ERROR = 7,
+    ERROR = 7,  // TODO111 之后应该也会多个阶段
 };
 
 struct ReplicaSpec {
     std::string dc;             // 虽然会修改，但是需要持久化
     NodeID assign_node_id{""};  // 虽然会修改，但是需要持久化
     EngineType engine_type{EngineType::MAP};
-    std::vector<PeerMember> members;
 };
 
 struct ReplicaState {
-    ReplicaDesired desired{ReplicaDesired::PRESENT};  // ReplicaGroupService
-    ReplicaPhase phase{ReplicaPhase::PENDING};        // ReplicaGroupService
-    ReplicaRole observed_raft_role{ReplicaRole::FOLLOWER};  // NodeService
-    Endpoint observed_endpoint;                             // NodeService
-    StorageReplicaStatus observed_storage_status{
-        StorageReplicaStatus::INITIALIZING};  // NodeService
-    std::string last_error_msg;               // ReplicaGroupService
-    int64 update_ts{0};                       // evertone
-    Term term{0};                             // NodeService
+    ReplicaDesired desired{ReplicaDesired::PRESENT};                                   // ReplicaGroupService
+    ReplicaPhase phase{ReplicaPhase::PENDING};                                         // ReplicaGroupService
+    ReplicaRole observed_raft_role{ReplicaRole::FOLLOWER};                             // NodeService
+    RaftMemberType observed_member_type{RaftMemberType::NON_MEMBER};                   // NodeService
+    Endpoint observed_endpoint;                                                        // NodeService
+    StorageReplicaStatus observed_storage_status{StorageReplicaStatus::INITIALIZING};  // NodeService
+    std::string last_error_msg;                                                        // ReplicaGroupService
+    int64 update_ts{0};                                                                // evertone
+    Term term{0};                                                                      // NodeService
 };
 
 struct Replica {
@@ -72,16 +72,16 @@ struct Replica {
 using ReplicaPtr = std::shared_ptr<Replica>;
 
 enum class ReplicaGroupMode : int32 {
-    BOOTSTRAP = 1,     
-    RAFT_RECONFIG = 2, 
+    BOOTSTRAP = 1,
+    RAFT_RECONFIG = 2,
 };
 
 struct ReplicaGroup {
     ShardID shard_id;
     ReplicaGroupMode mode{ReplicaGroupMode::BOOTSTRAP};  // ReplicaGroupService
-    int32_t target_replica_count{0};          // ReplicaGroupService
-    std::vector<ReplicaID> desired_members;   // ReplicaGroupService
-    IDAllocator<ReplicaSeq> seq_allocator;    // ReplicaGroupService
+    int32_t target_replica_count{0};                     // ReplicaGroupService
+    std::vector<ReplicaID> desired_members;              // ReplicaGroupService
+    IDAllocator<ReplicaSeq> seq_allocator;               // ReplicaGroupService
 };
 
 using ReplicaGroupPtr = std::shared_ptr<ReplicaGroup>;

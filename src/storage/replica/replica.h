@@ -11,6 +11,7 @@
 
 #include "common/define.h"
 #include "common/log.h"
+#include "common/model/raft_member_type.h"
 #include "common/oper_gate.h"
 #include "common/status.h"
 #include "common/type.h"
@@ -54,6 +55,10 @@ class Replica {
     ReplicaID get_replica_id() const { return replica_id_; }
     ReplicaRole get_role() const {
         return raft_node_ ? raft_node_->role() : ReplicaRole::FOLLOWER;
+    }
+    RaftMemberType get_member_type() const {
+        //TODO111 等着之后修改吧
+        return raft_node_ ? RaftMemberType::VOTER : RaftMemberType::NON_MEMBER;
     }
     Term current_term() const {
         return raft_node_ ? raft_node_->current_term() : 0;

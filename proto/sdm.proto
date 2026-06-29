@@ -89,6 +89,7 @@ message HeartBeatReplicaInfo{
     adviskv.pb.RaftRole role = 2;
     adviskv.pb.StorageReplicaStatus status = 3;
     int64 term = 4;
+    adviskv.pb.RaftMemberType member_type = 5;
 }
 
 message HeartBeatRequest{

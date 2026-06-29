@@ -14,6 +14,12 @@ enum RaftRole {
   RAFT_ROLE_CANDIDATE = 3;
 }
 
+enum RaftMemberType {
+  RAFT_MEMBER_TYPE_NON_MEMBER = 0;
+  RAFT_MEMBER_TYPE_VOTER = 1;
+  RAFT_MEMBER_TYPE_LEARNER = 2;
+}
+
 
 
 enum MetaTableState {

@@ -10,6 +10,7 @@
 #include "common/func.h"
 #include "common/log.h"
 #include "common/proto/expected_replica_proto.h"
+#include "common/proto/raft_member_type_proto.h"
 #include "common/proto/raft_role_proto.h"
 #include "common/proto/replica_id_proto.h"
 #include "common/proto/sdm_table_status_proto.h"
@@ -125,6 +126,12 @@ grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
         one.role = role;
         one.storage_status = storage_status;
         one.term = replica_info.term();
+        if (!decode_pb_raft_member_type(replica_info.member_type(),
+                                        one.member_type)) {
+            fill_base_rsp(response, Status{StatusCode::INVALID_ARGUMENT,
+                                           "replica member type is not valid"});
+            return grpc::Status::OK;
+        }
         replica_info_list.emplace_back(std::move(one));
     }
     HeartBeatParam param;

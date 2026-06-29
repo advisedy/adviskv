@@ -282,6 +282,7 @@ Status SdmStore::del_replica(const ReplicaID& replica_key) {
 }
 
 // 如果shard上没有replicas，返回一个空集合是被允许的
+// 被删除的Replica是不会被展list的。
 Status SdmStore::list_replicas_by_shard(const ShardID& shard_id,
                                         std::vector<Replica>& out) const {
     std::vector<ReplicaID> replica_ids;

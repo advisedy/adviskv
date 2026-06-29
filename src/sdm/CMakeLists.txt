@@ -16,6 +16,8 @@ set(SDM_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/persist/sdm_persist_engine.cpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/background/background.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/reconcile/replica_group_membership_reconciler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/reconcile/replica_group_plan_reconciler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/reconcile/replica_phase_projection.cpp
 
     ${CMAKE_CURRENT_SOURCE_DIR}/client/storage_client.cpp

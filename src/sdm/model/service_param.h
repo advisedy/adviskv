@@ -213,6 +213,7 @@ struct HeartBeatReplicaInfo {
     ReplicaRole role;
     StorageReplicaStatus storage_status;
     Term term;  // 用来帮助判断leader，term高的优先被认定是leader
+    RaftMemberType member_type{RaftMemberType::NON_MEMBER};
 };
 
 struct HeartBeatParam {

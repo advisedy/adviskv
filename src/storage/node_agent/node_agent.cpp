@@ -11,6 +11,7 @@
 #include "common/define.h"
 #include "common/log.h"
 #include "common/proto/expected_replica_proto.h"
+#include "common/proto/raft_member_type_proto.h"
 #include "common/proto/raft_role_proto.h"
 #include "common/proto/replica_id_proto.h"
 #include "common/proto/storage_replica_status_proto.h"
@@ -235,6 +236,8 @@ rpc::HeartBeatRequest NodeAgent::make_heartbeat_request() const {
         info->set_role(to_pb_raft_role(replica->get_role()));
         info->set_status(to_pb_storage_replica_status(replica->get_status()));
         info->set_term(replica->current_term());
+        info->set_member_type(
+            to_pb_raft_member_type(replica->get_member_type()));
     }
     return request;
 }

@@ -18,7 +18,9 @@ enum class ExpectedReplicaType : int8 {
 
 struct ExpectedReplica {
     ReplicaID replica_id;
-    ExpectedReplicaType type{ExpectedReplicaType::PRESENT};
+    ExpectedReplicaType type{
+        ExpectedReplicaType::
+            PRESENT};  // 如果是ABSENT的话，不需要填写下面两个变量
     EngineType engine_type{EngineType::MAP};
     std::vector<PeerMember> initial_members;
 

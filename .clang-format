@@ -1,3 +1,43 @@
-BasedOnStyle: Google
+BasedOnStyle:  Google
 IndentWidth: 4
 TabWidth: 4
+---
+Language: Cpp
+# indent
+AccessModifierOffset: -4
+ContinuationIndentWidth: 8
+# align
+BreakBeforeTernaryOperators: true
+BreakBeforeBinaryOperators: false
+ColumnLimit: 120
+# constructor
+BreakConstructorInitializersBeforeComma: false
+ConstructorInitializerIndentWidth: 8
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+# short block
+AllowShortBlocksOnASingleLine: false
+AllowShortFunctionsOnASingleLine: false
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+Cpp11BracedListStyle: true
+# other
+AlwaysBreakTemplateDeclarations: true
+DerivePointerAlignment: false
+PointerAlignment: Left
+
+# clang-format 3.9+
+BreakStringLiterals: false
+ReflowComments: true
+
+# includes
+# SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<[[:alnum:]_]+>$'
+    Priority: 1
+  - Regex: '^<idl/.+>$'
+    Priority: 3
+  - Regex: '^<.+>$'
+    Priority: 2
+  - Regex: '^".+"$'
+    Priority: 4

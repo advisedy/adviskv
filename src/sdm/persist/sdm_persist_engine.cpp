@@ -228,15 +228,10 @@ class SdmMetaCodec {
         buf.write(replica.spec.dc);
         buf.write(replica.spec.assign_node_id);
         buf.write(static_cast<int32>(replica.spec.engine_type));
-        buf.write<int32>(static_cast<int32>(replica.spec.members.size()));
-        for (const PeerMember& member : replica.spec.members) {
-            buf.write(member.node_id);
-            encode_replica_id(member.replica_id, buf);
-            encode_endpoint(member.endpoint, buf);
-        }
         buf.write(static_cast<int32>(replica.state.desired));
         buf.write(static_cast<int32>(replica.state.phase));
         buf.write(static_cast<int32>(replica.state.observed_raft_role));
+        buf.write(static_cast<int32>(replica.state.observed_member_type));
         encode_endpoint(replica.state.observed_endpoint, buf);
         buf.write(replica.state.last_error_msg);
         buf.write(replica.state.update_ts);
@@ -253,19 +248,6 @@ class SdmMetaCodec {
         RETURN_IF_INVALID_READ(buf, engine_type)
         replica.spec.engine_type = static_cast<EngineType>(engine_type);
 
-        int32 member_count{0};
-        RETURN_IF_INVALID_READ(buf, member_count)
-        if (member_count < 0) return Status::ERROR("invalid member_count");
-        replica.spec.members.clear();
-        replica.spec.members.reserve(static_cast<size_t>(member_count));
-        for (int32 i = 0; i < member_count; ++i) {
-            PeerMember member;
-            RETURN_IF_INVALID_READ(buf, member.node_id)
-            RETURN_IF_INVALID_STATUS(decode_replica_id(buf, member.replica_id))
-            RETURN_IF_INVALID_STATUS(decode_endpoint(buf, member.endpoint))
-            replica.spec.members.push_back(std::move(member));
-        }
-
         int32 desired{0};
         RETURN_IF_INVALID_READ(buf, desired)
         replica.state.desired = static_cast<ReplicaDesired>(desired);
@@ -280,6 +262,13 @@ class SdmMetaCodec {
             decode_replica_role(observed_raft_role,
                                 replica.state.observed_raft_role),
             "invalid observed_raft_role")
+
+        int32 observed_member_type{0};
+        RETURN_IF_INVALID_READ(buf, observed_member_type)
+        RETURN_IF_INVALID_CONDITION(
+            decode_raft_member_type(observed_member_type,
+                                    replica.state.observed_member_type),
+            "invalid observed_member_type")
 
         RETURN_IF_INVALID_STATUS(
             decode_endpoint(buf, replica.state.observed_endpoint))
