@@ -24,10 +24,7 @@ class MetaServiceImpl final : public rpc::MetaService::Service {
     DEFINE_METHOD(CreateDB)
     DEFINE_METHOD(DropDB)
     DEFINE_METHOD(GetTable)
-
-    grpc::Status DropTable(grpc::ServerContext* context,
-                           const rpc::MetaDropTableRequest* request,
-                           rpc::MetaDropTableResponse* response) override;
+    DEFINE_METHOD(DropTable)
 
 #undef DEFINE_METHOD
 

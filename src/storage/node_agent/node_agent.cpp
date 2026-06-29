@@ -90,7 +90,7 @@ Status NodeAgent::init(NodeAgentConf conf) {
     const std::string target =
         conf_.manager_host + ":" + std::to_string(conf_.manager_port);
     channel_ = grpc::CreateChannel(target, grpc::InsecureChannelCredentials());
-    stub_ = rpc::ShardingManagerService::NewStub(channel_);
+    stub_ = sdm_rpc::SdmService::NewStub(channel_);
     register_task_ = std::make_unique<RegisterTask>(
         this, Milliseconds(conf_.first_sync_retry_ms),
         Milliseconds(conf_.register_interval_ms));
@@ -127,7 +127,7 @@ Status NodeAgent::stop() {
 }
 
 Status NodeAgent::heartbeat_once() {
-    rpc::HeartBeatResponse response;
+    sdm_rpc::HeartbeatResponse response;
     Status status = send_heartbeat_once(&response);
     RETURN_IF_INVALID_STATUS(status)
 
@@ -143,26 +143,27 @@ Status NodeAgent::heartbeat_once() {
     return Status::OK();
 }
 
-Status NodeAgent::send_heartbeat_once(rpc::HeartBeatResponse* response) {
+Status NodeAgent::send_heartbeat_once(
+    sdm_rpc::HeartbeatResponse* response) {
     RETURN_IF_NULLPTR(response, "heartbeat response is nullptr")
 
-    rpc::HeartBeatRequest request = make_heartbeat_request();
+    sdm_rpc::HeartbeatRequest request = make_heartbeat_request();
     grpc::ClientContext context;
-    grpc::Status grpc_status = stub_->HeartBeat(&context, request, response);
+    grpc::Status grpc_status = stub_->Heartbeat(&context, request, response);
     RETURN_IF_INVALID_CONDITION(grpc_status.ok(), grpc_status.error_message())
     RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response->base_rsp()))
     return Status::OK();
 }
 
 Status NodeAgent::register_node() {
-    rpc::RegisterNodeRequest request;
+    sdm_rpc::RegisterNodeRequest request;
     request.set_node_id(conf_.node_id);
     request.set_ip(conf_.ip);
     request.set_port(conf_.port);
     request.set_resource_pool(conf_.resource_pool);
     request.set_dc(conf_.dc);
 
-    rpc::RegisterNodeResponse response;
+    sdm_rpc::RegisterNodeResponse response;
     grpc::ClientContext context;
     grpc::Status grpc_status =
         stub_->RegisterNode(&context, request, &response);
@@ -217,8 +218,8 @@ ReplicaInitParam NodeAgent::make_replica_init_param(
     return param;
 }
 
-rpc::HeartBeatRequest NodeAgent::make_heartbeat_request() const {
-    rpc::HeartBeatRequest request;
+sdm_rpc::HeartbeatRequest NodeAgent::make_heartbeat_request() const {
+    sdm_rpc::HeartbeatRequest request;
     request.set_node_id(conf_.node_id);
     request.set_ip(conf_.ip);
     request.set_port(conf_.port);

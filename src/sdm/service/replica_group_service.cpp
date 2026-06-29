@@ -92,6 +92,26 @@ Status append_reconfig_command_for_leader(const SdmStoreTxn& txn, const HeartBea
         if (!node_is_leader)
             continue;
 
+        /*
+          扩容：
+          victim = none
+          add_target = new replica
+
+          替换：
+          victim = bad old replica
+          add_target = new replica
+
+          缩容：
+          victim = 尾部最后的那个 replica
+          add_target = 尾部最后的那个 replica, because READY+NON_MEMBER
+          add_target == victim，所以进行特判一下，如果两个相同的话，就把add_target的取消掉
+          */
+        Optional<ReplicaID> victim;
+        RETURN_IF_INVALID_STATUS(select_remove_member_victim(txn, group, victim))
+        if (victim.has_value() && add_target.has_value() && add_target.value() == victim.value()) {
+            add_target.reset();
+        }
+
         // 在 storage 那边保障幂等性操作。
         if (add_target.has_value()) {
             // 如果add_target也是victim的话，就代表这个里面replica都是好的，打算去掉最后一个，
@@ -105,13 +125,11 @@ Status append_reconfig_command_for_leader(const SdmStoreTxn& txn, const HeartBea
             continue;
         }
 
-        if (healthy_voter_count <= group.target_replica_count) {
+        if (healthy_voter_count < group.target_replica_count) {
             continue;
         }
 
         // 准备开始发送REMOVE_MEMBER
-        Optional<ReplicaID> victim;
-        RETURN_IF_INVALID_STATUS(select_remove_member_victim(txn, group, victim))
         // 在storgae侧做幂等性操作，如果对于victim正在执行conf change的话，或者已经不在了，都会返回OK
         if (victim.has_value()) {
             ExpectedReplica expect;

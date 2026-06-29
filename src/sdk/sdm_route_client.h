@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 
+#include "common/proto/rpc_alias.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "sdk/config.h"
@@ -22,7 +23,7 @@ class SdmRouteClient {
    private:
     KVClientConf conf_;
     std::shared_ptr<grpc::Channel> channel_;
-    std::unique_ptr<rpc::ShardingManagerService::Stub> stub_;
+    std::unique_ptr<sdm_rpc::SdmService::Stub> stub_;
 };
 
 }  // namespace adviskv::sdk

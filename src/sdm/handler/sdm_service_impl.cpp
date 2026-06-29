@@ -62,8 +62,8 @@ grpc::Status SdmServiceImpl::DropTable(grpc::ServerContext* context,
 
 grpc::Status SdmServiceImpl::AlterTableReplicaCount(
     grpc::ServerContext* context,
-    const rpc::SdmAlterTableReplicaCountRequest* request,
-    rpc::SdmAlterTableReplicaCountResponse* response) {
+    const rpc::AlterTableReplicaCountRequest* request,
+    rpc::AlterTableReplicaCountResponse* response) {
     UNUSED(context);
 
     AlterReplicaCountParam param;
@@ -99,9 +99,9 @@ grpc::Status SdmServiceImpl::GetTableStatus(
     return grpc::Status::OK;
 }
 
-grpc::Status SdmServiceImpl::HeartBeat(grpc::ServerContext* context,
-                                       const rpc::HeartBeatRequest* request,
-                                       rpc::HeartBeatResponse* response) {
+grpc::Status SdmServiceImpl::Heartbeat(grpc::ServerContext* context,
+                                       const rpc::HeartbeatRequest* request,
+                                       rpc::HeartbeatResponse* response) {
     UNUSED(context);
     std::vector<HeartBeatReplicaInfo> replica_info_list;
     for (const auto& replica_info : request->replica_info_list()) {

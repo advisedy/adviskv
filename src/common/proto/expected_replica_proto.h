@@ -3,43 +3,43 @@
 #include "common/define.h"
 #include "common/model/expected_replica.h"
 #include "common/proto/replica_id_proto.h"
-#include "sdm.pb.h"
+#include "common/proto/rpc_alias.h"
 
 namespace adviskv {
 
 inline bool encode_pb_expected_replica_type(ExpectedReplicaType in,
-                                            rpc::ExpectedReplicaType& out) {
+                                            sdm_rpc::ExpectedReplicaType& out) {
     switch (in) {
         case ExpectedReplicaType::PRESENT:
-            out = rpc::PRESENT;
+            out = sdm_rpc::PRESENT;
             return true;
         case ExpectedReplicaType::ABSENT:
-            out = rpc::ABSENT;
+            out = sdm_rpc::ABSENT;
             return true;
         case ExpectedReplicaType::ADD_MEMBER:
-            out = rpc::ADD_MEMBER;
+            out = sdm_rpc::ADD_MEMBER;
             return true;
         case ExpectedReplicaType::REMOVE_MEMBER:
-            out = rpc::REMOVE_MEMBER;
+            out = sdm_rpc::REMOVE_MEMBER;
             return true;
         default:
             return false;
     }
 }
 
-inline bool decode_pb_expected_replica_type(rpc::ExpectedReplicaType in,
+inline bool decode_pb_expected_replica_type(sdm_rpc::ExpectedReplicaType in,
                                             ExpectedReplicaType& out) {
     switch (in) {
-        case rpc::PRESENT:
+        case sdm_rpc::PRESENT:
             out = ExpectedReplicaType::PRESENT;
             return true;
-        case rpc::ABSENT:
+        case sdm_rpc::ABSENT:
             out = ExpectedReplicaType::ABSENT;
             return true;
-        case rpc::ADD_MEMBER:
+        case sdm_rpc::ADD_MEMBER:
             out = ExpectedReplicaType::ADD_MEMBER;
             return true;
-        case rpc::REMOVE_MEMBER:
+        case sdm_rpc::REMOVE_MEMBER:
             out = ExpectedReplicaType::REMOVE_MEMBER;
             return true;
         default:
@@ -47,15 +47,15 @@ inline bool decode_pb_expected_replica_type(rpc::ExpectedReplicaType in,
     }
 }
 
-inline rpc::ExpectedReplicaType to_pb_expected_replica_type(
+inline sdm_rpc::ExpectedReplicaType to_pb_expected_replica_type(
     ExpectedReplicaType type) {
-    rpc::ExpectedReplicaType out = rpc::ABSENT;
+    sdm_rpc::ExpectedReplicaType out = sdm_rpc::ABSENT;
     IGNORE_RESULT(encode_pb_expected_replica_type(type, out));
     return out;
 }
 
 inline void encode_pb_expected_replica(const ExpectedReplica& in,
-                                       rpc::ExpectedReplica& out) {
+                                       sdm_rpc::ExpectedReplica& out) {
     out.set_type(to_pb_expected_replica_type(in.type));
     encode_pb_replica_id(in.replica_id, *out.mutable_replica_id());
     out.set_engine_type(to<int8>(in.engine_type));
@@ -65,7 +65,7 @@ inline void encode_pb_expected_replica(const ExpectedReplica& in,
 }
 
 inline ExpectedReplica decode_pb_expected_replica(
-    const rpc::ExpectedReplica& in) {
+    const sdm_rpc::ExpectedReplica& in) {
     ExpectedReplica out;
     out.replica_id = decode_pb_replica_id(in.replica_id());
     IGNORE_RESULT(decode_pb_expected_replica_type(in.type(), out.type));

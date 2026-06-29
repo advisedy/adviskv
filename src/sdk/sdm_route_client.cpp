@@ -19,18 +19,18 @@ SdmRouteClient::SdmRouteClient(const KVClientConf& conf) : conf_(conf) {
     const std::string target =
         fmt::format("{}:{}", conf_.sdm_host, conf_.sdm_port);
     channel_ = grpc::CreateChannel(target, grpc::InsecureChannelCredentials());
-    stub_ = rpc::ShardingManagerService::NewStub(channel_);
+    stub_ = sdm_rpc::SdmService::NewStub(channel_);
 }
 
 Status SdmRouteClient::get_route(const Key& key, RouteInfo* route) const {
     RETURN_IF_NULLPTR(route, "route should not be nullptr")
 
-    rpc::GetRouteRequest request;
+    sdm_rpc::GetRouteRequest request;
     request.set_db_name(conf_.db_name);
     request.set_table_name(conf_.table_name);
     request.set_key(key);
 
-    rpc::GetRouteResponse response;
+    sdm_rpc::GetRouteResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +
                          std::chrono::milliseconds(conf_.sdm_timeout_ms));

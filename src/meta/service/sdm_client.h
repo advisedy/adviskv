@@ -6,6 +6,7 @@
 #include <string>
 
 #include "common/model/sdm_table_status.h"
+#include "common/proto/rpc_alias.h"
 #include "common/status.h"
 #include "meta/catalog/meta_types.h"
 #include "sdm.grpc.pb.h"
@@ -35,7 +36,7 @@ class ISdmClient {
 class SdmClient : public ISdmClient {
    public:
     explicit SdmClient(const std::shared_ptr<grpc::ChannelInterface>& channel)
-        : stub_(rpc::ShardingManagerService::NewStub(channel)) {}
+        : stub_(sdm_rpc::SdmService::NewStub(channel)) {}
 
     Status call_place_table(const TableMeta& table_meta) override;
     Status call_drop_table(const TableMeta& table_meta) override;
@@ -45,7 +46,7 @@ class SdmClient : public ISdmClient {
                             SdmTableStatus* table_status) override;
 
    private:
-    using SdmClientStub = std::unique_ptr<rpc::ShardingManagerService::Stub>;
+    using SdmClientStub = std::unique_ptr<sdm_rpc::SdmService::Stub>;
 
     SdmClientStub stub_;
 };

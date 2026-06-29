@@ -13,7 +13,7 @@ namespace adviskv::sdm {
 
 class ServiceManager;
 
-class SdmServiceImpl final : public rpc::ShardingManagerService::Service {
+class SdmServiceImpl final : public rpc::SdmService::Service {
    public:
     explicit SdmServiceImpl(ServiceManager* service_manager);
 
@@ -25,7 +25,7 @@ class SdmServiceImpl final : public rpc::ShardingManagerService::Service {
     DEFINE_METHOD(PlaceTable)
     DEFINE_METHOD(DropTable)
     DEFINE_METHOD(GetTableStatus)
-    DEFINE_METHOD(HeartBeat)
+    DEFINE_METHOD(Heartbeat)
     DEFINE_METHOD(RegisterNode)
     DEFINE_METHOD(GetRoute)
 
@@ -33,8 +33,8 @@ class SdmServiceImpl final : public rpc::ShardingManagerService::Service {
 
     grpc::Status AlterTableReplicaCount(
         grpc::ServerContext* context,
-        const rpc::SdmAlterTableReplicaCountRequest* request,
-        rpc::SdmAlterTableReplicaCountResponse* response) override;
+        const rpc::AlterTableReplicaCountRequest* request,
+        rpc::AlterTableReplicaCountResponse* response) override;
 
    private:
     ServiceManager* service_manager_{nullptr};

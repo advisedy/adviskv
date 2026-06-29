@@ -2,9 +2,12 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+
 #include "common/stable_hash.h"
 #include "common/status.h"
 #include "sdm/model/sdm_store.h"
+#include "sdm/sdm_store_test_helper.h"
 namespace adviskv::sdm {
 namespace {
 
@@ -59,8 +62,8 @@ TEST(RouteServiceTest, GetRouteReturnsRouteForTableAndKey) {
     Table table = make_table();
     const Key key = "user-123";
     ShardID shard_id = shard_for_key(table, key);
-    ASSERT_TRUE(store.put_table(table).ok());
-    ASSERT_TRUE(store.put_shard_route(make_route(shard_id)).ok());
+    ASSERT_TRUE(store_test::put_table(store, table).ok());
+    ASSERT_TRUE(store_test::put_shard_route(store, make_route(shard_id)).ok());
     RouteService service(&store);
 
     ShardRoute route;
@@ -96,7 +99,7 @@ TEST(RouteServiceTest, GetRouteReturnsTableNotFoundWhenTableMissing) {
 
         EXPECT_EQ(status.code(), StatusCode::TABLE_NOT_FOUND);
     }
-    ASSERT_TRUE(store.put_table(make_table()).ok());
+    ASSERT_TRUE(store_test::put_table(store, make_table()).ok());
     {
         Status status = service.get_route(make_get_route_param(), &route);
 
@@ -111,41 +114,39 @@ TEST(RouteServiceTest, GetRouteRequiresExactlyOneWritableLeader) {
         SdmStore store{SdmMetaStoreType::MEMORY};
         Table table = make_table();
         ShardID shard_id = shard_for_key(table, "user-123");
-        ASSERT_TRUE(store.put_table(table).ok());
-        ASSERT_TRUE(
-            store
-                .put_shard_route(make_route(
-                    shard_id, {ReplicaRole::FOLLOWER, ReplicaRole::FOLLOWER}))
-                .ok());
-        RouteService service(&store);
-        ShardRoute route;
-        EXPECT_EQ(service.get_route(make_get_route_param(), &route).code(),
-                  StatusCode::ROUTE_NOT_FOUND);
-    }
-    {
-        SdmStore store{SdmMetaStoreType::MEMORY};
-        Table table = make_table();
-        ShardID shard_id = shard_for_key(table, "user-123");
-        ASSERT_TRUE(store.put_table(table).ok());
-        ASSERT_TRUE(
-            store
-                .put_shard_route(make_route(
-                    shard_id, {ReplicaRole::LEADER, ReplicaRole::LEADER}))
-                .ok());
-        RouteService service(&store);
-        ShardRoute route;
-        EXPECT_EQ(service.get_route(make_get_route_param(), &route).code(),
-                  StatusCode::ROUTE_NOT_FOUND);
-    }
-    {
-        SdmStore store{SdmMetaStoreType::MEMORY};
-        Table table = make_table();
-        ShardID shard_id = shard_for_key(table, "user-123");
-        ASSERT_TRUE(store.put_table(table).ok());
-        ASSERT_TRUE(store
-                        .put_shard_route(
-                            make_route(shard_id, {ReplicaRole::LEADER}, false))
+        ASSERT_TRUE(store_test::put_table(store, table).ok());
+        ASSERT_TRUE(store_test::put_shard_route(
+                        store, make_route(shard_id, {ReplicaRole::FOLLOWER,
+                                                     ReplicaRole::FOLLOWER}))
                         .ok());
+        RouteService service(&store);
+        ShardRoute route;
+        EXPECT_EQ(service.get_route(make_get_route_param(), &route).code(),
+                  StatusCode::ROUTE_NOT_FOUND);
+    }
+    {
+        SdmStore store{SdmMetaStoreType::MEMORY};
+        Table table = make_table();
+        ShardID shard_id = shard_for_key(table, "user-123");
+        ASSERT_TRUE(store_test::put_table(store, table).ok());
+        ASSERT_TRUE(store_test::put_shard_route(
+                        store, make_route(shard_id, {ReplicaRole::LEADER,
+                                                     ReplicaRole::LEADER}))
+                        .ok());
+        RouteService service(&store);
+        ShardRoute route;
+        EXPECT_EQ(service.get_route(make_get_route_param(), &route).code(),
+                  StatusCode::ROUTE_NOT_FOUND);
+    }
+    {
+        SdmStore store{SdmMetaStoreType::MEMORY};
+        Table table = make_table();
+        ShardID shard_id = shard_for_key(table, "user-123");
+        ASSERT_TRUE(store_test::put_table(store, table).ok());
+        ASSERT_TRUE(
+            store_test::put_shard_route(
+                store, make_route(shard_id, {ReplicaRole::LEADER}, false))
+                .ok());
         RouteService service(&store);
         ShardRoute route;
         EXPECT_EQ(service.get_route(make_get_route_param(), &route).code(),

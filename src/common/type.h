@@ -1,12 +1,12 @@
 #pragma once
 
-#include <fmt/format.h>
-
 #include <cstdint>
 #include <functional>
 #include <string>
 #include <string_view>
 #include <utility>
+
+#include <fmt/format.h>
 
 #include "common/define.h"
 #include "common/model/replica_role.h"
@@ -45,8 +45,8 @@ struct ShardID {
     ShardIndex shard_index{-1};
 
     ShardID() = default;
-    ShardID(TableID table_id, ShardIndex shard_index)
-        : table_id(table_id), shard_index(shard_index) {}
+    ShardID(TableID table_id, ShardIndex shard_index) : table_id(table_id), shard_index(shard_index) {
+    }
 
     std::string to_string() const {
         return fmt::format("{}:{}", table_id, shard_index);
@@ -76,19 +76,19 @@ struct ReplicaID {
 
     ReplicaID() = default;
     ReplicaID(TableID table_id, ShardIndex shard_index, ReplicaSeq replica_seq)
-        : table_id(table_id),
-          shard_index(shard_index),
-          replica_seq(replica_seq) {}
+            : table_id(table_id), shard_index(shard_index), replica_seq(replica_seq) {
+    }
 
     std::string to_string() const {
         return fmt::format("{}:{}:{}", table_id, shard_index, replica_seq);
     }
 
-    ShardID get_shard_id() const { return ShardID{table_id, shard_index}; }
+    ShardID get_shard_id() const {
+        return ShardID{table_id, shard_index};
+    }
 
     bool operator==(const ReplicaID& other) const {
-        return table_id == other.table_id && shard_index == other.shard_index &&
-               replica_seq == other.replica_seq;
+        return table_id == other.table_id && shard_index == other.shard_index && replica_seq == other.replica_seq;
     }
 
     DEFINE_OPERATOR_NOT_EQUAL(ReplicaID)
@@ -113,9 +113,12 @@ struct Endpoint {
     int32_t port;
 
     Endpoint() = default;
-    Endpoint(std::string ip, int32_t port) : ip(std::move(ip)), port(port) {}
+    Endpoint(std::string ip, int32_t port) : ip(std::move(ip)), port(port) {
+    }
 
-    std::string to_string() const { return fmt::format("{}:{}", ip, port); }
+    std::string to_string() const {
+        return fmt::format("{}:{}", ip, port);
+    }
 
     bool operator==(const Endpoint& other) const {
         return ip == other.ip and port == other.port;
@@ -130,9 +133,12 @@ struct PeerMember {
     Endpoint endpoint;
 
     bool operator==(const PeerMember& other) const {
-        if (node_id != other.node_id) return false;
-        if (!(replica_id == other.replica_id)) return false;
-        if (!(endpoint == other.endpoint)) return false;
+        if (node_id != other.node_id)
+            return false;
+        if (!(replica_id == other.replica_id))
+            return false;
+        if (!(endpoint == other.endpoint))
+            return false;
         return true;
     }
 

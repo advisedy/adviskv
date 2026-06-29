@@ -10,7 +10,7 @@
 namespace adviskv::meta {
 
 Status SdmClient::call_place_table(const TableMeta& table_meta) {
-    rpc::PlaceTableRequest request;
+    sdm_rpc::PlaceTableRequest request;
     request.set_db_id(table_meta.db_id);
     request.set_table_id(table_meta.table_id);
     request.set_db_name(table_meta.db_name);
@@ -19,7 +19,7 @@ Status SdmClient::call_place_table(const TableMeta& table_meta) {
     request.set_replica_count(table_meta.replica_count);
     request.set_resource_pool(table_meta.resource_pool);
     request.set_operation_id(table_meta.operation_id);
-    rpc::PlaceTableResponse response;
+    sdm_rpc::PlaceTableResponse response;
     grpc::ClientContext context;
     grpc::Status status = stub_->PlaceTable(&context, request, &response);
 
@@ -38,10 +38,10 @@ Status SdmClient::call_place_table(const TableMeta& table_meta) {
 
 Status SdmClient::get_table_status(const TableMeta& table_meta,
                                    SdmTableStatus* table_status) {
-    rpc::GetTableStatusRequest request;
+    sdm_rpc::GetTableStatusRequest request;
     request.set_table_id(table_meta.table_id);
     request.set_operation_id(table_meta.operation_id);
-    rpc::GetTableStatusResponse response;
+    sdm_rpc::GetTableStatusResponse response;
     grpc::ClientContext context;
     grpc::Status status = stub_->GetTableStatus(&context, request, &response);
 
@@ -71,10 +71,10 @@ Status SdmClient::get_table_status(const TableMeta& table_meta,
 }
 
 Status SdmClient::call_drop_table(const TableMeta& table_meta) {
-    rpc::DropTableRequest request;
+    sdm_rpc::DropTableRequest request;
     request.set_table_id(table_meta.table_id);
     request.set_operation_id(table_meta.operation_id);
-    rpc::DropTableResponse response;
+    sdm_rpc::DropTableResponse response;
     grpc::ClientContext context;
     grpc::Status status = stub_->DropTable(&context, request, &response);
 
@@ -90,12 +90,11 @@ Status SdmClient::call_drop_table(const TableMeta& table_meta) {
 }
 
 Status SdmClient::call_alter_table_replica_count(const TableMeta& table_meta) {
-    rpc::SdmAlterTableReplicaCountRequest request;
+    sdm_rpc::AlterTableReplicaCountRequest request;
     request.set_table_id(table_meta.table_id);
     request.set_replica_count(table_meta.replica_count);
     request.set_operation_id(table_meta.operation_id);
-    rpc::SdmAlterTableReplicaCountResponse
-        response;  // TODO111 对于SDM和META的RPC起名需要搞一下
+    sdm_rpc::AlterTableReplicaCountResponse response;
     grpc::ClientContext context;
     grpc::Status status =
         stub_->AlterTableReplicaCount(&context, request, &response);

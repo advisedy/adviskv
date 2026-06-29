@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package adviskv.rpc;
+package adviskv.sdm.rpc;
 
 import "common.proto";
 
@@ -60,13 +60,13 @@ message DropTableResponse{
     adviskv.pb.BaseRsp base_rsp = 1;
 }
 
-message SdmAlterTableReplicaCountRequest{
+message AlterTableReplicaCountRequest{
     int32 table_id = 1;
     int32 replica_count = 2;
     string operation_id = 3;
 }
 
-message SdmAlterTableReplicaCountResponse{
+message AlterTableReplicaCountResponse{
     adviskv.pb.BaseRsp base_rsp = 1;
 }
 
@@ -84,7 +84,7 @@ message GetTableStatusResponse{
     string operation_id = 6;
 }
 
-message HeartBeatReplicaInfo{
+message HeartbeatReplicaInfo{
     adviskv.pb.ReplicaID replica_id = 1;
     adviskv.pb.RaftRole role = 2;
     adviskv.pb.StorageReplicaStatus status = 3;
@@ -92,13 +92,13 @@ message HeartBeatReplicaInfo{
     adviskv.pb.RaftMemberType member_type = 5;
 }
 
-message HeartBeatRequest{
+message HeartbeatRequest{
     string node_id = 1;
     string ip = 2;
     int32 port = 3;
     string resource_pool = 4;
     string dc = 5;
-    repeated HeartBeatReplicaInfo replica_info_list = 6;
+    repeated HeartbeatReplicaInfo replica_info_list = 6;
 }
 
 enum ExpectedReplicaType {
@@ -115,17 +115,17 @@ message ExpectedReplica {
     repeated adviskv.pb.PeerMember initial_members = 4;
 }
 
-message HeartBeatResponse{
+message HeartbeatResponse{
     adviskv.pb.BaseRsp base_rsp = 1;
     repeated ExpectedReplica expects = 2;
 }
 
-service ShardingManagerService{
+service SdmService{
     rpc GetRoute(GetRouteRequest) returns (GetRouteResponse);
     rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
     rpc PlaceTable(PlaceTableRequest) returns (PlaceTableResponse);
     rpc DropTable(DropTableRequest) returns (DropTableResponse);
-    rpc AlterTableReplicaCount(SdmAlterTableReplicaCountRequest) returns (SdmAlterTableReplicaCountResponse);
+    rpc AlterTableReplicaCount(AlterTableReplicaCountRequest) returns (AlterTableReplicaCountResponse);
     rpc GetTableStatus(GetTableStatusRequest) returns (GetTableStatusResponse);
-    rpc HeartBeat(HeartBeatRequest) returns (HeartBeatResponse);
+    rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
 }

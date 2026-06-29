@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package adviskv.rpc;
+package adviskv.meta.rpc;
 
 import "common.proto";
 
@@ -38,12 +38,12 @@ message CreateTableResponse {
   string operation_id = 4;
 }
 
-message MetaDropTableRequest {
+message DropTableRequest {
   string db_name = 1;
   string table_name = 2;
 }
 
-message MetaDropTableResponse {
+message DropTableResponse {
   adviskv.pb.BaseRsp base_rsp = 1;
   int32 table_id = 2;
   adviskv.pb.MetaTableState table_state = 3;
@@ -86,7 +86,7 @@ service MetaService {
   rpc CreateDB(CreateDBRequest) returns (CreateDBResponse);
   rpc DropDB(DropDBRequest) returns (DropDBResponse);
   rpc CreateTable(CreateTableRequest) returns (CreateTableResponse);
-  rpc DropTable(MetaDropTableRequest) returns (MetaDropTableResponse);
+  rpc DropTable(DropTableRequest) returns (DropTableResponse);
   rpc AlterTableReplicaCount(AlterTableReplicaCountRequest) returns (AlterTableReplicaCountResponse);
   rpc GetTable(GetTableRequest) returns (GetTableResponse);
 }

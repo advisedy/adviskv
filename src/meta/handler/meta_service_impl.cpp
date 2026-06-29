@@ -74,8 +74,8 @@ grpc::Status MetaServiceImpl::CreateTable(
 }
 
 grpc::Status MetaServiceImpl::DropTable(
-    grpc::ServerContext* context, const rpc::MetaDropTableRequest* request,
-    rpc::MetaDropTableResponse* response) {
+    grpc::ServerContext* context, const rpc::DropTableRequest* request,
+    rpc::DropTableResponse* response) {
     UNUSED(context);
     DropTableParam param;
     param.db_name = request->db_name();
