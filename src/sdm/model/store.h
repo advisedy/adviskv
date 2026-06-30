@@ -53,11 +53,12 @@ struct ReplicaSpec {
 
 struct ReplicaState {
     ReplicaDesired desired{ReplicaDesired::PRESENT};                                   // ReplicaGroupService
-    ReplicaPhase phase{ReplicaPhase::PENDING};                                         // ReplicaGroupService + NodeService
+    ReplicaPhase phase{ReplicaPhase::PENDING};                                         // ReplicaGroupService
     ReplicaRole observed_raft_role{ReplicaRole::FOLLOWER};                             // NodeService
     RaftMemberType observed_member_type{RaftMemberType::NON_MEMBER};                   // NodeService
     Endpoint observed_endpoint;                                                        // NodeService
     StorageReplicaStatus observed_storage_status{StorageReplicaStatus::INITIALIZING};  // NodeService //TODO111
+    bool observed_no_exist{false};                                                     // NodeService
     std::string last_error_msg;                                                        // ReplicaGroupService
     int64 update_ts{0};                                                                // evertone
     Term term{0};                                                                      // NodeService

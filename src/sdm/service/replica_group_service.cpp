@@ -3,9 +3,11 @@
 #include <unordered_set>
 
 #include "common/define.h"
+#include "common/func.h"
 #include "common/status.h"
 #include "sdm/model/sdm_store.h"
 #include "sdm/model/sdm_store_txn.h"
+#include "sdm/model/store.h"
 #include "sdm/reconcile/replica_group_membership_reconciler.h"
 #include "sdm/reconcile/replica_group_plan_reconciler.h"
 
@@ -32,6 +34,64 @@ Status select_remove_member_victim(const SdmStoreTxn& txn, const ReplicaGroup& g
 }
 
 namespace {
+
+ReplicaPhase project_phase_from_observed_facts(const SdmStoreTxn& txn, const Replica& replica) {
+    if (replica.state.phase == ReplicaPhase::DELETED)
+        return ReplicaPhase::DELETED;
+
+    if (replica.state.desired == ReplicaDesired::ABSENT) {
+        if (replica.state.phase == ReplicaPhase::DELETING && replica.state.observed_no_exist) {
+            return ReplicaPhase::DELETED;
+        }
+        return ReplicaPhase::DELETING;
+    }
+
+    if (replica.state.phase == ReplicaPhase::DELETING || replica.state.phase == ReplicaPhase::ERROR) {
+        return replica.state.phase;
+    }
+
+    NodeOr node;
+    if (txn.get_node(replica.spec.assign_node_id, node).fail() || node.is_empty()) {
+        return replica.state.phase;
+    }
+    if (node->state.status == NodeStatus::OFFLINE) {
+        return ReplicaPhase::LOST;
+    } else if (replica.state.phase == ReplicaPhase::LOST) {  // 说明node是ONLINE的
+        return ReplicaPhase::CREATING;
+    }
+    switch (replica.state.observed_storage_status) {
+        case StorageReplicaStatus::INITIALIZING:
+        case StorageReplicaStatus::RECOVERING:
+            return ReplicaPhase::CREATING;
+        case StorageReplicaStatus::READY:
+            return ReplicaPhase::READY;
+        case StorageReplicaStatus::FAULTED:
+        default:
+            return ReplicaPhase::ERROR;
+    }
+}
+
+Status reconcile_replica_phase(SdmStoreTxn& txn, Replica& replica) {
+    ReplicaPhase next_phase = project_phase_from_observed_facts(txn, replica);
+    if (next_phase == replica.state.phase) {
+        return Status::OK();
+    }
+    replica.state.phase = next_phase;
+    if (next_phase == ReplicaPhase::DELETED) {
+        replica.state.last_error_msg.clear();
+    }
+    replica.state.update_ts = func::get_current_ts_ms();
+    return txn.put_replica(replica);
+}
+
+Status reconcile_all_replica_phases(SdmStoreTxn& txn) {
+    std::vector<Replica> replicas;
+    RETURN_IF_INVALID_STATUS(txn.list_replicas(replicas))
+    for (Replica& replica : replicas) {
+        RETURN_IF_INVALID_STATUS(reconcile_replica_phase(txn, replica))
+    }
+    return Status::OK();
+}
 
 std::vector<PeerMember> build_shard_members(const SdmStoreTxn& txn, const ShardID& shard_id) {
     ReplicaGroupOr group_or;
@@ -217,6 +277,9 @@ Status ReplicaGroupService::reconcile_all() {
     ReplicaGroupMembershipReconciler membership(ctx);
 
     RETURN_IF_INVALID_STATUS(plan.reconcile_all())
+    // 在membership的reconcile之前先调用一下reconcile_all_replica_phases去及时更新replica的phase
+    RETURN_IF_INVALID_STATUS(
+            store_->write_with([&](SdmStoreTxn& txn) -> Status { return reconcile_all_replica_phases(txn); }))
     RETURN_IF_INVALID_STATUS(membership.reconcile_all())
     RETURN_IF_INVALID_STATUS(plan.reconcile_all())
     return Status::OK();

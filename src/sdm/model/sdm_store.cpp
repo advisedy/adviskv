@@ -281,6 +281,20 @@ Status SdmStore::del_replica(const ReplicaID& replica_key) {
         runtime_index_->on_replica_delete(*old_ptr));
 }
 
+Status SdmStore::list_replicas(std::vector<Replica>& out) const {
+    std::vector<ReplicaPtr> replicas;
+    RETURN_IF_INVALID_STATUS(meta_store_->list_replicas(replicas))
+
+    out.clear();
+    out.reserve(replicas.size());
+    for (const ReplicaPtr& replica : replicas) {
+        if (replica != nullptr) {
+            out.push_back(*replica);
+        }
+    }
+    return Status::OK();
+}
+
 // 如果shard上没有replicas，返回一个空集合是被允许的
 // 被删除的Replica是不会被展list的。
 Status SdmStore::list_replicas_by_shard(const ShardID& shard_id,

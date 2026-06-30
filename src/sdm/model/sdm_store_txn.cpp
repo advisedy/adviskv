@@ -60,6 +60,9 @@ Status SdmStoreTxn::get_replica(const ReplicaID& replica_key,
 Status SdmStoreTxn::del_replica(const ReplicaID& replica_key) {
     return store_->del_replica(replica_key);
 }
+Status SdmStoreTxn::list_replicas(std::vector<Replica>& out) const {
+    return store_->list_replicas(out);
+}
 Status SdmStoreTxn::list_replicas_by_shard(const ShardID& shard_id,
                                            std::vector<Replica>& out) const {
     return store_->list_replicas_by_shard(shard_id, out);

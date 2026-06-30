@@ -233,6 +233,8 @@ class SdmMetaCodec {
         buf.write(static_cast<int32>(replica.state.observed_raft_role));
         buf.write(static_cast<int32>(replica.state.observed_member_type));
         encode_endpoint(replica.state.observed_endpoint, buf);
+        buf.write(static_cast<int32>(replica.state.observed_storage_status));
+        buf.write(static_cast<int32>(replica.state.observed_no_exist ? 1 : 0));
         buf.write(replica.state.last_error_msg);
         buf.write(replica.state.update_ts);
         buf.write(replica.state.term);
@@ -272,6 +274,21 @@ class SdmMetaCodec {
 
         RETURN_IF_INVALID_STATUS(
             decode_endpoint(buf, replica.state.observed_endpoint))
+
+        int32 observed_storage_status{0};
+        RETURN_IF_INVALID_READ(buf, observed_storage_status)
+        RETURN_IF_INVALID_CONDITION(
+            decode_storage_replica_status(observed_storage_status,
+                                          replica.state.observed_storage_status),
+            "invalid observed_storage_status")
+
+        int32 observed_no_exist{0};
+        RETURN_IF_INVALID_READ(buf, observed_no_exist)
+        RETURN_IF_INVALID_CONDITION(
+            observed_no_exist == 0 || observed_no_exist == 1,
+            "invalid observed_no_exist")
+        replica.state.observed_no_exist = observed_no_exist == 1;
+
         RETURN_IF_INVALID_READ(buf, replica.state.last_error_msg)
         RETURN_IF_INVALID_READ(buf, replica.state.update_ts)
         RETURN_IF_INVALID_READ(buf, replica.state.term)

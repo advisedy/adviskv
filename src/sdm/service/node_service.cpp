@@ -14,10 +14,11 @@ namespace adviskv::sdm {
 
 namespace {
 constexpr size_t kHeartbeatCheckBatchSize = 16;
-}
 
-NodeService::NodeService(SdmStore* store)
-    : store_(store), start_ts_ms_(func::get_current_ts_ms()) {}
+}  // namespace
+
+NodeService::NodeService(SdmStore* store) : store_(store), start_ts_ms_(func::get_current_ts_ms()) {
+}
 
 Status NodeService::register_node(const RegisterNodeParam& param) {
     RETURN_IF_INVALID_PARAM(param)
@@ -30,8 +31,7 @@ Status NodeService::register_node(const RegisterNodeParam& param) {
     node.state.status = NodeStatus::ONLINE;
     node.state.endpoint = Endpoint{param.ip, param.port};
     node.state.last_heartbeat_ts = param.last_heartbeat_ts;
-    return store_->write_with(
-        [&](SdmStoreTxn& txn) { return txn.put_node(node); });
+    return store_->write_with([&](SdmStoreTxn& txn) { return txn.put_node(node); });
 }
 
 Status NodeService::heartbeat(const HeartBeatParam& param) {
@@ -41,20 +41,19 @@ Status NodeService::heartbeat(const HeartBeatParam& param) {
     Status status = store_->write_with([&](SdmStoreTxn& txn) -> Status {
         RETURN_IF_INVALID_STATUS(update_node_heartbeat(txn, param))
         RETURN_IF_INVALID_STATUS(apply_reported_replicas(txn, param))
-        RETURN_IF_INVALID_STATUS(mark_deleted_replicas(txn, param))
+        RETURN_IF_INVALID_STATUS(mark_no_exist_replicas(txn, param))
         return Status::OK();
     });
     RETURN_IF_INVALID_STATUS(status)
 
     LOG_DEBUG(
-        "[NodeService] get node_id:{} heartbeat, port:{}, "
-        "replica_list_size:{}",
-        param.node_id, param.port, param.replica_list.size());
+            "[NodeService] get node_id:{} heartbeat, port:{}, "
+            "replica_list_size:{}",
+            param.node_id, param.port, param.replica_list.size());
     return Status::OK();
 }
 
-Status NodeService::update_node_heartbeat(SdmStoreTxn& txn,
-                                          const HeartBeatParam& param) {
+Status NodeService::update_node_heartbeat(SdmStoreTxn& txn, const HeartBeatParam& param) {
     NodeOr node;
     RETURN_IF_INVALID_STATUS(txn.get_node(param.node_id, node))
     RETURN_IF_INVALID_CONDITION(!node.is_empty(), "node not found")
@@ -64,8 +63,7 @@ Status NodeService::update_node_heartbeat(SdmStoreTxn& txn,
     return txn.put_node(*node);
 }
 
-Status NodeService::apply_reported_replicas(SdmStoreTxn& txn,
-                                            const HeartBeatParam& param) {
+Status NodeService::apply_reported_replicas(SdmStoreTxn& txn, const HeartBeatParam& param) {
     for (const auto& info : param.replica_list) {
         ReplicaID key = info.replica_id;
         ReplicaOr replica;
@@ -80,15 +78,16 @@ Status NodeService::apply_reported_replicas(SdmStoreTxn& txn,
         }
 
         replica->state.observed_raft_role = info.role;
+        replica->state.observed_member_type = info.member_type;
         replica->state.observed_endpoint = Endpoint{param.ip, param.port};
         replica->state.observed_storage_status = info.storage_status;
+        replica->state.observed_no_exist = false;
         replica->state.term = info.term;
         replica->state.update_ts = func::get_current_ts_ms();
         RETURN_IF_INVALID_STATUS(txn.put_replica(*replica))
 
         if (replica->state.observed_raft_role == ReplicaRole::LEADER) {
-            LOG_DEBUG("[NodeService] replica_id:{} is leader",
-                      replica->replica_id.to_string());
+            LOG_DEBUG("[NodeService] replica_id:{} is leader", replica->replica_id.to_string());
         }
     }
     return Status::OK();
@@ -97,8 +96,7 @@ Status NodeService::apply_reported_replicas(SdmStoreTxn& txn,
 // 收到某个node的heartbeat后，如果这个node被分配的replica处于ABSENT+
 // DELETING，但这次heartbeat没上报它，就说明storage已经删掉了，把它标成
 // DELETED
-Status NodeService::mark_deleted_replicas(SdmStoreTxn& txn,
-                                          const HeartBeatParam& param) {
+Status NodeService::mark_no_exist_replicas(SdmStoreTxn& txn, const HeartBeatParam& param) {
     std::unordered_set<ReplicaID, ReplicaIDHash> reported_replica_ids;
     reported_replica_ids.reserve(param.replica_list.size());
     for (const HeartBeatReplicaInfo& info : param.replica_list) {
@@ -106,26 +104,22 @@ Status NodeService::mark_deleted_replicas(SdmStoreTxn& txn,
     }
 
     std::vector<Replica> node_replicas;
-    RETURN_IF_INVALID_STATUS(
-        txn.list_replicas_by_node(param.node_id, node_replicas))
+    RETURN_IF_INVALID_STATUS(txn.list_replicas_by_node(param.node_id, node_replicas))
 
     for (Replica& replica : node_replicas) {
-        if (reported_replica_ids.find(replica.replica_id) !=
-            reported_replica_ids.end()) {
+        if (reported_replica_ids.find(replica.replica_id) != reported_replica_ids.end()) {
             continue;
         }
-        if (replica.state.desired != ReplicaDesired::ABSENT ||
-            replica.state.phase != ReplicaPhase::DELETING) {
+        if (replica.state.desired != ReplicaDesired::ABSENT || replica.state.phase != ReplicaPhase::DELETING) {
             continue;
         }
 
         LOG_INFO(
-            "[NodeService] mark_deleted_replicas: node_id:{}, mark replica is "
-            "deleted, replica_id:{}",
-            param.node_id, replica.replica_id.to_string());
+                "[NodeService] mark_no_exist_replicas: node_id:{}, replica no "
+                "exist, replica_id:{}",
+                param.node_id, replica.replica_id.to_string());
 
-        replica.state.phase = ReplicaPhase::DELETED;
-        replica.state.last_error_msg.clear();
+        replica.state.observed_no_exist = true;
         replica.state.update_ts = func::get_current_ts_ms();
         RETURN_IF_INVALID_STATUS(txn.put_replica(replica))
     }
@@ -136,8 +130,7 @@ Status NodeService::mark_deleted_replicas(SdmStoreTxn& txn,
 Status NodeService::reconcile_all() {
     RETURN_IF_NULLPTR(store_, "store is nullptr")
     std::vector<Node> nodes;
-    Status status = store_->read_with(
-        [&](const SdmStoreTxn& txn) { return txn.list_nodes(nodes); });
+    Status status = store_->read_with([&](const SdmStoreTxn& txn) { return txn.list_nodes(nodes); });
     RETURN_IF_INVALID_STATUS(status)
 
     std::vector<NodeID> node_ids;
@@ -147,10 +140,8 @@ Status NodeService::reconcile_all() {
     }
 
     // 这里给node搞批处理，防止持有锁的时间太久了
-    for (size_t begin = 0; begin < node_ids.size();
-         begin += kHeartbeatCheckBatchSize) {
-        size_t end =
-            std::min(begin + kHeartbeatCheckBatchSize, node_ids.size());
+    for (size_t begin = 0; begin < node_ids.size(); begin += kHeartbeatCheckBatchSize) {
+        size_t end = std::min(begin + kHeartbeatCheckBatchSize, node_ids.size());
         status = store_->write_with([&](SdmStoreTxn& txn) -> Status {
             for (size_t index = begin; index < end; ++index) {
                 NodeOr current;
@@ -161,16 +152,13 @@ Status NodeService::reconcile_all() {
                 Node node = *current;
                 Status s = check_and_modify_node(txn, node);
                 if (s.fail()) {
-                    LOG_WARN(
-                        "[NodeService] check node failed, node_id:{}, msg:{}",
-                        node_ids[index], s.msg());
+                    LOG_WARN("[NodeService] check node failed, node_id:{}, msg:{}", node_ids[index], s.msg());
                 }
             }
             return Status::OK();
         });
         if (status.fail()) {
-            LOG_WARN("[NodeService] node check batch failed, begin:{}, msg:{}",
-                     begin, status.msg());
+            LOG_WARN("[NodeService] node check batch failed, begin:{}, msg:{}", begin, status.msg());
         }
     }
     return Status::OK();
@@ -179,8 +167,7 @@ Status NodeService::reconcile_all() {
 Status NodeService::check_and_modify_node(SdmStoreTxn& txn, Node& node) {
     int64_t current_ts_ms = func::get_current_ts_ms();
     int64_t diff = current_ts_ms - node.state.last_heartbeat_ts;
-    bool in_startup_grace =
-        (current_ts_ms - start_ts_ms_ <= HEARTBEAT_STARTUP_GRACE_MS);
+    bool in_startup_grace = (current_ts_ms - start_ts_ms_ <= HEARTBEAT_STARTUP_GRACE_MS);
 
     if (diff <= HEARTBEAT_SUSPECT_TIMEOUT_MS) {
         if (node.state.status != NodeStatus::ONLINE) {
