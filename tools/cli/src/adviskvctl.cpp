@@ -14,6 +14,7 @@
 #include "common/model/replica_role.h"
 #include "common/path_util.h"
 #include "direct_meta_client.h"
+#include "meta/catalog/meta_types.h"
 #include "sdk/client.h"
 #include "sdk/sdm_route_client.h"
 
@@ -112,6 +113,8 @@ std::string table_state_to_string(adviskv::meta::TableState state) {
             return "DROPPING";
         case adviskv::meta::TableState::DELETED:
             return "DELETED";
+        case adviskv::meta::TableState::ALTERING:
+            return "ALTERING";
     }
     return "UNKNOWN";
 }

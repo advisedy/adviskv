@@ -2,22 +2,24 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
 #include <vector>
 
 #include "common/status.h"
 #include "sdm/model/sdm_store.h"
+#include "sdm/sdm_store_test_helper.h"
 
 namespace adviskv::sdm {
 namespace {
 
 RegisterNodeParam make_register_node_param() {
-    return RegisterNodeParam{"node-a", "127.0.0.1", 18080, "pool-a", "dc-a",
-                             123456};
+    return RegisterNodeParam{"node-a", "127.0.0.1", 18080,
+                             "pool-a", "dc-a",      123456};
 }
 
 }  // namespace
 
-// 检测合法节点注册后，NodeService 会把节点元信息写入 SdmStore。
+// 检测 register_node 会把合法节点元信息写入 store，并初始化为 ONLINE。
 TEST(NodeServiceTest, RegisterNodeStoresValidNodeMeta) {
     SdmStore store{SdmMetaStoreType::MEMORY};
     NodeService service(&store);
@@ -26,18 +28,18 @@ TEST(NodeServiceTest, RegisterNodeStoresValidNodeMeta) {
 
     ASSERT_TRUE(status.ok()) << status.msg();
     NodeOr stored;
-    ASSERT_TRUE(store.get_node("node-a", stored).ok());
+    ASSERT_TRUE(store_test::get_node(store, "node-a", stored).ok());
     ASSERT_FALSE(stored.is_empty());
     EXPECT_EQ(stored->id, "node-a");
-    EXPECT_EQ(stored->spec.resource_pool, "pool-a");
-    EXPECT_EQ(stored->spec.dc, "dc-a");
-    EXPECT_EQ(stored->spec.status, NodeStatus::ONLINE);
+    EXPECT_EQ(stored->meta.resource_pool, "pool-a");
+    EXPECT_EQ(stored->meta.dc, "dc-a");
+    EXPECT_EQ(stored->state.status, NodeStatus::ONLINE);
     EXPECT_EQ(stored->state.endpoint.ip, "127.0.0.1");
     EXPECT_EQ(stored->state.endpoint.port, 18080);
     EXPECT_EQ(stored->state.last_heartbeat_ts, 123456);
 }
 
-// 检测重复注册同一个 node_id 时，新注册信息会覆盖旧节点状态。
+// 检测重复注册同一个 node_id 时，会覆盖节点元信息和心跳状态。
 TEST(NodeServiceTest, RegisterNodeUpdatesExistingNode) {
     SdmStore store{SdmMetaStoreType::MEMORY};
     NodeService service(&store);
@@ -53,17 +55,17 @@ TEST(NodeServiceTest, RegisterNodeUpdatesExistingNode) {
 
     ASSERT_TRUE(status.ok()) << status.msg();
     NodeOr stored;
-    ASSERT_TRUE(store.get_node("node-a", stored).ok());
+    ASSERT_TRUE(store_test::get_node(store, "node-a", stored).ok());
     ASSERT_FALSE(stored.is_empty());
-    EXPECT_EQ(stored->spec.resource_pool, "pool-b");
-    EXPECT_EQ(stored->spec.dc, "dc-b");
-    EXPECT_EQ(stored->spec.status, NodeStatus::ONLINE);
+    EXPECT_EQ(stored->meta.resource_pool, "pool-b");
+    EXPECT_EQ(stored->meta.dc, "dc-b");
+    EXPECT_EQ(stored->state.status, NodeStatus::ONLINE);
     EXPECT_EQ(stored->state.endpoint.ip, "10.0.0.1");
     EXPECT_EQ(stored->state.endpoint.port, 19090);
     EXPECT_EQ(stored->state.last_heartbeat_ts, 654321);
 }
 
-// 检测缺少 node_id、ip 或端口非法时，NodeService 会拒绝注册。
+// 检测 register_node 会拒绝缺少 node_id、ip 或非法端口的参数。
 TEST(NodeServiceTest, RegisterNodeRejectsInvalidParams) {
     SdmStore store{SdmMetaStoreType::MEMORY};
     NodeService service(&store);

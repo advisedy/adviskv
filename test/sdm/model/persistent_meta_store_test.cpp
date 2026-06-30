@@ -22,8 +22,9 @@ Table make_table(TableID table_id, const std::string& table_name) {
 
 Node make_node(const NodeID& id) {
     return Node{id,
-                NodeSpec{"pool-a", "dc-a", NodeStatus::ONLINE},
-                NodeState{Endpoint{"127.0.0.1", 18080}, 200},
+                NodeMeta{"pool-a", "dc-a"},
+                NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", 18080},
+                          200},
                 NodeDerived{}};
 }
 
@@ -35,7 +36,7 @@ Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
     state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
     state.term = 7;
     return Replica{replica_id,
-                   ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
+                   ReplicaSpec{"dc-a", node_id, EngineType::MAP},
                    state};
 }
 
@@ -106,6 +107,10 @@ TEST(PersistentMetaStoreTest, CommitWithPublishesMemoryAfterPersistSuccess) {
     EXPECT_EQ(stored_table->spec.table_name, "orders");
 
     ASSERT_TRUE(store.upsert_node(make_node("node-a")).ok());
+    NodePtr stored_node;
+    ASSERT_TRUE(store.get_node("node-a", stored_node).ok());
+    ASSERT_NE(stored_node, nullptr);
+    EXPECT_EQ(fake->save_count, 1);
     ASSERT_TRUE(
         store.upsert_replica(make_replica(ReplicaID{1001, 0, 0}, "node-a"))
             .ok());
@@ -113,9 +118,8 @@ TEST(PersistentMetaStoreTest, CommitWithPublishesMemoryAfterPersistSuccess) {
         store.upsert_resource_pool(ResourcePool{"pool-a"}).ok());
     ASSERT_TRUE(store.upsert_shard_route(make_route(ShardID{1001, 0})).ok());
 
-    EXPECT_EQ(fake->save_count, 5);
+    EXPECT_EQ(fake->save_count, 4);
     EXPECT_EQ(fake->last_saved_record.tables.size(), 1U);
-    EXPECT_EQ(fake->last_saved_record.nodes.size(), 1U);
     EXPECT_EQ(fake->last_saved_record.replicas.size(), 1U);
     EXPECT_EQ(fake->last_saved_record.resource_pools.size(), 1U);
     EXPECT_EQ(fake->last_saved_record.shard_routes.size(), 1U);

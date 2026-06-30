@@ -189,20 +189,20 @@ add_adviskv_sdm_gtest(route_service_test
     ${CMAKE_SOURCE_DIR}/test/sdm/service/route_service_test.cpp
 )
 
-add_adviskv_sdm_gtest(heartbeat_service_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/service/heartbeat_service_test.cpp
+add_adviskv_sdm_gtest(node_heartbeat_service_test
+    ${CMAKE_SOURCE_DIR}/test/sdm/service/node_heartbeat_service_test.cpp
 )
 
-add_adviskv_sdm_gtest(heartbeat_check_task_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/background/heartbeat_check_task_test.cpp
+add_adviskv_sdm_gtest(node_reconcile_service_test
+    ${CMAKE_SOURCE_DIR}/test/sdm/service/node_reconcile_service_test.cpp
 )
 
-add_adviskv_sdm_gtest(routeupdate_check_task_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/background/routeupdate_check_task_test.cpp
+add_adviskv_sdm_gtest(route_reconcile_service_test
+    ${CMAKE_SOURCE_DIR}/test/sdm/service/route_reconcile_service_test.cpp
 )
 
-add_adviskv_sdm_gtest(table_reconciler_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/background/table_reconciler_test.cpp
+add_adviskv_sdm_gtest(table_reconcile_service_test
+    ${CMAKE_SOURCE_DIR}/test/sdm/service/table_reconcile_service_test.cpp
 )
 
 add_adviskv_sdm_gtest(sdm_runtime_index_test

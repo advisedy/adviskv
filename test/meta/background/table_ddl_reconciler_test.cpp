@@ -30,6 +30,13 @@ class FakeSdmClient : public ISdmClient {
         return drop_table_status;
     }
 
+    Status call_alter_table_replica_count(
+        const TableMeta& table_meta) override {
+        ++alter_table_calls;
+        last_alter_table = table_meta;
+        return alter_table_status;
+    }
+
     Status get_table_status(const TableMeta& table_meta,
                             SdmTableStatus* table_status) override {
         ++get_table_status_calls;
@@ -42,15 +49,18 @@ class FakeSdmClient : public ISdmClient {
 
     Status place_table_status{Status::OK()};
     Status drop_table_status{Status::OK()};
+    Status alter_table_status{Status::OK()};
     Status get_table_status_status{Status::OK()};
     SdmTableStatus table_status_result;
 
     int place_table_calls{0};
     int drop_table_calls{0};
+    int alter_table_calls{0};
     int get_table_status_calls{0};
 
     TableMeta last_place_table;
     TableMeta last_drop_table;
+    TableMeta last_alter_table;
     TableMeta last_get_table;
 };
 
@@ -90,12 +100,12 @@ class TableDdlReconcilerTest : public ::testing::Test {
 
     TableMeta create_table(CatalogManager& catalog, TableState state) {
         DBMeta db;
-        EXPECT_TRUE(catalog.create_db(CreateDBMetaParam{db_name_, zone_}, &db)
+        EXPECT_TRUE(catalog.create_db(CreateDBParam{db_name_, zone_}, &db)
                         .ok());
 
         TableMeta table;
         EXPECT_TRUE(catalog
-                        .create_table(CreateTableMetaParam{db_name_,
+                        .create_table(CreateTableParam{db_name_,
                                                            table_name_,
                                                            4,
                                                            3,
@@ -163,6 +173,28 @@ TEST_F(TableDdlReconcilerTest, AddingTableCreatingInSdmKeepsAdding) {
     EXPECT_EQ(stored.state, TableState::ADDING);
 }
 
+// 测试 ADDING 的 table 在 SDM 仍为 CREATING 时保持 ADDING，并保留已有错误信息。
+TEST_F(TableDdlReconcilerTest, AddingTableCreatingInSdmKeepsPreviousError) {
+    Fixture fixture{make_sub_dir("adding_creating_keep_error")};
+    TableMeta table = create_table(fixture.catalog, TableState::ADDING);
+    const std::string previous_error = "previous place table rpc failed";
+    ASSERT_TRUE(fixture.catalog
+                    .update_table_state(table.table_id, TableState::ADDING,
+                                        previous_error)
+                    .ok());
+
+    FakeSdmClient client;
+    client.table_status_result = sdm_status(SdmTablePhase::CREATING);
+    TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
+
+    reconciler.run_once_for_test();
+
+    TableMeta stored;
+    ASSERT_TRUE(fixture.catalog.get_table_by_id(table.table_id, &stored).ok());
+    EXPECT_EQ(stored.state, TableState::ADDING);
+    EXPECT_EQ(stored.last_error_msg, previous_error);
+}
+
 // 测试ADDING的table，sdm那边已经READY了，meta这边要同步成NORMAL。
 TEST_F(TableDdlReconcilerTest, AddingTableReadyInSdmMarksNormal) {
     Fixture fixture{make_sub_dir("adding_ready")};
@@ -211,6 +243,82 @@ TEST_F(TableDdlReconcilerTest, AddingTableGetStatusFailureKeepsAddingWithError) 
     EXPECT_EQ(stored.state, TableState::ADDING);
     EXPECT_NE(stored.last_error_msg.find("get status failed"),
               std::string::npos);
+}
+
+// 测试 ADDING 的 table 在 SDM 查不到后重新提交成功时，仍保留之前的错误信息。
+TEST_F(TableDdlReconcilerTest, AddingTableResubmitSuccessKeepsPreviousError) {
+    Fixture fixture{make_sub_dir("adding_resubmit_keep_error")};
+    TableMeta table = create_table(fixture.catalog, TableState::ADDING);
+    const std::string previous_error = "previous place table rpc failed";
+    ASSERT_TRUE(fixture.catalog
+                    .update_table_state(table.table_id, TableState::ADDING,
+                                        previous_error)
+                    .ok());
+
+    FakeSdmClient client;
+    client.get_table_status_status = Status::TABLE_NOT_FOUND("not found");
+    TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
+
+    reconciler.run_once_for_test();
+
+    EXPECT_EQ(client.place_table_calls, 1);
+    TableMeta stored;
+    ASSERT_TRUE(fixture.catalog.get_table_by_id(table.table_id, &stored).ok());
+    EXPECT_EQ(stored.state, TableState::ADDING);
+    EXPECT_EQ(stored.last_error_msg, previous_error);
+}
+
+// 测试 ALTERING 的 table 在 SDM 查不到时，Meta 侧会标记为 FAILED。
+TEST_F(TableDdlReconcilerTest, AlteringTableMissingInSdmMarksFailed) {
+    Fixture fixture{make_sub_dir("altering_missing")};
+    TableMeta table = create_table(fixture.catalog, TableState::ALTERING);
+    FakeSdmClient client;
+    client.get_table_status_status = Status::TABLE_NOT_FOUND("not found");
+    TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
+
+    reconciler.run_once_for_test();
+
+    EXPECT_EQ(client.get_table_status_calls, 1);
+    EXPECT_EQ(client.alter_table_calls, 0);
+
+    TableMeta stored;
+    ASSERT_TRUE(fixture.catalog.get_table_by_id(table.table_id, &stored).ok());
+    EXPECT_EQ(stored.state, TableState::FAILED);
+    EXPECT_EQ(stored.last_error_msg, "SDM table alter failed");
+}
+
+// 测试 ALTERING 的 table 在 SDM 仍为 RESIZING 时，Meta 侧继续保持 ALTERING。
+TEST_F(TableDdlReconcilerTest, AlteringTableResizingInSdmKeepsAltering) {
+    Fixture fixture{make_sub_dir("altering_resizing")};
+    TableMeta table = create_table(fixture.catalog, TableState::ALTERING);
+    FakeSdmClient client;
+    client.table_status_result = sdm_status(SdmTablePhase::RESIZING);
+    TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
+
+    reconciler.run_once_for_test();
+
+    EXPECT_EQ(client.get_table_status_calls, 1);
+    EXPECT_EQ(client.alter_table_calls, 0);
+
+    TableMeta stored;
+    ASSERT_TRUE(fixture.catalog.get_table_by_id(table.table_id, &stored).ok());
+    EXPECT_EQ(stored.state, TableState::ALTERING);
+}
+
+// 测试 ALTERING 的 table 在 SDM 已 READY 时，Meta 侧同步为 NORMAL。
+TEST_F(TableDdlReconcilerTest, AlteringTableReadyInSdmMarksNormal) {
+    Fixture fixture{make_sub_dir("altering_ready")};
+    TableMeta table = create_table(fixture.catalog, TableState::ALTERING);
+    FakeSdmClient client;
+    client.table_status_result = sdm_status(SdmTablePhase::READY);
+    TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
+
+    reconciler.run_once_for_test();
+
+    TableMeta stored;
+    ASSERT_TRUE(fixture.catalog.get_table_by_id(table.table_id, &stored).ok());
+    EXPECT_EQ(stored.state, TableState::NORMAL);
+    EXPECT_TRUE(stored.last_error_msg.empty());
 }
 
 // 测试DROPPING的table，sdm那边查不到table的时候，meta这边要直接变成DELETED。

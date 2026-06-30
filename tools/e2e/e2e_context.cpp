@@ -24,11 +24,11 @@ E2EContext::E2EContext(const Options& options) : options_(options) {
 
     auto meta_channel =
         grpc::CreateChannel(meta_target, grpc::InsecureChannelCredentials());
-    meta_stub_ = rpc::MetaService::NewStub(meta_channel);
+    meta_stub_ = meta_rpc::MetaService::NewStub(meta_channel);
 
     auto sdm_channel =
         grpc::CreateChannel(sdm_target, grpc::InsecureChannelCredentials());
-    sdm_stub_ = rpc::ShardingManagerService::NewStub(sdm_channel);
+    sdm_stub_ = sdm_rpc::SdmService::NewStub(sdm_channel);
 }
 
 }  // namespace adviskv::e2e

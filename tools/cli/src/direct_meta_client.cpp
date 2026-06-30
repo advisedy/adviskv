@@ -17,7 +17,7 @@ DirectMetaClient::DirectMetaClient(const MetaCliTarget& target)
         fmt::format("{}:{}", target_.endpoint.ip, target_.endpoint.port);
     auto channel =
         grpc::CreateChannel(endpoint, grpc::InsecureChannelCredentials());
-    stub_ = rpc::MetaService::NewStub(channel);
+    stub_ = meta_rpc::MetaService::NewStub(channel);
 }
 
 Status DirectMetaClient::create_db(const std::string& db_name,
@@ -26,11 +26,11 @@ Status DirectMetaClient::create_db(const std::string& db_name,
     RETURN_IF_INVALID_PARAM(target_)
     RETURN_IF_INVALID_CONDITION(db_id != nullptr, "db_id should not be nullptr")
 
-    rpc::CreateDBRequest request;
+    meta_rpc::CreateDBRequest request;
     request.set_db_name(db_name);
     request.set_zone(zone);
 
-    rpc::CreateDBResponse response;
+    meta_rpc::CreateDBResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +
                          std::chrono::milliseconds(target_.timeout_ms));
@@ -52,10 +52,10 @@ Status DirectMetaClient::drop_db(const std::string& db_name,
     RETURN_IF_INVALID_PARAM(target_)
     RETURN_IF_INVALID_CONDITION(db_id != nullptr, "db_id should not be nullptr")
 
-    rpc::DropDBRequest request;
+    meta_rpc::DropDBRequest request;
     request.set_db_name(db_name);
 
-    rpc::DropDBResponse response;
+    meta_rpc::DropDBResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +
                          std::chrono::milliseconds(target_.timeout_ms));
@@ -81,14 +81,14 @@ Status DirectMetaClient::create_table(const std::string& db_name,
     RETURN_IF_INVALID_CONDITION(table_id != nullptr,
                                 "table_id should not be nullptr")
 
-    rpc::CreateTableRequest request;
+    meta_rpc::CreateTableRequest request;
     request.set_db_name(db_name);
     request.set_table_name(table_name);
     request.set_shard_count(shard_count);
     request.set_replica_count(replica_count);
     request.set_resource_pool(resource);
 
-    rpc::CreateTableResponse response;
+    meta_rpc::CreateTableResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +
                          std::chrono::milliseconds(target_.timeout_ms));
@@ -112,11 +112,11 @@ Status DirectMetaClient::get_table(const std::string& db_name,
     RETURN_IF_INVALID_CONDITION(table_info != nullptr,
                                 "table_info should not be nullptr")
 
-    rpc::GetTableRequest request;
+    meta_rpc::GetTableRequest request;
     request.set_db_name(db_name);
     request.set_table_name(table_name);
 
-    rpc::GetTableResponse response;
+    meta_rpc::GetTableResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +
                          std::chrono::milliseconds(target_.timeout_ms));

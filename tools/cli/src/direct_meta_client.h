@@ -4,6 +4,7 @@
 #include <string>
 
 #include "common/define.h"
+#include "common/proto/rpc_alias.h"
 #include "common/status.h"
 #include "common/type.h"
 #include "meta.grpc.pb.h"
@@ -50,7 +51,7 @@ class DirectMetaClient {
 
    private:
     MetaCliTarget target_;
-    std::unique_ptr<rpc::MetaService::Stub> stub_;
+    std::unique_ptr<meta_rpc::MetaService::Stub> stub_;
 };
 
 }  // namespace adviskv::cli

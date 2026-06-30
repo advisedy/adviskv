@@ -29,6 +29,13 @@ class FakeSdmClient : public ISdmClient {
         return drop_table_status;
     }
 
+    Status call_alter_table_replica_count(
+        const TableMeta& table_meta) override {
+        ++alter_table_calls;
+        last_alter_table = table_meta;
+        return alter_table_status;
+    }
+
     Status get_table_status(const TableMeta& table_meta,
                             SdmTableStatus* table_status) override {
         ++get_table_status_calls;
@@ -41,15 +48,18 @@ class FakeSdmClient : public ISdmClient {
 
     Status place_table_status{Status::OK()};
     Status drop_table_status{Status::OK()};
+    Status alter_table_status{Status::OK()};
     Status get_table_status_status{Status::OK()};
     SdmTableStatus table_status_result;
 
     int place_table_calls{0};
     int drop_table_calls{0};
+    int alter_table_calls{0};
     int get_table_status_calls{0};
 
     TableMeta last_place_table;
     TableMeta last_drop_table;
+    TableMeta last_alter_table;
     TableMeta last_get_table;
 };
 
@@ -88,6 +98,12 @@ class DdlServiceTest : public ::testing::Test {
 
     DropTableParam drop_table_param() {
         return DropTableParam{db_name_, table_name_};
+    }
+
+    AlterTableReplicaCountParam alter_replica_count_param(
+        int32_t replica_count = 5) {
+        return AlterTableReplicaCountParam{db_name_, table_name_,
+                                           replica_count};
     }
 
     DropDBParam drop_db_param() { return DropDBParam{db_name_}; }
@@ -184,7 +200,7 @@ TEST_F(DdlServiceTest, DropDbAllowsOnlyDeletedTables) {
 TEST_F(DdlServiceTest, CreateTableWithoutSdmClientKeepsAddingWithError) {
     Fixture fixture{make_sub_dir("create_table_without_sdm")};
     ASSERT_TRUE(
-        fixture.catalog.create_db(CreateDBMetaParam{db_name_, zone_}, nullptr)
+        fixture.catalog.create_db(CreateDBParam{db_name_, zone_}, nullptr)
             .ok());
 
     DdlService db_service{&fixture.catalog, nullptr};
@@ -249,6 +265,59 @@ TEST_F(DdlServiceTest, CreateTableSuccessSupportsGetByNameAndId) {
         service.get_table(GetTableParam{"", "", true, created.table_id}, &by_id)
             .ok());
     EXPECT_EQ(by_id, by_name);
+}
+
+// 测试 alter replica_count 成功时会调用 SDM，并把 Meta 表状态标记为 ALTERING。
+TEST_F(DdlServiceTest, AlterReplicaCountSuccessMarksAlteringAndCallsSdm) {
+    Fixture fixture{make_sub_dir("alter_replica_count_success")};
+    FakeSdmClient client;
+    DdlService service{&fixture.catalog, &client};
+    ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
+
+    TableMeta table;
+    ASSERT_TRUE(service.create_table(create_table_param(), &table).ok());
+    ASSERT_TRUE(
+        fixture.catalog.update_table_state(table.table_id, TableState::NORMAL)
+            .ok());
+
+    TableMeta altered;
+    ASSERT_TRUE(
+        service.alter_table_replica_count(alter_replica_count_param(5),
+                                          &altered)
+            .ok());
+
+    EXPECT_EQ(client.alter_table_calls, 1);
+    EXPECT_EQ(client.last_alter_table.table_id, table.table_id);
+    EXPECT_EQ(client.last_alter_table.replica_count, 5);
+    EXPECT_EQ(altered.state, TableState::ALTERING);
+    EXPECT_EQ(altered.replica_count, 5);
+    EXPECT_FALSE(altered.operation_id.empty());
+    EXPECT_TRUE(altered.last_error_msg.empty());
+}
+
+// 测试 alter replica_count 缺少 SDM client 时，表保持 ALTERING 并记录错误信息。
+TEST_F(DdlServiceTest, AlterReplicaCountWithoutSdmKeepsAlteringWithError) {
+    Fixture fixture{make_sub_dir("alter_replica_count_without_sdm")};
+    FakeSdmClient client;
+    DdlService create_service{&fixture.catalog, &client};
+    ASSERT_NO_FATAL_FAILURE(create_db_or_die(create_service));
+
+    TableMeta table;
+    ASSERT_TRUE(create_service.create_table(create_table_param(), &table).ok());
+    ASSERT_TRUE(
+        fixture.catalog.update_table_state(table.table_id, TableState::NORMAL)
+            .ok());
+
+    DdlService alter_service{&fixture.catalog, nullptr};
+    TableMeta altered;
+    ASSERT_TRUE(alter_service
+                    .alter_table_replica_count(alter_replica_count_param(5),
+                                               &altered)
+                    .ok());
+
+    EXPECT_EQ(altered.state, TableState::ALTERING);
+    EXPECT_EQ(altered.replica_count, 5);
+    EXPECT_EQ(altered.last_error_msg, "sdm_client is nullptr");
 }
 
 // 测试创建table成功后，drop_table遇到table.state == TableState::DELETED的情况。

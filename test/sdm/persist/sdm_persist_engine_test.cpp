@@ -41,19 +41,14 @@ class SdmPersistEngineTest : public ::testing::Test {
             table_state,
         };
 
-        record.nodes["node-1"] = Node{
-            "node-1",
-            NodeSpec{"pool-a", "dc-a", NodeStatus::ONLINE},
-            NodeState{Endpoint{"127.0.0.1", 9000}, 200},
-            NodeDerived{3, 1},
-        };
-
         ReplicaID replica_id{101, 2, 0};
         ReplicaState replica_state{};
         replica_state.desired = ReplicaDesired::PRESENT;
         replica_state.phase = ReplicaPhase::READY;
         replica_state.observed_raft_role = ReplicaRole::LEADER;
+        replica_state.observed_member_type = RaftMemberType::VOTER;
         replica_state.observed_endpoint = Endpoint{"127.0.0.1", 9000};
+        replica_state.observed_storage_status = StorageReplicaStatus::READY;
         replica_state.update_ts = 300;
         replica_state.term = 4;
         record.replicas[replica_id] = Replica{
@@ -62,7 +57,6 @@ class SdmPersistEngineTest : public ::testing::Test {
                 "dc-a",
                 "node-1",
                 EngineType::MAP,
-                {PeerMember{"node-1", replica_id, Endpoint{"127.0.0.1", 9000}}},
             },
             replica_state,
         };
@@ -93,20 +87,16 @@ class SdmPersistEngineTest : public ::testing::Test {
             table_state,
         };
 
-        record.nodes["node-2"] = Node{
-            "node-2",
-            NodeSpec{"pool-b", "dc-b", NodeStatus::SUSPECT},
-            NodeState{Endpoint{"127.0.0.2", 9100}, 2000},
-            NodeDerived{7, 2},
-        };
-
         ReplicaID leader_id{202, 3, 0};
         ReplicaID follower_id{202, 3, 1};
         ReplicaState replica_state{};
         replica_state.desired = ReplicaDesired::ABSENT;
         replica_state.phase = ReplicaPhase::DELETING;
         replica_state.observed_raft_role = ReplicaRole::FOLLOWER;
+        replica_state.observed_member_type = RaftMemberType::NON_MEMBER;
         replica_state.observed_endpoint = Endpoint{"127.0.0.2", 9100};
+        replica_state.observed_storage_status = StorageReplicaStatus::READY;
+        replica_state.observed_no_exist = true;
         replica_state.last_error_msg = "replica draining";
         replica_state.update_ts = 3000;
         replica_state.term = 11;
@@ -116,11 +106,6 @@ class SdmPersistEngineTest : public ::testing::Test {
                 "dc-b",
                 "node-2",
                 EngineType::ROCKSDB,
-                {
-                    PeerMember{"node-2", leader_id, Endpoint{"127.0.0.2", 9100}},
-                    PeerMember{"node-3", follower_id,
-                               Endpoint{"127.0.0.3", 9101}},
-                },
             },
             replica_state,
         };
@@ -137,6 +122,14 @@ class SdmPersistEngineTest : public ::testing::Test {
                            ReplicaRole::FOLLOWER, 10},
             },
         };
+
+        ReplicaGroup group;
+        group.shard_id = shard_id;
+        group.mode = ReplicaGroupMode::RAFT_RECONFIG;
+        group.target_replica_count = 2;
+        group.desired_members = {leader_id, follower_id};
+        group.seq_allocator = IDAllocator<ReplicaSeq>(2);
+        record.replica_groups[shard_id] = group;
 
         return record;
     }
@@ -169,25 +162,6 @@ class SdmPersistEngineTest : public ::testing::Test {
                       expected_table.state.update_ts);
         }
 
-        ASSERT_EQ(actual.nodes.size(), expected.nodes.size());
-        for (const auto& [id, expected_node] : expected.nodes) {
-            auto it = actual.nodes.find(id);
-            ASSERT_NE(it, actual.nodes.end());
-            const Node& actual_node = it->second;
-            EXPECT_EQ(actual_node.id, expected_node.id);
-            EXPECT_EQ(actual_node.spec.resource_pool,
-                      expected_node.spec.resource_pool);
-            EXPECT_EQ(actual_node.spec.dc, expected_node.spec.dc);
-            EXPECT_EQ(actual_node.spec.status, expected_node.spec.status);
-            EXPECT_EQ(actual_node.state.endpoint, expected_node.state.endpoint);
-            EXPECT_EQ(actual_node.state.last_heartbeat_ts,
-                      expected_node.state.last_heartbeat_ts);
-            EXPECT_EQ(actual_node.derived.owned_replica_count,
-                      expected_node.derived.owned_replica_count);
-            EXPECT_EQ(actual_node.derived.owned_leader_count,
-                      expected_node.derived.owned_leader_count);
-        }
-
         ASSERT_EQ(actual.replicas.size(), expected.replicas.size());
         for (const auto& [id, expected_replica] : expected.replicas) {
             auto it = actual.replicas.find(id);
@@ -199,19 +173,19 @@ class SdmPersistEngineTest : public ::testing::Test {
                       expected_replica.spec.assign_node_id);
             EXPECT_EQ(actual_replica.spec.engine_type,
                       expected_replica.spec.engine_type);
-            ASSERT_EQ(actual_replica.spec.members.size(),
-                      expected_replica.spec.members.size());
-            for (size_t i = 0; i < expected_replica.spec.members.size(); ++i) {
-                EXPECT_EQ(actual_replica.spec.members[i],
-                          expected_replica.spec.members[i]);
-            }
             EXPECT_EQ(actual_replica.state.desired,
                       expected_replica.state.desired);
             EXPECT_EQ(actual_replica.state.phase, expected_replica.state.phase);
             EXPECT_EQ(actual_replica.state.observed_raft_role,
                       expected_replica.state.observed_raft_role);
+            EXPECT_EQ(actual_replica.state.observed_member_type,
+                      expected_replica.state.observed_member_type);
             EXPECT_EQ(actual_replica.state.observed_endpoint,
                       expected_replica.state.observed_endpoint);
+            EXPECT_EQ(actual_replica.state.observed_storage_status,
+                      expected_replica.state.observed_storage_status);
+            EXPECT_EQ(actual_replica.state.observed_no_exist,
+                      expected_replica.state.observed_no_exist);
             EXPECT_EQ(actual_replica.state.last_error_msg,
                       expected_replica.state.last_error_msg);
             EXPECT_EQ(actual_replica.state.update_ts,
@@ -244,6 +218,21 @@ class SdmPersistEngineTest : public ::testing::Test {
                 EXPECT_EQ(actual_entry.role, expected_entry.role);
                 EXPECT_EQ(actual_entry.term, expected_entry.term);
             }
+        }
+
+        ASSERT_EQ(actual.replica_groups.size(), expected.replica_groups.size());
+        for (const auto& [id, expected_group] : expected.replica_groups) {
+            auto it = actual.replica_groups.find(id);
+            ASSERT_NE(it, actual.replica_groups.end());
+            const ReplicaGroup& actual_group = it->second;
+            EXPECT_EQ(actual_group.shard_id, expected_group.shard_id);
+            EXPECT_EQ(actual_group.mode, expected_group.mode);
+            EXPECT_EQ(actual_group.target_replica_count,
+                      expected_group.target_replica_count);
+            EXPECT_EQ(actual_group.desired_members,
+                      expected_group.desired_members);
+            EXPECT_EQ(actual_group.seq_allocator.current_id(),
+                      expected_group.seq_allocator.current_id());
         }
     }
 
@@ -279,10 +268,10 @@ TEST_F(SdmPersistEngineTest, LoadMissingMetaReturnsEmptyRecord) {
     ASSERT_TRUE(status.ok());
 
     EXPECT_TRUE(loaded.tables.empty());
-    EXPECT_TRUE(loaded.nodes.empty());
     EXPECT_TRUE(loaded.replicas.empty());
     EXPECT_TRUE(loaded.resource_pools.empty());
     EXPECT_TRUE(loaded.shard_routes.empty());
+    EXPECT_TRUE(loaded.replica_groups.empty());
 }
 
 // 检测一下空的save和load是否正确
@@ -308,12 +297,10 @@ TEST_F(SdmPersistEngineTest, OverwriteSaveKeepsLatestRecord) {
     Status status = engine.init();
     ASSERT_TRUE(status.ok());
 
-    {
-        SdmPersistedRecord old = make_record();
-        old.nodes["node-999"] = old.nodes["node-2"];
-        status = engine.save_sdm_meta(old);
-        ASSERT_TRUE(status.ok());
-    }
+    SdmPersistedRecord old = make_record();
+    old.tables.begin()->second.spec.table_name = "old_orders";
+    status = engine.save_sdm_meta(old);
+    ASSERT_TRUE(status.ok());
 
     SdmPersistedRecord latest = make_record();
     status = engine.save_sdm_meta(latest);
@@ -324,7 +311,6 @@ TEST_F(SdmPersistEngineTest, OverwriteSaveKeepsLatestRecord) {
     ASSERT_TRUE(status.ok());
 
     expect_record_equal(loaded, latest);
-    EXPECT_EQ(loaded.nodes.count("node-999"), 0U);
 }
 
 // 检测没有 init 时进行 save 或 load 会返回明确的未初始化错误。

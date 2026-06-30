@@ -11,11 +11,11 @@ namespace adviskv::e2e {
 
 bool create_db(E2EContext* context, std::string* error) {
     const Options& options = context->options();
-    rpc::CreateDBRequest request;
+    meta_rpc::CreateDBRequest request;
     request.set_db_name(options.db);
     request.set_zone(options.zone);
 
-    rpc::CreateDBResponse response;
+    meta_rpc::CreateDBResponse response;
     grpc::ClientContext client_context;
     client_context.set_deadline(std::chrono::system_clock::now() +
                                 std::chrono::milliseconds(options.timeout_ms));
@@ -34,14 +34,14 @@ bool create_db(E2EContext* context, std::string* error) {
 
 bool create_table(E2EContext* context, std::string* error) {
     const Options& options = context->options();
-    rpc::CreateTableRequest request;
+    meta_rpc::CreateTableRequest request;
     request.set_db_name(options.db);
     request.set_table_name(options.table);
     request.set_shard_count(options.shard_count);
     request.set_replica_count(options.replica_count);
     request.set_resource_pool(options.resource_pool);
 
-    rpc::CreateTableResponse response;
+    meta_rpc::CreateTableResponse response;
     grpc::ClientContext client_context;
     client_context.set_deadline(std::chrono::system_clock::now() +
                                 std::chrono::milliseconds(options.timeout_ms));
@@ -60,11 +60,11 @@ bool create_table(E2EContext* context, std::string* error) {
 
 bool drop_table(E2EContext* context, std::string* error) {
     const Options& options = context->options();
-    rpc::MetaDropTableRequest request;
+    meta_rpc::DropTableRequest request;
     request.set_db_name(options.db);
     request.set_table_name(options.table);
 
-    rpc::MetaDropTableResponse response;
+    meta_rpc::DropTableResponse response;
     grpc::ClientContext client_context;
     client_context.set_deadline(std::chrono::system_clock::now() +
                                 std::chrono::milliseconds(options.timeout_ms));
@@ -81,11 +81,11 @@ bool wait_table_normal(E2EContext* context) {
     return eventually(
         "table normal", options,
         [&]() {
-            rpc::GetTableRequest request;
+            meta_rpc::GetTableRequest request;
             request.set_db_name(options.db);
             request.set_table_name(options.table);
 
-            rpc::GetTableResponse response;
+            meta_rpc::GetTableResponse response;
             grpc::ClientContext client_context;
             client_context.set_deadline(std::chrono::system_clock::now() +
                                         std::chrono::milliseconds(3000));
@@ -121,11 +121,11 @@ bool wait_table_deleted(E2EContext* context) {
     return eventually(
         "table deleted", options,
         [&]() {
-            rpc::GetTableRequest request;
+            meta_rpc::GetTableRequest request;
             request.set_db_name(options.db);
             request.set_table_name(options.table);
 
-            rpc::GetTableResponse response;
+            meta_rpc::GetTableResponse response;
             grpc::ClientContext client_context;
             client_context.set_deadline(std::chrono::system_clock::now() +
                                         std::chrono::milliseconds(3000));

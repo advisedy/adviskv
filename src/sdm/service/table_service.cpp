@@ -128,26 +128,28 @@ Status TableService::alter_table_replica_count(const AlterReplicaCountParam& par
         if (existing.is_empty()) {
             return Status::TABLE_NOT_FOUND(fmt::format("table_id {} not found", param.table_id));
         }
-        if (existing->state.desired != TableDesired::PRESENT || existing->state.phase == TablePhase::DELETING ||
-            existing->state.phase == TablePhase::DELETED) {
-            return Status::INVALID_ARGUMENT(
-                    fmt::format("table_id {} is not present for alter replica_count", param.table_id));
+
+        if (existing->state.desired == TableDesired::ABSENT || existing->state.phase == TablePhase::DELETING ||
+            existing->state.phase == TablePhase::DELETED || existing->state.phase == TablePhase::FAILED) {
+            return Status::ERROR(fmt::format(
+                    "[TableService] alter_table_replica_count, table_id {} error, existing->state.desired:{}, existing->state.phase:{}",
+                    param.table_id, to<int32>(existing->state.desired), to<int32>(existing->state.phase)));
         }
-        if (existing->state.phase == TablePhase::FAILED) {
-            return Status::INVALID_ARGUMENT(
-                    fmt::format("table_id {} is FAILED for alter replica_count", param.table_id));
-        }
+
         if (existing->spec.operation_id == param.operation_id) {
             return Status::OK();
         }
+
         if (existing->state.phase != TablePhase::READY) {
-            return Status::ALREADY_EXIST(
-                    fmt::format("table_id {} is not READY for alter replica_count", param.table_id));
+            return Status::ERROR("");
         }
+
         if (existing->spec.replica_count == param.replica_count) {
             return Status::OK();
         }
-
+        LOG_INFO(
+                "[TableService] alter_table_replica_count, old_replica_count:{}, new_replica_count:{}, operation_id:{}",
+                existing->spec.replica_count, param.replica_count, param.operation_id)
         existing->spec.replica_count = param.replica_count;
         existing->spec.operation_id = param.operation_id;
         existing->state.phase = TablePhase::RESIZING;
@@ -277,12 +279,6 @@ Status TableService::finalize_table_until_ready(Table& table, TablePhase waiting
         bool all_shards_ready_flag{false};
         RETURN_IF_INVALID_STATUS(ensure_all_shards_ok(txn, current.value(), all_shards_ready_flag))
 
-        if (current->state.phase == TablePhase::FAILED) {
-            current->state.update_ts = func::get_current_ts_ms();
-            table = current.value();
-            return txn.put_table(current.value());
-        }
-
         current->state.phase = all_shards_ready_flag ? TablePhase::READY : waiting_phase;
         if (all_shards_ready_flag) {
             current->state.last_error_msg.clear();
@@ -312,15 +308,6 @@ Status TableService::ensure_all_shards_ok(SdmStoreTxn& txn, Table& table, bool& 
 
         std::unordered_set<ReplicaID, ReplicaIDHash> ready_replica_ids;
         for (const Replica& replica : replicas) {
-            if (replica.state.phase == ReplicaPhase::ERROR) {
-                table.state.phase = TablePhase::FAILED;
-                table.state.last_error_msg = fmt::format(
-                        "replica is in ERROR phase, "
-                        "replica.state.last_error_msg:{}",
-                        replica.state.last_error_msg);
-                all_shards_ok = false;
-                return Status::OK();
-            }
             if (replica.state.desired != ReplicaDesired::PRESENT || replica.state.phase != ReplicaPhase::READY ||
                 !is_raft_voter(replica.state.observed_member_type)) {
                 // 必须 desired=PRESENT、phase=READY，并且已经是 Raft voter。
@@ -328,13 +315,14 @@ Status TableService::ensure_all_shards_ok(SdmStoreTxn& txn, Table& table, bool& 
                         "[TableService] shard not ready: replica not ready, "
                         "table_id={}, shard_index={}, replica_id={}, desired={}, "
                         "phase={}, storage_status={}, role={}, member_type={}, "
-                        "term={}, endpoint={}:{}",
+                        "term={}, endpoint={}:{}, last_error_msg={}",
                         table.table_id, shard_index, replica.replica_id.to_string(),
                         static_cast<int32>(replica.state.desired), static_cast<int32>(replica.state.phase),
                         static_cast<int32>(replica.state.observed_storage_status),
                         static_cast<int32>(replica.state.observed_raft_role),
                         static_cast<int32>(replica.state.observed_member_type), replica.state.term,
-                        replica.state.observed_endpoint.ip, replica.state.observed_endpoint.port);
+                        replica.state.observed_endpoint.ip, replica.state.observed_endpoint.port,
+                        replica.state.last_error_msg);
                 all_shards_ok = false;
                 return Status::OK();
             }
@@ -415,12 +403,6 @@ Status TableService::finalize_absent_table(Table& table) {
         bool all_shards_deleted{false};
         RETURN_IF_INVALID_STATUS(ensure_all_shards_deleted(txn, current.value(), all_shards_deleted))
 
-        if (current->state.phase == TablePhase::FAILED) {
-            current->state.update_ts = func::get_current_ts_ms();
-            table = current.value();
-            return txn.put_table(current.value());
-        }
-
         if (!all_shards_deleted) {
             current->state.phase = TablePhase::DELETING;
             current->state.update_ts = func::get_current_ts_ms();
@@ -443,15 +425,6 @@ Status TableService::ensure_all_shards_deleted(SdmStoreTxn& txn, Table& table, b
 
         std::vector<Replica> replicas;
         RETURN_IF_INVALID_STATUS(txn.list_replicas_by_shard(shard_id, replicas))
-        for (const Replica& replica : replicas) {
-            if (replica.state.phase == ReplicaPhase::ERROR) {
-                table.state.phase = TablePhase::FAILED;
-                table.state.last_error_msg = fmt::format("replica delete failed, replica.state.last_error_msg:{}",
-                                                         replica.state.last_error_msg);
-                all_shards_deleted = false;
-                return Status::OK();
-            }
-        }
         if (!replicas.empty()) {
             all_shards_deleted = false;
             return Status::OK();

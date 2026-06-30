@@ -24,8 +24,9 @@ Table make_table(TableID table_id, const std::string& table_name,
 Node make_node(const NodeID& id, const std::string& resource_pool,
                int32_t port = 18080) {
     return Node{id,
-                NodeSpec{resource_pool, "dc-a", NodeStatus::ONLINE},
-                NodeState{Endpoint{"127.0.0.1", port}, 123456},
+                NodeMeta{resource_pool, "dc-a"},
+                NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", port},
+                          123456},
                 NodeDerived{3, 1}};
 }
 
@@ -38,7 +39,7 @@ Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id,
     state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
     state.term = 7;
     return Replica{replica_id,
-                   ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
+                   ReplicaSpec{"dc-a", node_id, EngineType::MAP},
                    state};
 }
 
@@ -171,7 +172,7 @@ TEST(MemoryMetaStoreTest, NodeUpsertGetAndListWork) {
     NodePtr out;
     ASSERT_TRUE(store.get_node(node_a.id, out).ok());
     ASSERT_TRUE(out != nullptr);
-    EXPECT_EQ(out->spec.resource_pool, "pool-a");
+    EXPECT_EQ(out->meta.resource_pool, "pool-a");
     EXPECT_EQ(out->state.endpoint.port, 18080);
     EXPECT_EQ(out->derived.owned_replica_count, 3);
 
@@ -179,7 +180,7 @@ TEST(MemoryMetaStoreTest, NodeUpsertGetAndListWork) {
     ASSERT_TRUE(store.upsert_node(updated).ok());
     ASSERT_TRUE(store.get_node(node_a.id, out).ok());
     ASSERT_TRUE(out != nullptr);
-    EXPECT_EQ(out->spec.resource_pool, "pool-c");
+    EXPECT_EQ(out->meta.resource_pool, "pool-c");
     EXPECT_EQ(out->state.endpoint.port, 19080);
 
     std::vector<NodePtr> nodes;
@@ -330,7 +331,7 @@ TEST(MemoryMetaStoreTest, CloneMemorySnapshotCopiesCurrentDataIndependently) {
     NodePtr node;
     ASSERT_TRUE(snapshot->get_node(node_id, node).ok());
     ASSERT_TRUE(node != nullptr);
-    EXPECT_EQ(node->spec.resource_pool, "pool-a");
+    EXPECT_EQ(node->meta.resource_pool, "pool-a");
     EXPECT_EQ(node->state.endpoint.port, 18080);
 
     ReplicaPtr replica;

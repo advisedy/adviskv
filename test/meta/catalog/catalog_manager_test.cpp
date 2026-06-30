@@ -57,7 +57,7 @@ TEST_F(CatalogManagerTest, CreateDbAndTableBasic) {
 
     DBMeta db_meta;
     ASSERT_TRUE(
-        catalog.create_db(CreateDBMetaParam{"test_db", "zone-1"}, &db_meta)
+        catalog.create_db(CreateDBParam{"test_db", "zone-1"}, &db_meta)
             .ok());
     EXPECT_EQ(db_meta.db_id, 0);
     EXPECT_EQ(db_meta.db_name, "test_db");
@@ -65,14 +65,14 @@ TEST_F(CatalogManagerTest, CreateDbAndTableBasic) {
 
     DBMeta db_meta2;
     ASSERT_TRUE(
-        catalog.create_db(CreateDBMetaParam{"test_db2", "zone-2"}, &db_meta2)
+        catalog.create_db(CreateDBParam{"test_db2", "zone-2"}, &db_meta2)
             .ok());
     EXPECT_EQ(db_meta2.db_id, 1);
     EXPECT_EQ(db_meta2.db_name, "test_db2");
 
     TableMeta table_meta;
     ASSERT_TRUE(catalog
-                    .create_table(CreateTableMetaParam{"test_db", "users", 4, 3,
+                    .create_table(CreateTableParam{"test_db", "users", 4, 3,
                                                        "pool-a"},
                                   &table_meta)
                     .ok());
@@ -91,7 +91,7 @@ TEST_F(CatalogManagerTest, CreateDbAndTableBasic) {
 
     TableMeta table_meta2;
     ASSERT_TRUE(catalog
-                    .create_table(CreateTableMetaParam{"test_db", "orders", 8,
+                    .create_table(CreateTableParam{"test_db", "orders", 8,
                                                        2, "pool-b"},
                                   &table_meta2)
                     .ok());
@@ -147,7 +147,7 @@ TEST_F(CatalogManagerTest, CreateDbFailsDueToPersist_DbShouldNotExist) {
 
     DBMeta db_meta;
     Status status =
-        catalog.create_db(CreateDBMetaParam{"fail_db", "z1"}, &db_meta);
+        catalog.create_db(CreateDBParam{"fail_db", "z1"}, &db_meta);
     EXPECT_TRUE(status.fail());
 
     DBMeta check_meta;
@@ -166,13 +166,12 @@ TEST_F(CatalogManagerTest, CreateTableFailsDueToPersist_TableShouldNotExist) {
     ASSERT_TRUE(catalog.init().ok());
 
     DBMeta db_meta;
-    ASSERT_TRUE(
-        catalog.create_db(CreateDBMetaParam{"mydb", "z1"}, &db_meta).ok());
+    ASSERT_TRUE(catalog.create_db(CreateDBParam{"mydb", "z1"}, &db_meta).ok());
 
     TableMeta table_meta;
     ASSERT_TRUE(catalog
-                    .create_table(CreateTableMetaParam{"mydb", "existing_table",
-                                                       4, 3, "pool-a"},
+                    .create_table(CreateTableParam{"mydb", "existing_table", 4,
+                                                   3, "pool-a"},
                                   &table_meta)
                     .ok());
 
@@ -182,7 +181,7 @@ TEST_F(CatalogManagerTest, CreateTableFailsDueToPersist_TableShouldNotExist) {
 
     TableMeta fail_table_meta;
     Status status = faulty_catalog.create_table(
-        CreateTableMetaParam{"mydb", "fail_table", 2, 1, "pool-b"},
+        CreateTableParam{"mydb", "fail_table", 2, 1, "pool-b"},
         &fail_table_meta);
     EXPECT_TRUE(status.fail());
 
@@ -191,6 +190,48 @@ TEST_F(CatalogManagerTest, CreateTableFailsDueToPersist_TableShouldNotExist) {
         faulty_catalog.get_table_by_name("mydb", "fail_table", &check_meta)
             .code(),
         StatusCode::DB_NOT_FOUND);
+}
+
+// 测试 catalog 层 alter replica_count 会更新表副本数，并把表状态标记为 ALTERING。
+TEST_F(CatalogManagerTest, AlterTableReplicaCountMarksAltering) {
+    auto dir = make_sub_dir("alter_replica_count");
+
+    MetaPersistEngine engine(dir.string());
+    ASSERT_TRUE(engine.init().ok());
+    CatalogManager catalog(&engine);
+    ASSERT_TRUE(catalog.init().ok());
+
+    DBMeta db_meta;
+    ASSERT_TRUE(catalog.create_db(CreateDBParam{"mydb", "z1"}, &db_meta).ok());
+
+    TableMeta table_meta;
+    ASSERT_TRUE(
+        catalog
+            .create_table(CreateTableParam{"mydb", "users", 4, 3, "pool-a"},
+                          &table_meta)
+            .ok());
+    ASSERT_TRUE(
+        catalog.update_table_state(table_meta.table_id, TableState::NORMAL)
+            .ok());
+
+    TableMeta altered;
+    ASSERT_TRUE(catalog
+                    .alter_table_replica_count(
+                        AlterTableReplicaCountParam{table_meta.db_name,
+                                                    table_meta.table_name, 5},
+                        &altered)
+                    .ok());
+
+    EXPECT_EQ(altered.table_id, table_meta.table_id);
+    EXPECT_EQ(altered.replica_count, 5);
+    EXPECT_EQ(altered.state, TableState::ALTERING);
+    EXPECT_FALSE(altered.operation_id.empty());
+    EXPECT_TRUE(altered.last_error_msg.empty());
+
+    TableMeta stored;
+    ASSERT_TRUE(catalog.get_table_by_id(table_meta.table_id, &stored).ok());
+    EXPECT_EQ(stored.replica_count, 5);
+    EXPECT_EQ(stored.state, TableState::ALTERING);
 }
 
 // 测试一下catalog的list_tables，lookup_db_by_name，lookup_table_by_name是否有问题
@@ -203,23 +244,23 @@ TEST_F(CatalogManagerTest, ListTablesAndGetQueries) {
     ASSERT_TRUE(catalog.init().ok());
 
     ASSERT_TRUE(
-        catalog.create_db(CreateDBMetaParam{"db1", "z1"}, nullptr).ok());
+        catalog.create_db(CreateDBParam{"db1", "z1"}, nullptr).ok());
     ASSERT_TRUE(
-        catalog.create_db(CreateDBMetaParam{"db2", "z2"}, nullptr).ok());
+        catalog.create_db(CreateDBParam{"db2", "z2"}, nullptr).ok());
 
     ASSERT_TRUE(
         catalog
-            .create_table(CreateTableMetaParam{"db1", "table1", 4, 3, "pool-a"},
+            .create_table(CreateTableParam{"db1", "table1", 4, 3, "pool-a"},
                           nullptr)
             .ok());
     ASSERT_TRUE(
         catalog
-            .create_table(CreateTableMetaParam{"db1", "table2", 2, 1, "pool-b"},
+            .create_table(CreateTableParam{"db1", "table2", 2, 1, "pool-b"},
                           nullptr)
             .ok());
     ASSERT_TRUE(
         catalog
-            .create_table(CreateTableMetaParam{"db2", "table3", 8, 2, "pool-c"},
+            .create_table(CreateTableParam{"db2", "table3", 8, 2, "pool-c"},
                           nullptr)
             .ok());
 
@@ -263,7 +304,7 @@ TEST_F(CatalogManagerTest, ListTablesAndGetQueries) {
 
     DBMeta db3;
     ASSERT_TRUE(
-        catalog.create_db(CreateDBMetaParam{"empty_db", "z3"}, &db3).ok());
+        catalog.create_db(CreateDBParam{"empty_db", "z3"}, &db3).ok());
     std::vector<TableMeta> empty_tables;
     ASSERT_TRUE(catalog.list_tables("empty_db", &empty_tables).ok());
     EXPECT_TRUE(empty_tables.empty());
@@ -280,26 +321,26 @@ TEST_F(CatalogManagerTest, PersistAndRecoverDataConsistency) {
         ASSERT_TRUE(catalog.init().ok());
 
         ASSERT_TRUE(
-            catalog.create_db(CreateDBMetaParam{"db_alpha", "zone-a"}, nullptr)
+            catalog.create_db(CreateDBParam{"db_alpha", "zone-a"}, nullptr)
                 .ok());
         ASSERT_TRUE(
-            catalog.create_db(CreateDBMetaParam{"db_beta", "zone-b"}, nullptr)
+            catalog.create_db(CreateDBParam{"db_beta", "zone-b"}, nullptr)
                 .ok());
 
         ASSERT_TRUE(catalog
-                        .create_table(CreateTableMetaParam{"db_alpha", "users",
+                        .create_table(CreateTableParam{"db_alpha", "users",
                                                            4, 3, "pool-a"},
                                       nullptr)
                         .ok());
         ASSERT_TRUE(catalog
-                        .create_table(CreateTableMetaParam{"db_alpha", "orders",
+                        .create_table(CreateTableParam{"db_alpha", "orders",
                                                            8, 2, "pool-b"},
                                       nullptr)
                         .ok());
         ASSERT_TRUE(
             catalog
                 .create_table(
-                    CreateTableMetaParam{"db_beta", "products", 2, 1, "pool-c"},
+                    CreateTableParam{"db_beta", "products", 2, 1, "pool-c"},
                     nullptr)
                 .ok());
     }
@@ -356,14 +397,14 @@ TEST_F(CatalogManagerTest, PersistAndRecoverDataConsistency) {
 
         DBMeta new_db;
         ASSERT_TRUE(
-            catalog.create_db(CreateDBMetaParam{"db_gamma", "zone-c"}, &new_db)
+            catalog.create_db(CreateDBParam{"db_gamma", "zone-c"}, &new_db)
                 .ok());
         EXPECT_EQ(new_db.db_id, 2);
 
         TableMeta new_table;
         ASSERT_TRUE(
             catalog
-                .create_table(CreateTableMetaParam{"db_gamma", "new_table", 1,
+                .create_table(CreateTableParam{"db_gamma", "new_table", 1,
                                                    1, "pool-d"},
                               &new_table)
                 .ok());
@@ -381,11 +422,11 @@ TEST_F(CatalogManagerTest, DeletedTableRecreateSameNameUsesNewTableId) {
     ASSERT_TRUE(catalog.init().ok());
 
     ASSERT_TRUE(
-        catalog.create_db(CreateDBMetaParam{"commerce", "z1"}, nullptr).ok());
+        catalog.create_db(CreateDBParam{"commerce", "z1"}, nullptr).ok());
 
     TableMeta old_table;
     ASSERT_TRUE(catalog
-                    .create_table(CreateTableMetaParam{"commerce", "orders", 4,
+                    .create_table(CreateTableParam{"commerce", "orders", 4,
                                                        3, "pool-a"},
                                   &old_table)
                     .ok());
@@ -407,7 +448,7 @@ TEST_F(CatalogManagerTest, DeletedTableRecreateSameNameUsesNewTableId) {
 
     TableMeta new_table;
     ASSERT_TRUE(catalog
-                    .create_table(CreateTableMetaParam{"commerce", "orders", 8,
+                    .create_table(CreateTableParam{"commerce", "orders", 8,
                                                        2, "pool-b"},
                                   &new_table)
                     .ok());
@@ -432,11 +473,11 @@ TEST_F(CatalogManagerTest, RecoverDeletedTableKeepsIdLookupAndClearsNameIndex) {
         ASSERT_TRUE(catalog.init().ok());
 
         ASSERT_TRUE(
-            catalog.create_db(CreateDBMetaParam{"commerce", "z1"}, nullptr)
+            catalog.create_db(CreateDBParam{"commerce", "z1"}, nullptr)
                 .ok());
         TableMeta old_table;
         ASSERT_TRUE(catalog
-                        .create_table(CreateTableMetaParam{"commerce", "orders",
+                        .create_table(CreateTableParam{"commerce", "orders",
                                                            4, 3, "pool-a"},
                                       &old_table)
                         .ok());
@@ -477,11 +518,11 @@ TEST_F(CatalogManagerTest, RecoverSkipsDeletedNameIndexAndKeepsIdLookup) {
         ASSERT_TRUE(catalog.init().ok());
 
         ASSERT_TRUE(
-            catalog.create_db(CreateDBMetaParam{"commerce", "z1"}, nullptr)
+            catalog.create_db(CreateDBParam{"commerce", "z1"}, nullptr)
                 .ok());
         TableMeta old_table;
         ASSERT_TRUE(catalog
-                        .create_table(CreateTableMetaParam{"commerce", "orders",
+                        .create_table(CreateTableParam{"commerce", "orders",
                                                            4, 3, "pool-a"},
                                       &old_table)
                         .ok());
@@ -490,7 +531,7 @@ TEST_F(CatalogManagerTest, RecoverSkipsDeletedNameIndexAndKeepsIdLookup) {
                 .ok());
         TableMeta new_table;
         ASSERT_TRUE(catalog
-                        .create_table(CreateTableMetaParam{"commerce", "orders",
+                        .create_table(CreateTableParam{"commerce", "orders",
                                                            8, 2, "pool-b"},
                                       &new_table)
                         .ok());
@@ -531,9 +572,9 @@ TEST_F(CatalogManagerTest, DeleteDbRejectsActiveTables) {
 
     DBMeta db;
     ASSERT_TRUE(
-        catalog.create_db(CreateDBMetaParam{"commerce", "z1"}, &db).ok());
+        catalog.create_db(CreateDBParam{"commerce", "z1"}, &db).ok());
     ASSERT_TRUE(catalog
-                    .create_table(CreateTableMetaParam{"commerce", "orders", 4,
+                    .create_table(CreateTableParam{"commerce", "orders", 4,
                                                        3, "pool-a"},
                                   nullptr)
                     .ok());
@@ -557,10 +598,10 @@ TEST_F(CatalogManagerTest, DeleteDbAllowsOnlyDeletedTables) {
 
     DBMeta db;
     ASSERT_TRUE(
-        catalog.create_db(CreateDBMetaParam{"commerce", "z1"}, &db).ok());
+        catalog.create_db(CreateDBParam{"commerce", "z1"}, &db).ok());
     TableMeta table;
     ASSERT_TRUE(catalog
-                    .create_table(CreateTableMetaParam{"commerce", "orders", 4,
+                    .create_table(CreateTableParam{"commerce", "orders", 4,
                                                        3, "pool-a"},
                                   &table)
                     .ok());
@@ -578,7 +619,7 @@ TEST_F(CatalogManagerTest, DeleteDbAllowsOnlyDeletedTables) {
 
     DBMeta recreated_db;
     ASSERT_TRUE(
-        catalog.create_db(CreateDBMetaParam{"commerce", "z2"}, &recreated_db)
+        catalog.create_db(CreateDBParam{"commerce", "z2"}, &recreated_db)
             .ok());
     EXPECT_NE(recreated_db.db_id, db.db_id);
     std::vector<TableMeta> tables;

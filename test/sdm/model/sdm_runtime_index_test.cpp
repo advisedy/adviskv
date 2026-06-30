@@ -22,8 +22,8 @@ Table make_table(TableID table_id, const std::string& db_name,
 
 Node make_node(const NodeID& id, const std::string& resource_pool) {
     return Node{id,
-                NodeSpec{resource_pool, "dc-a", NodeStatus::ONLINE},
-                NodeState{Endpoint{"127.0.0.1", 18080}},
+                NodeMeta{resource_pool, "dc-a"},
+                NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", 18080}},
                 NodeDerived{}};
 }
 
@@ -34,7 +34,7 @@ Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
     state.observed_raft_role = ReplicaRole::FOLLOWER;
     state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
     return Replica{replica_id,
-                   ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
+                   ReplicaSpec{"dc-a", node_id, EngineType::MAP},
                    state};
 }
 

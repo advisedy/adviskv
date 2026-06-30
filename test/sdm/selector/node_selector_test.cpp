@@ -8,6 +8,7 @@
 
 #include "common/status.h"
 #include "sdm/model/sdm_store.h"
+#include "sdm/sdm_store_test_helper.h"
 
 namespace adviskv::sdm {
 namespace {
@@ -16,8 +17,8 @@ Node make_node(const NodeID& id, const std::string& resource_pool, int32_t port,
                NodeStatus status = NodeStatus::ONLINE,
                const std::string& ip = "127.0.0.1",
                const std::string& dc = "dc-a") {
-    return Node{id, NodeSpec{resource_pool, dc, status},
-                NodeState{Endpoint{ip, port}, 100}, NodeDerived{}};
+    return Node{id, NodeMeta{resource_pool, dc},
+                NodeState{status, Endpoint{ip, port}, 100}, NodeDerived{}};
 }
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id,
@@ -28,7 +29,7 @@ Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id,
     state.observed_raft_role = ReplicaRole::FOLLOWER;
     state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
     return Replica{replica_id,
-                   ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}}, state};
+                   ReplicaSpec{"dc-a", node_id, EngineType::MAP}, state};
 }
 
 PlaceNodesParam make_param(int32_t shard_count = 1, int32_t replica_count = 2,
@@ -83,19 +84,24 @@ TEST(NodeSelectorTest, NullStoreReturnsError) {
 // 检测是否会选择到不该被选到的node
 TEST(NodeSelectorTest, SelectsOnlyHealthyNodesFromResourcePool) {
     SdmStore store{SdmMetaStoreType::MEMORY};
-    ASSERT_TRUE(store.put_node(make_node("node-a", "pool-a", 18080)).ok());
-    ASSERT_TRUE(store.put_node(make_node("node-b", "pool-a", 18081)).ok());
-    ASSERT_TRUE(store
-                    .put_node(make_node("node-offline", "pool-a", 18082,
-                                        NodeStatus::OFFLINE))
-                    .ok());
-    ASSERT_TRUE(store
-                    .put_node(make_node("node-empty-ip", "pool-a", 18083,
-                                        NodeStatus::ONLINE, ""))
-                    .ok());
-    ASSERT_TRUE(store.put_node(make_node("node-bad-port", "pool-a", 0)).ok());
     ASSERT_TRUE(
-        store.put_node(make_node("node-other-pool", "pool-b", 18084)).ok());
+        store_test::put_node(store, make_node("node-a", "pool-a", 18080)).ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-b", "pool-a", 18081)).ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-offline", "pool-a", 18082,
+                                              NodeStatus::OFFLINE))
+            .ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-empty-ip", "pool-a", 18083,
+                                              NodeStatus::ONLINE, ""))
+            .ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-bad-port", "pool-a", 0))
+            .ok());
+    ASSERT_TRUE(store_test::put_node(
+                    store, make_node("node-other-pool", "pool-b", 18084))
+                    .ok());
 
     DefaultNodeSelector selector(&store);
     TablePlacementResult result;
@@ -110,11 +116,12 @@ TEST(NodeSelectorTest, SelectsOnlyHealthyNodesFromResourcePool) {
 // - 检测一下可选节点数量不足的情况
 TEST(NodeSelectorTest, NotEnoughHealthyNodesReturnsResourceExhausted) {
     SdmStore store{SdmMetaStoreType::MEMORY};
-    ASSERT_TRUE(store.put_node(make_node("node-a", "pool-a", 18080)).ok());
-    ASSERT_TRUE(store
-                    .put_node(make_node("node-offline", "pool-a", 18081,
-                                        NodeStatus::OFFLINE))
-                    .ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-a", "pool-a", 18080)).ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-offline", "pool-a", 18081,
+                                              NodeStatus::OFFLINE))
+            .ok());
 
     DefaultNodeSelector selector(&store);
     TablePlacementResult result;
@@ -127,19 +134,25 @@ TEST(NodeSelectorTest, NotEnoughHealthyNodesReturnsResourceExhausted) {
 // 检测一下是否会优先选择负载replica更少的node
 TEST(NodeSelectorTest, PrefersNodesWithFewerPresentReplicas) {
     SdmStore store{SdmMetaStoreType::MEMORY};
-    ASSERT_TRUE(store.put_node(make_node("node-a", "pool-a", 18080)).ok());
-    ASSERT_TRUE(store.put_node(make_node("node-b", "pool-a", 18081)).ok());
-    ASSERT_TRUE(store.put_node(make_node("node-c", "pool-a", 18082)).ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-a", "pool-a", 18080)).ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-b", "pool-a", 18081)).ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-c", "pool-a", 18082)).ok());
 
-    ASSERT_TRUE(
-        store.put_replica(make_replica(ReplicaID{1, 0, 0}, "node-a")).ok());
-    ASSERT_TRUE(
-        store.put_replica(make_replica(ReplicaID{1, 1, 0}, "node-a")).ok());
-    ASSERT_TRUE(
-        store.put_replica(make_replica(ReplicaID{2, 0, 0}, "node-b")).ok());
-    ASSERT_TRUE(store
-                    .put_replica(make_replica(ReplicaID{3, 0, 0}, "node-c",
-                                              ReplicaDesired::ABSENT))
+    ASSERT_TRUE(store_test::put_replica(
+                    store, make_replica(ReplicaID{1, 0, 0}, "node-a"))
+                    .ok());
+    ASSERT_TRUE(store_test::put_replica(
+                    store, make_replica(ReplicaID{1, 1, 0}, "node-a"))
+                    .ok());
+    ASSERT_TRUE(store_test::put_replica(
+                    store, make_replica(ReplicaID{2, 0, 0}, "node-b"))
+                    .ok());
+    ASSERT_TRUE(store_test::put_replica(
+                    store, make_replica(ReplicaID{3, 0, 0}, "node-c",
+                                        ReplicaDesired::ABSENT))
                     .ok());
 
     DefaultNodeSelector selector(&store);
@@ -154,21 +167,18 @@ TEST(NodeSelectorTest, PrefersNodesWithFewerPresentReplicas) {
 // 优先不同dc的
 TEST(NodeSelectorTest, PrefersDistinctDcsWithinSameShard) {
     SdmStore store{SdmMetaStoreType::MEMORY};
-    ASSERT_TRUE(
-        store
-            .put_node(make_node("node-a", "pool-a", 18080, NodeStatus::ONLINE,
-                                "127.0.0.1", "dc-a"))
-            .ok());
-    ASSERT_TRUE(
-        store
-            .put_node(make_node("node-b", "pool-a", 18081, NodeStatus::ONLINE,
-                                "127.0.0.1", "dc-a"))
-            .ok());
-    ASSERT_TRUE(
-        store
-            .put_node(make_node("node-c", "pool-a", 18082, NodeStatus::ONLINE,
-                                "127.0.0.1", "dc-b"))
-            .ok());
+    ASSERT_TRUE(store_test::put_node(
+                    store, make_node("node-a", "pool-a", 18080,
+                                     NodeStatus::ONLINE, "127.0.0.1", "dc-a"))
+                    .ok());
+    ASSERT_TRUE(store_test::put_node(
+                    store, make_node("node-b", "pool-a", 18081,
+                                     NodeStatus::ONLINE, "127.0.0.1", "dc-a"))
+                    .ok());
+    ASSERT_TRUE(store_test::put_node(
+                    store, make_node("node-c", "pool-a", 18082,
+                                     NodeStatus::ONLINE, "127.0.0.1", "dc-b"))
+                    .ok());
 
     DefaultNodeSelector selector(&store);
     TablePlacementResult result;
@@ -179,23 +189,21 @@ TEST(NodeSelectorTest, PrefersDistinctDcsWithinSameShard) {
     expect_node_ids(result.shards[0].nodes, {"node-a", "node-c"});
 }
 
+// 检测可用 dc 不足以完全打散时，会复用已有 dc 继续满足副本数。
 TEST(NodeSelectorTest, ReusesDcWhenDistinctDcsAreNotEnough) {
     SdmStore store{SdmMetaStoreType::MEMORY};
-    ASSERT_TRUE(
-        store
-            .put_node(make_node("node-a", "pool-a", 18080, NodeStatus::ONLINE,
-                                "127.0.0.1", "dc-a"))
-            .ok());
-    ASSERT_TRUE(
-        store
-            .put_node(make_node("node-b", "pool-a", 18081, NodeStatus::ONLINE,
-                                "127.0.0.1", "dc-a"))
-            .ok());
-    ASSERT_TRUE(
-        store
-            .put_node(make_node("node-c", "pool-a", 18082, NodeStatus::ONLINE,
-                                "127.0.0.1", "dc-b"))
-            .ok());
+    ASSERT_TRUE(store_test::put_node(
+                    store, make_node("node-a", "pool-a", 18080,
+                                     NodeStatus::ONLINE, "127.0.0.1", "dc-a"))
+                    .ok());
+    ASSERT_TRUE(store_test::put_node(
+                    store, make_node("node-b", "pool-a", 18081,
+                                     NodeStatus::ONLINE, "127.0.0.1", "dc-a"))
+                    .ok());
+    ASSERT_TRUE(store_test::put_node(
+                    store, make_node("node-c", "pool-a", 18082,
+                                     NodeStatus::ONLINE, "127.0.0.1", "dc-b"))
+                    .ok());
 
     DefaultNodeSelector selector(&store);
     TablePlacementResult result;
@@ -206,33 +214,29 @@ TEST(NodeSelectorTest, ReusesDcWhenDistinctDcsAreNotEnough) {
     expect_node_ids(result.shards[0].nodes, {"node-a", "node-c", "node-b"});
 }
 
+// 检测同一个 shard 内跨 dc 选择节点时，会在不同 dc 间均衡副本数量。
 TEST(NodeSelectorTest, BalancesReplicaCountAcrossDcsWithinSameShard) {
     SdmStore store{SdmMetaStoreType::MEMORY};
-    ASSERT_TRUE(
-        store
-            .put_node(make_node("node-a1", "pool-a", 18080, NodeStatus::ONLINE,
-                                "127.0.0.1", "dc-a"))
-            .ok());
-    ASSERT_TRUE(
-        store
-            .put_node(make_node("node-a2", "pool-a", 18081, NodeStatus::ONLINE,
-                                "127.0.0.1", "dc-a"))
-            .ok());
-    ASSERT_TRUE(
-        store
-            .put_node(make_node("node-b1", "pool-a", 18082, NodeStatus::ONLINE,
-                                "127.0.0.1", "dc-b"))
-            .ok());
-    ASSERT_TRUE(
-        store
-            .put_node(make_node("node-b2", "pool-a", 18083, NodeStatus::ONLINE,
-                                "127.0.0.1", "dc-b"))
-            .ok());
-    ASSERT_TRUE(
-        store
-            .put_node(make_node("node-c1", "pool-a", 18084, NodeStatus::ONLINE,
-                                "127.0.0.1", "dc-c"))
-            .ok());
+    ASSERT_TRUE(store_test::put_node(
+                    store, make_node("node-a1", "pool-a", 18080,
+                                     NodeStatus::ONLINE, "127.0.0.1", "dc-a"))
+                    .ok());
+    ASSERT_TRUE(store_test::put_node(
+                    store, make_node("node-a2", "pool-a", 18081,
+                                     NodeStatus::ONLINE, "127.0.0.1", "dc-a"))
+                    .ok());
+    ASSERT_TRUE(store_test::put_node(
+                    store, make_node("node-b1", "pool-a", 18082,
+                                     NodeStatus::ONLINE, "127.0.0.1", "dc-b"))
+                    .ok());
+    ASSERT_TRUE(store_test::put_node(
+                    store, make_node("node-b2", "pool-a", 18083,
+                                     NodeStatus::ONLINE, "127.0.0.1", "dc-b"))
+                    .ok());
+    ASSERT_TRUE(store_test::put_node(
+                    store, make_node("node-c1", "pool-a", 18084,
+                                     NodeStatus::ONLINE, "127.0.0.1", "dc-c"))
+                    .ok());
 
     DefaultNodeSelector selector(&store);
     TablePlacementResult result;
@@ -247,9 +251,12 @@ TEST(NodeSelectorTest, BalancesReplicaCountAcrossDcsWithinSameShard) {
 // - 检测一下新增 replica 计入后续 shard 的负载
 TEST(NodeSelectorTest, BalancesLoadAcrossMultipleShards) {
     SdmStore store{SdmMetaStoreType::MEMORY};
-    ASSERT_TRUE(store.put_node(make_node("node-a", "pool-a", 18080)).ok());
-    ASSERT_TRUE(store.put_node(make_node("node-b", "pool-a", 18081)).ok());
-    ASSERT_TRUE(store.put_node(make_node("node-c", "pool-a", 18082)).ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-a", "pool-a", 18080)).ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-b", "pool-a", 18081)).ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-c", "pool-a", 18082)).ok());
 
     DefaultNodeSelector selector(&store);
     TablePlacementResult result;

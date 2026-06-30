@@ -3,9 +3,15 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "sdm/sdm_store_test_helper.h"
+#include "test_env.h"
+
+namespace fs = std::filesystem;
 
 namespace adviskv::sdm {
 namespace {
@@ -24,9 +30,9 @@ Table make_table(TableID table_id, const std::string& db_name,
 
 Node make_node(const NodeID& id, const std::string& resource_pool,
                int32_t port = 18080) {
-    return Node{id,
-                NodeSpec{resource_pool, "dc-a", NodeStatus::ONLINE},
-                NodeState{Endpoint{"127.0.0.1", port}, 100},
+    return Node{id, NodeMeta{resource_pool, "dc-a"},
+                NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", port},
+                          100},
                 NodeDerived{}};
 }
 
@@ -37,16 +43,14 @@ Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
     state.observed_raft_role = ReplicaRole::FOLLOWER;
     state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
     return Replica{replica_id,
-                   ReplicaSpec{"dc-a", node_id, EngineType::MAP, {}},
-                   state};
+                   ReplicaSpec{"dc-a", node_id, EngineType::MAP}, state};
 }
 
 ShardRoute make_route(const ShardID& shard_id) {
-    return ShardRoute{shard_id,
-                      {RouteEntry{ReplicaID{shard_id.table_id,
-                                            shard_id.shard_index, 0},
-                                  "node-a", "127.0.0.1", 18080,
-                                  ReplicaRole::LEADER, 7}}};
+    return ShardRoute{
+        shard_id,
+        {RouteEntry{ReplicaID{shard_id.table_id, shard_id.shard_index, 0},
+                    "node-a", "127.0.0.1", 18080, ReplicaRole::LEADER, 7}}};
 }
 
 std::vector<NodeID> node_ids(std::vector<Node> nodes) {
@@ -92,6 +96,8 @@ class FailOnceOnReplicaDeleteIndex : public SdmRuntimeIndex {
     bool failed_{false};
 };
 
+int persistent_sequence{0};
+
 }  // namespace
 
 // 检测 SdmStore 的正常写入、查询、更新和删除流程。
@@ -99,56 +105,69 @@ TEST(SdmStoreTest, NormalStoreFlowWorks) {
     SdmStore store{SdmMetaStoreType::MEMORY};
 
     Table table = make_table(1001, "commerce", "orders");
-    ASSERT_TRUE(store.put_table(table).ok());
+    ASSERT_TRUE(store_test::put_table(store, table).ok());
     TableOr table_out;
-    ASSERT_TRUE(store.get_table(1001, table_out).ok());
+    ASSERT_TRUE(store_test::get_table(store, 1001, table_out).ok());
     ASSERT_FALSE(table_out.is_empty());
     EXPECT_EQ(table_out->spec.table_name, "orders");
 
     TableOr table_by_name;
-    ASSERT_TRUE(
-        store.get_table_by_name("commerce", "orders", table_by_name).ok());
+    ASSERT_TRUE(store_test::get_table_by_name(store, "commerce", "orders",
+                                              table_by_name)
+                    .ok());
     ASSERT_FALSE(table_by_name.is_empty());
     EXPECT_EQ(table_by_name->table_id, 1001);
 
-    ASSERT_TRUE(store.put_node(make_node("node-a", "pool-a")).ok());
-    ASSERT_TRUE(store.put_node(make_node("node-b", "pool-a")).ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-a", "pool-a")).ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-b", "pool-a")).ok());
     std::vector<Node> nodes;
-    ASSERT_TRUE(store.list_nodes_by_resource_pool("pool-a", nodes).ok());
+    ASSERT_TRUE(
+        store_test::list_nodes_by_resource_pool(store, "pool-a", nodes).ok());
     EXPECT_EQ(node_ids(nodes), std::vector<NodeID>({"node-a", "node-b"}));
 
     ReplicaID replica_id{1001, 0, 0};
-    ASSERT_TRUE(store.put_replica(make_replica(replica_id, "node-a")).ok());
+    ASSERT_TRUE(
+        store_test::put_replica(store, make_replica(replica_id, "node-a"))
+            .ok());
     std::vector<Replica> replicas;
-    ASSERT_TRUE(store.list_replicas_by_shard(ShardID{1001, 0}, replicas).ok());
+    ASSERT_TRUE(
+        store_test::list_replicas_by_shard(store, ShardID{1001, 0}, replicas)
+            .ok());
     EXPECT_EQ(replica_ids(replicas), std::vector<ReplicaID>({replica_id}));
-    ASSERT_TRUE(store.list_replicas_by_node("node-a", replicas).ok());
+    ASSERT_TRUE(
+        store_test::list_replicas_by_node(store, "node-a", replicas).ok());
     EXPECT_EQ(replica_ids(replicas), std::vector<ReplicaID>({replica_id}));
 
     Replica moved_replica = make_replica(replica_id, "node-b");
-    ASSERT_TRUE(store.put_replica(moved_replica).ok());
-    ASSERT_TRUE(store.list_replicas_by_node("node-a", replicas).ok());
+    ASSERT_TRUE(store_test::put_replica(store, moved_replica).ok());
+    ASSERT_TRUE(
+        store_test::list_replicas_by_node(store, "node-a", replicas).ok());
     EXPECT_TRUE(replicas.empty());
-    ASSERT_TRUE(store.list_replicas_by_node("node-b", replicas).ok());
+    ASSERT_TRUE(
+        store_test::list_replicas_by_node(store, "node-b", replicas).ok());
     EXPECT_EQ(replica_ids(replicas), std::vector<ReplicaID>({replica_id}));
 
     ShardID shard_id{1001, 0};
-    ASSERT_TRUE(store.put_shard_route(make_route(shard_id)).ok());
+    ASSERT_TRUE(store_test::put_shard_route(store, make_route(shard_id)).ok());
     ShardRouteOr route;
-    ASSERT_TRUE(store.get_shard_route(shard_id, route).ok());
+    ASSERT_TRUE(store_test::get_shard_route(store, shard_id, route).ok());
     ASSERT_FALSE(route.is_empty());
     ASSERT_EQ(route->replicas.size(), 1U);
 
-    ASSERT_TRUE(store.del_replica(replica_id).ok());
-    ASSERT_TRUE(store.list_replicas_by_shard(shard_id, replicas).ok());
+    ASSERT_TRUE(store_test::del_replica(store, replica_id).ok());
+    ASSERT_TRUE(
+        store_test::list_replicas_by_shard(store, shard_id, replicas).ok());
     EXPECT_TRUE(replicas.empty());
-    ASSERT_TRUE(store.delete_shard_route(shard_id).ok());
-    ASSERT_TRUE(store.get_shard_route(shard_id, route).ok());
+    ASSERT_TRUE(store_test::delete_shard_route(store, shard_id).ok());
+    ASSERT_TRUE(store_test::get_shard_route(store, shard_id, route).ok());
     EXPECT_TRUE(route.is_empty());
-    ASSERT_TRUE(store.delete_table(1001).ok());
-    EXPECT_EQ(
-        store.get_table_by_name("commerce", "orders", table_by_name).code(),
-        StatusCode::TABLE_NOT_FOUND);
+    ASSERT_TRUE(store_test::delete_table(store, 1001).ok());
+    EXPECT_EQ(store_test::get_table_by_name(store, "commerce", "orders",
+                                            table_by_name)
+                  .code(),
+              StatusCode::TABLE_NOT_FOUND);
 }
 
 // 检测 runtime index 更新失败时，SdmStore 会 rebuild runtime index
@@ -157,39 +176,118 @@ TEST(SdmStoreTest, RebuildsRuntimeIndexWhenReplicaDeleteIndexUpdateFails) {
     auto failing_index = std::make_unique<FailOnceOnReplicaDeleteIndex>();
     SdmStore store{SdmMetaStoreType::MEMORY, std::move(failing_index)};
 
-    ASSERT_TRUE(store.put_table(make_table(1001, "commerce", "orders")).ok());
-    ASSERT_TRUE(store.put_node(make_node("node-a", "pool-a")).ok());
-    ASSERT_TRUE(store.put_node(make_node("node-b", "pool-a")).ok());
+    ASSERT_TRUE(
+        store_test::put_table(store, make_table(1001, "commerce", "orders"))
+            .ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-a", "pool-a")).ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-b", "pool-a")).ok());
     ReplicaID deleted_id{1001, 0, 0};
     ReplicaID kept_id{1001, 0, 1};
-    ASSERT_TRUE(store.put_replica(make_replica(deleted_id, "node-a")).ok());
-    ASSERT_TRUE(store.put_replica(make_replica(kept_id, "node-b")).ok());
-    ASSERT_TRUE(store.put_shard_route(make_route(ShardID{1001, 0})).ok());
+    ASSERT_TRUE(
+        store_test::put_replica(store, make_replica(deleted_id, "node-a"))
+            .ok());
+    ASSERT_TRUE(
+        store_test::put_replica(store, make_replica(kept_id, "node-b")).ok());
+    ASSERT_TRUE(
+        store_test::put_shard_route(store, make_route(ShardID{1001, 0})).ok());
 
-    Status status = store.del_replica(deleted_id);
+    Status status = store_test::del_replica(store, deleted_id);
 
     ASSERT_TRUE(status.ok()) << status.to_string();
     ReplicaOr deleted;
-    ASSERT_TRUE(store.get_replica(deleted_id, deleted).ok());
+    ASSERT_TRUE(store_test::get_replica(store, deleted_id, deleted).ok());
     EXPECT_TRUE(deleted.is_empty());
 
     std::vector<Replica> replicas;
-    ASSERT_TRUE(store.list_replicas_by_node("node-a", replicas).ok());
+    ASSERT_TRUE(
+        store_test::list_replicas_by_node(store, "node-a", replicas).ok());
     EXPECT_TRUE(replicas.empty());
-    ASSERT_TRUE(store.list_replicas_by_node("node-b", replicas).ok());
+    ASSERT_TRUE(
+        store_test::list_replicas_by_node(store, "node-b", replicas).ok());
     EXPECT_EQ(replica_ids(replicas), std::vector<ReplicaID>({kept_id}));
-    ASSERT_TRUE(store.list_replicas_by_shard(ShardID{1001, 0}, replicas).ok());
+    ASSERT_TRUE(
+        store_test::list_replicas_by_shard(store, ShardID{1001, 0}, replicas)
+            .ok());
     EXPECT_EQ(replica_ids(replicas), std::vector<ReplicaID>({kept_id}));
 
     TableOr table;
-    ASSERT_TRUE(store.get_table_by_name("commerce", "orders", table).ok());
+    ASSERT_TRUE(
+        store_test::get_table_by_name(store, "commerce", "orders", table).ok());
     ASSERT_FALSE(table.is_empty());
     std::vector<Node> nodes;
-    ASSERT_TRUE(store.list_nodes_by_resource_pool("pool-a", nodes).ok());
+    ASSERT_TRUE(
+        store_test::list_nodes_by_resource_pool(store, "pool-a", nodes).ok());
     EXPECT_EQ(node_ids(nodes), std::vector<NodeID>({"node-a", "node-b"}));
     ShardRouteOr route;
-    ASSERT_TRUE(store.get_shard_route(ShardID{1001, 0}, route).ok());
+    ASSERT_TRUE(
+        store_test::get_shard_route(store, ShardID{1001, 0}, route).ok());
     ASSERT_FALSE(route.is_empty());
+}
+
+// 检测 PERSISTENT 类型的 SdmStore 写入后，重新加载仍能恢复 table、replica、group、node 和 route。
+TEST(SdmStoreTest, WriteWithPersistentStoreSurvivesReload) {
+    fs::path data_dir = adviskv::test::make_unique_test_dir(
+        "sdm_store_persistent", persistent_sequence++);
+    std::error_code ec;
+    fs::remove_all(data_dir, ec);
+
+    ShardID shard_id{1001, 0};
+    ReplicaID replica_id{1001, 0, 0};
+
+    {
+        SdmStore store(SdmMetaStoreType::PERSISTENT, data_dir.string());
+        Status status = store.write_with([&](SdmStoreTxn& txn) {
+            Status put_status =
+                txn.put_table(make_table(1001, "commerce", "orders"));
+            if (put_status.fail()) {
+                return put_status;
+            }
+            put_status = txn.put_node(make_node("node-a", "pool-a"));
+            if (put_status.fail()) {
+                return put_status;
+            }
+
+            ReplicaGroup group;
+            group.shard_id = shard_id;
+            group.mode = ReplicaGroupMode::RAFT_RECONFIG;
+            group.target_replica_count = 1;
+            group.desired_members = {replica_id};
+            group.seq_allocator = IDAllocator<ReplicaSeq>(1);
+            return txn.put_replica_group(group);
+        });
+        ASSERT_TRUE(status.ok()) << status.to_string();
+    }
+
+    {
+        SdmStore reloaded(SdmMetaStoreType::PERSISTENT, data_dir.string());
+        TableOr table;
+        ASSERT_TRUE(store_test::get_table(reloaded, 1001, table).ok());
+        ASSERT_FALSE(table.is_empty());
+        EXPECT_EQ(table->spec.table_name, "orders");
+
+        ReplicaGroupOr group;
+        ASSERT_TRUE(
+            store_test::get_replica_group(reloaded, shard_id, group).ok());
+        ASSERT_FALSE(group.is_empty());
+        EXPECT_EQ(group->mode, ReplicaGroupMode::RAFT_RECONFIG);
+        EXPECT_EQ(group->target_replica_count, 1);
+        EXPECT_EQ(group->desired_members, std::vector<ReplicaID>({replica_id}));
+        EXPECT_EQ(group->seq_allocator.current_id(), 1);
+
+        NodeOr node;
+        ASSERT_TRUE(store_test::get_node(reloaded, "node-a", node).ok());
+        EXPECT_TRUE(node.is_empty());
+
+        std::vector<Node> nodes;
+        ASSERT_TRUE(
+            store_test::list_nodes_by_resource_pool(reloaded, "pool-a", nodes)
+                .ok());
+        EXPECT_TRUE(nodes.empty());
+    }
+
+    fs::remove_all(data_dir, ec);
 }
 
 }  // namespace adviskv::sdm

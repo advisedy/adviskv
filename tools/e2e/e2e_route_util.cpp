@@ -18,12 +18,12 @@ bool get_route(E2EContext* context, const Key& key, sdk::RouteInfo* route,
     }
 
     const Options& options = context->options();
-    rpc::GetRouteRequest request;
+    sdm_rpc::GetRouteRequest request;
     request.set_db_name(options.db);
     request.set_table_name(options.table);
     request.set_key(key);
 
-    rpc::GetRouteResponse response;
+    sdm_rpc::GetRouteResponse response;
     grpc::ClientContext client_context;
     client_context.set_deadline(std::chrono::system_clock::now() +
                                 std::chrono::milliseconds(3000));
