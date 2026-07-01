@@ -88,7 +88,7 @@ RaftReplication::CommitAdvanceResult RaftReplication::try_advance_commit_index(
         }
 
         int success_cnt = 1;
-        for (const auto& member : membership_.get_members()) {
+        for (const auto& member : membership_.voters()) {
             if (member.replica_id == self_id_) {
                 continue;
             }
@@ -131,6 +131,11 @@ LogIndex RaftReplication::snapshot_watermark(
 LogIndex RaftReplication::inflight_snapshot_index(
     const ReplicaID& replica_id) const {
     return peer_progress_.get_inflight_snapshot_index(replica_id);
+}
+
+bool RaftReplication::match_index_at_least(
+    const ReplicaID& replica_id, LogIndex log_index) const {
+    return peer_progress_.match_index_at_least(replica_id, log_index);
 }
 
 void RaftReplication::set_next_index_for_test(ReplicaID replica_id,

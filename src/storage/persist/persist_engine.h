@@ -10,8 +10,9 @@
 #include "storage/raft/state_machine/state_machine.h"
 namespace adviskv::storage {
 
+// 负责WAL，snapshot，raft_meta的落盘
 class PersistEngine {
-   public:
+public:
     PersistEngine(const std::string& data_dir, const ReplicaID& replica_id);
     ~PersistEngine();
 
@@ -32,12 +33,11 @@ class PersistEngine {
 
     Status load_snapshot_meta(SnapshotPtr& snap) const;
     Status for_each_snapshot_kv(const KvVisitor& fn) const;
-    Status read_snapshot_chunk(uint64 offset, size_t max_bytes,
-                               std::string& data, bool& eof) const;
+    Status read_snapshot_chunk(uint64 offset, size_t max_bytes, std::string& data, bool& eof) const;
     Status append_snapshot_chunk(const InstallSnapshotParam& param);
     Status finish_snapshot_receive();
 
-    Status do_snapshot(const StateMachine& state_machine);
+    Status do_snapshot(const StateMachine& state_machine, const std::vector<RaftMember>& members = {});
     Status clear_wal();
 
     struct RecoverResult {
@@ -48,7 +48,7 @@ class PersistEngine {
     };
     Status recover(RecoverResult& result);
 
-   private:
+private:
     struct WalReadResult {
         std::vector<LogEntry> entries;
         bool error{false};
@@ -58,12 +58,10 @@ class PersistEngine {
 
     Status write_wal_to_disk(int fd, const LogEntry& entry);
     Status read_wal_batch_unlocked(std::vector<LogEntry>& entries) const;
-    Status read_wal_from_disk(const std::string& path,
-                              WalReadResult& result) const;
+    Status read_wal_from_disk(const std::string& path, WalReadResult& result) const;
     Status rewrite_wal_unlocked(const std::vector<LogEntry>& entries);
     Status truncate_wal_unlocked(const LogIndex& snapshot_index);
-    Status read_snapshot_header(int fd, Snapshot* snapshot,
-                                int32& kv_count) const;
+    Status read_snapshot_header(int fd, Snapshot* snapshot, int32& kv_count) const;
 
     std::string wal_path_;
     std::string raft_meta_path_;

@@ -1,6 +1,7 @@
 #pragma once
 #include <functional>
 #include <memory>
+#include <vector>
 
 #include "common/status.h"
 #include "common/type.h"
@@ -11,6 +12,7 @@ namespace adviskv::storage {
 struct Snapshot {
     LogIndex apply_index{0};
     Term apply_term{0};
+    std::vector<RaftMember> members;
     // std::string path;
 };
 using SnapshotPtr = std::shared_ptr<Snapshot>;

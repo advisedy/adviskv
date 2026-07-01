@@ -57,8 +57,8 @@ class Replica {
         return raft_node_ ? raft_node_->role() : ReplicaRole::FOLLOWER;
     }
     RaftMemberType get_member_type() const {
-        //TODO111 等着之后修改吧
-        return raft_node_ ? RaftMemberType::VOTER : RaftMemberType::NON_MEMBER;
+        return raft_node_ ? raft_node_->member_type(replica_id_)
+                          : RaftMemberType::NON_MEMBER;
     }
     Term current_term() const {
         return raft_node_ ? raft_node_->current_term() : 0;
@@ -83,6 +83,8 @@ class Replica {
                                  AppendEntriesResult& result);
     // 收到了来自leader的快照下载要求
     Status handle_install_snapshot(const InstallSnapshotParam& param);
+    Status add_member(const PeerMember& member);
+    Status remove_member(const ReplicaID& replica_id);
 
    private:
     friend class ReplicaManager;

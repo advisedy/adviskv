@@ -1,31 +1,38 @@
 #pragma once
 
-#include <optional>
 #include <vector>
 
+#include "common/model/raft_member_type.h"
+#include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
 
 namespace adviskv::storage {
 
 class RaftMembership {
-   public:
-    RaftMembership(ReplicaID replica_id,
-                   const std::vector<PeerMember>& members);
+public:
+    // 初始化的时候，全当成voters去看待
+    explicit RaftMembership(const std::vector<PeerMember>& voters);
 
-    const std::vector<PeerMember>& get_members() const;
-    const std::vector<PeerMember>& all_members() const;
+    std::vector<PeerMember> peer_members() const;
     std::vector<PeerMember> voters() const;
-    const PeerMember* find_member(const ReplicaID& replica_id) const;
+    std::vector<PeerMember> learners() const;
+    const std::vector<RaftMember>& raft_members() const;
     bool contains(const ReplicaID& replica_id) const;
     bool is_voter(const ReplicaID& replica_id) const;
-    void update_members(const std::vector<PeerMember>& members);
+    RaftMemberType member_type(const ReplicaID& replica_id) const;
+    void update_raft_members(const std::vector<RaftMember>& members);
+    Status add_learner(const PeerMember& member);
+    Status promote_voter(const ReplicaID& replica_id);
+    Status remove_member(const ReplicaID& replica_id);
     int quorum_size() const;
     bool has_quorum(int ack_count) const;
 
-   private:
-    ReplicaID self_id_;
-    std::vector<PeerMember> members_;
+private:
+    void reset_voters(const std::vector<PeerMember>& voters);
+    const RaftMember* find_raft_member(const ReplicaID& replica_id) const;
+
+    std::vector<RaftMember> members_;
 };
 
 }  // namespace adviskv::storage

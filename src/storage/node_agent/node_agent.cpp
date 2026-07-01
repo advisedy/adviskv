@@ -227,7 +227,7 @@ Optional<ReplicaID> NodeAgent::find_local_leader_replica(const ShardID& shard_id
     std::vector<ReplicaPtr>&& replicas = conf_.replica_ops.list_replicas();
     for (const ReplicaPtr& replica : replicas) {
         if (replica == nullptr) {
-            LOG_WARN("[NodeAgent] find_local_leader_replica, replica is nullptr, shard_id:{}", shard_id);
+            LOG_WARN("[NodeAgent] find_local_leader_replica, replica is nullptr, shard_id:{}", shard_id.to_string());
             continue;
         }
         if (replica->get_role() == ReplicaRole::LEADER) {

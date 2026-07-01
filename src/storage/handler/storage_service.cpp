@@ -19,6 +19,7 @@
 #include "common/type.h"
 #include "storage.pb.h"
 #include "storage/model/param.h"
+#include "storage/proto/storage_model_proto.h"
 #include "storage/replica/replica.h"
 
 namespace adviskv::storage {
@@ -337,11 +338,11 @@ grpc::Status StorageServiceImpl::AppendEntries(
     param.leader_commit = request->leader_commit();
     for (const rpc::LogEntry& one : request->entries()) {
         LogEntry entry;
-        entry.term = one.term();
-        entry.index = one.index();
-        entry.op_type = static_cast<WriteOpType>(one.op_type());
-        entry.key = one.key();
-        entry.value = one.value();
+        if (!decode_pb_log_entry(one, entry)) {
+            fill_base_rsp(response,
+                          Status::INVALID_ARGUMENT("invalid log entry"));
+            return grpc::Status::OK;
+        }
         param.entries.push_back(std::move(entry));
     }
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/proto/replica_id_proto.h"
 #include "storage.pb.h"
 #include "storage/model/param.h"
 
@@ -16,6 +17,15 @@ inline bool decode_pb_write_op_type(int32 in, WriteOpType& out) {
         case static_cast<int32>(WriteOpType::NONE):
             out = WriteOpType::NONE;
             return true;
+        case static_cast<int32>(WriteOpType::ADD_LEARNER):
+            out = WriteOpType::ADD_LEARNER;
+            return true;
+        case static_cast<int32>(WriteOpType::PROMOTE_VOTER):
+            out = WriteOpType::PROMOTE_VOTER;
+            return true;
+        case static_cast<int32>(WriteOpType::REMOVE_MEMBER):
+            out = WriteOpType::REMOVE_MEMBER;
+            return true;
         default:
             return false;
     }
@@ -26,6 +36,9 @@ inline bool encode_pb_write_op_type(WriteOpType in, int32& out) {
         case WriteOpType::PUT:
         case WriteOpType::DEL:
         case WriteOpType::NONE:
+        case WriteOpType::ADD_LEARNER:
+        case WriteOpType::PROMOTE_VOTER:
+        case WriteOpType::REMOVE_MEMBER:
             out = static_cast<int32>(in);
             return true;
         default:
@@ -42,6 +55,9 @@ inline bool decode_pb_log_entry(const rpc::LogEntry& in, LogEntry& out) {
     }
     out.key = in.key();
     out.value = in.value();
+
+    out.config_member = decode_pb_peer_member(in.config_member());
+    out.config_replica_id = decode_pb_replica_id(in.config_replica_id());
     return true;
 }
 
@@ -56,6 +72,8 @@ inline bool encode_pb_log_entry(const LogEntry& in, rpc::LogEntry& out) {
     out.set_op_type(op_type);
     out.set_key(in.key);
     out.set_value(in.value);
+    encode_pb_peer_member(in.config_member, *out.mutable_config_member());
+    encode_pb_replica_id(in.config_replica_id, *out.mutable_config_replica_id());
     return true;
 }
 

@@ -42,6 +42,8 @@ class RaftReplication {
     LogIndex next_index(const ReplicaID& replica_id) const;
     LogIndex snapshot_watermark(const ReplicaID& replica_id) const;
     LogIndex inflight_snapshot_index(const ReplicaID& replica_id) const;
+    bool match_index_at_least(const ReplicaID& replica_id,
+                              LogIndex log_index) const;
     void set_next_index_for_test(ReplicaID replica_id, LogIndex index);
 
    private:
