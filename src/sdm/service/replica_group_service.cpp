@@ -94,12 +94,11 @@ Status reconcile_all_replica_phases(SdmStoreTxn& txn) {
     return Status::OK();
 }
 
-std::vector<PeerMember> build_shard_members(const SdmStoreTxn& txn, const ShardID& shard_id) {
+std::vector<PeerMember> build_shard_members(const SdmStoreTxn& txn, const ShardID& shard_id, bool voter_only) {
     ReplicaGroupOr group_or;
     if (!txn.get_replica_group(shard_id, group_or).ok() || group_or.is_empty()) {
         return {};
     }
-    bool voter_only = group_or.has_value() && group_or->mode != ReplicaGroupMode::BOOTSTRAP;
 
     std::vector<PeerMember> members;
     members.reserve(group_or->desired_members.size());
@@ -185,7 +184,7 @@ Status append_reconfig_command_for_leader(const SdmStoreTxn& txn, const HeartBea
             ExpectedReplica expect;
             expect.replica_id = add_target.value();
             expect.type = ExpectedReplicaType::ADD_MEMBER;
-            expect.initial_members = build_shard_members(txn, group.shard_id);
+            expect.initial_members = build_shard_members(txn, group.shard_id, false);
             result.expects.push_back(std::move(expect));
             continue;
         }
@@ -252,7 +251,12 @@ Status ReplicaGroupService::build_heartbeat_result(const HeartBeatParam& param, 
             expect.replica_id = r.replica_id;
             expect.engine_type = r.spec.engine_type;
             expect.type = ExpectedReplicaType::PRESENT;
-            expect.initial_members = build_shard_members(txn, shard_id);
+            {
+                ReplicaGroupOr group_or;
+                RETURN_IF_INVALID_STATUS(txn.get_replica_group(shard_id, group_or))
+                bool voter_only = group_or.has_value() && group_or->mode == ReplicaGroupMode::RAFT_RECONFIG;
+                expect.initial_members = build_shard_members(txn, shard_id, voter_only);
+            }
             result.expects.push_back(std::move(expect));
         }
 
