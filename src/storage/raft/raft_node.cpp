@@ -159,6 +159,16 @@ bool RaftNode::is_leader() const {
     return core_.is_leader();
 }
 
+RaftMemberType RaftNode::member_type(const ReplicaID& replica_id) const {
+    std::lock_guard lock(mutex_);
+    return core_.member_type(replica_id);
+}
+
+std::vector<RaftMember> RaftNode::raft_members() const {
+    std::lock_guard lock(mutex_);
+    return core_.raft_members();
+}
+
 // ============================================================================
 // apply 相关的推进
 // ============================================================================
@@ -171,6 +181,11 @@ std::vector<LogEntry> RaftNode::extract_committed_entries() {
 void RaftNode::advance_last_applied(LogIndex applied) {
     std::lock_guard lock(mutex_);
     core_.advance_last_applied(applied);
+}
+
+Status RaftNode::apply_config_entry(const LogEntry& entry) {
+    std::lock_guard lock(mutex_);
+    return core_.apply_config_entry(entry);
 }
 
 // ============================================================================
@@ -239,9 +254,28 @@ void RaftNode::update_log_entries(const std::vector<LogEntry>& entries) {
     core_.update_log_entries(entries);
 }
 
+void RaftNode::update_membership(const std::vector<RaftMember>& members) {
+    std::lock_guard lock(mutex_);
+    core_.update_membership(members);
+}
+
 void RaftNode::enter_recovering() {
     std::lock_guard lock(mutex_);
     core_.enter_recovering();
+}
+
+Status RaftNode::ensure_add_learner(const PeerMember& member,
+                                    RaftEffects& effects) {
+    std::lock_guard lock(mutex_);
+    effects = RaftEffects{};
+    return core_.ensure_add_learner(member, effects);
+}
+
+Status RaftNode::ensure_remove_member(const ReplicaID& replica_id,
+                                      RaftEffects& effects) {
+    std::lock_guard lock(mutex_);
+    effects = RaftEffects{};
+    return core_.ensure_remove_member(replica_id, effects);
 }
 
 bool RaftNode::is_recovering() const {

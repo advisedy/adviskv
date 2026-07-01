@@ -91,6 +91,11 @@ LogIndex RaftLog::append_new_entry(Term term, const ProposeParam& param) {
         entry.op_type = write->op;
         entry.key = write->key;
         entry.value = write->value;
+    } else if (const auto* config =
+                   std::get_if<ConfigChangeProposal>(&param.payload)) {
+        entry.op_type = config->op;
+        entry.config_member = config->member;
+        entry.config_replica_id = config->target_replica_id;
     } else {
         entry.op_type = WriteOpType::NONE;
     }

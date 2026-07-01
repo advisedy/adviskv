@@ -9,7 +9,7 @@ namespace adviskv::storage {
 RaftPeerProgress::RaftPeerProgress(ReplicaID replica_id,
                                    const RaftMembership& membership)
     : self_id_(replica_id) {
-    for (const PeerMember& member : membership.get_members()) {
+    for (const PeerMember& member : membership.peer_members()) {
         if (member.replica_id == self_id_) continue;
         if (!match_index_.count(member.replica_id)) {
             match_index_[member.replica_id] = 0;
@@ -55,7 +55,7 @@ void RaftPeerProgress::reset_for_leader(const RaftMembership& membership,
     match_index_.clear();
     snapshot_watermark_.clear();
     inflight_snapshot_index_.clear();
-    for (const PeerMember& member : membership.get_members()) {
+    for (const PeerMember& member : membership.peer_members()) {
         if (member.replica_id == self_id_) continue;
         next_index_[member.replica_id] = last_log_index + 1;
         match_index_[member.replica_id] = 0;

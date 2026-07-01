@@ -26,6 +26,10 @@ class ReplicaManager {
     ReplicaPtr get_replica_by_shard(const ShardID& shard_id) const;
     Status add_replica(const ReplicaInitParam& param);
     Status delete_replica(const ReplicaID& replica_id);
+    Status add_member(const ReplicaID& leader_replica_id,
+                      const PeerMember& member);
+    Status remove_member(const ReplicaID& leader_replica_id,
+                         const ReplicaID& replica_id);
     std::vector<ReplicaPtr> get_replicas() const;
     const std::string& get_data_dir() const;
     void start_tick();  // 记得要调用这个，不然就没有tick了

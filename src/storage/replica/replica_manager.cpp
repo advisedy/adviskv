@@ -93,6 +93,26 @@ Status ReplicaManager::delete_replica(const ReplicaID& replica_id) {
     return meta_persist_.delete_replica_data(replica_id);
 }
 
+Status ReplicaManager::add_member(const ReplicaID& leader_replica_id,
+                                  const PeerMember& member) {
+    ReplicaPtr replica = get_replica_by_id(leader_replica_id);
+    if (!replica) {
+        return Status{StatusCode::REPLICA_NOT_FOUND,
+                      "leader replica not found"};
+    }
+    return replica->add_member(member);
+}
+
+Status ReplicaManager::remove_member(const ReplicaID& leader_replica_id,
+                                     const ReplicaID& replica_id) {
+    ReplicaPtr replica = get_replica_by_id(leader_replica_id);
+    if (!replica) {
+        return Status{StatusCode::REPLICA_NOT_FOUND,
+                      "leader replica not found"};
+    }
+    return replica->remove_member(replica_id);
+}
+
 std::vector<ReplicaPtr> ReplicaManager::get_replicas() const {
     std::shared_lock locker(mutex_);
     std::vector<ReplicaPtr> replicas;

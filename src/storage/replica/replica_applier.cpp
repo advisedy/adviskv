@@ -30,6 +30,10 @@ Status ReplicaApplier::apply_log_entry(const LogEntry& entry) {
         case WriteOpType::DEL:
         case WriteOpType::NONE:
             return apply_kv_log_entry(entry);
+        case WriteOpType::ADD_LEARNER:
+        case WriteOpType::PROMOTE_VOTER:
+        case WriteOpType::REMOVE_MEMBER:
+            return apply_config_log_entry(entry);
     }
 
     return Status{StatusCode::ERROR, "unsupported raft log entry type"};
@@ -46,6 +50,25 @@ Status ReplicaApplier::apply_kv_log_entry(const LogEntry& entry) {
     ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_success");
     raft_node_.advance_last_applied(entry.index);
 
+    return Status::OK();
+}
+
+Status ReplicaApplier::apply_config_log_entry(const LogEntry& entry) {
+    Status status = raft_node_.apply_config_entry(entry);
+    if (status.fail()) {
+        ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_failure");
+        LOG_WARN("apply_config_log_entry failed, index={}, msg={}",
+                 entry.index, status.msg());
+        return status;
+    }
+    status = state_machine_.apply(entry);
+    if (status.fail()) {
+        ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_failure");
+        LOG_WARN("apply_config_log_entry state_machine apply failed, index={}, msg={}",
+                 entry.index, status.msg());
+        return status;
+    }
+    ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_success");
     return Status::OK();
 }
 

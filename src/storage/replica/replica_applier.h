@@ -18,6 +18,7 @@ class ReplicaApplier {
    private:
     Status apply_log_entry(const LogEntry& entry);
     Status apply_kv_log_entry(const LogEntry& entry);
+    Status apply_config_log_entry(const LogEntry& entry);
 
     RaftNode& raft_node_;
     StateMachine& state_machine_;

@@ -141,6 +141,9 @@ Status ReplicaSnapshotCoordinator::finish_install_snapshot(
 
     RETURN_IF_INVALID_STATUS(
         context_.fault_if_fail(context_.persist.finish_snapshot_receive()))
+    RETURN_IF_INVALID_STATUS(context_.fault_if_fail(
+        context_.persist.load_snapshot_meta(snap)))
+    plan.snapshot_members = snap->members;
 
     {
         std::lock_guard lock(context_.state_machine_mutex);
@@ -187,7 +190,8 @@ void ReplicaSnapshotCoordinator::try_take_snapshot() {
         context_.replica_id.to_string(), context_.state_machine.apply_index(),
         context_.state_machine.apply_term());
 
-    Status status = context_.persist.do_snapshot(context_.state_machine);
+    Status status = context_.persist.do_snapshot(
+        context_.state_machine, context_.raft_node.raft_members());
 
     // 现在这里的情况是，persist的执行快照有可能会失败，但是失败是有可能是因为truncate_wal里面的read_wal_from_disk里走到了：
     //        if (has_prev_index && entry.index != prev_index + 1) {
@@ -204,7 +208,7 @@ void ReplicaSnapshotCoordinator::try_take_snapshot() {
         // 持久化成功了，这边得截断wal日志了ƒ。
         LogIndex apply_index = context_.state_machine.apply_index();
         status = raft_loop_.sync_submit_task(
-            [&] { return context_.raft_node.truncate_log(apply_index); });
+            [&]() { return context_.raft_node.truncate_log(apply_index); });
         if (status.fail()) {
             LOG_WARN(
                 "[Replica Snapshot] replica:try_take_snapshot truncate log "

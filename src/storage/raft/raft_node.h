@@ -53,12 +53,15 @@ class RaftNode {
     Term snapshot_term() const;
     int quorum_size() const;
     bool is_leader() const;
+    RaftMemberType member_type(const ReplicaID& replica_id) const;
+    std::vector<RaftMember> raft_members() const;
     bool is_recovering() const;
     bool is_ready() const;
 
     // apply 相关的推进
     std::vector<LogEntry> extract_committed_entries();
     void advance_last_applied(LogIndex applied);
+    Status apply_config_entry(const LogEntry& entry);
 
     // 快照相关
     Status truncate_log(LogIndex index);
@@ -81,7 +84,12 @@ class RaftNode {
     // recovery 的时候会用到的更新
     void update_raft_meta(const RaftMeta& meta);
     void update_log_entries(const std::vector<LogEntry>& entries);
+    void update_membership(const std::vector<RaftMember>& members);
     void enter_recovering();
+
+    Status ensure_add_learner(const PeerMember& member, RaftEffects& effects);
+    Status ensure_remove_member(const ReplicaID& replica_id,
+                                RaftEffects& effects);
 
     // 读一致性准备心跳
     Status build_append_entries_for_read(RaftEffects& effects,

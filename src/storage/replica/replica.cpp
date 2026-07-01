@@ -32,54 +32,53 @@ constexpr Milliseconds kReplicaProposalCommitTimeout{1000};
 }  // namespace
 
 class ReplicaApplyTask : public BackgroundTask {
-   public:
-    explicit ReplicaApplyTask(Replica* replica) : replica_(replica) {}
+public:
+    explicit ReplicaApplyTask(Replica* replica) : replica_(replica) {
+    }
 
     void run() override {
-        if (!replica_) return;
+        if (!replica_)
+            return;
         replica_->apply_committed_entries_from_task();
     }
 
-   private:
+private:
     Replica* replica_{nullptr};
 };
 
 Replica::Replica() = default;
 
-Replica::~Replica() { shutdown(); }
+Replica::~Replica() {
+    shutdown();
+}
 
 Status Replica::init(const ReplicaInitParam& param) {
-    shard_id_ =
-        ShardID{param.replica_id.table_id, param.replica_id.shard_index};
+    shard_id_ = ShardID{param.replica_id.table_id, param.replica_id.shard_index};
     replica_id_ = param.replica_id;
 
-    persist_ = std::make_unique<PersistEngine>(param.runtime.data_dir,
-                                               param.replica_id);
+    persist_ = std::make_unique<PersistEngine>(param.runtime.data_dir, param.replica_id);
     RETURN_IF_INVALID_STATUS(persist_->init())
 
     state_machine_ = std::make_unique<KvStateMachine>(param.engine_type);
 
     raft_node_ = std::make_unique<RaftNode>(param.replica_id, param.members);
     context_ = std::make_unique<ReplicaContext>(ReplicaContext{
-        replica_id_,
-        *raft_node_,
-        *persist_,
-        *state_machine_,
-        state_machine_mutex_,
-        persist_snapshot_mutex_,
-        raft_step_mutex_,
-        [this](Status status) { return fault_if_fail(status); },
-        [this] { enter_local_state_faulted(); },
+            replica_id_,
+            *raft_node_,
+            *persist_,
+            *state_machine_,
+            state_machine_mutex_,
+            persist_snapshot_mutex_,
+            raft_step_mutex_,
+            [this](Status status) { return fault_if_fail(status); },
+            [this]() { enter_local_state_faulted(); },
     });
-    raft_loop_ = std::make_unique<ReplicaRaftLoop>(
-        *context_, param.runtime.raft_rpc_timeout_ms);
+    raft_loop_ = std::make_unique<ReplicaRaftLoop>(*context_, param.runtime.raft_rpc_timeout_ms);
     raft_loop_->start();
     applier_ = std::make_unique<ReplicaApplier>(*raft_node_, *state_machine_);
     apply_task_ = std::make_unique<ReplicaApplyTask>(this);
-    read_index_checker_ =
-        std::make_unique<ReplicaReadIndexChecker>(*context_, *raft_loop_);
-    snapshot_coordinator_ =
-        std::make_unique<ReplicaSnapshotCoordinator>(*context_, *raft_loop_);
+    read_index_checker_ = std::make_unique<ReplicaReadIndexChecker>(*context_, *raft_loop_);
+    snapshot_coordinator_ = std::make_unique<ReplicaSnapshotCoordinator>(*context_, *raft_loop_);
 
     enter_local_state_running();
     apply_task_->start(kReplicaApplyTaskInterval);
@@ -94,9 +93,8 @@ Status Replica::put(const PutParam& param) {
         return Status::IS_RECOVERING("replica is recovering");
     }
 
-    Status status = raft_loop_->propose_and_wait(
-        ProposeParam::write(WriteOpType::PUT, param.key, param.value),
-        kReplicaProposalCommitTimeout);
+    Status status = raft_loop_->submit_propose_and_wait(ProposeParam::write(WriteOpType::PUT, param.key, param.value),
+                                                        kReplicaProposalCommitTimeout);
     RETURN_IF_INVALID_STATUS(status)
 
     // // 这里有一个容易误解的点：flush_messages()
@@ -173,9 +171,9 @@ Status Replica::get(const GetParam& param, Value& value) {
 
     if (!state_machine_) {
         LOG_WARN(
-            "state_machine is nullptr, replica: table_id = {}, shard_index = "
-            "{}",
-            shard_id_.table_id, shard_id_.shard_index);
+                "state_machine is nullptr, replica: table_id = {}, shard_index = "
+                "{}",
+                shard_id_.table_id, shard_id_.shard_index);
         enter_local_state_faulted();
         return Status{StatusCode::ERROR, "engine is nullptr"};
     }
@@ -185,8 +183,7 @@ Status Replica::get(const GetParam& param, Value& value) {
     }
 
     LogIndex read_index;
-    RETURN_IF_INVALID_STATUS(
-        read_index_checker_->check_self_leader_and_get_read_index(read_index))
+    RETURN_IF_INVALID_STATUS(read_index_checker_->check_self_leader_and_get_read_index(read_index))
 
     std::lock_guard lock(state_machine_mutex_);
     RETURN_IF_INVALID_STATUS(fault_if_fail(applier_->apply_committed_entries()))
@@ -196,8 +193,7 @@ Status Replica::get(const GetParam& param, Value& value) {
 
     Status status = state_machine_->get(param.key, value);
     if (status.fail()) {
-        LOG_WARN("engine get is not ok, key = {}, msg = {}", param.key,
-                 status.msg());
+        LOG_WARN("engine get is not ok, key = {}, msg = {}", param.key, status.msg());
         if (status.code() != StatusCode::KEY_NOT_FOUND) {
             enter_local_state_faulted();
         }
@@ -215,9 +211,8 @@ Status Replica::del(const DelParam& param) {
         return Status::IS_RECOVERING("replica is recovering");
     }
 
-    Status status = raft_loop_->propose_and_wait(
-        ProposeParam::write(WriteOpType::DEL, param.key, ""),
-        kReplicaProposalCommitTimeout);
+    Status status = raft_loop_->submit_propose_and_wait(ProposeParam::write(WriteOpType::DEL, param.key, ""),
+                                                        kReplicaProposalCommitTimeout);
     RETURN_IF_INVALID_STATUS(status)
 
     notify_apply_task();
@@ -249,8 +244,7 @@ Status Replica::del(const DelParam& param) {
     return Status::OK();
 }
 
-Status Replica::handle_request_vote(const RequestVoteParam& param,
-                                    RequestVoteResult& result) {
+Status Replica::handle_request_vote(const RequestVoteParam& param, RequestVoteResult& result) {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
     RETURN_IF_INVALID_STATUS(ensure_local_state_running())
 
@@ -260,24 +254,45 @@ Status Replica::handle_request_vote(const RequestVoteParam& param,
     });
 }
 
-Status Replica::handle_append_entries(const AppendEntriesParam& param,
-                                      AppendEntriesResult& result) {
+Status Replica::handle_append_entries(const AppendEntriesParam& param, AppendEntriesResult& result) {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
     RETURN_IF_INVALID_STATUS(ensure_local_state_running())
 
     // 这里是作为follower那边的handle，会更新commit_idx
     {
-        ADVISKV_METRICS_TIMER(
-            "storage_replica_handle_append_entries_raft_step");
-        RETURN_IF_INVALID_STATUS(
-            raft_loop_->sync_submit_step([&](RaftEffects& effects) {
-                raft_node_->handle_append_entries(param, result, effects);
-                return Status::OK();
-            }))
+        ADVISKV_METRICS_TIMER("storage_replica_handle_append_entries_raft_step");
+        RETURN_IF_INVALID_STATUS(raft_loop_->sync_submit_step([&](RaftEffects& effects) {
+            raft_node_->handle_append_entries(param, result, effects);
+            return Status::OK();
+        }))
     }
 
     notify_apply_task();
 
+    return Status::OK();
+}
+
+Status Replica::add_member(const PeerMember& member) {
+    RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
+    RETURN_IF_INVALID_STATUS(ensure_local_state_running())
+    if (raft_node_->is_recovering()) {
+        return Status::IS_RECOVERING("replica is recovering");
+    }
+    RETURN_IF_INVALID_STATUS(raft_loop_->submit_config_change_and_wait(
+            [&](RaftEffects& effects) { return raft_node_->ensure_add_learner(member, effects); }));
+    notify_apply_task();
+    return Status::OK();
+}
+
+Status Replica::remove_member(const ReplicaID& replica_id) {
+    RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
+    RETURN_IF_INVALID_STATUS(ensure_local_state_running())
+    if (raft_node_->is_recovering()) {
+        return Status::IS_RECOVERING("replica is recovering");
+    }
+    RETURN_IF_INVALID_STATUS(raft_loop_->submit_config_change_and_wait(
+            [&](RaftEffects& effects) { return raft_node_->ensure_remove_member(replica_id, effects); }))
+    notify_apply_task();
     return Status::OK();
 }
 
@@ -293,13 +308,11 @@ void Replica::apply_committed_entries_from_task() {
 
     OperGate::Guard guard;
     if (oper_gate_.acquire(guard).fail()) {
-        ADVISKV_METRICS_COUNTER(
-            "storage_replica_async_apply_committed_skipped");
+        ADVISKV_METRICS_COUNTER("storage_replica_async_apply_committed_skipped");
         return;
     }
     if (ensure_local_state_running().fail() || !raft_node_ || !applier_) {
-        ADVISKV_METRICS_COUNTER(
-            "storage_replica_async_apply_committed_skipped");
+        ADVISKV_METRICS_COUNTER("storage_replica_async_apply_committed_skipped");
         return;
     }
 
@@ -311,11 +324,9 @@ void Replica::apply_committed_entries_from_task() {
     std::lock_guard lock(state_machine_mutex_);
     Status status = fault_if_fail(applier_->apply_committed_entries());
     if (status.fail()) {
-        ADVISKV_METRICS_COUNTER(
-            "storage_replica_async_apply_committed_failure");
-        LOG_WARN(
-            "async apply committed entries failed, replica_id={}, status={}",
-            replica_id_.to_string(), status.to_string());
+        ADVISKV_METRICS_COUNTER("storage_replica_async_apply_committed_failure");
+        LOG_WARN("async apply committed entries failed, replica_id={}, status={}", replica_id_.to_string(),
+                 status.to_string());
         return;
     }
     ADVISKV_METRICS_COUNTER("storage_replica_async_apply_committed_success");
@@ -323,7 +334,8 @@ void Replica::apply_committed_entries_from_task() {
 
 void Replica::on_tick() {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED_VOID(oper_gate_)
-    if (ensure_local_state_running().fail()) return;
+    if (ensure_local_state_running().fail())
+        return;
 
     raft_loop_->async_submit_tick();
     notify_apply_task();
@@ -358,16 +370,19 @@ Status Replica::recover() {
     }
 
     if (result.snapshot) {
-        RETURN_IF_INVALID_STATUS(fault_if_fail(state_machine_->restore(
-            result.snapshot, [this](const KvVisitor& visitor) -> Status {
-                return persist_->for_each_snapshot_kv(visitor);
-            })))
-        raft_node_->install_local_snapshot(result.snapshot->apply_index,
-                                           result.snapshot->apply_term);
+        RETURN_IF_INVALID_STATUS(
+                fault_if_fail(state_machine_->restore(result.snapshot, [this](const KvVisitor& visitor) -> Status {
+                    return persist_->for_each_snapshot_kv(visitor);
+                })))
+        raft_node_->install_local_snapshot(result.snapshot->apply_index, result.snapshot->apply_term);
+        if (!result.snapshot->members.empty()) {
+            raft_node_->update_membership(result.snapshot->members);
+        }
     }
 
     raft_node_->update_raft_meta(result.raft_meta);
     raft_node_->update_log_entries(result.wal_entries);
+
     if (result.need_recover) {
         // status_.store(ReplicaStatus::RECOVERING);
         raft_node_->enter_recovering();
@@ -410,9 +425,12 @@ ReplicaStatus Replica::get_status() const {
         default:
             break;
     }
-    if (!raft_node_) return ReplicaStatus::INITIALIZING;
-    if (raft_node_->is_recovering()) return ReplicaStatus::RECOVERING;
-    if (raft_node_->is_ready()) return ReplicaStatus::READY;
+    if (!raft_node_)
+        return ReplicaStatus::INITIALIZING;
+    if (raft_node_->is_recovering())
+        return ReplicaStatus::RECOVERING;
+    if (raft_node_->is_ready())
+        return ReplicaStatus::READY;
 
     return ReplicaStatus::INITIALIZING;
 }
