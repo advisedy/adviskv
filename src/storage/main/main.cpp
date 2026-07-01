@@ -135,6 +135,18 @@ int main(int argc, char* argv[]) {
             [replica_manager_ptr](const adviskv::ReplicaID& replica_id) {
                 return replica_manager_ptr->delete_replica(replica_id);
             };
+        agent_conf.replica_ops.add_member =
+            [replica_manager_ptr](const adviskv::ReplicaID& leader_replica_id,
+                                  const adviskv::PeerMember& member) {
+                return replica_manager_ptr->add_member(leader_replica_id,
+                                                       member);
+            };
+        agent_conf.replica_ops.remove_member =
+            [replica_manager_ptr](const adviskv::ReplicaID& leader_replica_id,
+                                  const adviskv::ReplicaID& replica_id) {
+                return replica_manager_ptr->remove_member(leader_replica_id,
+                                                          replica_id);
+            };
 
         auto service =
             std::make_unique<StorageServiceImpl>(std::move(replica_manager));

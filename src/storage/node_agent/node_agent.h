@@ -1,16 +1,17 @@
 #pragma once
 
-#include <grpcpp/channel.h>
-
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <grpcpp/channel.h>
+
 #include "common/background_task.h"
 #include "common/define.h"
 #include "common/model/expected_replica.h"
+#include "common/optional.h"
 #include "common/proto/rpc_alias.h"
 #include "common/status.h"
 #include "common/type.h"
@@ -23,14 +24,15 @@ struct NodeAgentReplicaOps {
     std::function<std::vector<ReplicaPtr>()> list_replicas;
     std::function<Status(const ReplicaInitParam&)> create_replica;
     std::function<Status(const ReplicaID&)> delete_replica;
+    std::function<Status(const ReplicaID&, const PeerMember&)> add_member;
+    std::function<Status(const ReplicaID&, const ReplicaID&)> remove_member;
 
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(to<bool>(list_replicas),
-                                    "list_replicas callback is empty")
-        RETURN_IF_INVALID_CONDITION(to<bool>(create_replica),
-                                    "create_replica callback is empty")
-        RETURN_IF_INVALID_CONDITION(to<bool>(delete_replica),
-                                    "delete_replica callback is empty")
+        RETURN_IF_INVALID_CONDITION(to<bool>(list_replicas), "list_replicas callback is empty")
+        RETURN_IF_INVALID_CONDITION(to<bool>(create_replica), "create_replica callback is empty")
+        RETURN_IF_INVALID_CONDITION(to<bool>(delete_replica), "delete_replica callback is empty")
+        RETURN_IF_INVALID_CONDITION(to<bool>(add_member), "add_member callback is empty")
+        RETURN_IF_INVALID_CONDITION(to<bool>(remove_member), "remove_member callback is empty")
         return Status::OK();
     }
 };
@@ -39,7 +41,6 @@ struct NodeAgentConf {
     NodeID node_id;
     std::string ip;
     int32_t port{-1};
-
     std::string resource_pool{"default"};
     std::string dc;
 
@@ -52,29 +53,23 @@ struct NodeAgentConf {
     NodeAgentReplicaOps replica_ops;
 
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(!node_id.empty(),
-                                    "node_id should not empty")
+        RETURN_IF_INVALID_CONDITION(!node_id.empty(), "node_id should not empty")
         RETURN_IF_INVALID_CONDITION(!ip.empty(), "ip should not empty")
         RETURN_IF_INVALID_CONDITION(port > 0, "port should > 0")
-        RETURN_IF_INVALID_CONDITION(!resource_pool.empty(),
-                                    "resource_pool should not empty")
+        RETURN_IF_INVALID_CONDITION(!resource_pool.empty(), "resource_pool should not empty")
         RETURN_IF_INVALID_CONDITION(!dc.empty(), "dc should not empty")
-        RETURN_IF_INVALID_CONDITION(!manager_host.empty(),
-                                    "manager_host should not empty")
+        RETURN_IF_INVALID_CONDITION(!manager_host.empty(), "manager_host should not empty")
         RETURN_IF_INVALID_CONDITION(manager_port > 0, "manager_port should > 0")
-        RETURN_IF_INVALID_CONDITION(heartbeat_interval_ms > 0,
-                                    "heartbeat_interval_ms should > 0")
-        RETURN_IF_INVALID_CONDITION(register_interval_ms > 0,
-                                    "register_interval_ms should > 0")
-        RETURN_IF_INVALID_CONDITION(first_sync_retry_ms > 0,
-                                    "first_sync_retry_ms should > 0")
+        RETURN_IF_INVALID_CONDITION(heartbeat_interval_ms > 0, "heartbeat_interval_ms should > 0")
+        RETURN_IF_INVALID_CONDITION(register_interval_ms > 0, "register_interval_ms should > 0")
+        RETURN_IF_INVALID_CONDITION(first_sync_retry_ms > 0, "first_sync_retry_ms should > 0")
         RETURN_IF_INVALID_STATUS(replica_ops.validate())
         return Status::OK();
     }
 };
 
 class NodeAgent {
-   public:
+public:
     NodeAgent();
     ~NodeAgent();
 
@@ -82,7 +77,7 @@ class NodeAgent {
     Status start();
     Status stop();
 
-   private:
+private:
     class HeartbeatTask;
     class RegisterTask;
 
@@ -92,8 +87,8 @@ class NodeAgent {
     Status register_node();
 
     Status apply_expected_replica(const ExpectedReplica& instruction);
-    ReplicaInitParam make_replica_init_param(
-        const ExpectedReplica& expects) const;
+    Optional<ReplicaID> find_local_leader_replica(const ShardID& shard_id) const;
+    ReplicaInitParam make_replica_init_param(const ExpectedReplica& expects) const;
     sdm_rpc::HeartbeatRequest make_heartbeat_request() const;
 
     NodeAgentConf conf_;

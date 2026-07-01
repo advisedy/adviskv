@@ -110,7 +110,7 @@ enum class EngineType : int8 {
 
 struct Endpoint {
     std::string ip;
-    int32_t port;
+    int32_t port{0};
 
     Endpoint() = default;
     Endpoint(std::string ip, int32_t port) : ip(std::move(ip)), port(port) {

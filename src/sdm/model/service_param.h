@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "common/define.h"
@@ -24,16 +25,11 @@ struct PlaceTableParam {
     std::string resource_pool;
     std::string operation_id;
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(!db_name.empty(),
-                                    "db_name should not empty")
-        RETURN_IF_INVALID_CONDITION(!table_name.empty(),
-                                    "table_name should not empty")
-        RETURN_IF_INVALID_CONDITION(!operation_id.empty(),
-                                    "operation_id should not empty")
-        RETURN_IF_INVALID_CONDITION(replica_count > 0,
-                                    "replica_count should be greater than 0")
-        RETURN_IF_INVALID_CONDITION(shard_count > 0,
-                                    "shard_count should be greater than 0")
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!operation_id.empty(), "operation_id should not empty")
+        RETURN_IF_INVALID_CONDITION(replica_count > 0, "replica_count should be greater than 0")
+        RETURN_IF_INVALID_CONDITION(shard_count > 0, "shard_count should be greater than 0")
         return Status::OK();
     }
 };
@@ -43,8 +39,7 @@ struct GetTableStatusParam {
     TableID table_id{-1};
 
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(
-            table_id >= 0, "table_id should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(table_id >= 0, "table_id should be greater than or equal to 0")
         return Status::OK();
     }
 };
@@ -54,10 +49,8 @@ struct DropTableParam {
     std::string operation_id;
 
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(
-            table_id >= 0, "table_id should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(!operation_id.empty(),
-                                    "operation_id should not empty")
+        RETURN_IF_INVALID_CONDITION(table_id >= 0, "table_id should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(!operation_id.empty(), "operation_id should not empty")
         return Status::OK();
     }
 };
@@ -68,12 +61,9 @@ struct AlterReplicaCountParam {
     std::string operation_id;
 
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(
-            table_id >= 0, "table_id should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(replica_count > 0,
-                                    "replica_count should be greater than 0")
-        RETURN_IF_INVALID_CONDITION(!operation_id.empty(),
-                                    "operation_id should not empty")
+        RETURN_IF_INVALID_CONDITION(table_id >= 0, "table_id should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(replica_count > 0, "replica_count should be greater than 0")
+        RETURN_IF_INVALID_CONDITION(!operation_id.empty(), "operation_id should not empty")
         return Status::OK();
     }
 };
@@ -82,14 +72,12 @@ struct PlaceNodesParam {
     std::string resource_pool;
     int32_t shard_count{0};
     int32_t replica_count{0};
+    std::unordered_set<NodeID> excluded_node_ids;
 
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(!resource_pool.empty(),
-                                    "resource_pool should not empty")
-        RETURN_IF_INVALID_CONDITION(shard_count > 0,
-                                    "shard_count should be greater than 0")
-        RETURN_IF_INVALID_CONDITION(replica_count > 0,
-                                    "replica_count should be greater than 0")
+        RETURN_IF_INVALID_CONDITION(!resource_pool.empty(), "resource_pool should not empty")
+        RETURN_IF_INVALID_CONDITION(shard_count > 0, "shard_count should be greater than 0")
+        RETURN_IF_INVALID_CONDITION(replica_count > 0, "replica_count should be greater than 0")
         return Status::OK();
     }
 };
@@ -111,21 +99,12 @@ struct CreateReplicaParam {
     Endpoint endpoint;  // 对端的endpoint
 
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(
-            replica_id.table_id >= 0,
-            "table_id should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(
-            replica_id.shard_index >= 0,
-            "shard_index should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(
-            replica_id.replica_seq >= 0,
-            "replica_index should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(!members.empty(),
-                                    "members should not empty")
-        RETURN_IF_INVALID_CONDITION(!endpoint.ip.empty(),
-                                    "endpoint ip should not empty")
-        RETURN_IF_INVALID_CONDITION(endpoint.port > 0,
-                                    "endpoint port should greater than 0")
+        RETURN_IF_INVALID_CONDITION(replica_id.table_id >= 0, "table_id should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(replica_id.shard_index >= 0, "shard_index should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(replica_id.replica_seq >= 0, "replica_index should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(!members.empty(), "members should not empty")
+        RETURN_IF_INVALID_CONDITION(!endpoint.ip.empty(), "endpoint ip should not empty")
+        RETURN_IF_INVALID_CONDITION(endpoint.port > 0, "endpoint port should greater than 0")
         return Status::OK();
     }
 };
@@ -135,19 +114,11 @@ struct DeleteReplicaParam {
     Endpoint endpoint;
 
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(
-            replica_id.table_id >= 0,
-            "table_id should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(
-            replica_id.shard_index >= 0,
-            "shard_index should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(
-            replica_id.replica_seq >= 0,
-            "replica_index should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(!endpoint.ip.empty(),
-                                    "endpoint ip should not empty")
-        RETURN_IF_INVALID_CONDITION(endpoint.port > 0,
-                                    "endpoint port should greater than 0")
+        RETURN_IF_INVALID_CONDITION(replica_id.table_id >= 0, "table_id should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(replica_id.shard_index >= 0, "shard_index should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(replica_id.replica_seq >= 0, "replica_index should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(!endpoint.ip.empty(), "endpoint ip should not empty")
+        RETURN_IF_INVALID_CONDITION(endpoint.port > 0, "endpoint port should greater than 0")
         return Status::OK();
     }
 };
@@ -157,19 +128,11 @@ struct GetReplicaInfoParam {
     Endpoint endpoint;
 
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(
-            replica_id.table_id >= 0,
-            "table_id should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(
-            replica_id.shard_index >= 0,
-            "shard_index should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(
-            replica_id.replica_seq >= 0,
-            "replica_index should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(!endpoint.ip.empty(),
-                                    "endpoint ip should not empty")
-        RETURN_IF_INVALID_CONDITION(endpoint.port > 0,
-                                    "endpoint port should greater than 0")
+        RETURN_IF_INVALID_CONDITION(replica_id.table_id >= 0, "table_id should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(replica_id.shard_index >= 0, "shard_index should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(replica_id.replica_seq >= 0, "replica_index should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(!endpoint.ip.empty(), "endpoint ip should not empty")
+        RETURN_IF_INVALID_CONDITION(endpoint.port > 0, "endpoint port should greater than 0")
         return Status::OK();
     }
 };
@@ -184,8 +147,7 @@ struct RegisterNodeParam {
     std::string dc;
     int64_t last_heartbeat_ts{0};
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(!node_id.empty(),
-                                    "node_id should not empty")
+        RETURN_IF_INVALID_CONDITION(!node_id.empty(), "node_id should not empty")
         RETURN_IF_INVALID_CONDITION(!ip.empty(), "ip should not empty")
         RETURN_IF_INVALID_CONDITION(port > 0, "port should > 0")
         return Status::OK();
@@ -200,10 +162,8 @@ struct GetRouteParam {
     Key key;
 
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(!db_name.empty(),
-                                    "db_name should not empty")
-        RETURN_IF_INVALID_CONDITION(!table_name.empty(),
-                                    "table_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
         return Status::OK();
     }
 };
@@ -229,18 +189,13 @@ struct HeartBeatParam {
         RETURN_IF_INVALID_CONDITION(!node_id.empty(), "node need id");
         RETURN_IF_INVALID_CONDITION(!ip.empty(), "ip should not empty");
         RETURN_IF_INVALID_CONDITION(port > 0, "port should not empty");
-        RETURN_IF_INVALID_CONDITION(!resoure_pool_name.empty(),
-                                    "resource_pool should not empty");
+        RETURN_IF_INVALID_CONDITION(!resoure_pool_name.empty(), "resource_pool should not empty");
         RETURN_IF_INVALID_CONDITION(!dc.empty(), "dc should not empty");
         for (const HeartBeatReplicaInfo& info : replica_list) {
-            RETURN_IF_INVALID_CONDITION(info.replica_id.replica_seq >= 0,
-                                        "info replica seq should >= 0");
-            RETURN_IF_INVALID_CONDITION(info.replica_id.table_id >= 0,
-                                        "info table id should >= 0");
-            RETURN_IF_INVALID_CONDITION(info.replica_id.shard_index >= 0,
-                                        "info shard index should >= 0");
-            RETURN_IF_INVALID_CONDITION(info.term >= 0,
-                                        "info term should >= 0");
+            RETURN_IF_INVALID_CONDITION(info.replica_id.replica_seq >= 0, "info replica seq should >= 0");
+            RETURN_IF_INVALID_CONDITION(info.replica_id.table_id >= 0, "info table id should >= 0");
+            RETURN_IF_INVALID_CONDITION(info.replica_id.shard_index >= 0, "info shard index should >= 0");
+            RETURN_IF_INVALID_CONDITION(info.term >= 0, "info term should >= 0");
         }
         return Status::OK();
     }

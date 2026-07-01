@@ -379,7 +379,8 @@ Status TableService::ensure_all_shards_ok(SdmStoreTxn& txn, Table& table, bool& 
             LOG_WARN(
                     "[TableService] shard not ready: route not writable, "
                     "table_id={}, shard_index={}, route_empty={}, entries={}",
-                    table.table_id, shard_index, route.is_empty(), route.is_empty() ? -1 : route->replicas.size());
+                    table.table_id, shard_index, route.is_empty(),
+                    route.is_empty() ? to<int>(-1) : to<int>(route->replicas.size()));
             all_shards_ok = false;
             return Status::OK();
         }

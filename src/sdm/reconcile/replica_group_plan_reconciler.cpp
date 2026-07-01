@@ -11,7 +11,8 @@ namespace adviskv::sdm {
 
 ReplicaGroupPlanReconciler::ReplicaGroupPlanReconciler(ReplicaGroupReconcileContext ctx) : ctx_(std::move(ctx)) {
 }
-
+// 遍历每一个table，如果table是absent的话，直接replica_count=0，当replica都没了就删了
+// 如果是present的话，就遍历table的每一个ReplicaGroup，如果没有group就创建，或者修改target_replica_count为当前table的replica_count
 Status ReplicaGroupPlanReconciler::reconcile_all() {
     RETURN_IF_NULLPTR(ctx_.store, "store is nullptr")
 
@@ -24,7 +25,8 @@ Status ReplicaGroupPlanReconciler::reconcile_all() {
         }
         Status status = reconcile_table(table);
         if (status.fail()) {
-            LOG_WARN("[ReplicaGroupPlanReconciler] reconcile failed, table_id={}, msg={}", table.table_id, status.msg());
+            LOG_WARN("[ReplicaGroupPlanReconciler] reconcile failed, table_id={}, msg={}", table.table_id,
+                     status.msg());
         }
     }
     return Status::OK();
@@ -110,6 +112,7 @@ Status ReplicaGroupPlanReconciler::reconcile_absent_table(const Table& table) {
                 continue;
             }
 
+            // group_or->target_replica_count == 0
             std::vector<Replica> shard_replicas;
             RETURN_IF_INVALID_STATUS(txn.list_replicas_by_shard(shard_id, shard_replicas))
             if (group_or->desired_members.empty() && shard_replicas.empty()) {

@@ -84,6 +84,8 @@ message LogEntry{
   int32 op_type = 3;
   string key = 4;
   string value = 5;
+  adviskv.pb.PeerMember config_member = 6;
+  adviskv.pb.ReplicaID config_replica_id = 7;
 }
 
 message AppendEntriesRequest{

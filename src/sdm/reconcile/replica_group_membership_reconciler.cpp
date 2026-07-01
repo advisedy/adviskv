@@ -72,6 +72,7 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
     ReplicaGroup current_group;
     bool group_exists = false;
     int32_t healthy_count = 0;
+    int32_t converging_member_count = 0;
     std::vector<ReplicaID> bad_members;
     Optional<ReplicaID> remove_victim;
     bool remove_victim_is_non_member = false;
@@ -100,6 +101,9 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
             }
             if (replica.state.phase == ReplicaPhase::LOST || replica.state.phase == ReplicaPhase::ERROR) {
                 bad_members.push_back(rid);
+            } else if (replica.state.phase != ReplicaPhase::DELETING &&
+                       replica.state.phase != ReplicaPhase::DELETED) {
+                ++converging_member_count;
             }
         }
         RETURN_IF_INVALID_STATUS(select_remove_member_victim(txn, current_group, remove_victim))
@@ -130,8 +134,8 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
     }
 
     // 补成员
-    if (healthy_count < target) {
-        return add_members(current_group, target - healthy_count);
+    if (converging_member_count < target) {
+        return add_members(current_group, target - converging_member_count);
     }
 
     if (current_group.mode == ReplicaGroupMode::RAFT_RECONFIG) {
@@ -199,12 +203,35 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
     RETURN_IF_INVALID_CONDITION(count_to_add > 0, "count_to_add must be > 0")
 
     std::string resource_pool;
+    bool should_add = true;
+    std::unordered_set<NodeID> occupied_node_ids;
     {
         TableOr table_or;
-        Status status = ctx_.store->read_with(
-                [&](const SdmStoreTxn& txn) { return txn.get_table(group.shard_id.table_id, table_or); });
+        Status status = ctx_.store->read_with([&](const SdmStoreTxn& txn) -> Status {
+            RETURN_IF_INVALID_STATUS(txn.get_table(group.shard_id.table_id, table_or))
+            if (table_or.is_empty()) {
+                should_add = false;
+                return Status::OK();
+            }
+
+            ReplicaGroupOr current_or;
+            RETURN_IF_INVALID_STATUS(txn.get_replica_group(group.shard_id, current_or))
+            if (current_or.is_empty() || current_or->target_replica_count <= 0) {
+                should_add = false;
+                return Status::OK();
+            }
+
+            for (const ReplicaID& rid : current_or->desired_members) {
+                ReplicaOr replica_or;
+                RETURN_IF_INVALID_STATUS(txn.get_replica(rid, replica_or))
+                if (!replica_or.is_empty() && !replica_or->spec.assign_node_id.empty()) {
+                    occupied_node_ids.insert(replica_or->spec.assign_node_id);
+                }
+            }
+            return Status::OK();
+        });
         RETURN_IF_INVALID_STATUS(status)
-        if (table_or.is_empty())
+        if (!should_add)
             return Status::OK();
         resource_pool = table_or->spec.resource_pool;
     }
@@ -214,6 +241,7 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
     param.resource_pool = resource_pool;
     param.shard_count = 1;
     param.replica_count = count_to_add;
+    param.excluded_node_ids = std::move(occupied_node_ids);
     RETURN_IF_INVALID_STATUS(ctx_.selector->select_table_nodes(param, placement))
     const std::vector<Node>& nodes = placement.shards.front().nodes;
 

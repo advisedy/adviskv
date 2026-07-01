@@ -147,7 +147,8 @@ Status RouteService::check_shard_route(const Table& table, ShardIndex shard_inde
             if (replica.spec.assign_node_id.empty()) {
                 LOG_INFO(
                         "[RouteService] replica_id:{} "
-                        "replica.spec.assign_node_id.empty()");
+                        "replica.spec.assign_node_id.empty()",
+                        replica.replica_id.to_string());
                 continue;
             }
 
@@ -155,11 +156,12 @@ Status RouteService::check_shard_route(const Table& table, ShardIndex shard_inde
             RETURN_IF_INVALID_STATUS(txn.get_node(replica.spec.assign_node_id, node))
 
             if (node.is_empty() || node->state.status != NodeStatus::ONLINE) {
+                int8 node_status = node.is_empty() ? -1 : to<int8>(node->state.status);
                 LOG_INFO(
                         "[RouteService] replica_id:{}, node.is_empty() or "
                         "node->state.status != NodeStatus::ONLINE, "
                         "node.is_empty():{}, node->state.status:{}",
-                        node.is_empty(), to<int8>(node->state.status));
+                        replica.replica_id.to_string(), node.is_empty(), node_status);
                 continue;
             }
 

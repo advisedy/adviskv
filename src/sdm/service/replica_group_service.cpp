@@ -4,6 +4,7 @@
 
 #include "common/define.h"
 #include "common/func.h"
+#include "common/model/raft_member_type.h"
 #include "common/status.h"
 #include "sdm/model/sdm_store.h"
 #include "sdm/model/sdm_store_txn.h"
@@ -98,12 +99,16 @@ std::vector<PeerMember> build_shard_members(const SdmStoreTxn& txn, const ShardI
     if (!txn.get_replica_group(shard_id, group_or).ok() || group_or.is_empty()) {
         return {};
     }
+    bool voter_only = group_or.has_value() && group_or->mode != ReplicaGroupMode::BOOTSTRAP;
 
     std::vector<PeerMember> members;
     members.reserve(group_or->desired_members.size());
     for (const ReplicaID& replica_id : group_or->desired_members) {
         ReplicaOr replica;
         if (!txn.get_replica(replica_id, replica).ok() || replica.is_empty()) {
+            continue;
+        }
+        if (voter_only && (replica->state.observed_member_type != RaftMemberType::VOTER)) {
             continue;
         }
         PeerMember member;
@@ -277,7 +282,7 @@ Status ReplicaGroupService::reconcile_all() {
     ReplicaGroupMembershipReconciler membership(ctx);
 
     RETURN_IF_INVALID_STATUS(plan.reconcile_all())
-    // 在membership的reconcile之前先调用一下reconcile_all_replica_phases去及时更新replica的phase
+    // 在 membership reconcile 之前先把 observed facts 投影成最新 replica phase。
     RETURN_IF_INVALID_STATUS(
             store_->write_with([&](SdmStoreTxn& txn) -> Status { return reconcile_all_replica_phases(txn); }))
     RETURN_IF_INVALID_STATUS(membership.reconcile_all())

@@ -1,12 +1,12 @@
 #include "sdm/selector/node_selector/node_selector.h"
 
-#include <fmt/format.h>
-
 #include <algorithm>
 #include <queue>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+
+#include <fmt/format.h>
 
 #include "common/define.h"
 #include "common/func.h"
@@ -30,13 +30,13 @@ bool is_valid_node(const Node& node) {
     return node.state.status == NodeStatus::ONLINE;
 }
 
-bool better_candidate(
-    const NodeView& lhs, const NodeView& rhs,
-    const std::unordered_map<std::string, int>& selected_dc_counts) {
+bool better_candidate(const NodeView& lhs, const NodeView& rhs,
+                      const std::unordered_map<std::string, int>& selected_dc_counts) {
     //
     auto get_count = [&selected_dc_counts](const std::string& dc) -> int {
         auto it = selected_dc_counts.find(dc);
-        if (it == selected_dc_counts.end()) return 0;
+        if (it == selected_dc_counts.end())
+            return 0;
         return it->second;
     };
 
@@ -52,21 +52,18 @@ bool better_candidate(
     return lhs.node.id < rhs.node.id;
 }
 
-std::vector<NodeView>::iterator select_one_node(
-    std::vector<NodeView>& views,
-    const std::unordered_set<NodeID>& selected_node_ids,
-    const std::unordered_map<std::string, int32>& selected_dc_counts) {
+std::vector<NodeView>::iterator select_one_node(std::vector<NodeView>& views,
+                                                const std::unordered_set<NodeID>& selected_node_ids,
+                                                const std::unordered_map<std::string, int32>& selected_dc_counts) {
     using NodeViewIt = std::vector<NodeView>::iterator;
-    auto lower_priority = [&selected_dc_counts](NodeViewIt lhs,
-                                                NodeViewIt rhs) {
+    auto lower_priority = [&selected_dc_counts](NodeViewIt lhs, NodeViewIt rhs) {
         return better_candidate(*rhs, *lhs, selected_dc_counts);
     };
-    std::priority_queue<NodeViewIt, std::vector<NodeViewIt>,
-                        decltype(lower_priority)>
-        candidates(lower_priority);
+    std::priority_queue<NodeViewIt, std::vector<NodeViewIt>, decltype(lower_priority)> candidates(lower_priority);
 
     for (auto it = views.begin(); it != views.end(); ++it) {
-        if (selected_node_ids.count(it->node.id)) continue;
+        if (selected_node_ids.count(it->node.id))
+            continue;
         candidates.push(it);
     }
     return candidates.empty() ? views.end() : candidates.top();
@@ -74,40 +71,35 @@ std::vector<NodeView>::iterator select_one_node(
 
 }  // namespace
 
-Status DefaultNodeSelector::select_table_nodes(
-    const PlaceNodesParam& param, TablePlacementResult& res) const {
+Status DefaultNodeSelector::select_table_nodes(const PlaceNodesParam& param, TablePlacementResult& res) const {
     RETURN_IF_INVALID_PARAM(param)
     RETURN_IF_NULLPTR(store_, "store should not nullptr")
 
     std::vector<NodeView> views;
     std::vector<Node> candidate_nodes;
     Status status = store_->read_with([&](const SdmStoreTxn& txn) -> Status {
-        RETURN_IF_INVALID_STATUS(txn.list_nodes_by_resource_pool(
-            param.resource_pool, candidate_nodes))
+        RETURN_IF_INVALID_STATUS(txn.list_nodes_by_resource_pool(param.resource_pool, candidate_nodes))
 
-        func::ad_erase_if(candidate_nodes, [](const Node& node) {
-            return !is_valid_node(node);
+        func::ad_erase_if(candidate_nodes, [&](const Node& node) {
+            return !is_valid_node(node) || param.excluded_node_ids.count(node.id) > 0;
         });
 
         if ((int32)(candidate_nodes.size()) < param.replica_count) {
-            return Status::RESOURCE_EXHAUSTED(fmt::format(
-                "not enough nodes in resource_pool '{}', need {} but have {}",
-                param.resource_pool, param.replica_count,
-                candidate_nodes.size()));
+            return Status::RESOURCE_EXHAUSTED(fmt::format("not enough nodes in resource_pool '{}', need {} but have {}",
+                                                          param.resource_pool, param.replica_count,
+                                                          candidate_nodes.size()));
         }
 
         views.reserve(candidate_nodes.size());
         for (const Node& node : candidate_nodes) {
             std::vector<Replica> replicas;
-            RETURN_IF_INVALID_STATUS(
-                txn.list_replicas_by_node(node.id, replicas))
+            RETURN_IF_INVALID_STATUS(txn.list_replicas_by_node(node.id, replicas))
 
             NodeView view;
             view.node = node;
-            view.owned_replica_count = std::count_if(
-                replicas.begin(), replicas.end(), [](const Replica& replica) {
-                    return replica.state.desired == ReplicaDesired::PRESENT;
-                });
+            view.owned_replica_count = std::count_if(replicas.begin(), replicas.end(), [](const Replica& replica) {
+                return replica.state.desired == ReplicaDesired::PRESENT;
+            });
             view.dc = node.meta.dc;
             views.push_back(std::move(view));
         }
@@ -125,8 +117,7 @@ Status DefaultNodeSelector::select_table_nodes(
         std::unordered_set<NodeID> selected_node_ids;
         std::unordered_map<std::string, int> selected_dc_counts;
         for (int32_t i = 0; i < param.replica_count; ++i) {
-            auto it =
-                select_one_node(views, selected_node_ids, selected_dc_counts);
+            auto it = select_one_node(views, selected_node_ids, selected_dc_counts);
 
             if (it == views.end()) {
                 return Status::ERROR("select one node: it = views.end()");
