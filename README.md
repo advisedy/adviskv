@@ -4,6 +4,13 @@
   <img src="docs/asserts/adviskv.jpeg" alt="AdvisKV banner" width="960" />
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/C%2B%2B-17-00599C?logo=c%2B%2B&logoColor=white" alt="C++17" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
+  <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-2ea44f" alt="Platform macOS and Linux" />
+  <img src="https://img.shields.io/badge/Version-v0.1-blue" alt="Version v0.1" />
+</p>
+
 AdvisKV 是一个使用 **C++17 + gRPC + Protobuf + Raft** 实现的分布式 Key-Value 存储项目。项目采用控制面与数据面拆分的架构：`Meta` 负责 DDL 与 catalog，`SDM` 负责部署、路由、节点与副本状态管理，`Storage` 负责 KV 数据读写、Raft 复制和本地持久化，`SDK` 对外提供基于 `db + table + key` 的访问接口。
 
 当前项目是一个可构建、可运行、可测试、持续演进中的分布式 KV 系统原型。它已经具备建库、建表、路由解析、KV 读写、Raft 副本、WAL、snapshot、恢复、单测、E2E 和 benchmark 客户端等主干能力；尚未完成控制面高可用、动态扩缩容、Raft config change、自动 rebalance 等生产级能力。
