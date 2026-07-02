@@ -551,13 +551,13 @@ Status PersistEngine::finish_snapshot_receive() {
     return Status::OK();
 }
 
-// 拿到了状态机去做快照，快照落盘了之后再截取 WAL
-Status PersistEngine::do_snapshot(const StateMachine& state_machine, const std::vector<RaftMember>& members) {
+// 只把状态机内容落成 snapshot 文件，不修改 WAL
+Status PersistEngine::write_snapshot(const StateMachine& state_machine, const std::vector<RaftMember>& members) {
     LogIndex apply_index = state_machine.apply_index();
     Term apply_term = state_machine.apply_term();
 
     LOG_DEBUG(
-            "[PersistEngine] do_snapshot, replica_id:{}, persist engine start to do snapshot, "
+            "[PersistEngine] write_snapshot, replica_id:{}, persist engine start to write snapshot, "
             "snapshot_index:{}, "
             "snapshot_term:{}",
             replica_id_.to_string(), apply_index, apply_term);
@@ -607,11 +607,8 @@ Status PersistEngine::do_snapshot(const StateMachine& state_machine, const std::
         return Status::OK();
     }))
 
-    testhook::crash_point("do_snapshot.after_write_snapshot");
-    RETURN_IF_INVALID_STATUS(truncate_wal(apply_index))
-
     LOG_DEBUG(
-            "replica_id:{}, persist engine finish do snapshot, "
+            "replica_id:{}, persist engine finish write snapshot, "
             "snapshot_index:{}, "
             "snapshot_term:{}",
             replica_id_.to_string(), apply_index, apply_term);

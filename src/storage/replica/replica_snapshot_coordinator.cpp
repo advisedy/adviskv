@@ -125,6 +125,14 @@ void ReplicaSnapshotCoordinator::advance_snapshot_receive_session(
     receiving_snapshot_->next_offset = param.offset + param.data.size();
 }
 
+Status ReplicaSnapshotCoordinator::publish_ready_snapshot(
+    const InstallSnapshotContext& context) {
+    return raft_loop_.sync_submit_step([&](RaftEffects& effects) {
+        context_.raft_node.commit_install_snapshot(context, effects);
+        return Status::OK();
+    });
+}
+
 Status ReplicaSnapshotCoordinator::finish_install_snapshot(
     const InstallSnapshotParam& param) {
     SnapshotPtr snap = std::make_shared<Snapshot>();

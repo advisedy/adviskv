@@ -31,6 +31,7 @@ class ReplicaSnapshotCoordinator {
     Status check_snapshot_receive_session(const InstallSnapshotParam& param);
     void advance_snapshot_receive_session(const InstallSnapshotParam& param);
     Status finish_install_snapshot(const InstallSnapshotParam& param);
+    Status publish_ready_snapshot(const InstallSnapshotContext& context);
 
     ReplicaContext& context_;
     ReplicaRaftLoop& raft_loop_;

@@ -4,6 +4,7 @@
 
 #include "common/log.h"
 #include "common/metrics/metrics.h"
+#include "storage/raft/state_machine/state_machine.h"
 
 namespace adviskv::storage {
 
@@ -197,25 +198,16 @@ Status RaftNode::truncate_log(LogIndex index) {
     return core_.truncate_log(index);
 }
 
-void RaftNode::install_local_snapshot(LogIndex snapshot_index,
-                                      Term snapshot_term) {
+void RaftNode::install_local_snapshot(const InstallSnapshotContext& context) {
     std::lock_guard lock(mutex_);
-    core_.install_local_snapshot(snapshot_index, snapshot_term);
+    core_.install_local_snapshot(context);
 }
 
-Status RaftNode::build_install_snapshot_plan(const InstallSnapshotParam& param,
-                                             SnapshotInstallPlan& plan,
-                                             RaftEffects& effects) {
-    std::lock_guard lock(mutex_);
-    effects = RaftEffects{};
-    return core_.build_install_snapshot_plan(param, plan, effects);
-}
-
-void RaftNode::commit_install_snapshot(const SnapshotInstallPlan& plan,
+void RaftNode::commit_install_snapshot(const InstallSnapshotContext& context,
                                        RaftEffects& effects) {
     std::lock_guard lock(mutex_);
     effects = RaftEffects{};
-    core_.commit_install_snapshot(plan, effects);
+    core_.commit_install_snapshot(context, effects);
 }
 
 void RaftNode::handle_install_snapshot_response(

@@ -15,7 +15,6 @@ namespace adviskv::storage {
 // 负责Raft的复制相关内容
 class RaftReplication {
    public:
-    // 这个类其实只是给外部的RaftNode提供打点用的
     struct CommitAdvanceResult {
         bool advanced{false};
         LogIndex old_commit_index{0};

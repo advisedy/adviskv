@@ -37,7 +37,7 @@ public:
     Status append_snapshot_chunk(const InstallSnapshotParam& param);
     Status finish_snapshot_receive();
 
-    Status do_snapshot(const StateMachine& state_machine, const std::vector<RaftMember>& members = {});
+    Status write_snapshot(const StateMachine& state_machine, const std::vector<RaftMember>& members = {});
     Status clear_wal();
 
     struct RecoverResult {

@@ -21,7 +21,7 @@ RaftCore::RaftCore(const ReplicaID& self_id,
       election_(self_id_),
       raft_log_(),
       raft_apply_(raft_log_),
-      membership_(self_id_, members),
+      membership_(members),
       replication_(self_id_, membership_, raft_log_, raft_apply_),
       election_tick_trigger_(ELECTION_TIMEOUT_FUNC),
       heartbeat_tick_trigger_(HEARTBEAT_INTERVAL) {}
@@ -46,6 +46,14 @@ LogIndex RaftCore::snapshot_index() const { return raft_log_.snapshot_index(); }
 Term RaftCore::snapshot_term() const { return raft_log_.snapshot_term(); }
 
 bool RaftCore::is_leader() const { return election_.is_leader(); }
+
+RaftMemberType RaftCore::member_type(const ReplicaID& replica_id) const {
+    return membership_.member_type(replica_id);
+}
+
+std::vector<RaftMember> RaftCore::raft_members() const {
+    return membership_.raft_members();
+}
 
 bool RaftCore::is_recovering() const { return state_ == State::RECOVERING; }
 
@@ -79,6 +87,42 @@ std::vector<LogEntry> RaftCore::extract_committed_entries() {
 
 void RaftCore::advance_last_applied(LogIndex applied) {
     raft_apply_.advance_last_applied(applied);
+}
+
+void RaftCore::step_down_if_non_member() {
+    if (membership_.member_type(self_id_) != RaftMemberType::NON_MEMBER) {
+        return;
+    }
+    if (!election_.is_follower()) {
+        election_.become_follower(election_.current_term());
+    }
+    // self 已经不在 raft membership 里
+    // 了，不应继续参与心跳或选举节奏
+    heartbeat_tick_trigger_.stop();
+    election_tick_trigger_.stop();
+}
+
+Status RaftCore::apply_config_entry(const LogEntry& entry) {
+    switch (entry.op_type) {
+        case WriteOpType::ADD_LEARNER:
+            RETURN_IF_INVALID_STATUS(
+                membership_.add_learner(entry.config_member))
+            break;
+        case WriteOpType::PROMOTE_VOTER:
+            RETURN_IF_INVALID_STATUS(
+                membership_.promote_voter(entry.config_replica_id))
+            break;
+        case WriteOpType::REMOVE_MEMBER:
+            RETURN_IF_INVALID_STATUS(
+                membership_.remove_member(entry.config_replica_id))
+            break;
+        default:
+            return Status::INVALID_ARGUMENT("not a config entry");
+    }
+
+    step_down_if_non_member();
+    raft_apply_.advance_last_applied(entry.index);
+    return Status::OK();
 }
 
 }  // namespace adviskv::storage

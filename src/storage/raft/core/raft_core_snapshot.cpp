@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <utility>
 
+#include "common/define.h"
 #include "common/log.h"
 #include "storage/raft/core/raft_core.h"
+#include "storage/raft/state_machine/state_machine.h"
 
 namespace adviskv::storage {
 
@@ -21,45 +23,24 @@ Status RaftCore::truncate_log(LogIndex new_snapshot_index) {
 }
 
 RaftLog::InstallSnapshotResult RaftCore::install_snapshot(
-    LogIndex new_snapshot_index, Term new_snapshot_term) {
+    const InstallSnapshotContext& context) {
     RaftLog::InstallSnapshotResult result =
-        raft_log_.install_snapshot(new_snapshot_index, new_snapshot_term);
-    raft_apply_.install_snapshot(new_snapshot_index);
+        raft_log_.install_snapshot(context.snapshot_index, context.snapshot_term);
+    raft_apply_.install_snapshot(context.snapshot_index);
+    if (!context.snapshot_members.empty()) {
+        membership_.update_raft_members(context.snapshot_members);
+    }
     finish_recovering();
     return result;
 }
 
-void RaftCore::install_local_snapshot(LogIndex new_snapshot_index,
-                                      Term new_snapshot_term) {
-    install_snapshot(new_snapshot_index, new_snapshot_term);
+void RaftCore::install_local_snapshot(const InstallSnapshotContext& context) {
+    IGNORE_RESULT(install_snapshot(context));
 }
 
-Status RaftCore::build_install_snapshot_plan(
-    const InstallSnapshotParam& param,
-                                             SnapshotInstallPlan& plan,
-                                             RaftEffects& effects) {
-    plan = SnapshotInstallPlan{};
-
-    RETURN_IF_INVALID_STATUS(prepare_install_snapshot(param, effects))
-
-    plan.snapshot_index = param.snapshot_index;
-    plan.snapshot_term = param.snapshot_term;
-    plan.retained_entries = raft_log_.retained_entries_after_snapshot(
-        param.snapshot_index, param.snapshot_term);
-    return Status::OK();
-}
-
-void RaftCore::commit_install_snapshot(const SnapshotInstallPlan& plan,
+void RaftCore::commit_install_snapshot(const InstallSnapshotContext& context,
                                        RaftEffects& effects) {
-    RaftLog::InstallSnapshotResult result =
-        install_snapshot(plan.snapshot_index, plan.snapshot_term);
-    if (result.retained_entries != plan.retained_entries) {
-        LOG_WARN(
-            "[RaftCore Snapshot] snapshot install retained entries changed "
-            "between plan and "
-            "commit, replica:{}, snapshot_index:{}",
-            self_id_.to_string(), plan.snapshot_index);
-    }
+    RaftLog::InstallSnapshotResult result = install_snapshot(context);
     effects.entries_to_rewrite = std::move(result.retained_entries);
 }
 

@@ -234,11 +234,10 @@ struct InstallSnapshotResult {
     LogIndex snapshot_watermark{0};
 };
 
-struct SnapshotInstallPlan {
+struct InstallSnapshotContext {
     LogIndex snapshot_index{0};
     Term snapshot_term{0};
     std::vector<RaftMember> snapshot_members;
-    std::vector<LogEntry> retained_entries;
 };
 
 enum class RaftMessageType : uint8_t {

@@ -135,6 +135,10 @@ Status NodeAgent::heartbeat_once() {
         ExpectedReplica instruction = decode_pb_expected_replica(expected_pb);
         Status apply_status = apply_expected_replica(instruction);
         if (apply_status.fail()) {
+            if (apply_status.code() == StatusCode::RETRY_ERROR) {
+                LOG_WARN("[NodeAgent] apply expected replica needs retry, msg={}", apply_status.msg());
+                continue;
+            }
             LOG_WARN("[NodeAgent] node agent apply expected replica failed, msg={}", apply_status.msg());
         }
     }

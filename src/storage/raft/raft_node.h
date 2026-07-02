@@ -8,6 +8,7 @@
 #include "common/type.h"
 #include "storage/model/param.h"
 #include "storage/raft/core/raft_core.h"
+#include "storage/raft/state_machine/state_machine.h"
 
 namespace adviskv::storage {
 
@@ -65,11 +66,8 @@ class RaftNode {
 
     // 快照相关
     Status truncate_log(LogIndex index);
-    void install_local_snapshot(LogIndex snapshot_index, Term snapshot_term);
-    Status build_install_snapshot_plan(const InstallSnapshotParam& param,
-                                       SnapshotInstallPlan& plan,
-                                       RaftEffects& effects);
-    void commit_install_snapshot(const SnapshotInstallPlan& plan,
+    void install_local_snapshot(const InstallSnapshotContext& context);
+    void commit_install_snapshot(const InstallSnapshotContext& context,
                                  RaftEffects& effects);
     void handle_install_snapshot_response(
         const ReplicaID& from, const InstallSnapshotParam& sent_param,

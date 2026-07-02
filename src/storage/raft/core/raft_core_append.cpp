@@ -47,6 +47,15 @@ Status RaftCore::validate_proposal(const ProposeParam& param) const {
         UNUSED(noop);
         return Status::OK();
     }
+    if (const auto* config = std::get_if<ConfigChangeProposal>(&param.payload)) {
+        if (!is_config_change_op(config->op)) {
+            return Status::INVALID_ARGUMENT("invalid config change op");
+        }
+        if (!membership_.is_voter(self_id_)) {
+            return Status::NOT_LEADER("self is not voter");
+        }
+        return Status::OK();
+    }
     return Status::INVALID_ARGUMENT("unknown proposal type");
 }
 
