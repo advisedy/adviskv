@@ -246,7 +246,7 @@ enum class RaftMessageType : uint8_t {
     INSTALL_SNAPSHOT,
 };
 
-// RaftNode 产出的消息，由 Replica 负责，接收到了之后会通过 RaftSender 发送
+// RaftCore 产出的消息，由 ReplicaLoop 负责，接收到了之后会通过 RaftSender 发送
 struct RaftMessage {
     RaftMessageType type;
     PeerMember target;

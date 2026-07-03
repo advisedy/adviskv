@@ -12,6 +12,7 @@ void RaftCore::tick(RaftEffects& effects) {
     if (election_.is_leader()) {
         heartbeat_tick_trigger_.tick(
             [&] { broadcast_append_entries(effects); });
+        maybe_promote_ready_learner(effects);
     } else {
         election_tick_trigger_.tick([&] { become_candidate(effects); });
     }
@@ -19,6 +20,7 @@ void RaftCore::tick(RaftEffects& effects) {
 
 void RaftCore::become_candidate(RaftEffects& effects) {
     if (ensure_ready().fail()) return;
+    if (!membership_.is_voter(self_id_)) return;
     LOG_INFO("replica:{} start become cadidate", self_id_.to_string());
     election_.become_candidate();
     record_hard_state(effects);
@@ -77,6 +79,10 @@ void RaftCore::handle_request_vote(const RequestVoteParam& param,
     }
 
     if (ensure_ready().fail()) {
+        return;
+    }
+    if (!membership_.is_voter(self_id_) ||
+        !membership_.is_voter(param.from_replica_id)) {
         return;
     }
 
@@ -150,6 +156,7 @@ void RaftCore::become_follower(Term later_term, RaftEffects& effects) {
 
 void RaftCore::become_leader(RaftEffects& effects) {
     if (ensure_ready().fail()) return;
+    if (!membership_.is_voter(self_id_)) return;
 
     LOG_INFO("replica:{} become leader", self_id_.to_string());
     election_.become_leader();
@@ -165,7 +172,7 @@ void RaftCore::become_leader(RaftEffects& effects) {
     broadcast_append_entries(effects);
 
     if (membership_.has_quorum(1)) {
-        try_update_commit_index();
+        try_update_commit_index(effects);
     }
 }
 

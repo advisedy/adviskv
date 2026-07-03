@@ -5,6 +5,7 @@
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
+#include "common/status.h"
 #include "common/type.h"
 #include "storage/model/param.h"
 #include "storage/raft/core/raft_core.h"
@@ -30,7 +31,7 @@ LogIndex RaftCore::append_new_entry(const ProposeParam& param,
     LogIndex new_index =
         raft_log_.append_new_entry(election_.current_term(), param);
     const LogEntry* entry = raft_log_.entry_at(new_index);
-    if (entry != nullptr) {
+    if (entry != nullptr) { //TODO111
         effects.entries_to_append.push_back(*entry);
     }
     return new_index;
@@ -52,7 +53,7 @@ Status RaftCore::validate_proposal(const ProposeParam& param) const {
             return Status::INVALID_ARGUMENT("invalid config change op");
         }
         if (!membership_.is_voter(self_id_)) {
-            return Status::NOT_LEADER("self is not voter");
+            return Status::NOT_VOTER("self is not voter");
         }
         return Status::OK();
     }
@@ -65,7 +66,7 @@ std::pair<Status, LogIndex> RaftCore::propose(const ProposeParam& param,
     if (ready_status.fail()) return {ready_status, -1};
 
     if (!election_.is_leader()) {
-        return {Status{StatusCode::NOT_LEADER, "not leader"}, -1};
+        return {Status::NOT_LEADER(), -1};
     }
 
     Status validate_status = validate_proposal(param);
@@ -75,7 +76,7 @@ std::pair<Status, LogIndex> RaftCore::propose(const ProposeParam& param,
     broadcast_append_entries(effects);
 
     if (election_.is_leader() and membership_.has_quorum(1)) {
-        try_update_commit_index();
+        try_update_commit_index(effects);
     }
 
     return {Status::OK(), new_commit_idx};
@@ -106,7 +107,7 @@ std::vector<std::pair<Status, LogIndex>> RaftCore::propose_batch(
     }
 
     if (!membership_.is_voter(self_id_)) {
-        Status status = Status::NOT_LEADER("self is not voter");
+        Status status = Status::NOT_VOTER("self is not voter");
         for (size_t i = 0; i < params.size(); i++) {
             results.emplace_back(status, -1);
         }
@@ -129,7 +130,7 @@ std::vector<std::pair<Status, LogIndex>> RaftCore::propose_batch(
     if (append_flag) {
         broadcast_append_entries(effects);
         if (election_.is_leader() and membership_.has_quorum(1)) {
-            try_update_commit_index();
+            try_update_commit_index(effects);
         }
     }
     return results;
@@ -288,7 +289,8 @@ Status RaftCore::handle_append_response(const ReplicaID& from,
             self_id_.to_string(), from.to_string());
         replication_.handle_append_ok(from, sent_param.prev_log_index,
                                       sent_param.entries.size());
-        try_update_commit_index();
+        try_update_commit_index(effects);
+        maybe_promote_ready_learner(effects);
     } else {
         ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_reject");
         // prev_log 对不上
@@ -333,16 +335,108 @@ void RaftCore::handle_append_send_failed(const ReplicaID& from,
 
 // raftnode 作为leader，需要更新自己的commit_idx
 // 当收到了follower们关于日志复制的回应时，就调用一下这个函数，去更新自己的commit_idx
-void RaftCore::try_update_commit_index() {
+void RaftCore::try_update_commit_index(RaftEffects& effects) {
     if (ensure_ready().fail()) return;
 
     RaftReplication::CommitAdvanceResult result =
         replication_.try_advance_commit_index(election_.current_term());
     if (result.advanced) {
+        bool committed_remove_member = false;
+        for (LogIndex index = result.old_commit_index + 1;
+             index <= result.new_commit_index; ++index) {
+            const LogEntry* entry = raft_log_.entry_at(index);
+            if (entry != nullptr && entry->op_type == WriteOpType::REMOVE_MEMBER) {
+                committed_remove_member = true;
+                break;
+            }
+        }
+        if (committed_remove_member) {
+            // 这里这样可以保证 quorum 的及时更新，如果是删除follower的话到还好，但是如果是删除leader的话就得有这个，不然quorum没有及时更新，影响正确性，最直观的例子比如是2个节点的情况
+            broadcast_append_entries(effects);
+        }
         ADVISKV_METRICS_COUNTER("storage_raft_commit_index_advance");
         ADVISKV_METRICS_COUNTER("storage_raft_committed_entry",
                                 static_cast<int64_t>(result.new_commit_index -
                                                      result.old_commit_index));
+    }
+}
+
+const LogEntry* RaftCore::first_unapplied_config_entry() const {
+    for (LogIndex index = raft_apply_.last_applied() + 1;
+         index <= raft_log_.last_log_index(); ++index) {
+        const LogEntry* entry = raft_log_.entry_at(index);
+        if (entry != nullptr && is_config_change_op(entry->op_type)) {
+            return entry;
+        }
+    }
+    return nullptr;
+}
+
+bool RaftCore::has_unapplied_config_entry() const {
+    return first_unapplied_config_entry() != nullptr;
+}
+
+Status RaftCore::ensure_add_learner(const PeerMember& member,
+                                    RaftEffects& effects) {
+    RETURN_IF_INVALID_STATUS(ensure_ready())
+    if (!election_.is_leader()) {
+        return Status::NOT_LEADER("not leader");
+    }
+    if (!membership_.is_voter(self_id_)) {
+        return Status::NOT_VOTER("self is not voter");
+    }
+    if (membership_.contains(member.replica_id)) {
+        return Status::OK();
+    }
+    const LogEntry* pending_entry = first_unapplied_config_entry();
+    if (pending_entry != nullptr) {
+    if( pending_entry->config_member == member && pending_entry->op_type == WriteOpType::ADD_LEARNER) {
+        return Status::OK();
+    }
+      
+        return Status::RETRY_ERROR("another config change is in progress");
+    }
+    return propose(ProposeParam::add_learner(member), effects).first;
+}
+
+Status RaftCore::ensure_remove_member(const ReplicaID& replica_id,
+                                      RaftEffects& effects) {
+    RETURN_IF_INVALID_STATUS(ensure_ready())
+    if (!election_.is_leader()) {
+        return Status::NOT_LEADER("not leader");
+    }
+    if (!membership_.is_voter(self_id_)) {
+        return Status::NOT_VOTER("self is not voter");
+    }
+    if (!membership_.contains(replica_id)) {
+        return Status::OK();
+    }
+    const LogEntry* pending_entry = first_unapplied_config_entry();
+    if (pending_entry != nullptr) {
+        if(pending_entry->config_replica_id == replica_id && pending_entry->op_type == WriteOpType::REMOVE_MEMBER){
+            return Status::OK();
+        }
+        return Status::RETRY_ERROR("another config change is in progress");
+    }
+    return propose(ProposeParam::remove_member(replica_id), effects).first;
+}
+
+// 当接收到了follower的消息时触发
+// 如果一个learner追上了最新的last_log_index的话，就可以升级成voter
+void RaftCore::maybe_promote_ready_learner(RaftEffects& effects) {
+    if (ensure_ready().fail()) return;
+    if (!election_.is_leader()) return;
+    if (!membership_.is_voter(self_id_)) return;
+    if (has_unapplied_config_entry()) return;
+
+    LogIndex target_index = raft_log_.last_log_index();
+    for (const PeerMember& learner : membership_.learners()) {
+        if (!replication_.match_index_at_least(learner.replica_id,
+                                               target_index)) {
+            continue;
+        }
+        UNUSED(propose(ProposeParam::promote_voter(learner.replica_id), effects));
+        return;
     }
 }
 

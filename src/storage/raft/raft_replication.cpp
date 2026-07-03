@@ -32,17 +32,17 @@ void RaftReplication::reset_for_leader() {
 
 void RaftReplication::broadcast_append_entries(Term current_term,
                                                RaftEffects& effects) {
-    for (const PeerMember& member : membership_.all_members()) {
-        if (member.replica_id == self_id_) continue;
+    for (const RaftMember& member : membership_.raft_members()) {
+        if (member.peer.replica_id == self_id_) continue;
 
-        if (peer_progress_.get_next_index(member.replica_id) == 0) {
-            peer_progress_.update_next_index(member.replica_id,
+        if (peer_progress_.get_next_index(member.peer.replica_id) == 0) {
+            peer_progress_.update_next_index(member.peer.replica_id,
                                              raft_log_.last_log_index() + 1);
         }
-        LogIndex next_idx = peer_progress_.get_next_index(member.replica_id);
+        LogIndex next_idx = peer_progress_.get_next_index(member.peer.replica_id);
 
         RaftMessageOr msg =
-            build_append_entries_message(member, next_idx, current_term);
+            build_append_entries_message(member.peer, next_idx, current_term);
         if (msg.has_value()) {
             effects.messages.push_back(std::move(*msg));
         }

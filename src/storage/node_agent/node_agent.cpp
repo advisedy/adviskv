@@ -234,6 +234,9 @@ Optional<ReplicaID> NodeAgent::find_local_leader_replica(const ShardID& shard_id
             LOG_WARN("[NodeAgent] find_local_leader_replica, replica is nullptr, shard_id:{}", shard_id.to_string());
             continue;
         }
+        if (replica->get_shard_id() != shard_id){
+            continue;
+        }
         if (replica->get_role() == ReplicaRole::LEADER) {
             return replica->get_replica_id();
         }

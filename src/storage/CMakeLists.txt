@@ -3,8 +3,8 @@ set(STORAGE_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_applier.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_manager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_raft_effect_runner.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_raft_loop.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_loop.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_message_dispatcher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_read_index_checker.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_snapshot_coordinator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_apply.cpp
@@ -12,7 +12,6 @@ set(STORAGE_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_membership.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_election.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_replication.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_node.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_peer_progress.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_sender.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/grpc_raft_rpc_transport.cpp

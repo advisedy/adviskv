@@ -7,15 +7,18 @@
 
 namespace adviskv::storage {
 
-ReplicaApplier::ReplicaApplier(RaftNode& raft_node,
-                               StateMachine& state_machine)
-    : raft_node_(raft_node), state_machine_(state_machine) {}
+ReplicaApplier::ReplicaApplier(ReplicaContext& context)
+    : context_(context) {}
 
 Status ReplicaApplier::apply_committed_entries() {
     ADVISKV_METRICS_TIMER("storage_replica_apply_committed_entries");
     ADVISKV_METRICS_COUNTER("storage_replica_apply_committed_entries_request");
 
-    std::vector<LogEntry> entries = raft_node_.extract_committed_entries();
+    std::vector<LogEntry> entries;
+    {
+        std::lock_guard lock(context_.raft_core_mutex);
+        entries = context_.raft_core.extract_committed_entries();
+    }
     ADVISKV_METRICS_COUNTER("storage_replica_apply_entry",
                             to<int64_t>(entries.size()));
     for (const LogEntry& entry : entries) {
@@ -40,7 +43,7 @@ Status ReplicaApplier::apply_log_entry(const LogEntry& entry) {
 }
 
 Status ReplicaApplier::apply_kv_log_entry(const LogEntry& entry) {
-    Status status = state_machine_.apply(entry);
+    Status status = context_.state_machine.apply(entry);
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_failure");
         LOG_WARN("apply_kv_log_entry failed, index={}, msg={}", entry.index,
@@ -48,20 +51,26 @@ Status ReplicaApplier::apply_kv_log_entry(const LogEntry& entry) {
         return status;
     }
     ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_success");
-    raft_node_.advance_last_applied(entry.index);
+    {
+        std::lock_guard lock(context_.raft_core_mutex);
+        context_.raft_core.advance_last_applied(entry.index);
+    }
 
     return Status::OK();
 }
 
 Status ReplicaApplier::apply_config_log_entry(const LogEntry& entry) {
-    Status status = raft_node_.apply_config_entry(entry);
-    if (status.fail()) {
-        ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_failure");
-        LOG_WARN("apply_config_log_entry failed, index={}, msg={}",
-                 entry.index, status.msg());
-        return status;
+    {
+        std::lock_guard lock(context_.raft_core_mutex);
+        Status status = context_.raft_core.apply_config_entry(entry);
+        if (status.fail()) {
+            ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_failure");
+            LOG_WARN("apply_config_log_entry failed, index={}, msg={}",
+                     entry.index, status.msg());
+            return status;
+        }
     }
-    status = state_machine_.apply(entry);
+    Status status = context_.state_machine.apply(entry);
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_failure");
         LOG_WARN("apply_config_log_entry state_machine apply failed, index={}, msg={}",

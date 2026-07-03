@@ -89,7 +89,7 @@ void RaftCore::advance_last_applied(LogIndex applied) {
     raft_apply_.advance_last_applied(applied);
 }
 
-void RaftCore::step_down_if_non_member() {
+void RaftCore::step_down_if_become_non_member() {
     if (membership_.member_type(self_id_) != RaftMemberType::NON_MEMBER) {
         return;
     }
@@ -120,7 +120,7 @@ Status RaftCore::apply_config_entry(const LogEntry& entry) {
             return Status::INVALID_ARGUMENT("not a config entry");
     }
 
-    step_down_if_non_member();
+    step_down_if_become_non_member();
     raft_apply_.advance_last_applied(entry.index);
     return Status::OK();
 }
