@@ -333,6 +333,15 @@ Status CatalogManager::delete_table(TableID table_id, TableMeta* table_meta) {
                       fmt::format("table_id:{} does not exist", table_id)};
     }
 
+    if (old_table_meta.state != TableState::NORMAL) {
+        LOG_WARN(
+            "[CatalogManager] delete_table: table_id:{} state is not NORMAL "
+            "for drop",
+            old_table_meta.table_id);
+        return Status::INVALID_ARGUMENT(fmt::format(
+            "table_id:{} state is not NORMAL for drop", table_id));
+    }
+
     TableMeta new_table_meta = old_table_meta;
     new_table_meta.state = TableState::DROPPING;
     new_table_meta.operation_id =

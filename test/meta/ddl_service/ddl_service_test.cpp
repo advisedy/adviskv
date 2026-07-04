@@ -196,6 +196,30 @@ TEST_F(DdlServiceTest, DropDbAllowsOnlyDeletedTables) {
               StatusCode::DB_NOT_FOUND);
 }
 
+// 测试 Meta 建表允许 replica_count = 0，并把 scale-to-zero 语义交给 SDM。
+TEST_F(DdlServiceTest, CreateTableAllowsZeroReplicaCount) {
+    Fixture fixture{make_sub_dir("create_table_zero_replica")};
+    FakeSdmClient client;
+    DdlService service{&fixture.catalog, &client};
+    ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
+
+    CreateTableParam param = create_table_param();
+    param.replica_count = 0;
+    TableMeta created;
+    Status status = service.create_table(param, &created);
+
+    ASSERT_TRUE(status.ok()) << status.to_string();
+    EXPECT_EQ(client.place_table_calls, 1);
+    EXPECT_EQ(client.last_place_table.replica_count, 0);
+    EXPECT_EQ(created.state, TableState::ADDING);
+    EXPECT_EQ(created.replica_count, 0);
+    TableMeta stored;
+    ASSERT_TRUE(
+        fixture.catalog.get_table_by_name(db_name_, table_name_, &stored).ok());
+    EXPECT_EQ(stored.replica_count, 0);
+    EXPECT_EQ(stored.state, TableState::ADDING);
+}
+
 // 测试创建table之后，没有sdm_client，失败了，table的状态还是ADDING，检测err_msg。
 TEST_F(DdlServiceTest, CreateTableWithoutSdmClientKeepsAddingWithError) {
     Fixture fixture{make_sub_dir("create_table_without_sdm")};
@@ -295,6 +319,32 @@ TEST_F(DdlServiceTest, AlterReplicaCountSuccessMarksAlteringAndCallsSdm) {
     EXPECT_TRUE(altered.last_error_msg.empty());
 }
 
+// 测试 alter replica_count 允许缩到 0，并把 scale-to-zero 语义交给 SDM。
+TEST_F(DdlServiceTest, AlterReplicaCountAllowsZeroReplicaCount) {
+    Fixture fixture{make_sub_dir("alter_replica_count_zero")};
+    FakeSdmClient client;
+    DdlService service{&fixture.catalog, &client};
+    ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
+
+    TableMeta table;
+    ASSERT_TRUE(service.create_table(create_table_param(), &table).ok());
+    ASSERT_TRUE(
+        fixture.catalog.update_table_state(table.table_id, TableState::NORMAL)
+            .ok());
+
+    TableMeta altered;
+    ASSERT_TRUE(
+        service.alter_table_replica_count(alter_replica_count_param(0),
+                                          &altered)
+            .ok());
+
+    EXPECT_EQ(client.alter_table_calls, 1);
+    EXPECT_EQ(client.last_alter_table.table_id, table.table_id);
+    EXPECT_EQ(client.last_alter_table.replica_count, 0);
+    EXPECT_EQ(altered.state, TableState::ALTERING);
+    EXPECT_EQ(altered.replica_count, 0);
+}
+
 // 测试 alter replica_count 缺少 SDM client 时，表保持 ALTERING 并记录错误信息。
 TEST_F(DdlServiceTest, AlterReplicaCountWithoutSdmKeepsAlteringWithError) {
     Fixture fixture{make_sub_dir("alter_replica_count_without_sdm")};
@@ -340,6 +390,29 @@ TEST_F(DdlServiceTest, DropDeletedTableReturnsTableNotFound) {
     EXPECT_EQ(client.drop_table_calls, 0);
 }
 
+// 测试 V1 普通 drop_table 只允许删除已经 NORMAL 的 table，创建中的 table 会被拒绝。
+TEST_F(DdlServiceTest, DropAddingTableIsRejectedWithoutCallingSdm) {
+    Fixture fixture{make_sub_dir("drop_adding_rejected")};
+    FakeSdmClient client;
+    DdlService service{&fixture.catalog, &client};
+    ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
+
+    TableMeta table;
+    ASSERT_TRUE(service.create_table(create_table_param(), &table).ok());
+    ASSERT_EQ(table.state, TableState::ADDING);
+
+    TableMeta dropped;
+    Status status = service.drop_table(drop_table_param(), &dropped);
+
+    EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
+    EXPECT_EQ(client.drop_table_calls, 0);
+
+    TableMeta stored;
+    ASSERT_TRUE(fixture.catalog.get_table_by_id(table.table_id, &stored).ok());
+    EXPECT_EQ(stored.state, TableState::ADDING);
+    EXPECT_EQ(stored.operation_id, table.operation_id);
+}
+
 // 测试创建table成功后，drop_table遇到table.state ==
 // TableState::DROPPING的情况。
 TEST_F(DdlServiceTest, DropDroppingTableIsIdempotent) {
@@ -350,6 +423,9 @@ TEST_F(DdlServiceTest, DropDroppingTableIsIdempotent) {
 
     TableMeta table;
     ASSERT_TRUE(service.create_table(create_table_param(), &table).ok());
+    ASSERT_TRUE(
+        fixture.catalog.update_table_state(table.table_id, TableState::NORMAL)
+            .ok());
     ASSERT_TRUE(fixture.catalog.delete_table(table.table_id, &table).ok());
     ASSERT_EQ(table.state, TableState::DROPPING);
 
@@ -370,6 +446,9 @@ TEST_F(DdlServiceTest, DropTableWithoutSdmClientKeepsDroppingWithError) {
 
     TableMeta table;
     ASSERT_TRUE(create_service.create_table(create_table_param(), &table).ok());
+    ASSERT_TRUE(
+        fixture.catalog.update_table_state(table.table_id, TableState::NORMAL)
+            .ok());
 
     DdlService drop_service{&fixture.catalog, nullptr};
     TableMeta dropped;
@@ -394,6 +473,9 @@ TEST_F(DdlServiceTest, DropTableSdmFailureKeepsDroppingWithError) {
 
     TableMeta table;
     ASSERT_TRUE(service.create_table(create_table_param(), &table).ok());
+    ASSERT_TRUE(
+        fixture.catalog.update_table_state(table.table_id, TableState::NORMAL)
+            .ok());
 
     client.drop_table_status = Status::ERROR("drop table failed");
     TableMeta dropped;
@@ -421,6 +503,9 @@ TEST_F(DdlServiceTest, DropTableSuccessMarksDroppingAndCallsSdm) {
 
     TableMeta table;
     ASSERT_TRUE(service.create_table(create_table_param(), &table).ok());
+    ASSERT_TRUE(
+        fixture.catalog.update_table_state(table.table_id, TableState::NORMAL)
+            .ok());
 
     TableMeta dropped;
     ASSERT_TRUE(service.drop_table(drop_table_param(), &dropped).ok());

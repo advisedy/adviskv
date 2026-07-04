@@ -137,6 +137,41 @@ TEST_F(CatalogManagerTest, CreateDbAndTableBasic) {
     // 这次再插入一次db和table，期待的结果是错误码是已经存在了。
 }
 
+// 测试普通删表只允许 NORMAL 表进入 DROPPING，避免创建中表被提前落成删除状态。
+TEST_F(CatalogManagerTest, DeleteTableRejectsNonNormalTable) {
+    auto dir = make_sub_dir("delete_rejects_non_normal");
+
+    MetaPersistEngine engine(dir.string());
+    ASSERT_TRUE(engine.init().ok());
+    CatalogManager catalog(&engine);
+    ASSERT_TRUE(catalog.init().ok());
+
+    ASSERT_TRUE(
+        catalog.create_db(CreateDBParam{"commerce", "z1"}, nullptr).ok());
+    TableMeta table;
+    ASSERT_TRUE(catalog
+                    .create_table(CreateTableParam{"commerce", "orders", 4,
+                                                       3, "pool-a"},
+                                  &table)
+                    .ok());
+    ASSERT_EQ(table.state, TableState::ADDING);
+
+    TableMeta dropped;
+    Status status = catalog.delete_table(table.table_id, &dropped);
+
+    EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
+    TableMeta stored;
+    ASSERT_TRUE(catalog.get_table_by_id(table.table_id, &stored).ok());
+    EXPECT_EQ(stored.state, TableState::ADDING);
+    EXPECT_EQ(stored.operation_id, table.operation_id);
+
+    ASSERT_TRUE(
+        catalog.update_table_state(table.table_id, TableState::NORMAL).ok());
+    ASSERT_TRUE(catalog.delete_table(table.table_id, &dropped).ok());
+    EXPECT_EQ(dropped.state, TableState::DROPPING);
+    EXPECT_NE(dropped.operation_id, table.operation_id);
+}
+
 // 测试一下当catalog_manager这边创建db失败了（因为persist）之后，
 // 查询db或者table是否还会存在
 TEST_F(CatalogManagerTest, CreateDbFailsDueToPersist_DbShouldNotExist) {

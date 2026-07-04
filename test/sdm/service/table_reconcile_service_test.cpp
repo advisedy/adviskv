@@ -197,6 +197,82 @@ TEST(TableServiceReconcileTest, CreateTableMaterializesReplicasAndReachesReady) 
     EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::READY);
 }
 
+// 检测 scale-to-zero 建表可以收敛为 READY，但不会发布可写路由。
+TEST(TableServiceReconcileTest, ZeroReplicaTableReachesReadyWithoutRoute) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    FakeNodeSelector selector(&store);
+    ServiceHarness services(&store, &selector);
+
+    PlaceTableParam param = make_place_table_param();
+    param.replica_count = 0;
+    ASSERT_TRUE(services.table.place_table(param).ok());
+
+    ASSERT_TRUE(services.table.reconcile_all().ok());
+    ASSERT_TRUE(services.replica_group.reconcile_all().ok());
+    ASSERT_TRUE(services.route.reconcile_all().ok());
+    ASSERT_TRUE(services.table.reconcile_all().ok());
+
+    Table table = get_table_or_die(store);
+    EXPECT_EQ(table.spec.replica_count, 0);
+    EXPECT_EQ(table.state.desired, TableDesired::PRESENT);
+    EXPECT_EQ(table.state.phase, TablePhase::READY);
+    EXPECT_TRUE(list_replicas_or_die(store).empty());
+
+    ReplicaGroupOr group;
+    ASSERT_TRUE(
+        store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_FALSE(group.is_empty());
+    EXPECT_EQ(group->mode, ReplicaGroupMode::BOOTSTRAP);
+    EXPECT_EQ(group->target_replica_count, 0);
+    EXPECT_TRUE(group->desired_members.empty());
+
+    ShardRouteOr route;
+    ASSERT_TRUE(
+        store_test::get_shard_route(store, ShardID{1001, 0}, route).ok());
+    EXPECT_TRUE(route.is_empty());
+
+    EXPECT_EQ(services.route.get_route(make_get_route_param(), nullptr).code(),
+              StatusCode::ROUTE_NOT_FOUND);
+}
+
+// 检测 scale-to-zero 表可以后续扩容并恢复可写路由。
+TEST(TableServiceReconcileTest, ZeroReplicaTableCanExpandAndPublishRoute) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    put_default_nodes(store);
+
+    FakeNodeSelector selector(&store);
+    ServiceHarness services(&store, &selector);
+
+    PlaceTableParam param = make_place_table_param();
+    param.replica_count = 0;
+    ASSERT_TRUE(services.table.place_table(param).ok());
+    ASSERT_TRUE(services.replica_group.reconcile_all().ok());
+    ASSERT_TRUE(services.route.reconcile_all().ok());
+    ASSERT_TRUE(services.table.reconcile_all().ok());
+    ASSERT_EQ(get_table_or_die(store).state.phase, TablePhase::READY);
+
+    Status alter_status = services.table.alter_table_replica_count(
+        AlterReplicaCountParam{1001, 2, "expand-zero-replica"});
+    ASSERT_TRUE(alter_status.ok()) << alter_status.to_string();
+    EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::RESIZING);
+
+    ASSERT_TRUE(services.replica_group.reconcile_all().ok());
+    std::vector<Replica> replicas = list_replicas_or_die(store);
+    ASSERT_EQ(replicas.size(), 2U);
+
+    make_replicas_ready(store);
+    ASSERT_TRUE(services.replica_group.reconcile_all().ok());
+    ASSERT_TRUE(services.route.reconcile_all().ok());
+    ASSERT_TRUE(services.table.reconcile_all().ok());
+
+    Table table = get_table_or_die(store);
+    EXPECT_EQ(table.spec.replica_count, 2);
+    EXPECT_EQ(table.state.phase, TablePhase::READY);
+    ShardRoute route;
+    ASSERT_TRUE(services.route.get_route(make_get_route_param(), &route).ok());
+    EXPECT_EQ(route.replicas.size(), 2U);
+}
+
 // 检测节点选择器失败时，Table 停留在 CREATING，下一轮选择器恢复后可以继续。
 TEST(TableServiceReconcileTest, CreateTableSelectorErrorKeepsTableCreating) {
     SdmStore store{SdmMetaStoreType::MEMORY};
@@ -544,6 +620,63 @@ TEST(TableServiceReconcileTest, ReplicaGroupShrinksAfterObservedMemberRemoved) {
     ASSERT_FALSE(victim.is_empty());
     EXPECT_EQ(victim->state.desired, ReplicaDesired::ABSENT);
     EXPECT_EQ(victim->state.phase, ReplicaPhase::DELETING);
+}
+
+// 检测 READY 表可以缩到 0 副本，清理路由后重新进入 READY。
+TEST(TableServiceReconcileTest, ReadyTableCanShrinkToZeroWithoutRoute) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    put_default_nodes(store);
+
+    FakeNodeSelector selector(&store);
+    ServiceHarness services(&store, &selector);
+    place_default_table(services);
+    reconcile_table_to_ready(services, store);
+
+    Status alter_status = services.table.alter_table_replica_count(
+        AlterReplicaCountParam{1001, 0, "shrink-to-zero"});
+    ASSERT_TRUE(alter_status.ok()) << alter_status.to_string();
+    EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::RESIZING);
+
+    ASSERT_TRUE(services.replica_group.reconcile_all().ok());
+    ASSERT_TRUE(services.route.reconcile_all().ok());
+    ASSERT_TRUE(services.table.reconcile_all().ok());
+    EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::RESIZING);
+
+    std::vector<Replica> replicas = list_replicas_or_die(store);
+    ASSERT_EQ(replicas.size(), 2U);
+    for (const Replica& replica : replicas) {
+        EXPECT_EQ(replica.state.desired, ReplicaDesired::ABSENT);
+        EXPECT_EQ(replica.state.phase, ReplicaPhase::DELETING);
+    }
+
+    ShardRouteOr route;
+    ASSERT_TRUE(
+        store_test::get_shard_route(store, ShardID{1001, 0}, route).ok());
+    EXPECT_TRUE(route.is_empty());
+
+    for (Replica& replica : replicas) {
+        replica.state.phase = ReplicaPhase::DELETED;
+        ASSERT_TRUE(store_test::put_replica(store, replica).ok());
+    }
+
+    ASSERT_TRUE(services.replica_group.reconcile_all().ok());
+    ASSERT_TRUE(services.route.reconcile_all().ok());
+    ASSERT_TRUE(services.table.reconcile_all().ok());
+
+    Table table = get_table_or_die(store);
+    EXPECT_EQ(table.spec.replica_count, 0);
+    EXPECT_EQ(table.state.phase, TablePhase::READY);
+    EXPECT_TRUE(list_replicas_or_die(store).empty());
+
+    ReplicaGroupOr group;
+    ASSERT_TRUE(
+        store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_FALSE(group.is_empty());
+    EXPECT_EQ(group->mode, ReplicaGroupMode::BOOTSTRAP);
+    EXPECT_EQ(group->target_replica_count, 0);
+    EXPECT_TRUE(group->desired_members.empty());
+    EXPECT_EQ(services.route.get_route(make_get_route_param(), nullptr).code(),
+              StatusCode::ROUTE_NOT_FOUND);
 }
 
 // 检测 Replica 出现 ERROR 时，Table 不会被标记为 FAILED，而是继续等待

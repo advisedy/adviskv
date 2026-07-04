@@ -111,6 +111,24 @@ TEST(TableServiceTest, PlaceTableConvertsParamToDesiredTableState) {
     EXPECT_EQ(stored->state.phase, TablePhase::CREATING);
 }
 
+// 检测 place_table 支持 scale-to-zero 建表。
+TEST(TableServiceTest, PlaceTableAcceptsZeroReplicaCount) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    TableService service(&store);
+    PlaceTableParam param = make_place_table_param();
+    param.replica_count = 0;
+
+    Status status = service.place_table(param);
+
+    ASSERT_TRUE(status.ok()) << status.msg();
+    TableOr stored;
+    ASSERT_TRUE(store_test::get_table(store, param.table_id, stored).ok());
+    ASSERT_FALSE(stored.is_empty());
+    EXPECT_EQ(stored->spec.replica_count, 0);
+    EXPECT_EQ(stored->state.desired, TableDesired::PRESENT);
+    EXPECT_EQ(stored->state.phase, TablePhase::CREATING);
+}
+
 // 检测相同 operation_id 的 place_table 重试会被当成幂等成功。
 TEST(TableServiceTest, PlaceTableTreatsSameOperationIdRetryAsIdempotent) {
     SdmStore store{SdmMetaStoreType::MEMORY};
@@ -217,6 +235,23 @@ TEST(TableServiceTest, AlterReadyTableUpdatesReplicaCountAndMarksResizing) {
     EXPECT_EQ(stored->state.desired, TableDesired::PRESENT);
     EXPECT_EQ(stored->state.phase, TablePhase::RESIZING);
     EXPECT_TRUE(stored->state.last_error_msg.empty());
+}
+
+// 检测 READY 表可以 alter replica_count 到 0。
+TEST(TableServiceTest, AlterReadyTableAllowsZeroReplicaCount) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    put_ready_table(store);
+    TableService service(&store);
+
+    Status status =
+        service.alter_table_replica_count(make_alter_replica_count_param(0));
+
+    ASSERT_TRUE(status.ok()) << status.msg();
+    TableOr stored;
+    ASSERT_TRUE(store_test::get_table(store, 1001, stored).ok());
+    ASSERT_FALSE(stored.is_empty());
+    EXPECT_EQ(stored->spec.replica_count, 0);
+    EXPECT_EQ(stored->state.phase, TablePhase::RESIZING);
 }
 
 // 检测相同 operation_id 的 alter replica_count 重试会被当成幂等成功。

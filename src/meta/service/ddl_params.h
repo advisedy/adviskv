@@ -87,8 +87,8 @@ struct AlterTableReplicaCountParam {
                                     "db_name should not empty")
         RETURN_IF_INVALID_CONDITION(!table_name.empty(),
                                     "table_name should not empty")
-        RETURN_IF_INVALID_CONDITION(replica_count > 0,
-                                    "replica_count should > 0")
+        RETURN_IF_INVALID_CONDITION(replica_count >= 0,
+                                    "replica_count should >= 0")
         return Status::OK();
     }
 };

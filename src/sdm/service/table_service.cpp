@@ -372,6 +372,10 @@ Status TableService::ensure_all_shards_ok(SdmStoreTxn& txn, Table& table, bool& 
             }
         }
 
+        if (table.spec.replica_count == 0) {
+            continue;
+        }
+
         // 确保这个 shard 的 route 没有问题
         ShardRouteOr route;
         RETURN_IF_INVALID_STATUS(txn.get_shard_route(shard_id, route))
