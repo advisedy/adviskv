@@ -18,7 +18,7 @@
 #include "storage/model/param.h"
 #include "storage/model/replica_status.h"
 #include "storage/persist/persist_engine.h"
-#include "storage/raft/raft_node.h"
+#include "storage/raft/core/raft_core.h"
 #include "storage/raft/state_machine/state_machine.h"
 
 namespace adviskv::storage {
@@ -26,20 +26,22 @@ namespace adviskv::storage {
 class ReplicaManager;
 class ReplicaApplier;
 class ReplicaApplyTask;
-class ReplicaRaftLoop;
+class ReplicaLoop;
+class ReplicaMessageDispatcher;
 class ReplicaReadIndexChecker;
 class ReplicaSnapshotCoordinator;
 
 struct ReplicaContext {
     ReplicaID replica_id;
 
-    RaftNode& raft_node;
+    RaftCore& raft_core;
     PersistEngine& persist;
     StateMachine& state_machine;
+    ReplicaMessageDispatcher& message_dispatcher;
 
     std::mutex& state_machine_mutex;
     std::mutex& persist_snapshot_mutex;
-    std::mutex& raft_step_mutex;
+    std::mutex& raft_core_mutex;
 
     std::function<Status(Status)> fault_if_fail;
     std::function<void()> enter_faulted;
@@ -54,24 +56,29 @@ class Replica {
     ShardID get_shard_id() const { return shard_id_; }
     ReplicaID get_replica_id() const { return replica_id_; }
     ReplicaRole get_role() const {
-        return raft_node_ ? raft_node_->role() : ReplicaRole::FOLLOWER;
+        std::lock_guard lock(raft_core_mutex_);
+        return raft_core_ ? raft_core_->role() : ReplicaRole::FOLLOWER;
     }
     RaftMemberType get_member_type() const {
-        return raft_node_ ? raft_node_->member_type(replica_id_)
+        std::lock_guard lock(raft_core_mutex_);
+        return raft_core_ ? raft_core_->member_type(replica_id_)
                           : RaftMemberType::NON_MEMBER;
     }
     Term current_term() const {
-        return raft_node_ ? raft_node_->current_term() : 0;
+        std::lock_guard lock(raft_core_mutex_);
+        return raft_core_ ? raft_core_->current_term() : 0;
     }
     LogIndex snapshot_index() const {
-        return raft_node_ ? raft_node_->snapshot_index() : 0;
+        std::lock_guard lock(raft_core_mutex_);
+        return raft_core_ ? raft_core_->snapshot_index() : 0;
     }
 
     // 这个是返回给外部的ReplicaStatus的， 内部使用LocalState
     ReplicaStatus get_status() const;
 
     bool is_recovering() const {
-        return raft_node_ && raft_node_->is_recovering();
+        std::lock_guard lock(raft_core_mutex_);
+        return raft_core_ && raft_core_->is_recovering();
     }
 
     Status put(const PutParam& param);
@@ -97,7 +104,6 @@ class Replica {
     void apply_committed_entries_from_task();
 
     friend class RaftTickTask;
-    // tick 回调（Timer 定时调用）
     void on_tick();
 
     void enter_local_state_faulted() {
@@ -121,7 +127,7 @@ class Replica {
 
     Status fault_if_fail(Status status) {
         if (status.fail()) {
-            LOG_WARN("replica enter fualted: Status:{}", status.to_string());
+            LOG_WARN("[Replica] fault_if_fail, replica enter faulted: Status:{}", status.to_string());
             enter_local_state_faulted();
         }
         return status;
@@ -132,12 +138,11 @@ class Replica {
 
     std::unique_ptr<StateMachine> state_machine_;
 
-    // raft
-    // replica算是给raft_node包了一层，会帮忙处理RPC的事情和状态机落实的事情
-    // 让raft_node专心走协议的事情
-    std::unique_ptr<RaftNode> raft_node_;
+    std::unique_ptr<RaftCore> raft_core_;
 
     std::unique_ptr<PersistEngine> persist_;
+
+    std::unique_ptr<ReplicaMessageDispatcher> message_dispatcher_;
 
     enum class ReplicaLocalState {
         STARTING = 0,  // 代表目前还无法和外界正常服务
@@ -150,10 +155,10 @@ class Replica {
     OperGate oper_gate_;
     mutable std::mutex state_machine_mutex_;
     mutable std::mutex persist_snapshot_mutex_;
-    mutable std::mutex raft_step_mutex_;
+    mutable std::mutex raft_core_mutex_;
 
     std::unique_ptr<ReplicaContext> context_;
-    std::unique_ptr<ReplicaRaftLoop> raft_loop_;
+    std::unique_ptr<ReplicaLoop> loop_;
     std::unique_ptr<ReplicaApplier> applier_;
     std::unique_ptr<ReplicaApplyTask> apply_task_;
     std::unique_ptr<ReplicaSnapshotCoordinator> snapshot_coordinator_;

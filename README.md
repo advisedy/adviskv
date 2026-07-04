@@ -1,7 +1,7 @@
 # AdvisKV
 
 <p align="center">
-  <img src="docs/asserts/adviskv.jpeg" alt="AdvisKV banner" width="960" />
+  <img src="docs/assets/adviskv.jpeg" alt="AdvisKV banner" width="960" />
 </p>
 
 <p align="center">

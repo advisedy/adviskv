@@ -48,7 +48,7 @@ Status ReplicaMessageDispatcher::async_send_one(const RaftMessage& msg) {
         return Status::ERROR("raft rpc workers are not started");
     }
 
-    rpc_pool_.submit([this, msg] { send_task(msg); });
+    rpc_pool_.submit([this, msg]() { send_task(msg); });
     return Status::OK();
 }
 

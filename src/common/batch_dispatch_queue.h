@@ -23,10 +23,10 @@ public:
     BatchDispatchQueue() = default;
     ~BatchDispatchQueue(){IGNORE_RESULT(stop())}
 
-    DISALLOW_COPY_AND_ASSIGN(BatchDispatchQueue)
+    DISALLOW_COPY_AND_ASSIGN(BatchDispatchQueue);
 
-            void start(std::chrono::steady_clock::duration batch_delay, std::size_t max_batch_size,
-                       DispatchCallback on_dispatch) {
+    void start(std::chrono::steady_clock::duration batch_delay, std::size_t max_batch_size,
+               DispatchCallback on_dispatch) {
         std::lock_guard lock(mutex_);
         state_ = State::NORMAL;
         batch_delay_ = batch_delay;
@@ -106,13 +106,13 @@ private:
     void timer_loop() {
         while (true) {
             std::unique_lock lock(mutex_);
-            cv_.wait(lock, [this] { return state_ == State::STOPPED || state_ == State::WAITING_TIMER; });
+            cv_.wait(lock, [this]() { return state_ == State::STOPPED || state_ == State::WAITING_TIMER; });
             if (state_ == State::STOPPED) {
                 break;
             }
 
             cv_.wait_until(lock, timer_deadline_,
-                           [this] { return state_ == State::STOPPED || state_ == State::NORMAL; });
+                           [this]() { return state_ == State::STOPPED || state_ == State::NORMAL; });
             if (state_ == State::STOPPED) {
                 break;
             }

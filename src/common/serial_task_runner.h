@@ -10,8 +10,9 @@
 
 namespace adviskv {
 
+// 负责串行化，放进队列里面然后直接执行Task
 class SerialTaskRunner {
-   public:
+public:
     using Task = std::function<void()>;
 
     SerialTaskRunner() = default;
@@ -23,9 +24,8 @@ class SerialTaskRunner {
     void stop();
     bool submit(Task&& task);
     bool is_running() const;
-    bool runs_in_current_thread() const;
 
-   private:
+private:
     void loop();
 
     mutable std::mutex mutex_;

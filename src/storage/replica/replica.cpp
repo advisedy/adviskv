@@ -14,11 +14,12 @@
 #include "storage/model/param.h"
 #include "storage/model/replica_status.h"
 #include "storage/persist/persist_engine.h"
-#include "storage/raft/raft_node.h"
+#include "storage/raft/core/raft_core.h"
 #include "storage/raft/state_machine/kv_state_machine.h"
 #include "storage/raft/state_machine/state_machine.h"
 #include "storage/replica/replica_applier.h"
-#include "storage/replica/replica_raft_loop.h"
+#include "storage/replica/replica_loop.h"
+#include "storage/replica/replica_message_dispatcher.h"
 #include "storage/replica/replica_read_index_checker.h"
 #include "storage/replica/replica_snapshot_coordinator.h"
 
@@ -61,25 +62,33 @@ Status Replica::init(const ReplicaInitParam& param) {
 
     state_machine_ = std::make_unique<KvStateMachine>(param.engine_type);
 
-    raft_node_ = std::make_unique<RaftNode>(param.replica_id, param.members);
+    raft_core_ = std::make_unique<RaftCore>(param.replica_id, param.members);
+    message_dispatcher_ = std::make_unique<ReplicaMessageDispatcher>(param.runtime.raft_rpc_timeout_ms, *persist_,
+                                                                     persist_snapshot_mutex_, [this](Event event) {
+                                                                         if (loop_) {
+                                                                             loop_->async_submit(std::move(event));
+                                                                         }
+                                                                     });
     context_ = std::make_unique<ReplicaContext>(ReplicaContext{
             replica_id_,
-            *raft_node_,
+            *raft_core_,
             *persist_,
             *state_machine_,
+            *message_dispatcher_,
             state_machine_mutex_,
             persist_snapshot_mutex_,
-            raft_step_mutex_,
+            raft_core_mutex_,
             [this](Status status) { return fault_if_fail(status); },
             [this]() { enter_local_state_faulted(); },
     });
-    raft_loop_ = std::make_unique<ReplicaRaftLoop>(*context_, param.runtime.raft_rpc_timeout_ms);
-    raft_loop_->start();
-    applier_ = std::make_unique<ReplicaApplier>(*raft_node_, *state_machine_);
+    loop_ = std::make_unique<ReplicaLoop>(*context_);
+    applier_ = std::make_unique<ReplicaApplier>(*context_);
     apply_task_ = std::make_unique<ReplicaApplyTask>(this);
-    read_index_checker_ = std::make_unique<ReplicaReadIndexChecker>(*context_, *raft_loop_);
-    snapshot_coordinator_ = std::make_unique<ReplicaSnapshotCoordinator>(*context_, *raft_loop_);
+    read_index_checker_ = std::make_unique<ReplicaReadIndexChecker>(*context_, *loop_);
+    snapshot_coordinator_ = std::make_unique<ReplicaSnapshotCoordinator>(*context_, *loop_);
 
+    loop_->start();
+    message_dispatcher_->start();
     enter_local_state_running();
     apply_task_->start(kReplicaApplyTaskInterval);
     return Status::OK();
@@ -88,14 +97,17 @@ Status Replica::init(const ReplicaInitParam& param) {
 Status Replica::put(const PutParam& param) {
     RETURN_IF_INVALID_PARAM(param)
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
-    RETURN_IF_INVALID_STATUS(ensure_local_state_running())
-    if (raft_node_->is_recovering()) {
-        return Status::IS_RECOVERING("replica is recovering");
+    RETURN_IF_INVALID_STATUS(ensure_local_state_running());
+    {
+        std::lock_guard lock(raft_core_mutex_);
+        if (raft_core_->is_recovering()) {
+            return Status::IS_RECOVERING("replica is recovering");
+        }
     }
 
-    Status status = raft_loop_->submit_propose_and_wait(ProposeParam::write(WriteOpType::PUT, param.key, param.value),
-                                                        kReplicaProposalCommitTimeout);
-    RETURN_IF_INVALID_STATUS(status)
+    ProposeCall call{ProposeParam::write(WriteOpType::PUT, param.key, param.value), kReplicaProposalCommitTimeout};
+    loop_->sync_submit(&call);
+    RETURN_IF_INVALID_STATUS(call.status)
 
     // // 这里有一个容易误解的点：flush_messages()
     // //  虽然是同步发送 RPC， apply_committed_entries() 也会立刻把已经
@@ -178,8 +190,11 @@ Status Replica::get(const GetParam& param, Value& value) {
         return Status{StatusCode::ERROR, "engine is nullptr"};
     }
 
-    if (raft_node_->is_recovering()) {
-        return Status::IS_RECOVERING("replica is recovering");
+    {
+        std::lock_guard lock(raft_core_mutex_);
+        if (raft_core_->is_recovering()) {
+            return Status::IS_RECOVERING("replica is recovering");
+        }
     }
 
     LogIndex read_index;
@@ -205,15 +220,17 @@ Status Replica::get(const GetParam& param, Value& value) {
 Status Replica::del(const DelParam& param) {
     RETURN_IF_INVALID_PARAM(param)
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
-    RETURN_IF_INVALID_STATUS(ensure_local_state_running())
-
-    if (raft_node_->is_recovering()) {
-        return Status::IS_RECOVERING("replica is recovering");
+    RETURN_IF_INVALID_STATUS(ensure_local_state_running());
+    {
+        std::lock_guard lock(raft_core_mutex_);
+        if (raft_core_->is_recovering()) {
+            return Status::IS_RECOVERING("replica is recovering");
+        }
     }
 
-    Status status = raft_loop_->submit_propose_and_wait(ProposeParam::write(WriteOpType::DEL, param.key, ""),
-                                                        kReplicaProposalCommitTimeout);
-    RETURN_IF_INVALID_STATUS(status)
+    ProposeCall call{ProposeParam::write(WriteOpType::DEL, param.key, ""), kReplicaProposalCommitTimeout};
+    loop_->sync_submit(&call);
+    RETURN_IF_INVALID_STATUS(call.status)
 
     notify_apply_task();
     // // delete 与 put 的完成语义保持一致：只有当当前请求对应的日志在本次返回前
@@ -248,10 +265,11 @@ Status Replica::handle_request_vote(const RequestVoteParam& param, RequestVoteRe
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
     RETURN_IF_INVALID_STATUS(ensure_local_state_running())
 
-    return raft_loop_->sync_submit_step([&](RaftEffects& effects) {
-        raft_node_->handle_request_vote(param, result, effects);
-        return Status::OK();
-    });
+    RequestVoteCall call{param};
+    loop_->sync_submit(&call);
+    RETURN_IF_INVALID_STATUS(call.status)
+    result = call.result;
+    return Status::OK();
 }
 
 Status Replica::handle_append_entries(const AppendEntriesParam& param, AppendEntriesResult& result) {
@@ -261,10 +279,10 @@ Status Replica::handle_append_entries(const AppendEntriesParam& param, AppendEnt
     // 这里是作为follower那边的handle，会更新commit_idx
     {
         ADVISKV_METRICS_TIMER("storage_replica_handle_append_entries_raft_step");
-        RETURN_IF_INVALID_STATUS(raft_loop_->sync_submit_step([&](RaftEffects& effects) {
-            raft_node_->handle_append_entries(param, result, effects);
-            return Status::OK();
-        }))
+        AppendEntriesCall call{param};
+        loop_->sync_submit(&call);
+        RETURN_IF_INVALID_STATUS(call.status)
+        result = call.result;
     }
 
     notify_apply_task();
@@ -274,24 +292,32 @@ Status Replica::handle_append_entries(const AppendEntriesParam& param, AppendEnt
 
 Status Replica::add_member(const PeerMember& member) {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
-    RETURN_IF_INVALID_STATUS(ensure_local_state_running())
-    if (raft_node_->is_recovering()) {
-        return Status::IS_RECOVERING("replica is recovering");
+    RETURN_IF_INVALID_STATUS(ensure_local_state_running());
+    {
+        std::lock_guard lock(raft_core_mutex_);
+        if (raft_core_->is_recovering()) {
+            return Status::IS_RECOVERING("replica is recovering");
+        }
     }
-    RETURN_IF_INVALID_STATUS(raft_loop_->submit_config_change_and_wait(
-            [&](RaftEffects& effects) { return raft_node_->ensure_add_learner(member, effects); }));
+    AddMemberCall call{member};
+    loop_->sync_submit(&call);
+    RETURN_IF_INVALID_STATUS(call.status)
     notify_apply_task();
     return Status::OK();
 }
 
 Status Replica::remove_member(const ReplicaID& replica_id) {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
-    RETURN_IF_INVALID_STATUS(ensure_local_state_running())
-    if (raft_node_->is_recovering()) {
-        return Status::IS_RECOVERING("replica is recovering");
+    RETURN_IF_INVALID_STATUS(ensure_local_state_running());
+    {
+        std::lock_guard lock(raft_core_mutex_);
+        if (raft_core_->is_recovering()) {
+            return Status::IS_RECOVERING("replica is recovering");
+        }
     }
-    RETURN_IF_INVALID_STATUS(raft_loop_->submit_config_change_and_wait(
-            [&](RaftEffects& effects) { return raft_node_->ensure_remove_member(replica_id, effects); }))
+    RemoveMemberCall call{replica_id};
+    loop_->sync_submit(&call);
+    RETURN_IF_INVALID_STATUS(call.status)
     notify_apply_task();
     return Status::OK();
 }
@@ -311,14 +337,17 @@ void Replica::apply_committed_entries_from_task() {
         ADVISKV_METRICS_COUNTER("storage_replica_async_apply_committed_skipped");
         return;
     }
-    if (ensure_local_state_running().fail() || !raft_node_ || !applier_) {
+    if (ensure_local_state_running().fail() || !applier_) {
         ADVISKV_METRICS_COUNTER("storage_replica_async_apply_committed_skipped");
         return;
     }
 
-    if (raft_node_->commit_index() <= raft_node_->last_applied()) {
-        ADVISKV_METRICS_COUNTER("storage_replica_async_apply_committed_none");
-        return;
+    {
+        std::lock_guard lock(raft_core_mutex_);
+        if (raft_core_->commit_index() <= raft_core_->last_applied()) {
+            ADVISKV_METRICS_COUNTER("storage_replica_async_apply_committed_none");
+            return;
+        }
     }
 
     std::lock_guard lock(state_machine_mutex_);
@@ -337,7 +366,7 @@ void Replica::on_tick() {
     if (ensure_local_state_running().fail())
         return;
 
-    raft_loop_->async_submit_tick();
+    loop_->async_submit(TickEvent{});
     notify_apply_task();
 
     // IGNORE_RESULT(raft_effect_runner_->run_raft_step([&](RaftEffects&
@@ -370,23 +399,30 @@ Status Replica::recover() {
     }
 
     if (result.snapshot) {
+        std::lock_guard lock(state_machine_mutex_);
         RETURN_IF_INVALID_STATUS(
                 fault_if_fail(state_machine_->restore(result.snapshot, [this](const KvVisitor& visitor) -> Status {
                     return persist_->for_each_snapshot_kv(visitor);
                 })))
-        raft_node_->install_local_snapshot(result.snapshot->apply_index, result.snapshot->apply_term);
-        if (!result.snapshot->members.empty()) {
-            raft_node_->update_membership(result.snapshot->members);
+    }
+
+    {
+        std::lock_guard lock(raft_core_mutex_);
+        if (result.snapshot) {
+            raft_core_->install_local_snapshot(InstallSnapshotContext{
+                    result.snapshot->apply_index,
+                    result.snapshot->apply_term,
+                    result.snapshot->members,
+            });
+        }
+        raft_core_->update_raft_meta(result.raft_meta);
+        raft_core_->update_log_entries(result.wal_entries);
+
+        if (result.need_recover) {
+            raft_core_->enter_recovering();
         }
     }
 
-    raft_node_->update_raft_meta(result.raft_meta);
-    raft_node_->update_log_entries(result.wal_entries);
-
-    if (result.need_recover) {
-        // status_.store(ReplicaStatus::RECOVERING);
-        raft_node_->enter_recovering();
-    }
     enter_local_state_running();
     return Status::OK();
 }
@@ -395,11 +431,12 @@ Status Replica::get_replica_state_for_test(ReplicaStateForTest& result) const {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
     RETURN_IF_INVALID_STATUS(ensure_local_state_running())
 
-    result.current_term = current_term();
-    result.commit_index = raft_node_->commit_index();
-    result.last_applied = raft_node_->last_applied();
-    result.snapshot_index = raft_node_->snapshot_index();
-    result.snapshot_term = raft_node_->snapshot_term();
+    std::lock_guard lock(raft_core_mutex_);
+    result.current_term = raft_core_->current_term();
+    result.commit_index = raft_core_->commit_index();
+    result.last_applied = raft_core_->last_applied();
+    result.snapshot_index = raft_core_->snapshot_index();
+    result.snapshot_term = raft_core_->snapshot_term();
     return Status::OK();
 }
 
@@ -409,8 +446,11 @@ void Replica::shutdown() {
         apply_task_->stop();
     }
     oper_gate_.close_and_wait();
-    if (raft_loop_) {
-        raft_loop_->stop();
+    if (message_dispatcher_) {
+        message_dispatcher_->stop();
+    }
+    if (loop_) {
+        loop_->stop();
     }
 }
 
@@ -425,11 +465,12 @@ ReplicaStatus Replica::get_status() const {
         default:
             break;
     }
-    if (!raft_node_)
+    std::lock_guard lock(raft_core_mutex_);
+    if (!raft_core_)
         return ReplicaStatus::INITIALIZING;
-    if (raft_node_->is_recovering())
+    if (raft_core_->is_recovering())
         return ReplicaStatus::RECOVERING;
-    if (raft_node_->is_ready())
+    if (raft_core_->is_ready())
         return ReplicaStatus::READY;
 
     return ReplicaStatus::INITIALIZING;

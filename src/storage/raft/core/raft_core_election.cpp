@@ -11,10 +11,10 @@ void RaftCore::tick(RaftEffects& effects) {
 
     if (election_.is_leader()) {
         heartbeat_tick_trigger_.tick(
-            [&] { broadcast_append_entries(effects); });
+            [&]() { broadcast_append_entries(effects); });
         maybe_promote_ready_learner(effects);
     } else {
-        election_tick_trigger_.tick([&] { become_candidate(effects); });
+        election_tick_trigger_.tick([&]() { become_candidate(effects); });
     }
 }
 

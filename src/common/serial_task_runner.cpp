@@ -4,9 +4,9 @@
 
 namespace adviskv {
 
-thread_local SerialTaskRunner* current_runner_ = nullptr;
-
-SerialTaskRunner::~SerialTaskRunner() { stop(); }
+SerialTaskRunner::~SerialTaskRunner() {
+    stop();
+}
 
 void SerialTaskRunner::start() {
     std::lock_guard lock(mutex_);
@@ -53,17 +53,12 @@ bool SerialTaskRunner::is_running() const {
     return running_;
 }
 
-bool SerialTaskRunner::runs_in_current_thread() const {
-    return current_runner_ == this;
-}
-
 void SerialTaskRunner::loop() {
-    current_runner_ = this;
     while (true) {
         Task task;
         {
             std::unique_lock lock(mutex_);
-            cv_.wait(lock, [this] { return !running_ || !queue_.empty(); });
+            cv_.wait(lock, [this]() { return !running_ || !queue_.empty(); });
             if (!running_ && queue_.empty()) {
                 break;
             }
@@ -72,7 +67,6 @@ void SerialTaskRunner::loop() {
         }
         task();
     }
-    current_runner_ = nullptr;
 }
 
 }  // namespace adviskv
