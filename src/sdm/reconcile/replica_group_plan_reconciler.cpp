@@ -71,11 +71,17 @@ Status ReplicaGroupPlanReconciler::ensure_group_for_shard(const Table& table, Sh
             group.mode = ReplicaGroupMode::BOOTSTRAP;
             group.target_replica_count = current->spec.replica_count;
             group.seq_allocator = IDAllocator<ReplicaSeq>(0);
+            LOG_INFO("[ReplicaGroupPlanReconciler] ensure_group_for_shard, create replica group, shard_id:{}, target_replica_count:{}",
+                     shard_id.to_string(), group.target_replica_count);
+
             RETURN_IF_INVALID_STATUS(txn.put_replica_group(group))
             return Status::OK();
         }
 
         if (group_or->target_replica_count != current->spec.replica_count) {
+            LOG_INFO("[ReplicaGroupPlanReconciler] ensure_group_for_shard, update target replica count, shard_id:{}, old_target:{}, new_target:{}",
+                     shard_id.to_string(), group_or->target_replica_count, current->spec.replica_count);
+
             ReplicaGroup group = group_or.value();
             group.target_replica_count = current->spec.replica_count;
             RETURN_IF_INVALID_STATUS(txn.put_replica_group(group))

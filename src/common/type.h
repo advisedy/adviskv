@@ -143,5 +143,10 @@ struct PeerMember {
     }
 
     DEFINE_OPERATOR_NOT_EQUAL(PeerMember)
+
+    std::string to_string() const {
+        return fmt::format("node_id:{}, replica_id:{}, endpoint:{}", node_id, replica_id.to_string(),
+                           endpoint.to_string());
+    }
 };
 }  // namespace adviskv

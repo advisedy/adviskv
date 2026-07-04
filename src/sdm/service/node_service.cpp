@@ -69,6 +69,8 @@ Status project_leader_membership(SdmStoreTxn& txn, const HeartBeatReplicaInfo& i
     types.reserve(info.full_membership.size());
     for (const RaftMember& member : info.full_membership) {
         const ReplicaID& rid = member.peer.replica_id;
+        LOG_DEBUG("[NodeService] project_leader_membership, leader:replica_id:{}, one member:[{}]",
+                  info.replica_id.to_string(), member.to_string())
         if (rid.get_shard_id() != group.shard_id) {
             LOG_WARN(
                     "[NodeService] project_leader_membership, leader membership report contains replica from "

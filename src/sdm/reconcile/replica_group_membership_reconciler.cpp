@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <sstream>
 #include <unordered_set>
 
 #include "common/define.h"
@@ -10,6 +11,7 @@
 #include "common/log.h"
 #include "common/model/raft_member_type.h"
 #include "common/status.h"
+#include "common/type.h"
 #include "sdm/model/sdm_store.h"
 #include "sdm/model/sdm_store_txn.h"
 #include "sdm/model/service_param.h"
@@ -67,6 +69,15 @@ Status ReplicaGroupMembershipReconciler::reconcile_all() {
 }
 
 Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& group) {
+    {
+        std::stringstream ids;  // replica_ids
+        for (const ReplicaID& rid : group.desired_members) {
+            ids << rid.to_string() << ", ";
+        }
+        LOG_DEBUG(
+                "[ReplicaGroupMembershipReconciler] reconcile_group, shard_id:{}, mode:{}, target_replica_count:{}, desired_members:[{}]",
+                group.shard_id.to_string(), to<int32>(group.mode), group.target_replica_count, ids.str());
+    }
     //
     // 从 ctx_.store->read_with 里面获取到这些数据
     ReplicaGroup current_group;
@@ -97,10 +108,9 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
             const Replica& replica = replica_or.value();
             if (is_healthy(replica)) {
                 ++healthy_count;
-            }
-            else if (replica.state.phase == ReplicaPhase::LOST || replica.state.phase == ReplicaPhase::ERROR) {
+            } else if (replica.state.phase == ReplicaPhase::LOST || replica.state.phase == ReplicaPhase::ERROR) {
                 bad_members.push_back(rid);
-            } 
+            }
         }
         RETURN_IF_INVALID_STATUS(select_remove_member_victim(txn, current_group, remove_victim))
         if (remove_victim.has_value()) {
@@ -118,6 +128,17 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
     if (!group_exists)
         return Status::OK();
 
+    {
+        std::stringstream ids;
+        for (const ReplicaID& replica_id : bad_members) {
+            ids << replica_id.to_string() << ",";
+        }
+
+        LOG_DEBUG(
+                "[ReplicaGroupMembershipReconciler] reconcile_group, replica_group:shard_id:{}, healthy_count:{}, bad_members:[{}], remove_victim:{}, remove_victim_is_non_member",
+                group.shard_id.to_string(), healthy_count, ids.str(),
+                (remove_victim.is_empty() ? "-1" : remove_victim->to_string()), remove_victim_is_non_member);
+    }
     int32 target = current_group.target_replica_count;
     int32 member_count = static_cast<int32>(current_group.desired_members.size());
 
@@ -131,6 +152,9 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
 
     // 先把正常，并且不是要删除的replca进行补成员，
     if (healthy_count < target) {
+        LOG_DEBUG(
+                "[ReplicaGroupMembershipReconciler] reconcile_group, add members, shard_id:{}, healthy_count:{}, target:{}, count_to_add:{}",
+                current_group.shard_id.to_string(), healthy_count, target, target - healthy_count);
         return add_members(current_group, target - healthy_count);
     }
 
@@ -139,8 +163,16 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
         // victim，所以如果他是NON_MEMBER的话，就可以直接remove，否则就等待，先暂时返回OK
         if (remove_victim.has_value()) {
             if (remove_victim_is_non_member) {
+                LOG_DEBUG(
+                        "[ReplicaGroupMembershipReconciler] reconcile_group, remove victim after raft reconfig, shard_id:{}, victim:{}",
+                        current_group.shard_id.to_string(), remove_victim->to_string());
+
                 return remove_specific_members(current_group, {remove_victim.value()});
             }
+            LOG_DEBUG(
+                    "[ReplicaGroupMembershipReconciler] reconcile_group, wait victim become non-member, shard_id:{}, victim:{}",
+                    current_group.shard_id.to_string(), remove_victim->to_string());
+
             return Status::OK();
         }
         return cleanup_group(current_group);
@@ -149,11 +181,22 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
     // current_group.mode == ReplicaGroupMode::BOOTSTRAP
     // 移除坏节点，然后缩容
     if (!bad_members.empty()) {
+        LOG_DEBUG(
+                "[ReplicaGroupMembershipReconciler] reconcile_group, remove bad members, shard_id:{}, bad_member_count:{}",
+                current_group.shard_id.to_string(), bad_members.size());
+
         return remove_specific_members(current_group, bad_members);
     }
     if (member_count > target) {
+        LOG_DEBUG(
+                "[ReplicaGroupMembershipReconciler] reconcile_group, shrink members, shard_id:{}, member_count:{}, target:{}, count_to_remove:{}",
+                current_group.shard_id.to_string(), member_count, target, member_count - target);
+
         return remove_members(current_group, member_count - target);
     }
+    LOG_DEBUG("[ReplicaGroupMembershipReconciler] reconcile_group, cleanup group, shard_id:{}",
+              current_group.shard_id.to_string());
+
     return cleanup_group(current_group);
 }
 
@@ -177,6 +220,9 @@ Status ReplicaGroupMembershipReconciler::cleanup_group(const ReplicaGroup& group
 
         if (current.mode == ReplicaGroupMode::RAFT_RECONFIG) {
             if (current.target_replica_count == 0) {
+                LOG_DEBUG("[ReplicaGroupMembershipReconciler] cleanup_group, reset mode to bootstrap, shard_id:{}",
+                          current.shard_id.to_string());
+
                 current.mode = ReplicaGroupMode::BOOTSTRAP;
                 RETURN_IF_INVALID_STATUS(txn.put_replica_group(current))
                 return Status::OK();
@@ -270,6 +316,9 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
             replica.state.observed_endpoint = nodes[i].state.endpoint;
             replica.state.update_ts = func::get_current_ts_ms();
             replica.state.term = 0;
+            LOG_INFO(
+                    "[ReplicaGroupMembershipReconciler] add_members, create replica, shard_id:{}, replica_id:{}, node_id:{}, endpoint:{}",
+                    current.shard_id.to_string(), rid.to_string(), nodes[i].id, nodes[i].state.endpoint.to_string());
             new_replicas.emplace_back(std::move(replica));
             new_rids.push_back(rid);
         }
@@ -303,6 +352,8 @@ Status ReplicaGroupMembershipReconciler::remove_members(const ReplicaGroup& grou
             victims.push_back(current.desired_members.back());
             current.desired_members.pop_back();
         }
+        LOG_DEBUG("[ReplicaGroupMembershipReconciler] remove_members, selected victims, shard_id:{}, victim_count:{}",
+                  current.shard_id.to_string(), victims.size());
 
         for (const ReplicaID& rid : victims) {
             ReplicaOr replica_or;
@@ -319,6 +370,10 @@ Status ReplicaGroupMembershipReconciler::remove_members(const ReplicaGroup& grou
                 replica.state.phase = ReplicaPhase::DELETING;
                 changed = true;
             }
+            LOG_DEBUG(
+                    "[ReplicaGroupMembershipReconciler] remove_members, mark replica absent, replica_id:{}, changed:{}",
+                    rid.to_string(), changed);
+
             if (changed) {
                 replica.state.update_ts = func::get_current_ts_ms();
                 RETURN_IF_INVALID_STATUS(txn.put_replica(replica))
@@ -361,6 +416,9 @@ Status ReplicaGroupMembershipReconciler::remove_specific_members(const ReplicaGr
         if (!changed_group)
             return Status::OK();
         current.desired_members = std::move(kept_members);
+        LOG_DEBUG(
+                "[ReplicaGroupMembershipReconciler] remove_specific_members, remove victims from desired members, shard_id:{}, victim_count:{}, kept_member_count:{}",
+                current.shard_id.to_string(), victims.size(), current.desired_members.size());
 
         for (const ReplicaID& rid : victims) {
             ReplicaOr replica_or;
@@ -377,6 +435,10 @@ Status ReplicaGroupMembershipReconciler::remove_specific_members(const ReplicaGr
                 replica.state.phase = ReplicaPhase::DELETING;
                 changed_replica = true;
             }
+            LOG_DEBUG(
+                    "[ReplicaGroupMembershipReconciler] remove_specific_members, mark replica absent, replica_id:{}, changed:{}",
+                    rid.to_string(), changed_replica);
+
             if (changed_replica) {
                 replica.state.update_ts = func::get_current_ts_ms();
                 RETURN_IF_INVALID_STATUS(txn.put_replica(replica))

@@ -299,6 +299,7 @@ Status Replica::add_member(const PeerMember& member) {
             return Status::IS_RECOVERING("replica is recovering");
         }
     }
+    LOG_INFO("[Replica] add_member, replica_id:{}, add target:{}", replica_id_.to_string(), member.to_string());
     AddMemberCall call{member};
     loop_->sync_submit(&call);
     RETURN_IF_INVALID_STATUS(call.status)
@@ -315,6 +316,7 @@ Status Replica::remove_member(const ReplicaID& replica_id) {
             return Status::IS_RECOVERING("replica is recovering");
         }
     }
+    LOG_INFO("[Replica] remove_member, replica_id:{}, remove target:{}", replica_id_.to_string(), replica_id.to_string());
     RemoveMemberCall call{replica_id};
     loop_->sync_submit(&call);
     RETURN_IF_INVALID_STATUS(call.status)

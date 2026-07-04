@@ -350,6 +350,45 @@ TEST_F(RaftCoreTest, InstallSnapshotFromNonMemberDoesNotBumpTerm) {
     EXPECT_FALSE(effects.hard_state.has_value());
 }
 
+TEST_F(RaftCoreTest, JoiningReplicaAcceptsAppendEntriesFromKnownLeader) {
+    ReplicaID leader_id{101, 7, 1};
+    std::vector<PeerMember> initial_members{
+        PeerMember{"leader", leader_id, {}},
+    };
+    RaftCore core{replica_id_, initial_members};
+    core.update_raft_meta(RaftMeta{3, std::nullopt});
+
+    AppendEntriesResult result;
+    RaftEffects effects;
+    core.handle_append_entries(
+        AppendEntriesParam{leader_id, replica_id_, 3,
+                           {make_entry(3, 1, WriteOpType::PUT, "k", "v")},
+                           0, 0, 1},
+        result, effects);
+
+    EXPECT_TRUE(result.success);
+    EXPECT_EQ(core.current_term(), 3);
+    EXPECT_EQ(core.commit_index(), 1);
+    EXPECT_EQ(effects.entries_to_append.size(), 1U);
+}
+
+TEST_F(RaftCoreTest, JoiningReplicaAcceptsSnapshotFromKnownLeader) {
+    ReplicaID leader_id{101, 7, 1};
+    std::vector<PeerMember> initial_members{
+        PeerMember{"leader", leader_id, {}},
+    };
+    RaftCore core{replica_id_, initial_members};
+    core.update_raft_meta(RaftMeta{3, std::nullopt});
+
+    InstallSnapshotParam param = make_install_snapshot_param(3, 8, 3);
+    param.from_replica_id = leader_id;
+    RaftEffects effects;
+    Status status = core.prepare_install_snapshot(param, effects);
+
+    EXPECT_EQ(status, Status::OK()) << status.to_string();
+    EXPECT_EQ(core.current_term(), 3);
+}
+
 TEST_F(RaftCoreTest,
        BecomeLeaderNoopWalAppendFailureIsReturnedByEffectsDriver) {
     PersistEngine persist = make_engine();

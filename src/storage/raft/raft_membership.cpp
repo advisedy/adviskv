@@ -5,6 +5,7 @@
 #include <fmt/format.h>
 
 #include "common/func.h"
+#include "common/log.h"
 #include "common/model/raft_member_type.h"
 #include "common/status.h"
 #include "storage/model/param.h"
@@ -86,8 +87,12 @@ void RaftMembership::update_raft_members(const std::vector<RaftMember>& members)
 
 Status RaftMembership::add_learner(const PeerMember& member) {
     if (const RaftMember* existing = find_raft_member(member.replica_id); existing != nullptr) {
+        LOG_INFO("[RaftMembership] add_learner, member already exists, replica_id:{}, member_type:{}",
+                 member.replica_id.to_string(), to<int32>(existing->member_type));
         return Status::OK();
     }
+    LOG_INFO("[RaftMembership] add_learner, add learner replica_id:{}, node_id:{}, endpoint:{}",
+             member.replica_id.to_string(), member.node_id, member.endpoint.to_string());
     members_.push_back(RaftMember{member, RaftMemberType::LEARNER});
     return Status::OK();
 }
@@ -98,12 +103,14 @@ Status RaftMembership::promote_voter(const ReplicaID& replica_id) {
                              [&replica_id](const RaftMember& member) { return member.peer.replica_id == replica_id; });
         it != members_.end()) {
         it->member_type = RaftMemberType::VOTER;
+        LOG_INFO("[RaftMembership] promote_voter, promote member to voter, replica_id:{}", replica_id.to_string());
         return Status::OK();
     }
     return Status::INVALID_ARGUMENT(fmt::format("member {} not found", replica_id.to_string()));
 }
 
 Status RaftMembership::remove_member(const ReplicaID& replica_id) {
+    LOG_INFO("[RaftMembership] remove_member, remove member replica_id:{}", replica_id.to_string());
     func::ad_erase_if(members_,
                       [&replica_id](const RaftMember& member) { return member.peer.replica_id == replica_id; });
     return Status::OK();

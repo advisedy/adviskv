@@ -115,14 +115,6 @@ void RaftCore::handle_install_snapshot_send_failed(
 
 Status RaftCore::prepare_install_snapshot(const InstallSnapshotParam& param,
                                           RaftEffects& effects) {
-    if (!membership_.contains(self_id_)) {
-        LOG_WARN(
-            "[RaftCore Snapshot] replica:{} reject InstallSnapshot because self "
-            "is not member, from:{}, term:{}, current_term:{}",
-            self_id_.to_string(), param.from_replica_id.to_string(), param.term,
-            election_.current_term());
-        return Status::INVALID_ARGUMENT("self is not raft member");
-    }
     if (!membership_.contains(param.from_replica_id)) {
         LOG_WARN(
             "[RaftCore Snapshot] replica:{} reject InstallSnapshot from "

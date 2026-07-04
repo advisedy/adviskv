@@ -521,6 +521,147 @@ TEST(TableServiceReconcileTest, ReplicaGroupReplacesBadMemberAfterBackfill) {
     EXPECT_EQ(bad_replica->state.phase, ReplicaPhase::DELETING);
 }
 
+// 检测 3 副本中 1 个节点掉线后，可以补新副本，并通过 leader 上报的
+// full membership 把 LOST 老副本从 desired_members 移除。
+TEST(TableServiceReconcileTest, LostReplicaIsReplacedAfterLeaderReportsMembershipWithoutIt) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    put_default_nodes(store);
+    ASSERT_TRUE(store_test::put_node(store, make_node("node-c", 18082)).ok());
+    ASSERT_TRUE(store_test::put_node(store, make_node("node-d", 18083)).ok());
+
+    FakeNodeSelector selector(&store);
+    ServiceHarness services(&store, &selector);
+    PlaceTableParam param = make_place_table_param();
+    param.replica_count = 3;
+    ASSERT_TRUE(services.table.place_table(param).ok());
+    reconcile_table_to_ready(services, store);
+
+    std::vector<Replica> original_replicas = list_replicas_or_die(store);
+    ASSERT_EQ(original_replicas.size(), 3U);
+    ReplicaID leader_id = original_replicas[0].replica_id;
+    ReplicaID bad_id = original_replicas[1].replica_id;
+    ReplicaID healthy_follower_id = original_replicas[2].replica_id;
+    mark_node_offline(store, original_replicas[1].spec.assign_node_id);
+
+    ASSERT_TRUE(services.replica_group.reconcile_all().ok());
+
+    ReplicaOr bad_replica;
+    ASSERT_TRUE(store_test::get_replica(store, bad_id, bad_replica).ok());
+    ASSERT_FALSE(bad_replica.is_empty());
+    EXPECT_EQ(bad_replica->state.phase, ReplicaPhase::LOST);
+
+    ReplicaGroupOr group;
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_FALSE(group.is_empty());
+    ASSERT_EQ(group->target_replica_count, 3);
+    ASSERT_EQ(group->desired_members.size(), 4U);
+
+    ReplicaID replacement_id;
+    bool found_replacement = false;
+    for (const ReplicaID& rid : group->desired_members) {
+        if (rid != leader_id && rid != bad_id && rid != healthy_follower_id) {
+            replacement_id = rid;
+            found_replacement = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(found_replacement);
+
+    ReplicaOr replacement;
+    ASSERT_TRUE(store_test::get_replica(store, replacement_id, replacement).ok());
+    ASSERT_FALSE(replacement.is_empty());
+    replacement->state.phase = ReplicaPhase::READY;
+    replacement->state.observed_storage_status = StorageReplicaStatus::READY;
+    replacement->state.observed_raft_role = ReplicaRole::FOLLOWER;
+    replacement->state.observed_member_type = RaftMemberType::NON_MEMBER;
+    replacement->state.observed_endpoint = Endpoint{"127.0.0.1", 18083};
+    replacement->state.term = 2;
+    ASSERT_TRUE(store_test::put_replica(store, replacement.value()).ok());
+
+    HeartBeatParam hb;
+    hb.node_id = original_replicas[0].spec.assign_node_id;
+    hb.ip = "127.0.0.1";
+    hb.port = 18080;
+    hb.resoure_pool_name = "pool-a";
+    hb.dc = "dc-a";
+    hb.last_heartbeat_ts = 5000;
+    hb.replica_list.push_back(HeartBeatReplicaInfo{
+        leader_id,
+        ReplicaRole::LEADER,
+        StorageReplicaStatus::READY,
+        2,
+        RaftMemberType::VOTER,
+        {},
+    });
+
+    HeartBeatResult result;
+    ASSERT_TRUE(services.replica_group.build_heartbeat_result(hb, result).ok());
+    auto add_it = std::find_if(
+        result.expects.begin(), result.expects.end(),
+        [&](const ExpectedReplica& expect) {
+            return expect.type == ExpectedReplicaType::ADD_MEMBER &&
+                   expect.replica_id == replacement_id;
+        });
+    ASSERT_NE(add_it, result.expects.end());
+
+    replacement->state.observed_member_type = RaftMemberType::VOTER;
+    ASSERT_TRUE(store_test::put_replica(store, replacement.value()).ok());
+
+    result.expects.clear();
+    ASSERT_TRUE(services.replica_group.build_heartbeat_result(hb, result).ok());
+    auto remove_it = std::find_if(
+        result.expects.begin(), result.expects.end(),
+        [&](const ExpectedReplica& expect) {
+            return expect.type == ExpectedReplicaType::REMOVE_MEMBER &&
+                   expect.replica_id == bad_id;
+        });
+    ASSERT_NE(remove_it, result.expects.end());
+
+    ReplicaOr healthy_follower;
+    ASSERT_TRUE(store_test::get_replica(store, healthy_follower_id, healthy_follower).ok());
+    ASSERT_FALSE(healthy_follower.is_empty());
+    hb.replica_list[0].full_membership = {
+        RaftMember{PeerMember{original_replicas[0].spec.assign_node_id, leader_id,
+                              original_replicas[0].state.observed_endpoint},
+                   RaftMemberType::VOTER},
+        RaftMember{PeerMember{healthy_follower->spec.assign_node_id, healthy_follower_id,
+                              healthy_follower->state.observed_endpoint},
+                   RaftMemberType::VOTER},
+        RaftMember{PeerMember{replacement->spec.assign_node_id, replacement_id,
+                              replacement->state.observed_endpoint},
+                   RaftMemberType::VOTER},
+    };
+    ASSERT_TRUE(services.node.heartbeat(hb).ok());
+
+    ASSERT_TRUE(services.replica_group.reconcile_all().ok());
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_FALSE(group.is_empty());
+    EXPECT_EQ(group->desired_members.size(), 3U);
+    EXPECT_EQ(std::find(group->desired_members.begin(), group->desired_members.end(), bad_id),
+              group->desired_members.end());
+    EXPECT_NE(std::find(group->desired_members.begin(), group->desired_members.end(), replacement_id),
+              group->desired_members.end());
+
+    ASSERT_TRUE(store_test::get_replica(store, bad_id, bad_replica).ok());
+    ASSERT_FALSE(bad_replica.is_empty());
+    EXPECT_EQ(bad_replica->state.desired, ReplicaDesired::ABSENT);
+    EXPECT_EQ(bad_replica->state.phase, ReplicaPhase::DELETING);
+
+    ASSERT_TRUE(services.route.reconcile_all().ok());
+    ShardRouteOr route;
+    ASSERT_TRUE(store_test::get_shard_route(store, ShardID{1001, 0}, route).ok());
+    ASSERT_FALSE(route.is_empty());
+    EXPECT_EQ(route->replicas.size(), 3U);
+    auto route_has_replica = [&](const ReplicaID& rid) {
+        return std::find_if(route->replicas.begin(), route->replicas.end(),
+                            [&](const RouteEntry& entry) { return entry.replica_id == rid; }) != route->replicas.end();
+    };
+    EXPECT_TRUE(route_has_replica(leader_id));
+    EXPECT_TRUE(route_has_replica(healthy_follower_id));
+    EXPECT_TRUE(route_has_replica(replacement_id));
+    EXPECT_FALSE(route_has_replica(bad_id));
+}
+
 // 检测 READY 表发生内部副本替换时仍保持 READY，并且外部 alter 仍可进入 RESIZING。
 TEST(TableServiceReconcileTest, ReplacementKeepsTableReadyAndAllowsAlter) {
     SdmStore store{SdmMetaStoreType::MEMORY};

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <fmt/format.h>
+
 #include "common/define.h"
 #include "common/model/raft_member_type.h"
 #include "common/type.h"
@@ -15,6 +17,10 @@ struct RaftMember {
     }
 
     DEFINE_OPERATOR_NOT_EQUAL(RaftMember)
+
+    std::string to_string() const {
+        return fmt::format("peer:[{}], member_type:{}", peer.to_string(), to<int32>(member_type));
+    }
 };
 
 }  // namespace adviskv

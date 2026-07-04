@@ -156,15 +156,12 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param,
     result.success = false;
     result.term = election_.current_term();
     result.last_log_index = raft_log_.last_log_index();
+    LOG_DEBUG(
+        "[RaftCore Append] handle_append_entries, replica_id:{}, from:{}, term:{}, current_term:{}, prev_log_index:{}, prev_log_term:{}, entry_count:{}, leader_commit:{}",
+        self_id_.to_string(), param.from_replica_id.to_string(), param.term,
+        election_.current_term(), param.prev_log_index, param.prev_log_term,
+        param.entries.size(), param.leader_commit);
 
-    if (!membership_.contains(self_id_)) {
-        LOG_WARN(
-            "[RaftCore Append] replica:{} reject AppendEntries because self is "
-            "not member, from:{}, term:{}, current_term:{}",
-            self_id_.to_string(), param.from_replica_id.to_string(), param.term,
-            election_.current_term());
-        return;
-    }
     if (!membership_.contains(param.from_replica_id)) {
         LOG_WARN(
             "[RaftCore Append] replica:{} reject AppendEntries from non-member "
