@@ -20,6 +20,27 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # 关于开启覆盖率的
 option(ADVISKV_ENABLE_COVERAGE "Enable coverage instrumentation" OFF)
 
+#   -DADVISKV_SANITIZER=address  -> ASan + UBSan
+set(ADVISKV_SANITIZER "" CACHE STRING "Sanitizer mode: empty or address")
+set_property(CACHE ADVISKV_SANITIZER PROPERTY STRINGS "" address)
+
+if(ADVISKV_SANITIZER)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+        message(FATAL_ERROR "Sanitizers require GCC/Clang-compatible compilers")
+    endif()
+    if(ADVISKV_ENABLE_COVERAGE)
+        message(FATAL_ERROR "ADVISKV_SANITIZER and ADVISKV_ENABLE_COVERAGE cannot be enabled together")
+    endif()
+
+    add_compile_options(-g -fno-omit-frame-pointer)
+    if(ADVISKV_SANITIZER STREQUAL "address")
+        add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=undefined)
+        add_link_options(-fsanitize=address,undefined)
+    else()
+        message(FATAL_ERROR "Unknown ADVISKV_SANITIZER='${ADVISKV_SANITIZER}', expected empty or address")
+    endif()
+endif()
+
 if(ADVISKV_ENABLE_COVERAGE)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
         add_compile_options(-O0 -g --coverage)

@@ -1,9 +1,5 @@
 #include "storage/node_agent/node_agent.h"
 
-#include <grpcpp/server.h>
-#include <grpcpp/server_builder.h>
-#include <gtest/gtest.h>
-
 #include <condition_variable>
 #include <filesystem>
 #include <memory>
@@ -11,6 +7,10 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <grpcpp/server.h>
+#include <grpcpp/server_builder.h>
+#include <gtest/gtest.h>
 
 #include "common/proto/replica_id_proto.h"
 #include "sdm.grpc.pb.h"
@@ -24,9 +24,8 @@ namespace adviskv::storage {
 namespace {
 
 class FakeSdmService final : public sdm_rpc::SdmService::Service {
-   public:
-    grpc::Status RegisterNode(grpc::ServerContext*,
-                              const sdm_rpc::RegisterNodeRequest* request,
+public:
+    grpc::Status RegisterNode(grpc::ServerContext*, const sdm_rpc::RegisterNodeRequest* request,
                               sdm_rpc::RegisterNodeResponse* response) override {
         {
             std::lock_guard lock(mutex_);
@@ -36,8 +35,7 @@ class FakeSdmService final : public sdm_rpc::SdmService::Service {
             last_register_port_ = request->port();
             last_register_resource_pool_ = request->resource_pool();
             last_register_dc_ = request->dc();
-            response->mutable_base_rsp()->set_code(
-                to_rpc_code(next_register_status_.code()));
+            response->mutable_base_rsp()->set_code(to_rpc_code(next_register_status_.code()));
             response->mutable_base_rsp()->set_msg(next_register_status_.msg());
             next_register_status_ = Status::OK();
         }
@@ -45,30 +43,25 @@ class FakeSdmService final : public sdm_rpc::SdmService::Service {
         return grpc::Status::OK;
     }
 
-    grpc::Status Heartbeat(grpc::ServerContext*,
-                           const sdm_rpc::HeartbeatRequest* request,
+    grpc::Status Heartbeat(grpc::ServerContext*, const sdm_rpc::HeartbeatRequest* request,
                            sdm_rpc::HeartbeatResponse* response) override {
         {
             std::lock_guard lock(mutex_);
             ++heartbeat_count_;
             last_heartbeat_ = *request;
-            for (const sdm_rpc::ExpectedReplica& expected :
-                 next_expects_) {
+            for (const sdm_rpc::ExpectedReplica& expected : next_expects_) {
                 *response->add_expects() = expected;
             }
             next_expects_.clear();
-            response->mutable_base_rsp()->set_code(
-                to_rpc_code(next_heartbeat_status_.code()));
-            response->mutable_base_rsp()->set_msg(
-                next_heartbeat_status_.msg());
+            response->mutable_base_rsp()->set_code(to_rpc_code(next_heartbeat_status_.code()));
+            response->mutable_base_rsp()->set_msg(next_heartbeat_status_.msg());
             next_heartbeat_status_ = Status::OK();
         }
         cv_.notify_all();
         return grpc::Status::OK;
     }
 
-    void set_next_expects(
-        std::vector<sdm_rpc::ExpectedReplica> expects) {
+    void set_next_expects(std::vector<sdm_rpc::ExpectedReplica> expects) {
         std::lock_guard lock(mutex_);
         next_expects_ = std::move(expects);
     }
@@ -83,12 +76,10 @@ class FakeSdmService final : public sdm_rpc::SdmService::Service {
         next_register_status_ = std::move(status);
     }
 
-    bool wait_for_counts(int expected_registers, int expected_heartbeats,
-                         Milliseconds timeout) {
+    bool wait_for_counts(int expected_registers, int expected_heartbeats, Milliseconds timeout) {
         std::unique_lock lock(mutex_);
         return cv_.wait_for(lock, timeout, [&] {
-            return register_count_ >= expected_registers &&
-                   heartbeat_count_ >= expected_heartbeats;
+            return register_count_ >= expected_registers && heartbeat_count_ >= expected_heartbeats;
         });
     }
 
@@ -132,7 +123,7 @@ class FakeSdmService final : public sdm_rpc::SdmService::Service {
         return last_heartbeat_;
     }
 
-   private:
+private:
     mutable std::mutex mutex_;
     std::condition_variable cv_;
     int register_count_{0};
@@ -149,11 +140,10 @@ class FakeSdmService final : public sdm_rpc::SdmService::Service {
 };
 
 class FakeSdmServer {
-   public:
+public:
     bool start() {
         grpc::ServerBuilder builder;
-        builder.AddListeningPort("127.0.0.1:0",
-                                 grpc::InsecureServerCredentials(), &port_);
+        builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port_);
         builder.RegisterService(&service_);
         server_ = builder.BuildAndStart();
         return server_ != nullptr && port_ > 0;
@@ -166,20 +156,23 @@ class FakeSdmServer {
         }
     }
 
-    int port() const { return port_; }
-    FakeSdmService& service() { return service_; }
+    int port() const {
+        return port_;
+    }
+    FakeSdmService& service() {
+        return service_;
+    }
 
-   private:
+private:
     int port_{0};
     FakeSdmService service_;
     std::unique_ptr<grpc::Server> server_;
 };
 
 class NodeAgentTest : public ::testing::Test {
-   protected:
+protected:
     void SetUp() override {
-        base_dir_ =
-            adviskv::test::make_unique_test_dir("node_agent", sequence_++);
+        base_dir_ = adviskv::test::make_unique_test_dir("node_agent", sequence_++);
         ASSERT_TRUE(fs::create_directories(base_dir_)) << base_dir_.string();
         if (!fake_sdm_.start()) {
             GTEST_SKIP() << "local gRPC listener is unavailable in this "
@@ -212,24 +205,27 @@ class NodeAgentTest : public ::testing::Test {
     NodeAgentReplicaOps noop_replica_ops() const {
         NodeAgentReplicaOps ops;
         ops.list_replicas = [] { return std::vector<ReplicaPtr>{}; };
-        ops.create_replica = [](const ReplicaInitParam&) {
-            return Status::OK();
-        };
+        ops.create_replica = [](const ReplicaInitParam&) { return Status::OK(); };
         ops.delete_replica = [](const ReplicaID&) { return Status::OK(); };
+        ops.add_member = [](const ReplicaID&, const PeerMember&) { return Status::OK(); };
+        ops.remove_member = [](const ReplicaID&, const ReplicaID&) { return Status::OK(); };
         return ops;
     }
 
-    NodeAgentReplicaOps replica_manager_ops(
-        ReplicaManager* replica_manager) const {
+    NodeAgentReplicaOps replica_manager_ops(ReplicaManager* replica_manager) const {
         NodeAgentReplicaOps ops;
-        ops.list_replicas = [replica_manager] {
-            return replica_manager->get_replicas();
-        };
+        ops.list_replicas = [replica_manager] { return replica_manager->get_replicas(); };
         ops.create_replica = [replica_manager](const ReplicaInitParam& param) {
             return replica_manager->add_replica(param);
         };
         ops.delete_replica = [replica_manager](const ReplicaID& replica_id) {
             return replica_manager->delete_replica(replica_id);
+        };
+        ops.add_member = [replica_manager](const ReplicaID& leader_replica_id, const PeerMember& member) {
+            return replica_manager->add_member(leader_replica_id, member);
+        };
+        ops.remove_member = [replica_manager](const ReplicaID& leader_replica_id, const ReplicaID& replica_id) {
+            return replica_manager->remove_member(leader_replica_id, replica_id);
         };
         return ops;
     }
@@ -238,25 +234,22 @@ class NodeAgentTest : public ::testing::Test {
         ReplicaID replica_id{101, 7, 0};
         Endpoint endpoint{"127.0.0.1", 50050};
         return ReplicaInitParam{
-            replica_id,
-            EngineType::MAP,
-            endpoint,
-            {PeerMember{"node-1", replica_id, endpoint}},
-            ReplicaRuntimeOptions{base_dir_.string(), 1000},
+                replica_id,
+                EngineType::MAP,
+                endpoint,
+                {PeerMember{"node-1", replica_id, endpoint}},
+                ReplicaRuntimeOptions{base_dir_.string(), 1000},
         };
     }
 
-    sdm_rpc::ExpectedReplica make_expected_replica(
-        sdm_rpc::ExpectedReplicaType type,
-        const ReplicaID& replica_id, int32_t port = 50050) const {
+    sdm_rpc::ExpectedReplica make_expected_replica(sdm_rpc::ExpectedReplicaType type, const ReplicaID& replica_id,
+                                                   int32_t port = 50050) const {
         Endpoint endpoint{"127.0.0.1", port};
         sdm_rpc::ExpectedReplica expected;
         expected.set_type(type);
         encode_pb_replica_id(replica_id, *expected.mutable_replica_id());
         expected.set_engine_type(static_cast<int32>(EngineType::MAP));
-        encode_pb_peer_member(
-            PeerMember{"node-1", replica_id, endpoint},
-            *expected.add_initial_members());
+        encode_pb_peer_member(PeerMember{"node-1", replica_id, endpoint}, *expected.add_initial_members());
         return expected;
     }
 
@@ -305,8 +298,7 @@ TEST_F(NodeAgentTest, StartRegistersNodeAndSendsPeriodicHeartbeat) {
     EXPECT_EQ(fake_sdm_.service().last_register_resource_pool(), "default");
     EXPECT_EQ(fake_sdm_.service().last_register_dc(), "dc1");
 
-    sdm_rpc::HeartbeatRequest heartbeat =
-        fake_sdm_.service().last_heartbeat();
+    sdm_rpc::HeartbeatRequest heartbeat = fake_sdm_.service().last_heartbeat();
     EXPECT_EQ(heartbeat.node_id(), "node-1");
     EXPECT_EQ(heartbeat.ip(), "127.0.0.1");
     EXPECT_EQ(heartbeat.port(), 50050);
@@ -316,13 +308,9 @@ TEST_F(NodeAgentTest, StartRegistersNodeAndSendsPeriodicHeartbeat) {
     EXPECT_EQ(heartbeat.replica_info_list(0).replica_id().table_id(), 101);
     EXPECT_EQ(heartbeat.replica_info_list(0).replica_id().shard_index(), 7);
     EXPECT_EQ(heartbeat.replica_info_list(0).replica_id().replica_seq(), 0);
-    EXPECT_EQ(heartbeat.replica_info_list(0).role(),
-              pb::RaftRole::RAFT_ROLE_FOLLOWER);
-    EXPECT_EQ(
-        heartbeat.replica_info_list(0).status(),
-        pb::StorageReplicaStatus::STORAGE_REPLICA_STATUS_READY);
-    EXPECT_EQ(heartbeat.replica_info_list(0).member_type(),
-              pb::RaftMemberType::RAFT_MEMBER_TYPE_VOTER);
+    EXPECT_EQ(heartbeat.replica_info_list(0).role(), pb::RaftRole::RAFT_ROLE_FOLLOWER);
+    EXPECT_EQ(heartbeat.replica_info_list(0).status(), pb::StorageReplicaStatus::STORAGE_REPLICA_STATUS_READY);
+    EXPECT_EQ(heartbeat.replica_info_list(0).member_type(), pb::RaftMemberType::RAFT_MEMBER_TYPE_VOTER);
 }
 
 // 检测 heartbeat 响应里的 PRESENT/ABSENT 指令会触发本地 replica 创建和删除。
@@ -330,8 +318,8 @@ TEST_F(NodeAgentTest, HeartbeatAppliesExpectedReplicaCreateAndDelete) {
     ReplicaID create_id{101, 7, 0};
     ReplicaID delete_id{101, 8, 0};
     fake_sdm_.service().set_next_expects({
-        make_expected_replica(sdm_rpc::PRESENT, create_id),
-        make_expected_replica(sdm_rpc::ABSENT, delete_id),
+            make_expected_replica(sdm_rpc::PRESENT, create_id),
+            make_expected_replica(sdm_rpc::ABSENT, delete_id),
     });
 
     std::mutex mutex;
@@ -350,6 +338,8 @@ TEST_F(NodeAgentTest, HeartbeatAppliesExpectedReplicaCreateAndDelete) {
         deleted.push_back(replica_id);
         return Status::OK();
     };
+    ops.add_member = [](const ReplicaID&, const PeerMember&) { return Status::OK(); };
+    ops.remove_member = [](const ReplicaID&, const ReplicaID&) { return Status::OK(); };
 
     NodeAgentConf conf = valid_conf();
     conf.replica_ops = std::move(ops);
@@ -377,13 +367,14 @@ TEST_F(NodeAgentTest, HeartbeatAppliesExpectedReplicaCreateAndDelete) {
 
 // 检测 heartbeat 失败时不会立即重新注册节点，只继续按心跳流程重试。
 TEST_F(NodeAgentTest, HeartbeatFailureDoesNotReRegisterImmediately) {
-    fake_sdm_.service().set_next_heartbeat_status(
-        Status::INVALID_ARGUMENT("node not found"));
+    fake_sdm_.service().set_next_heartbeat_status(Status::INVALID_ARGUMENT("node not found"));
 
     NodeAgentReplicaOps ops;
     ops.list_replicas = [] { return std::vector<ReplicaPtr>{}; };
     ops.create_replica = [](const ReplicaInitParam&) { return Status::OK(); };
     ops.delete_replica = [](const ReplicaID&) { return Status::OK(); };
+    ops.add_member = [](const ReplicaID&, const PeerMember&) { return Status::OK(); };
+    ops.remove_member = [](const ReplicaID&, const ReplicaID&) { return Status::OK(); };
 
     NodeAgentConf conf = valid_conf();
     conf.replica_ops = std::move(ops);
@@ -403,8 +394,7 @@ TEST_F(NodeAgentTest, HeartbeatFailureDoesNotReRegisterImmediately) {
 
 // 检测首次注册失败后，注册任务会按重试间隔再次发起注册。
 TEST_F(NodeAgentTest, RegisterTaskRetriesAfterFailedRegister) {
-    fake_sdm_.service().set_next_register_status(
-        Status::INVALID_ARGUMENT("node register rejected once"));
+    fake_sdm_.service().set_next_register_status(Status::INVALID_ARGUMENT("node register rejected once"));
 
     NodeAgentConf conf = valid_conf();
     conf.register_interval_ms = 30 * 1000;

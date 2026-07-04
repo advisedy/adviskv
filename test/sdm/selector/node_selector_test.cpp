@@ -34,7 +34,11 @@ Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id,
 
 PlaceNodesParam make_param(int32_t shard_count = 1, int32_t replica_count = 2,
                            const std::string& resource_pool = "pool-a") {
-    return PlaceNodesParam{resource_pool, shard_count, replica_count};
+    PlaceNodesParam param;
+    param.resource_pool = resource_pool;
+    param.shard_count = shard_count;
+    param.replica_count = replica_count;
+    return param;
 }
 
 std::vector<NodeID> node_ids(const std::vector<Node>& nodes) {
@@ -59,16 +63,19 @@ TEST(NodeSelectorTest, InvalidParamReturnsError) {
     DefaultNodeSelector selector(&store);
     TablePlacementResult result;
 
-    Status status =
-        selector.select_table_nodes(PlaceNodesParam{"", 1, 1}, result);
+    PlaceNodesParam param = make_param();
+    param.resource_pool = "";
+    Status status = selector.select_table_nodes(param, result);
     EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
 
-    status =
-        selector.select_table_nodes(PlaceNodesParam{"pool-a", 0, 1}, result);
+    param = make_param();
+    param.shard_count = 0;
+    status = selector.select_table_nodes(param, result);
     EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
 
-    status =
-        selector.select_table_nodes(PlaceNodesParam{"pool-a", 1, 0}, result);
+    param = make_param();
+    param.replica_count = 0;
+    status = selector.select_table_nodes(param, result);
     EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
 }
 
@@ -162,6 +169,27 @@ TEST(NodeSelectorTest, PrefersNodesWithFewerPresentReplicas) {
 
     ASSERT_EQ(result.shards.size(), 1U);
     expect_node_ids(result.shards[0].nodes, {"node-c", "node-b"});
+}
+
+// 检测扩容补副本时可以排除当前 shard 已经占用的节点，避免同一个 shard 的两个 desired replica 落到同一个 node。
+TEST(NodeSelectorTest, ExcludesNodesAlreadyUsedByShard) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-a", "pool-a", 18080)).ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-b", "pool-a", 18081)).ok());
+    ASSERT_TRUE(
+        store_test::put_node(store, make_node("node-c", "pool-a", 18082)).ok());
+
+    DefaultNodeSelector selector(&store);
+    TablePlacementResult result;
+    PlaceNodesParam param = make_param(1, 1);
+    param.excluded_node_ids = {"node-a", "node-b"};
+    Status status = selector.select_table_nodes(param, result);
+    ASSERT_TRUE(status.ok());
+
+    ASSERT_EQ(result.shards.size(), 1U);
+    expect_node_ids(result.shards[0].nodes, {"node-c"});
 }
 
 // 优先不同dc的

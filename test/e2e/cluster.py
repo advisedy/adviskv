@@ -22,6 +22,7 @@ META_PORT = 50048
 SDM_PORT = 50049
 STORAGE_BASE_PORT = 50050
 STORAGE_COUNT = 3
+DEFAULT_REPLICA_COUNT = 3
 DEFAULT_ZONE = "dc1"
 DEFAULT_RESOURCE_POOL = "default"
 DEFAULT_TIMEOUT_MS = 60000
@@ -130,15 +131,16 @@ def write_storage_config(index: int) -> None:
     )
 
 
-def write_e2e_configs() -> None:
+def write_e2e_configs(storage_count: int = STORAGE_COUNT) -> None:
     write_client_config()
     write_sdm_config()
     write_meta_config()
-    for index in range(1, STORAGE_COUNT + 1):
+    for index in range(1, storage_count + 1):
         write_storage_config(index)
 
 
 def e2e_service_specs(
+    storage_count: int = STORAGE_COUNT,
     service_envs: Optional[dict[str, dict[str, str]]] = None,
 ) -> list[ServiceSpec]:
     envs = service_envs or {}
@@ -158,7 +160,7 @@ def e2e_service_specs(
             env=envs.get("meta"),
         ),
     ]
-    for index in range(1, STORAGE_COUNT + 1):
+    for index in range(1, storage_count + 1):
         name = storage_service_name(index)
         specs.append(
             ServiceSpec(
@@ -203,10 +205,14 @@ class AdvisKVCluster(LocalCluster):
     """AdvisKV-specific local cluster facade used by e2e tests."""
 
     def __init__(self,
+                 storage_count: int = STORAGE_COUNT,
+                 default_replica_count: int = DEFAULT_REPLICA_COUNT,
                  service_envs: Optional[dict[str, dict[str, str]]] = None):
+        self.storage_count = storage_count
+        self.default_replica_count = default_replica_count
         self.service_envs = dict(service_envs or {})
         super().__init__(
-            specs=e2e_service_specs(self.service_envs),
+            specs=e2e_service_specs(self.storage_count, self.service_envs),
             log_dir=LOG_DIR,
         )
 
@@ -243,7 +249,7 @@ class AdvisKVCluster(LocalCluster):
             f"--zone={DEFAULT_ZONE}",
             f"--resource_pool={DEFAULT_RESOURCE_POOL}",
             "--shard_count=1",
-            f"--replica_count={STORAGE_COUNT}",
+            f"--replica_count={self.default_replica_count}",
             f"--timeout_ms={DEFAULT_TIMEOUT_MS}",
             f"--poll_interval_ms={DEFAULT_POLL_INTERVAL_MS}",
             *args,
@@ -256,12 +262,21 @@ class AdvisKVCluster(LocalCluster):
                  db: str,
                  table: str,
                  key_count: int,
+                 replica_count: Optional[int] = None,
+                 table_count: Optional[int] = None,
+                 concurrency: Optional[int] = None,
                  timeout_ms: Optional[int] = None) -> subprocess.CompletedProcess:
         args = [
             f"--db={db}",
             f"--table={table}",
             f"--key_count={key_count}",
         ]
+        if replica_count is not None:
+            args.append(f"--replica_count={replica_count}")
+        if table_count is not None:
+            args.append(f"--table_count={table_count}")
+        if concurrency is not None:
+            args.append(f"--concurrency={concurrency}")
         if case is not None:
             args.insert(0, f"--case={case}")
         if timeout_ms is not None:

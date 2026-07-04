@@ -17,7 +17,7 @@
 #include "common/type.h"
 #include "storage/model/param.h"
 #include "storage/persist/persist_engine.h"
-#include "storage/raft/raft_node.h"
+#include "storage/raft/core/raft_core.h"
 #include "test_env.h"
 
 namespace adviskv::storage {
@@ -46,7 +46,7 @@ class RaftCluster {
         }
 
         persists_.clear();
-        nodes_.clear();
+        cores_.clear();
         active_.clear();
         isolated_.clear();
         effect_outboxes_.clear();
@@ -66,11 +66,11 @@ class RaftCluster {
             Status s = persist->init();
             ASSERT_TRUE(s.ok()) << s.to_string();
 
-            auto node = std::make_unique<RaftNode>(all_members_[i].replica_id,
+            auto node = std::make_unique<RaftCore>(all_members_[i].replica_id,
                                                    all_members_);
 
             persists_.push_back(std::move(persist));
-            nodes_.push_back(std::move(node));
+            cores_.push_back(std::move(node));
             active_.push_back(true);
             isolated_.push_back(false);
             effect_outboxes_.emplace_back();
@@ -81,27 +81,27 @@ class RaftCluster {
     // 这里对于isolate的节点也会tick，其实应该分的再仔细一点
     // 区分开来是网络分区还是宕机了
     void tick_node(int node_idx) {
-        if (node_idx < 0 || node_idx >= static_cast<int>(nodes_.size())) {
+        if (node_idx < 0 || node_idx >= static_cast<int>(cores_.size())) {
             return;
         }
         if (!active_[node_idx]) return;
 
         RaftEffects effects;
-        nodes_[node_idx]->tick(effects);
+        cores_[node_idx]->tick(effects);
         Status status = drive_raft_effects(node_idx, std::move(effects));
         ASSERT_TRUE(status.ok()) << status.to_string();
     }
 
     void tick_all() {
-        for (int i = 0; i < static_cast<int>(nodes_.size()); i++) {
+        for (int i = 0; i < static_cast<int>(cores_.size()); i++) {
             tick_node(i);
         }
         route_all_messages();
     }
 
     // 只推进本地 timer，不自动路由消息；用于需要精确控制投递顺序的协议测试。
-    void tick_nodes_only() {
-        for (int i = 0; i < static_cast<int>(nodes_.size()); i++) {
+    void tick_cores_only() {
+        for (int i = 0; i < static_cast<int>(cores_.size()); i++) {
             tick_node(i);
         }
     }
@@ -120,9 +120,9 @@ class RaftCluster {
 
             int leaders = 0;
             int candidates = 0;
-            for (int i = 0; i < static_cast<int>(nodes_.size()); i++) {
+            for (int i = 0; i < static_cast<int>(cores_.size()); i++) {
                 if (!active_[i] || isolated_[i]) continue;
-                auto role = nodes_[i]->role();
+                auto role = cores_[i]->role();
                 if (role == ReplicaRole::LEADER) leaders++;
                 if (role == ReplicaRole::CANDIDATE) candidates++;
             }
@@ -138,53 +138,53 @@ class RaftCluster {
 
     void crash(int idx) { active_[idx] = false; }
 
-    RaftNode* node_ptr(int idx) {
-        if (idx < 0 || idx >= static_cast<int>(nodes_.size())) return nullptr;
-        return nodes_[idx].get();
+    RaftCore* core_ptr(int idx) {
+        if (idx < 0 || idx >= static_cast<int>(cores_.size())) return nullptr;
+        return cores_[idx].get();
     }
 
-    int size() const { return (int)nodes_.size(); }
+    int size() const { return (int)cores_.size(); }
 
     bool is_active(int idx) const { return active_[idx]; }
 
     bool is_isolate(int idx) const { return isolated_[idx]; }
 
     int leader_idx() const {
-        for (int i = 0; i < static_cast<int>(nodes_.size()); i++) {
+        for (int i = 0; i < static_cast<int>(cores_.size()); i++) {
             if (!active_[i] || isolated_[i]) continue;
-            if (nodes_[i]->is_leader()) return i;
+            if (cores_[i]->is_leader()) return i;
         }
         return -1;
     }
 
-    RaftNode* leader_ptr() {
+    RaftCore* leader_ptr() {
         int idx = leader_idx();
-        return idx >= 0 ? nodes_[idx].get() : nullptr;
+        return idx >= 0 ? cores_[idx].get() : nullptr;
     }
 
     int leader_count() const {
         int cnt = 0;
-        for (int i = 0; i < static_cast<int>(nodes_.size()); i++) {
+        for (int i = 0; i < static_cast<int>(cores_.size()); i++) {
             if (!active_[i] || isolated_[i]) continue;
-            if (nodes_[i]->is_leader()) cnt++;
+            if (cores_[i]->is_leader()) cnt++;
         }
         return cnt;
     }
 
     std::vector<LogIndex> all_commit_indices() const {
         std::vector<LogIndex> result;
-        for (int i = 0; i < static_cast<int>(nodes_.size()); i++) {
+        for (int i = 0; i < static_cast<int>(cores_.size()); i++) {
             if (!active_[i] || isolated_[i]) continue;
-            result.push_back(nodes_[i]->commit_index());
+            result.push_back(cores_[i]->commit_index());
         }
         return result;
     }
 
     // 判断当前group中没有宕机的节点里面，是否最新的commit_idx都是大于等于target的
     bool all_committed_at_least(LogIndex target) const {
-        for (int i = 0; i < static_cast<int>(nodes_.size()); i++) {
+        for (int i = 0; i < static_cast<int>(cores_.size()); i++) {
             if (!active_[i] || isolated_[i]) continue;
-            if (nodes_[i]->commit_index() < target) return false;
+            if (cores_[i]->commit_index() < target) return false;
         }
         return true;
     }
@@ -195,6 +195,34 @@ class RaftCluster {
     }
 
     ReplicaID replica_id(int idx) const { return all_members_[idx].replica_id; }
+
+    PeerMember peer_member(int idx) const { return all_members_[idx]; }
+
+    void add_node(const PeerMember& member,
+                  const std::vector<PeerMember>& initial_members) {
+        auto dir = adviskv::test::make_unique_test_dir(
+            "raft_cluster_t" + std::to_string(table_id_) + "_n" +
+                std::to_string(all_members_.size()),
+            0);
+        fs::create_directories(dir);
+        temp_dirs_.push_back(dir);
+
+        auto persist =
+            std::make_unique<PersistEngine>(dir.string(), member.replica_id);
+        Status s = persist->init();
+        ASSERT_TRUE(s.ok()) << s.to_string();
+
+        auto node =
+            std::make_unique<RaftCore>(member.replica_id, initial_members);
+
+        id_to_idx_[member.replica_id] = static_cast<int>(cores_.size());
+        all_members_.push_back(member);
+        persists_.push_back(std::move(persist));
+        cores_.push_back(std::move(node));
+        active_.push_back(true);
+        isolated_.push_back(false);
+        effect_outboxes_.emplace_back();
+    }
 
     Status drive_raft_effects(int node_idx, RaftEffects effects) {
         std::lock_guard lock(effect_mutex_);
@@ -221,10 +249,31 @@ class RaftCluster {
         return Status::OK();
     }
 
+    void apply_committed_entries(int node_idx) {
+        std::vector<LogEntry> entries =
+            cores_[node_idx]->extract_committed_entries();
+        for (const LogEntry& entry : entries) {
+            Status status = Status::OK();
+            if (is_config_change_op(entry.op_type)) {
+                status = cores_[node_idx]->apply_config_entry(entry);
+            } else {
+                cores_[node_idx]->advance_last_applied(entry.index);
+            }
+            ASSERT_TRUE(status.ok()) << status.to_string();
+        }
+    }
+
+    void apply_all_committed_entries() {
+        for (int i = 0; i < static_cast<int>(cores_.size()); i++) {
+            if (!active_[i]) continue;
+            apply_committed_entries(i);
+        }
+    }
+
     std::pair<Status, LogIndex> propose(int node_idx, WriteOpType op_type,
                                         Key key, Value value) {
         RaftEffects effects;
-        auto result = nodes_[node_idx]->propose(
+        auto result = cores_[node_idx]->propose(
             ProposeParam::write(op_type, std::move(key), std::move(value)),
             effects);
         if (result.first.fail()) return result;
@@ -237,7 +286,7 @@ class RaftCluster {
     int route_messages_from(
         int source_idx,
         const std::function<bool(const RaftMessage&, int)>& should_route) {
-        if (source_idx < 0 || source_idx >= static_cast<int>(nodes_.size())) {
+        if (source_idx < 0 || source_idx >= static_cast<int>(cores_.size())) {
             return 0;
         }
         if (!active_[source_idx] || isolated_[source_idx]) return 0;
@@ -276,7 +325,7 @@ class RaftCluster {
     }
 
     int drop_messages_from(int source_idx) {
-        if (source_idx < 0 || source_idx >= static_cast<int>(nodes_.size())) {
+        if (source_idx < 0 || source_idx >= static_cast<int>(cores_.size())) {
             return 0;
         }
         int dropped = static_cast<int>(effect_outboxes_[source_idx].size());
@@ -299,7 +348,7 @@ class RaftCluster {
     }
 
     ~RaftCluster() {
-        nodes_.clear();
+        cores_.clear();
         persists_.clear();
         cleanup_temp_dirs();
     }
@@ -310,13 +359,13 @@ class RaftCluster {
             case RaftMessageType::REQUEST_VOTE: {
                 RequestVoteResult result;
                 RaftEffects target_effects;
-                nodes_[target_idx]->handle_request_vote(msg.vote_param, result,
+                cores_[target_idx]->handle_request_vote(msg.vote_param, result,
                                                         target_effects);
                 Status target_status =
                     drive_raft_effects(target_idx, std::move(target_effects));
                 ASSERT_TRUE(target_status.ok()) << target_status.to_string();
                 RaftEffects response_effects;
-                nodes_[source_idx]->handle_vote_response(
+                cores_[source_idx]->handle_vote_response(
                     msg.target.replica_id, result, response_effects);
                 Status status =
                     drive_raft_effects(source_idx, std::move(response_effects));
@@ -327,13 +376,13 @@ class RaftCluster {
             case RaftMessageType::APPEND_ENTRIES: {
                 AppendEntriesResult result;
                 RaftEffects effects;
-                nodes_[target_idx]->handle_append_entries(msg.append_param,
+                cores_[target_idx]->handle_append_entries(msg.append_param,
                                                           result, effects);
                 Status status =
                     drive_raft_effects(target_idx, std::move(effects));
                 ASSERT_TRUE(status.ok()) << status.to_string();
                 RaftEffects response_effects;
-                IGNORE_RESULT(nodes_[source_idx]->handle_append_response(
+                IGNORE_RESULT(cores_[source_idx]->handle_append_response(
                     msg.target.replica_id, msg.append_param, result,
                     response_effects));
                 Status response_status =
@@ -344,22 +393,24 @@ class RaftCluster {
             }
 
             case RaftMessageType::INSTALL_SNAPSHOT: {
-                SnapshotInstallPlan plan;
                 RaftEffects prepare_effects;
-                Status s = nodes_[target_idx]->build_install_snapshot_plan(
-                    msg.snapshot_param, plan, prepare_effects);
+                Status s = cores_[target_idx]->prepare_install_snapshot(
+                    msg.snapshot_param, prepare_effects);
                 Status prepare_status =
                     drive_raft_effects(target_idx, std::move(prepare_effects));
                 ASSERT_TRUE(prepare_status.ok()) << prepare_status.to_string();
 
                 InstallSnapshotResult result;
-                result.term = nodes_[target_idx]->current_term();
+                result.term = cores_[target_idx]->current_term();
                 result.status = s;
 
                 if (s.ok()) {
+                    InstallSnapshotContext context;
+                    context.snapshot_index = msg.snapshot_param.snapshot_index;
+                    context.snapshot_term = msg.snapshot_param.snapshot_term;
                     RaftEffects install_effects;
-                    nodes_[target_idx]->commit_install_snapshot(
-                        plan, install_effects);
+                    cores_[target_idx]->commit_install_snapshot(
+                        context, install_effects);
                     Status install_status = drive_raft_effects(
                         target_idx, std::move(install_effects));
                     ASSERT_TRUE(install_status.ok())
@@ -367,18 +418,18 @@ class RaftCluster {
                 }
                 if (s.code() == StatusCode::ALREADY_EXIST ||
                     (s.fail() && msg.snapshot_param.snapshot_index <=
-                                     nodes_[target_idx]->snapshot_index())) {
+                                     cores_[target_idx]->snapshot_index())) {
                     if (s.code() == StatusCode::ALREADY_EXIST) {
                         result.snapshot_watermark =
                             msg.snapshot_param.snapshot_index;
                     } else {
                         result.snapshot_watermark =
-                            nodes_[target_idx]->snapshot_index();
+                            cores_[target_idx]->snapshot_index();
                     }
                 }
 
                 RaftEffects response_effects;
-                nodes_[source_idx]->handle_install_snapshot_response(
+                cores_[source_idx]->handle_install_snapshot_response(
                     msg.target.replica_id, msg.snapshot_param, result,
                     response_effects);
                 Status response_status =
@@ -391,7 +442,7 @@ class RaftCluster {
     }
 
     void route_all_messages() {
-        for (int i = 0; i < static_cast<int>(nodes_.size()); i++) {
+        for (int i = 0; i < static_cast<int>(cores_.size()); i++) {
             if (!active_[i] || isolated_[i]) continue;
 
             std::vector<RaftMessage> messages;
@@ -408,7 +459,7 @@ class RaftCluster {
     }
 
     std::vector<std::unique_ptr<PersistEngine>> persists_;
-    std::vector<std::unique_ptr<RaftNode>> nodes_;
+    std::vector<std::unique_ptr<RaftCore>> cores_;
     std::vector<PeerMember> all_members_;
     std::vector<bool> active_;  // TODO vector<bool>好像有问题来着
     std::vector<bool> isolated_;
@@ -454,8 +505,8 @@ class RaftClusterTest : public ::testing::Test {
 
     void only_send_to_one(int node_count, int leader_idx, int node_idx,
                           WriteOpType op_type, Key key, Value value) {
-        RaftNode* leader = cluster_.node_ptr(leader_idx);
-        RaftNode* to = cluster_.node_ptr(node_idx);
+        RaftCore* leader = cluster_.core_ptr(leader_idx);
+        RaftCore* to = cluster_.core_ptr(node_idx);
         if ((!leader) or (!to)) return;
         for (int i = 0; i < node_count; i++) {
             if (i == leader_idx or i == node_idx) continue;
@@ -471,20 +522,20 @@ class RaftClusterTest : public ::testing::Test {
 
     void tick_election(int node_idx) {
         RaftEffects effects;
-        cluster_.node_ptr(node_idx)->become_candidate_for_test(effects);
+        cluster_.core_ptr(node_idx)->become_candidate_for_test(effects);
         Status status =
             cluster_.drive_raft_effects(node_idx, std::move(effects));
         ASSERT_TRUE(status.ok()) << status.to_string();
     }
 
     void tick_heartbeat(int node_idx) {
-        cluster_.node_ptr(node_idx)->reset_heartbeat_tick_for_test(0);
+        cluster_.core_ptr(node_idx)->reset_heartbeat_tick_for_test(0);
         cluster_.tick_node(node_idx);
-        cluster_.node_ptr(node_idx)->reset_heartbeat_tick_for_test(3);
+        cluster_.core_ptr(node_idx)->reset_heartbeat_tick_for_test(3);
     }
 
     void set_heartbeat_tick(int node_idx, int val) {
-        cluster_.node_ptr(node_idx)->reset_heartbeat_tick_for_test(val);
+        cluster_.core_ptr(node_idx)->reset_heartbeat_tick_for_test(val);
     }
 
     void drop_all_messages() {
@@ -546,56 +597,56 @@ class RaftClusterTest : public ::testing::Test {
                                    int max_rounds = 50) {
         for (int i = 0;
              i < max_rounds &&
-             cluster_.node_ptr(leader_idx)->commit_index() < target_idx;
+             cluster_.core_ptr(leader_idx)->commit_index() < target_idx;
              i++) {
             replicate_once(leader_idx, followers);
             tick_heartbeat(leader_idx);
         }
-        ASSERT_GE(cluster_.node_ptr(leader_idx)->commit_index(), target_idx);
+        ASSERT_GE(cluster_.core_ptr(leader_idx)->commit_index(), target_idx);
     }
 
     void assert_committed_at_least(const std::vector<int>& node_indices,
                                    LogIndex target_idx) {
         for (int idx : node_indices) {
-            ASSERT_GE(cluster_.node_ptr(idx)->commit_index(), target_idx)
+            ASSERT_GE(cluster_.core_ptr(idx)->commit_index(), target_idx)
                 << "node_idx=" << idx;
         }
     }
 
     std::vector<LogEntry> get_node_entries(int idx) {
-        RaftNode* node = cluster_.node_ptr(idx);
+        RaftCore* node = cluster_.core_ptr(idx);
         if (!node) return {};
         return node->log_entries_for_test();
     }
 
     std::pair<LogIndex, Term> get_node_snapshot(int idx) {
-        RaftNode* node = cluster_.node_ptr(idx);
+        RaftCore* node = cluster_.core_ptr(idx);
         if (!node) return {};
         return node->snapshot_for_test();
     }
 
     void set_node_next_index(int node_idx, const ReplicaID& target,
                              LogIndex val) {
-        RaftNode* node = cluster_.node_ptr(node_idx);
+        RaftCore* node = cluster_.core_ptr(node_idx);
         if (!node) return;
         node->set_next_index_for_test(target, val);
     }
 
     LogIndex get_node_next_index(int node_idx, const ReplicaID& target) {
-        RaftNode* node = cluster_.node_ptr(node_idx);
+        RaftCore* node = cluster_.core_ptr(node_idx);
         if (!node) return 0;
         return node->next_index_for_test(target);
     }
 
     LogIndex get_snapshot_watermark(int node_idx, const ReplicaID& target) {
-        RaftNode* node = cluster_.node_ptr(node_idx);
+        RaftCore* node = cluster_.core_ptr(node_idx);
         if (!node) return 0;
         return node->snapshot_watermark_for_test(target);
     }
 
     LogIndex get_inflight_snapshot_index(int node_idx,
                                          const ReplicaID& target) {
-        RaftNode* node = cluster_.node_ptr(node_idx);
+        RaftCore* node = cluster_.core_ptr(node_idx);
         if (!node) return 0;
         return node->inflight_snapshot_index_for_test(target);
     }
@@ -625,7 +676,7 @@ TEST_F(RaftClusterTest, SingleLeaderElection_3Nodes) {
 
         for (int i = 0; i < 3; i++) {
             if (i == leader) continue;
-            ASSERT_EQ(cluster_.node_ptr(i)->role(), ReplicaRole::FOLLOWER);
+            ASSERT_EQ(cluster_.core_ptr(i)->role(), ReplicaRole::FOLLOWER);
         }
     }
 
@@ -642,7 +693,7 @@ TEST_F(RaftClusterTest, SingleLeaderElection_3Nodes) {
         assert_single_leader();
 
         int new_leader_idx = cluster_.leader_idx();
-        auto* nl = cluster_.node_ptr(new_leader_idx);
+        auto* nl = cluster_.core_ptr(new_leader_idx);
         ASSERT_NE(nl, nullptr);
         auto [status, idx] = cluster_.propose(new_leader_idx, WriteOpType::PUT,
                                               "round_" + std::to_string(round),
@@ -680,19 +731,156 @@ TEST_F(RaftClusterTest, BasicLogReplication_3Nodes) {
     }
 }
 
+// 验证成员变更闭环：新节点先以 NON_MEMBER 创建，leader 加为 LEARNER，追齐日志后自动提升为 VOTER。
+TEST_F(RaftClusterTest, AddLearnerCatchesUpAndPromotesToVoter) {
+    create_and_stabilize(3);
+    int leader_idx = cluster_.leader_idx();
+    ASSERT_GE(leader_idx, 0);
+
+    PeerMember new_member;
+    new_member.node_id = "node_3";
+    new_member.replica_id = ReplicaID{cluster_.replica_id(0).table_id, 0, 3};
+    new_member.endpoint = {"127.0.0.1", 9003};
+    std::vector<PeerMember> old_voters{
+        cluster_.peer_member(0),
+        cluster_.peer_member(1),
+        cluster_.peer_member(2),
+    };
+    cluster_.add_node(new_member, old_voters);
+    ASSERT_EQ(cluster_.core_ptr(3)->member_type(new_member.replica_id),
+              RaftMemberType::NON_MEMBER);
+
+    RaftEffects effects;
+    Status status =
+        cluster_.core_ptr(leader_idx)->ensure_add_learner(new_member, effects);
+    ASSERT_TRUE(status.ok()) << status.to_string();
+    ASSERT_TRUE(
+        cluster_.drive_raft_effects(leader_idx, std::move(effects)).ok());
+
+    bool promoted = false;
+    for (int i = 0; i < 200 && !promoted; i++) {
+        cluster_.tick_all();
+        cluster_.apply_all_committed_entries();
+        promoted =
+            cluster_.core_ptr(leader_idx)->member_type(new_member.replica_id) ==
+                RaftMemberType::VOTER &&
+            cluster_.core_ptr(3)->member_type(new_member.replica_id) ==
+                RaftMemberType::VOTER;
+    }
+
+    ASSERT_TRUE(promoted);
+}
+
+// 当同一个 ADD_LEARNER 已经进入日志但还没 apply 时，重复提交应直接返回 OK。
+TEST_F(RaftClusterTest, PendingSameAddLearnerReturnsOk) {
+    create_and_stabilize(3);
+    int leader_idx = cluster_.leader_idx();
+    ASSERT_GE(leader_idx, 0);
+
+    PeerMember new_member;
+    new_member.node_id = "node_3";
+    new_member.replica_id = ReplicaID{cluster_.replica_id(0).table_id, 0, 3};
+    new_member.endpoint = {"127.0.0.1", 9003};
+
+    RaftEffects first_effects;
+    Status first_status =
+        cluster_.core_ptr(leader_idx)->ensure_add_learner(new_member, first_effects);
+    ASSERT_TRUE(first_status.ok()) << first_status.to_string();
+
+    RaftEffects second_effects;
+    Status second_status =
+        cluster_.core_ptr(leader_idx)->ensure_add_learner(new_member, second_effects);
+    EXPECT_TRUE(second_status.ok()) << second_status.to_string();
+}
+
+// 验证缩容成员变更：REMOVE_MEMBER 提交并 apply 后，被移除节点本地变为 NON_MEMBER。
+TEST_F(RaftClusterTest, RemoveMemberTurnsTargetIntoNonMember) {
+    create_and_stabilize(3);
+    int leader_idx = cluster_.leader_idx();
+    ASSERT_GE(leader_idx, 0);
+
+    int victim_idx = (leader_idx == 0) ? 1 : 0;
+    ReplicaID victim = cluster_.replica_id(victim_idx);
+    ASSERT_EQ(cluster_.core_ptr(victim_idx)->member_type(victim),
+              RaftMemberType::VOTER);
+
+    RaftEffects effects;
+    Status status =
+        cluster_.core_ptr(leader_idx)->ensure_remove_member(victim, effects);
+    ASSERT_TRUE(status.ok()) << status.to_string();
+    ASSERT_TRUE(
+        cluster_.drive_raft_effects(leader_idx, std::move(effects)).ok());
+
+    bool removed = false;
+    for (int i = 0; i < 100 && !removed; i++) {
+        cluster_.tick_all();
+        cluster_.apply_all_committed_entries();
+        removed = cluster_.core_ptr(victim_idx)->member_type(victim) ==
+                  RaftMemberType::NON_MEMBER;
+    }
+
+    ASSERT_TRUE(removed);
+}
+
+// 当同一个 REMOVE_MEMBER 已经进入日志但还没 apply 时，重复提交应直接返回 OK。
+TEST_F(RaftClusterTest, PendingSameRemoveMemberReturnsOk) {
+    create_and_stabilize(3);
+    int leader_idx = cluster_.leader_idx();
+    ASSERT_GE(leader_idx, 0);
+
+    int victim_idx = (leader_idx == 0) ? 1 : 0;
+    ReplicaID victim = cluster_.replica_id(victim_idx);
+
+    RaftEffects first_effects;
+    Status first_status =
+        cluster_.core_ptr(leader_idx)->ensure_remove_member(victim, first_effects);
+    ASSERT_TRUE(first_status.ok()) << first_status.to_string();
+
+    RaftEffects second_effects;
+    Status second_status =
+        cluster_.core_ptr(leader_idx)->ensure_remove_member(victim, second_effects);
+    EXPECT_TRUE(second_status.ok()) << second_status.to_string();
+}
+
+// 当已有别的 config change 在处理中时，新的不同成员变更应返回 RETRY_ERROR。
+TEST_F(RaftClusterTest, DifferentConfigChangeReturnsRetryErrorWhenAnotherIsPending) {
+    create_and_stabilize(3);
+    int leader_idx = cluster_.leader_idx();
+    ASSERT_GE(leader_idx, 0);
+
+    PeerMember new_member;
+    new_member.node_id = "node_3";
+    new_member.replica_id = ReplicaID{cluster_.replica_id(0).table_id, 0, 3};
+    new_member.endpoint = {"127.0.0.1", 9003};
+
+    RaftEffects add_effects;
+    Status add_status =
+        cluster_.core_ptr(leader_idx)->ensure_add_learner(new_member, add_effects);
+    ASSERT_TRUE(add_status.ok()) << add_status.to_string();
+
+    int victim_idx = (leader_idx == 0) ? 1 : 0;
+    ReplicaID victim = cluster_.replica_id(victim_idx);
+
+    RaftEffects remove_effects;
+    Status remove_status =
+        cluster_.core_ptr(leader_idx)->ensure_remove_member(victim, remove_effects);
+    EXPECT_EQ(remove_status.code(), StatusCode::RETRY_ERROR)
+        << remove_status.to_string();
+}
+
 // leader的写操作没有达到多数派，commit_idx不会被更新
 TEST_F(RaftClusterTest, MinorityLeaderCannotCommitNewEntry) {
     create_and_set_0_leader(5);
     ASSERT_TRUE(tick_until_all_committed(1));
     drop_all_messages();
 
-    LogIndex base_commit = cluster_.node_ptr(0)->commit_index();
+    LogIndex base_commit = cluster_.core_ptr(0)->commit_index();
     LogIndex uncommitted_idx =
         propose_and_replicate_once(0, {1}, WriteOpType::PUT, "111", "111");
 
     ASSERT_GT(uncommitted_idx, base_commit);
-    ASSERT_EQ(cluster_.node_ptr(0)->commit_index(), base_commit);
-    ASSERT_LT(cluster_.node_ptr(0)->commit_index(), uncommitted_idx);
+    ASSERT_EQ(cluster_.core_ptr(0)->commit_index(), base_commit);
+    ASSERT_LT(cluster_.core_ptr(0)->commit_index(), uncommitted_idx);
 }
 
 // 对于写请求而言：如果当前 leader
@@ -706,7 +894,7 @@ TEST_F(RaftClusterTest, PutReturnsNotYetCommitBeforeQuorumCommit) {
     int leader_idx = cluster_.leader_idx();
     ASSERT_EQ(leader_idx, 0);
 
-    RaftNode* leader = cluster_.node_ptr(leader_idx);
+    RaftCore* leader = cluster_.core_ptr(leader_idx);
     ASSERT_NE(leader, nullptr);
 
     LogIndex base_commit = leader->commit_index();
@@ -738,7 +926,7 @@ TEST_F(RaftClusterTest, DeleteReturnsNotYetCommitBeforeQuorumCommit) {
     int leader_idx = cluster_.leader_idx();
     ASSERT_EQ(leader_idx, 0);
 
-    RaftNode* leader = cluster_.node_ptr(leader_idx);
+    RaftCore* leader = cluster_.core_ptr(leader_idx);
     ASSERT_NE(leader, nullptr);
 
     // 先写入一个已提交的 key，确保 delete 的目标对象存在。
@@ -808,18 +996,18 @@ TEST_F(RaftClusterTest, HigherTermVoteRequestForcesLeaderStepDown) {
     ASSERT_TRUE(tick_until_all_committed(1));
     ASSERT_EQ(cluster_.leader_idx(), 0);
 
-    Term higher_term = cluster_.node_ptr(0)->current_term() + 1;
+    Term higher_term = cluster_.core_ptr(0)->current_term() + 1;
     RequestVoteResult vote_result;
     RaftEffects vote_effects;
-    cluster_.node_ptr(0)->handle_request_vote(
+    cluster_.core_ptr(0)->handle_request_vote(
         RequestVoteParam{cluster_.replica_id(1), cluster_.replica_id(0),
                          higher_term, 0, 0},
         vote_result, vote_effects);
     Status status = cluster_.drive_raft_effects(0, std::move(vote_effects));
     ASSERT_TRUE(status.ok()) << status.to_string();
 
-    ASSERT_EQ(cluster_.node_ptr(0)->current_term(), higher_term);
-    ASSERT_EQ(cluster_.node_ptr(0)->role(), ReplicaRole::FOLLOWER);
+    ASSERT_EQ(cluster_.core_ptr(0)->current_term(), higher_term);
+    ASSERT_EQ(cluster_.core_ptr(0)->role(), ReplicaRole::FOLLOWER);
     ASSERT_EQ(cluster_.leader_idx(), -1);
 
     elect_with_votes(2, {0, 1});
@@ -831,7 +1019,7 @@ TEST_F(RaftClusterTest, LaggingFollowersCatchUpCommittedLogs) {
     cluster_.isolate(3);
     cluster_.isolate(4);
     cluster_.tick_until_stable();
-    RaftNode* leader = cluster_.leader_ptr();
+    RaftCore* leader = cluster_.leader_ptr();
     int leader_idx = cluster_.leader_idx();
     ASSERT_NE(leader, nullptr);
     LogIndex last_idx{0};
@@ -845,16 +1033,16 @@ TEST_F(RaftClusterTest, LaggingFollowersCatchUpCommittedLogs) {
     }
     cluster_.restore(3);
     cluster_.restore(4);
-    ASSERT_NE(cluster_.node_ptr(3), nullptr);
-    ASSERT_NE(cluster_.node_ptr(4), nullptr);
-    ASSERT_GE(cluster_.node_ptr(3)->commit_index(), 0);  //
-    ASSERT_GE(cluster_.node_ptr(4)->commit_index(), 0);
+    ASSERT_NE(cluster_.core_ptr(3), nullptr);
+    ASSERT_NE(cluster_.core_ptr(4), nullptr);
+    ASSERT_GE(cluster_.core_ptr(3)->commit_index(), 0);  //
+    ASSERT_GE(cluster_.core_ptr(4)->commit_index(), 0);
 
-    ASSERT_LE(cluster_.node_ptr(3)->commit_index(), 1);  //
-    ASSERT_LE(cluster_.node_ptr(4)->commit_index(), 1);
+    ASSERT_LE(cluster_.core_ptr(3)->commit_index(), 1);  //
+    ASSERT_LE(cluster_.core_ptr(4)->commit_index(), 1);
     ASSERT_TRUE(tick_until_all_committed(last_idx));
-    ASSERT_EQ(cluster_.node_ptr(3)->commit_index(), last_idx);
-    ASSERT_EQ(cluster_.node_ptr(4)->commit_index(), last_idx);
+    ASSERT_EQ(cluster_.core_ptr(3)->commit_index(), last_idx);
+    ASSERT_EQ(cluster_.core_ptr(4)->commit_index(), last_idx);
 }
 
 TEST_F(RaftClusterTest, UncommittedOldLeaderLogsAreOverwrittenByNewLeader) {
@@ -958,7 +1146,7 @@ TEST_F(RaftClusterTest, Figure8_NoDirectCommitPreviousTerm) {
     LogIndex old_term_idx =
         propose_and_replicate_once(0, {1}, WriteOpType::PUT, "1", "1");
     ASSERT_EQ(old_term_idx, 2);
-    ASSERT_EQ(cluster_.node_ptr(0)->commit_index(), 1);
+    ASSERT_EQ(cluster_.core_ptr(0)->commit_index(), 1);
 
     // A没了， E当选
     cluster_.isolate(0);
@@ -981,13 +1169,13 @@ TEST_F(RaftClusterTest, Figure8_NoDirectCommitPreviousTerm) {
 
         // A给C发no-op和之前的旧数据，然后这里的commit_idx还得是1
         ASSERT_EQ(replicate_once(0, {2}), 1);
-        ASSERT_EQ(cluster_.node_ptr(0)->commit_index(), 1);
+        ASSERT_EQ(cluster_.core_ptr(0)->commit_index(), 1);
 
         LogIndex a_current_term_idx =
             propose_and_replicate_once(0, {2}, WriteOpType::PUT, "3", "3");
         ASSERT_EQ(a_current_term_idx, 4);
         ASSERT_EQ(get_node_entries(2).back().key, "3");
-        ASSERT_EQ(cluster_.node_ptr(0)->commit_index(), 1);
+        ASSERT_EQ(cluster_.core_ptr(0)->commit_index(), 1);
         cluster_.isolate(0);
     }
     {
@@ -1002,9 +1190,9 @@ TEST_F(RaftClusterTest, Figure8_NoDirectCommitPreviousTerm) {
         ASSERT_EQ(final_idx, 5);  // A:no-op + E:no-op + key=2 + E:no-op + key=4
 
         replicate_until_committed(4, final_idx, {1, 3});
-        ASSERT_EQ(cluster_.node_ptr(4)->commit_index(), final_idx);
-        ASSERT_LT(cluster_.node_ptr(1)->commit_index(), final_idx);
-        ASSERT_LT(cluster_.node_ptr(3)->commit_index(), final_idx);
+        ASSERT_EQ(cluster_.core_ptr(4)->commit_index(), final_idx);
+        ASSERT_LT(cluster_.core_ptr(1)->commit_index(), final_idx);
+        ASSERT_LT(cluster_.core_ptr(3)->commit_index(), final_idx);
 
         // 再发一次心跳，把commit_idx传给followers
         tick_heartbeat(4);
@@ -1028,7 +1216,7 @@ TEST_F(RaftClusterTest, Figure8_NoDirectCommitPreviousTerm) {
 TEST_F(RaftClusterTest, InstallSnapshot_Basic) {
     create_and_set_0_leader(3);
     ASSERT_TRUE(tick_until_all_committed(1));
-    auto* leader = cluster_.node_ptr(0);
+    auto* leader = cluster_.core_ptr(0);
     ASSERT_TRUE(leader->is_leader());
     drop_all_messages();
 
@@ -1047,7 +1235,7 @@ TEST_F(RaftClusterTest, InstallSnapshot_Basic) {
     // 在所有节点上 advance last_applied
     for (int i = 0; i < cluster_.size(); i++) {
         if (!cluster_.is_active(i) or cluster_.is_isolate(i)) continue;
-        cluster_.node_ptr(i)->advance_last_applied(last_idx);
+        cluster_.core_ptr(i)->advance_last_applied(last_idx);
     }
 
     // Leader 截断
@@ -1110,16 +1298,16 @@ TEST_F(RaftClusterTest, RecoveringFollowerCatchesUpByAppendEntries) {
     LogIndex target_idx =
         propose_and_replicate_once(0, {2}, WriteOpType::PUT, "recover_k", "v");
     ASSERT_EQ(target_idx, 2);
-    ASSERT_EQ(cluster_.node_ptr(0)->commit_index(), target_idx);
+    ASSERT_EQ(cluster_.core_ptr(0)->commit_index(), target_idx);
 
-    cluster_.node_ptr(1)->enter_recovering();
-    ASSERT_TRUE(cluster_.node_ptr(1)->is_recovering());
+    cluster_.core_ptr(1)->enter_recovering();
+    ASSERT_TRUE(cluster_.core_ptr(1)->is_recovering());
 
     // 检测他不会成为candidate的
     for (int i = 0; i < 50; i++) {
         cluster_.tick_node(1);
     }
-    ASSERT_EQ(cluster_.node_ptr(1)->role(), ReplicaRole::FOLLOWER);
+    ASSERT_EQ(cluster_.core_ptr(1)->role(), ReplicaRole::FOLLOWER);
 
     // 无法进行propose操作， 虽然他本来就是follower没办法吧。。。
     auto [status, idx] = cluster_.propose(1, WriteOpType::PUT, "bad", "bad");
@@ -1129,9 +1317,9 @@ TEST_F(RaftClusterTest, RecoveringFollowerCatchesUpByAppendEntries) {
     // 投票也会失败的
     RequestVoteResult vote_result;
     RaftEffects vote_effects;
-    cluster_.node_ptr(1)->handle_request_vote(
+    cluster_.core_ptr(1)->handle_request_vote(
         RequestVoteParam{ReplicaID{500, 0, 2}, ReplicaID{500, 0, 1},
-                         cluster_.node_ptr(1)->current_term(), 0, 0},
+                         cluster_.core_ptr(1)->current_term(), 0, 0},
         vote_result, vote_effects);
     Status vote_status =
         cluster_.drive_raft_effects(1, std::move(vote_effects));
@@ -1142,8 +1330,8 @@ TEST_F(RaftClusterTest, RecoveringFollowerCatchesUpByAppendEntries) {
     tick_heartbeat(0);
     ASSERT_EQ(replicate_once(0, {1}), 1);
 
-    ASSERT_EQ(cluster_.node_ptr(1)->commit_index(), target_idx);
-    ASSERT_FALSE(cluster_.node_ptr(1)->is_recovering());
+    ASSERT_EQ(cluster_.core_ptr(1)->commit_index(), target_idx);
+    ASSERT_FALSE(cluster_.core_ptr(1)->is_recovering());
 }
 
 // 检测一个leader如果突然recovering的话， 表现是否正常
@@ -1155,9 +1343,9 @@ TEST_F(RaftClusterTest, RecoveringLeaderStepsDownAndNewLeaderElected) {
     ASSERT_EQ(cluster_.leader_idx(), 0);
     drop_all_messages();
 
-    cluster_.node_ptr(0)->enter_recovering();
-    ASSERT_TRUE(cluster_.node_ptr(0)->is_recovering());
-    ASSERT_EQ(cluster_.node_ptr(0)->role(), ReplicaRole::FOLLOWER);
+    cluster_.core_ptr(0)->enter_recovering();
+    ASSERT_TRUE(cluster_.core_ptr(0)->is_recovering());
+    ASSERT_EQ(cluster_.core_ptr(0)->role(), ReplicaRole::FOLLOWER);
     ASSERT_EQ(cluster_.leader_idx(), -1);
 
     auto [status, idx] = cluster_.propose(0, WriteOpType::PUT, "111", "111");
@@ -1169,7 +1357,7 @@ TEST_F(RaftClusterTest, RecoveringLeaderStepsDownAndNewLeaderElected) {
         cluster_.tick_node(0);
     }
     ASSERT_EQ(cluster_.drop_messages_from(0), 0);
-    ASSERT_EQ(cluster_.node_ptr(0)->role(), ReplicaRole::FOLLOWER);
+    ASSERT_EQ(cluster_.core_ptr(0)->role(), ReplicaRole::FOLLOWER);
 
     // node0还在recovering，不参与投票；node1只需要node2的票即可当选
     elect_with_votes(1, {2});
@@ -1193,12 +1381,12 @@ TEST_F(RaftClusterTest, LaggingFollowerCatchesUpBySnapshotThenEntries) {
             "v" + std::to_string(i));
     }
     ASSERT_EQ(last_idx, 6);
-    ASSERT_EQ(cluster_.node_ptr(0)->commit_index(), last_idx);
+    ASSERT_EQ(cluster_.core_ptr(0)->commit_index(), last_idx);
 
-    cluster_.node_ptr(0)->advance_last_applied(last_idx);
-    ASSERT_TRUE(cluster_.node_ptr(0)->truncate_log(4).ok());
-    ASSERT_EQ(cluster_.node_ptr(0)->snapshot_index(), 4);
-    ASSERT_EQ(cluster_.node_ptr(2)->commit_index(), 1);
+    cluster_.core_ptr(0)->advance_last_applied(last_idx);
+    ASSERT_TRUE(cluster_.core_ptr(0)->truncate_log(4).ok());
+    ASSERT_EQ(cluster_.core_ptr(0)->snapshot_index(), 4);
+    ASSERT_EQ(cluster_.core_ptr(2)->commit_index(), 1);
 
     cluster_.restore(2);
 
@@ -1206,13 +1394,13 @@ TEST_F(RaftClusterTest, LaggingFollowerCatchesUpBySnapshotThenEntries) {
     ASSERT_EQ(cluster_.route_messages_from_to(
                   0, RaftMessageType::INSTALL_SNAPSHOT, {2}),
               1);
-    ASSERT_EQ(cluster_.node_ptr(2)->snapshot_index(), 4);
-    ASSERT_EQ(cluster_.node_ptr(2)->commit_index(), 4);
+    ASSERT_EQ(cluster_.core_ptr(2)->snapshot_index(), 4);
+    ASSERT_EQ(cluster_.core_ptr(2)->commit_index(), 4);
 
     tick_heartbeat(0);
     ASSERT_EQ(replicate_once(0, {2}), 1);
 
-    ASSERT_EQ(cluster_.node_ptr(2)->commit_index(), last_idx);
+    ASSERT_EQ(cluster_.core_ptr(2)->commit_index(), last_idx);
     ASSERT_EQ(get_node_entries(2).back().key, "snap_then_log_4");
 }
 // 一开始0是leader，然后被隔离了，2当了leader，在提交no-op之前的get操作会不行，当提交了no-op之后，commit_idx推进了之后，才可以进行get操作
@@ -1229,21 +1417,21 @@ TEST_F(RaftClusterTest, ReadIndexRequiresCommittedCurrentTermEntry) {
     RaftEffects read_effects;
     LogIndex read_index = 0;
     Term read_term = 0;
-    Status status = cluster_.node_ptr(2)->build_append_entries_for_read(
+    Status status = cluster_.core_ptr(2)->build_append_entries_for_read(
         read_effects, read_index, read_term);
 
     EXPECT_EQ(status.code(), StatusCode::NOT_YET_COMMIT);
     EXPECT_TRUE(read_effects.messages.empty());
 
-    LogIndex current_term_idx = cluster_.node_ptr(2)->last_log_index();
+    LogIndex current_term_idx = cluster_.core_ptr(2)->last_log_index();
     replicate_until_committed(2, current_term_idx, {1});
 
-    status = cluster_.node_ptr(2)->build_append_entries_for_read(
+    status = cluster_.core_ptr(2)->build_append_entries_for_read(
         read_effects, read_index, read_term);
 
     ASSERT_TRUE(status.ok()) << status.to_string();
-    EXPECT_EQ(read_index, cluster_.node_ptr(2)->commit_index());
-    EXPECT_EQ(read_term, cluster_.node_ptr(2)->current_term());
+    EXPECT_EQ(read_index, cluster_.core_ptr(2)->commit_index());
+    EXPECT_EQ(read_term, cluster_.core_ptr(2)->current_term());
     EXPECT_FALSE(read_effects.messages.empty());
 }
 
@@ -1263,11 +1451,11 @@ TEST_F(RaftClusterTest, ReadIndexCountsInstallSnapshotMessage) {
                                               "snap_read_" + std::to_string(i),
                                               "v" + std::to_string(i));
     }
-    ASSERT_EQ(cluster_.node_ptr(0)->commit_index(), last_idx);
+    ASSERT_EQ(cluster_.core_ptr(0)->commit_index(), last_idx);
 
-    cluster_.node_ptr(0)->advance_last_applied(last_idx);
-    ASSERT_TRUE(cluster_.node_ptr(0)->truncate_log(4).ok());
-    ASSERT_EQ(cluster_.node_ptr(0)->snapshot_index(), 4);
+    cluster_.core_ptr(0)->advance_last_applied(last_idx);
+    ASSERT_TRUE(cluster_.core_ptr(0)->truncate_log(4).ok());
+    ASSERT_EQ(cluster_.core_ptr(0)->snapshot_index(), 4);
 
     // 强制 node 2 的 next_index 降到 snapshot_index 以下，
     // 模拟 follower 落后太多、leader 需要发快照的场景
@@ -1276,7 +1464,7 @@ TEST_F(RaftClusterTest, ReadIndexCountsInstallSnapshotMessage) {
     RaftEffects read_effects;
     LogIndex read_index = 0;
     Term read_term = 0;
-    Status status = cluster_.node_ptr(0)->build_append_entries_for_read(
+    Status status = cluster_.core_ptr(0)->build_append_entries_for_read(
         read_effects, read_index, read_term);
     ASSERT_TRUE(status.ok()) << status.to_string();
 
@@ -1293,7 +1481,7 @@ TEST_F(RaftClusterTest, ReadIndexCountsInstallSnapshotMessage) {
 
     // 模拟 Replica::check_self_leader_and_get_read_index 的计数逻辑
     int success_cnt = 1;  // self
-    int limit = cluster_.node_ptr(0)->quorum_size();
+    int limit = cluster_.core_ptr(0)->quorum_size();
 
     for (auto& msg : read_effects.messages) {
         int target = cluster_.find_node(msg.target.replica_id);
@@ -1302,12 +1490,12 @@ TEST_F(RaftClusterTest, ReadIndexCountsInstallSnapshotMessage) {
         if (msg.type == RaftMessageType::APPEND_ENTRIES) {
             AppendEntriesResult res;
             RaftEffects effects;
-            cluster_.node_ptr(target)->handle_append_entries(msg.append_param,
+            cluster_.core_ptr(target)->handle_append_entries(msg.append_param,
                                                              res, effects);
             Status drive_status = cluster_.drive_raft_effects(target, effects);
             ASSERT_TRUE(drive_status.ok()) << drive_status.to_string();
             RaftEffects response_effects;
-            IGNORE_RESULT(cluster_.node_ptr(0)->handle_append_response(
+            IGNORE_RESULT(cluster_.core_ptr(0)->handle_append_response(
                 msg.target.replica_id, msg.append_param, res,
                 response_effects));
             Status response_status =
@@ -1315,20 +1503,22 @@ TEST_F(RaftClusterTest, ReadIndexCountsInstallSnapshotMessage) {
             ASSERT_TRUE(response_status.ok()) << response_status.to_string();
             if (res.term == read_term) success_cnt++;
         } else if (msg.type == RaftMessageType::INSTALL_SNAPSHOT) {
-            SnapshotInstallPlan plan;
             RaftEffects prepare_effects;
-            Status ps = cluster_.node_ptr(target)->build_install_snapshot_plan(
-                msg.snapshot_param, plan, prepare_effects);
+            Status ps = cluster_.core_ptr(target)->prepare_install_snapshot(
+                msg.snapshot_param, prepare_effects);
             Status prepare_status =
                 cluster_.drive_raft_effects(target, std::move(prepare_effects));
             ASSERT_TRUE(prepare_status.ok()) << prepare_status.to_string();
             InstallSnapshotResult res;
-            res.term = cluster_.node_ptr(target)->current_term();
+            res.term = cluster_.core_ptr(target)->current_term();
             res.status = ps;
             if (ps.ok()) {
+                InstallSnapshotContext context;
+                context.snapshot_index = msg.snapshot_param.snapshot_index;
+                context.snapshot_term = msg.snapshot_param.snapshot_term;
                 RaftEffects install_effects;
-                cluster_.node_ptr(target)->commit_install_snapshot(
-                    plan, install_effects);
+                cluster_.core_ptr(target)->commit_install_snapshot(
+                    context, install_effects);
                 Status install_status = cluster_.drive_raft_effects(
                     target, std::move(install_effects));
                 ASSERT_TRUE(install_status.ok()) << install_status.to_string();
@@ -1336,16 +1526,16 @@ TEST_F(RaftClusterTest, ReadIndexCountsInstallSnapshotMessage) {
             if (ps.code() == StatusCode::ALREADY_EXIST ||
                 (ps.fail() &&
                  msg.snapshot_param.snapshot_index <=
-                     cluster_.node_ptr(target)->snapshot_index())) {
+                     cluster_.core_ptr(target)->snapshot_index())) {
                 if (ps.code() == StatusCode::ALREADY_EXIST) {
                     res.snapshot_watermark = msg.snapshot_param.snapshot_index;
                 } else {
                     res.snapshot_watermark =
-                        cluster_.node_ptr(target)->snapshot_index();
+                        cluster_.core_ptr(target)->snapshot_index();
                 }
             }
             RaftEffects response_effects;
-            cluster_.node_ptr(0)->handle_install_snapshot_response(
+            cluster_.core_ptr(0)->handle_install_snapshot_response(
                 msg.target.replica_id, msg.snapshot_param, res,
                 response_effects);
             Status response_status =
@@ -1370,18 +1560,18 @@ TEST_F(RaftClusterTest, InstallSnapshotSuccessUsesSentSnapshotIndex) {
                                               "snap_ack_" + std::to_string(i),
                                               "v" + std::to_string(i));
     }
-    ASSERT_EQ(cluster_.node_ptr(0)->commit_index(), last_idx);
+    ASSERT_EQ(cluster_.core_ptr(0)->commit_index(), last_idx);
 
-    cluster_.node_ptr(0)->advance_last_applied(last_idx);
-    ASSERT_TRUE(cluster_.node_ptr(0)->truncate_log(4).ok());
-    ASSERT_EQ(cluster_.node_ptr(0)->snapshot_index(), 4);
+    cluster_.core_ptr(0)->advance_last_applied(last_idx);
+    ASSERT_TRUE(cluster_.core_ptr(0)->truncate_log(4).ok());
+    ASSERT_EQ(cluster_.core_ptr(0)->snapshot_index(), 4);
 
     set_node_next_index(0, cluster_.replica_id(2), 3);
 
     RaftEffects read_effects;
     LogIndex read_index = 0;
     Term read_term = 0;
-    Status status = cluster_.node_ptr(0)->build_append_entries_for_read(
+    Status status = cluster_.core_ptr(0)->build_append_entries_for_read(
         read_effects, read_index, read_term);
     ASSERT_TRUE(status.ok()) << status.to_string();
 
@@ -1398,16 +1588,16 @@ TEST_F(RaftClusterTest, InstallSnapshotSuccessUsesSentSnapshotIndex) {
     ASSERT_TRUE(found_snapshot);
     ASSERT_EQ(snapshot_msg.snapshot_param.snapshot_index, 4);
 
-    ASSERT_TRUE(cluster_.node_ptr(0)->truncate_log(last_idx).ok());
-    ASSERT_EQ(cluster_.node_ptr(0)->snapshot_index(), last_idx);
+    ASSERT_TRUE(cluster_.core_ptr(0)->truncate_log(last_idx).ok());
+    ASSERT_EQ(cluster_.core_ptr(0)->snapshot_index(), last_idx);
 
     InstallSnapshotResult res;
-    res.term = cluster_.node_ptr(0)->current_term();
+    res.term = cluster_.core_ptr(0)->current_term();
     res.status = Status::OK();
     res.snapshot_watermark = 0;
 
     RaftEffects response_effects;
-    cluster_.node_ptr(0)->handle_install_snapshot_response(
+    cluster_.core_ptr(0)->handle_install_snapshot_response(
         snapshot_msg.target.replica_id, snapshot_msg.snapshot_param, res,
         response_effects);
 
@@ -1430,18 +1620,18 @@ TEST_F(RaftClusterTest, InstallSnapshotCoveredWatermarkUpdatesProgress) {
                                               "snap_equal_" + std::to_string(i),
                                               "v" + std::to_string(i));
     }
-    ASSERT_EQ(cluster_.node_ptr(0)->commit_index(), last_idx);
+    ASSERT_EQ(cluster_.core_ptr(0)->commit_index(), last_idx);
 
-    cluster_.node_ptr(0)->advance_last_applied(last_idx);
-    ASSERT_TRUE(cluster_.node_ptr(0)->truncate_log(4).ok());
-    ASSERT_EQ(cluster_.node_ptr(0)->snapshot_index(), 4);
+    cluster_.core_ptr(0)->advance_last_applied(last_idx);
+    ASSERT_TRUE(cluster_.core_ptr(0)->truncate_log(4).ok());
+    ASSERT_EQ(cluster_.core_ptr(0)->snapshot_index(), 4);
 
     set_node_next_index(0, cluster_.replica_id(2), 3);
 
     RaftEffects read_effects;
     LogIndex read_index = 0;
     Term read_term = 0;
-    Status status = cluster_.node_ptr(0)->build_append_entries_for_read(
+    Status status = cluster_.core_ptr(0)->build_append_entries_for_read(
         read_effects, read_index, read_term);
     ASSERT_TRUE(status.ok()) << status.to_string();
 
@@ -1459,12 +1649,12 @@ TEST_F(RaftClusterTest, InstallSnapshotCoveredWatermarkUpdatesProgress) {
     ASSERT_EQ(snapshot_msg.snapshot_param.snapshot_index, 4);
 
     InstallSnapshotResult res;
-    res.term = cluster_.node_ptr(0)->current_term();
+    res.term = cluster_.core_ptr(0)->current_term();
     res.status = Status::ALREADY_EXIST("follower already has sent snapshot");
     res.snapshot_watermark = snapshot_msg.snapshot_param.snapshot_index;
 
     RaftEffects response_effects;
-    cluster_.node_ptr(0)->handle_install_snapshot_response(
+    cluster_.core_ptr(0)->handle_install_snapshot_response(
         snapshot_msg.target.replica_id, snapshot_msg.snapshot_param, res,
         response_effects);
 
@@ -1488,23 +1678,23 @@ TEST_F(RaftClusterTest, InstallSnapshotHigherWatermarkUpdatesProgress) {
                                               "snap_ahead_" + std::to_string(i),
                                               "v" + std::to_string(i));
     }
-    ASSERT_EQ(cluster_.node_ptr(0)->commit_index(), last_idx);
+    ASSERT_EQ(cluster_.core_ptr(0)->commit_index(), last_idx);
 
-    cluster_.node_ptr(0)->advance_last_applied(last_idx);
-    ASSERT_TRUE(cluster_.node_ptr(0)->truncate_log(4).ok());
-    ASSERT_EQ(cluster_.node_ptr(0)->snapshot_index(), 4);
+    cluster_.core_ptr(0)->advance_last_applied(last_idx);
+    ASSERT_TRUE(cluster_.core_ptr(0)->truncate_log(4).ok());
+    ASSERT_EQ(cluster_.core_ptr(0)->snapshot_index(), 4);
 
-    cluster_.node_ptr(2)->advance_last_applied(last_idx);
-    ASSERT_TRUE(cluster_.node_ptr(2)->truncate_log(last_idx).ok());
-    ASSERT_GT(cluster_.node_ptr(2)->snapshot_index(),
-              cluster_.node_ptr(0)->snapshot_index());
+    cluster_.core_ptr(2)->advance_last_applied(last_idx);
+    ASSERT_TRUE(cluster_.core_ptr(2)->truncate_log(last_idx).ok());
+    ASSERT_GT(cluster_.core_ptr(2)->snapshot_index(),
+              cluster_.core_ptr(0)->snapshot_index());
 
     set_node_next_index(0, cluster_.replica_id(2), 3);
 
     RaftEffects read_effects;
     LogIndex read_index = 0;
     Term read_term = 0;
-    Status status = cluster_.node_ptr(0)->build_append_entries_for_read(
+    Status status = cluster_.core_ptr(0)->build_append_entries_for_read(
         read_effects, read_index, read_term);
     ASSERT_TRUE(status.ok()) << status.to_string();
 
@@ -1522,19 +1712,19 @@ TEST_F(RaftClusterTest, InstallSnapshotHigherWatermarkUpdatesProgress) {
     ASSERT_EQ(snapshot_msg.snapshot_param.snapshot_index, 4);
 
     InstallSnapshotResult res;
-    res.term = cluster_.node_ptr(0)->current_term();
+    res.term = cluster_.core_ptr(0)->current_term();
     res.status = Status::ALREADY_EXIST("follower already has newer snapshot");
-    res.snapshot_watermark = cluster_.node_ptr(2)->snapshot_index();
+    res.snapshot_watermark = cluster_.core_ptr(2)->snapshot_index();
 
     RaftEffects response_effects;
-    cluster_.node_ptr(0)->handle_install_snapshot_response(
+    cluster_.core_ptr(0)->handle_install_snapshot_response(
         snapshot_msg.target.replica_id, snapshot_msg.snapshot_param, res,
         response_effects);
 
     EXPECT_EQ(get_node_next_index(0, snapshot_msg.target.replica_id),
-              cluster_.node_ptr(2)->snapshot_index() + 1);
+              cluster_.core_ptr(2)->snapshot_index() + 1);
     EXPECT_EQ(get_snapshot_watermark(0, snapshot_msg.target.replica_id),
-              cluster_.node_ptr(2)->snapshot_index());
+              cluster_.core_ptr(2)->snapshot_index());
     EXPECT_EQ(get_inflight_snapshot_index(0, snapshot_msg.target.replica_id),
               0);
 }
@@ -1556,15 +1746,15 @@ TEST_F(RaftClusterTest, ReadIndexCountsRejectedAppendEntriesWithMatchingTerm) {
     cluster_.isolate(1);
     LogIndex idx =
         propose_and_replicate_once(0, {2}, WriteOpType::PUT, "k1", "v1");
-    ASSERT_EQ(cluster_.node_ptr(0)->commit_index(), idx);
-    ASSERT_LT(cluster_.node_ptr(1)->last_log_index(), idx);
+    ASSERT_EQ(cluster_.core_ptr(0)->commit_index(), idx);
+    ASSERT_LT(cluster_.core_ptr(1)->last_log_index(), idx);
     drop_all_messages();
 
     // 恢复 B，让真实存在且日志落后的 B 发起选举。A 会因为更高 term 退为
     // follower，但会因为 B 的日志不够新而拒绝投票，所以 B 不会当选。
     cluster_.restore(1);
     assert_not_elected_after_votes(1, {0});
-    ASSERT_EQ(cluster_.node_ptr(0)->current_term(), 2);
+    ASSERT_EQ(cluster_.core_ptr(0)->current_term(), 2);
 
     // 再次隔离 B，保证 A 重新当选和提交当前 term no-op 的过程只和 C 通信，
     // B 不会被顺便追平。
@@ -1574,13 +1764,13 @@ TEST_F(RaftClusterTest, ReadIndexCountsRejectedAppendEntriesWithMatchingTerm) {
     drop_all_messages();
 
     // 提交 A 的 no-op，确保 has_committed_current_term_entry 通过
-    replicate_until_committed(0, cluster_.node_ptr(0)->last_log_index(), {2});
+    replicate_until_committed(0, cluster_.core_ptr(0)->last_log_index(), {2});
 
     // 恢复 B。B 仍然缺少 index=idx 的日志；等它收到 A 的 ReadIndex 探测时，
     // 会先被 AppendEntries 的 term 推进到 read_term，再因为 prev_log 不存在而
     // reject。
     cluster_.restore(1);
-    ASSERT_LT(cluster_.node_ptr(1)->last_log_index(), idx);
+    ASSERT_LT(cluster_.core_ptr(1)->last_log_index(), idx);
 
     // 隔离 C，quorum 只能靠 B
     cluster_.isolate(2);
@@ -1588,12 +1778,12 @@ TEST_F(RaftClusterTest, ReadIndexCountsRejectedAppendEntriesWithMatchingTerm) {
     RaftEffects read_effects;
     LogIndex read_index = 0;
     Term read_term = 0;
-    Status status = cluster_.node_ptr(0)->build_append_entries_for_read(
+    Status status = cluster_.core_ptr(0)->build_append_entries_for_read(
         read_effects, read_index, read_term);
     ASSERT_TRUE(status.ok()) << status.to_string();
 
     int success_cnt = 1;
-    int limit = cluster_.node_ptr(0)->quorum_size();
+    int limit = cluster_.core_ptr(0)->quorum_size();
 
     for (auto& msg : read_effects.messages) {
         int target = cluster_.find_node(msg.target.replica_id);
@@ -1603,10 +1793,10 @@ TEST_F(RaftClusterTest, ReadIndexCountsRejectedAppendEntriesWithMatchingTerm) {
         ASSERT_EQ(target, 1);
         ASSERT_EQ(msg.type, RaftMessageType::APPEND_ENTRIES);
         EXPECT_GT(msg.append_param.prev_log_index,
-                  cluster_.node_ptr(target)->last_log_index());
+                  cluster_.core_ptr(target)->last_log_index());
         AppendEntriesResult res;
         RaftEffects effects;
-        cluster_.node_ptr(target)->handle_append_entries(msg.append_param, res,
+        cluster_.core_ptr(target)->handle_append_entries(msg.append_param, res,
                                                          effects);
         Status drive_status = cluster_.drive_raft_effects(target, effects);
         ASSERT_TRUE(drive_status.ok()) << drive_status.to_string();
@@ -1617,7 +1807,7 @@ TEST_F(RaftClusterTest, ReadIndexCountsRejectedAppendEntriesWithMatchingTerm) {
         EXPECT_EQ(res.term, read_term);
 
         RaftEffects response_effects;
-        IGNORE_RESULT(cluster_.node_ptr(0)->handle_append_response(
+        IGNORE_RESULT(cluster_.core_ptr(0)->handle_append_response(
             msg.target.replica_id, msg.append_param, res, response_effects));
         Status response_status =
             cluster_.drive_raft_effects(0, std::move(response_effects));

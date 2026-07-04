@@ -62,6 +62,6 @@ target_include_directories(adviskv_storage_test_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/src
 )
 
-target_compile_definitions(adviskv_storage_test_lib PRIVATE
+target_compile_definitions(adviskv_storage_test_lib PUBLIC
     ADVISKV_ENABLE_CRASH_TEST
 )

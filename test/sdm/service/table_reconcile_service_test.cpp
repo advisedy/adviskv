@@ -442,6 +442,7 @@ TEST(TableServiceReconcileTest, ReplacementKeepsTableReadyAndAllowsAlter) {
     SdmStore store{SdmMetaStoreType::MEMORY};
     put_default_nodes(store);
     ASSERT_TRUE(store_test::put_node(store, make_node("node-c", 18082)).ok());
+    ASSERT_TRUE(store_test::put_node(store, make_node("node-d", 18083)).ok());
 
     FakeNodeSelector selector(&store);
     ServiceHarness services(&store, &selector);

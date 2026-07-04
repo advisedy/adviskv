@@ -75,6 +75,25 @@ bool drop_table(E2EContext* context, std::string* error) {
                        "DropTable", error);
 }
 
+bool alter_table_replica_count(E2EContext* context, int32_t replica_count,
+                               std::string* error) {
+    const Options& options = context->options();
+    meta_rpc::AlterTableReplicaCountRequest request;
+    request.set_db_name(options.db);
+    request.set_table_name(options.table);
+    request.set_replica_count(replica_count);
+
+    meta_rpc::AlterTableReplicaCountResponse response;
+    grpc::ClientContext client_context;
+    client_context.set_deadline(std::chrono::system_clock::now() +
+                                std::chrono::milliseconds(options.timeout_ms));
+    const grpc::Status status = context->meta()->AlterTableReplicaCount(
+        &client_context, request, &response);
+    return grpc_ok(status, "AlterTableReplicaCount", error) &&
+           base_rsp_ok(response.base_rsp().code(), response.base_rsp().msg(),
+                       "AlterTableReplicaCount", error);
+}
+
 bool wait_table_normal(E2EContext* context) {
     const Options& options = context->options();
     std::string last_error;
@@ -111,6 +130,50 @@ bool wait_table_normal(E2EContext* context) {
                 fmt::format("db_id={}, table_id={}, shards={}, replicas={}",
                             response.db_id(), response.table_id(),
                             response.shard_count(), response.replica_count()));
+        },
+        &last_error);
+}
+
+bool wait_table_replica_count(E2EContext* context, int32_t replica_count) {
+    const Options& options = context->options();
+    std::string last_error;
+    return eventually(
+        fmt::format("table replica_count {}", replica_count), options,
+        [&]() {
+            meta_rpc::GetTableRequest request;
+            request.set_db_name(options.db);
+            request.set_table_name(options.table);
+
+            meta_rpc::GetTableResponse response;
+            grpc::ClientContext client_context;
+            client_context.set_deadline(std::chrono::system_clock::now() +
+                                        std::chrono::milliseconds(3000));
+            const grpc::Status status =
+                context->meta()->GetTable(&client_context, request, &response);
+            std::string error;
+            if (!grpc_ok(status, "GetTable", &error)) {
+                return CheckResult::fail(error);
+            }
+            if (response.base_rsp().code() != to_rpc_code(StatusCode::OK)) {
+                return CheckResult::fail(fmt::format(
+                    "GetTable code={}, msg={}", response.base_rsp().code(),
+                    response.base_rsp().msg()));
+            }
+            if (response.table_state() !=
+                pb::MetaTableState::META_TABLE_STATE_NORMAL) {
+                return CheckResult::fail(fmt::format(
+                    "table_state={}, replica_count={}, last_error={}",
+                    static_cast<int32_t>(response.table_state()),
+                    response.replica_count(), response.last_error_msg()));
+            }
+            if (response.replica_count() != replica_count) {
+                return CheckResult::fail(fmt::format(
+                    "replica_count={}, expected={}", response.replica_count(),
+                    replica_count));
+            }
+            return CheckResult::pass(
+                fmt::format("table_id={}, replica_count={}",
+                            response.table_id(), response.replica_count()));
         },
         &last_error);
 }

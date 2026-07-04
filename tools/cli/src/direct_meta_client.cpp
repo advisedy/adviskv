@@ -105,6 +105,36 @@ Status DirectMetaClient::create_table(const std::string& db_name,
     return Status::OK();
 }
 
+Status DirectMetaClient::alter_table_replica_count(
+    const std::string& db_name, const std::string& table_name,
+    int32_t replica_count, TableID* table_id) const {
+    RETURN_IF_INVALID_PARAM(target_)
+    RETURN_IF_INVALID_CONDITION(table_id != nullptr,
+                                "table_id should not be nullptr")
+
+    meta_rpc::AlterTableReplicaCountRequest request;
+    request.set_db_name(db_name);
+    request.set_table_name(table_name);
+    request.set_replica_count(replica_count);
+
+    meta_rpc::AlterTableReplicaCountResponse response;
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() +
+                         std::chrono::milliseconds(target_.timeout_ms));
+
+    grpc::Status grpc_status =
+        stub_->AlterTableReplicaCount(&context, request, &response);
+    if (!grpc_status.ok()) {
+        return Status::ERROR(fmt::format(
+            "Meta AlterTableReplicaCount RPC failed, grpc code = {}, msg = {}",
+            static_cast<int>(grpc_status.error_code()),
+            grpc_status.error_message()));
+    }
+    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
+    *table_id = response.table_id();
+    return Status::OK();
+}
+
 Status DirectMetaClient::get_table(const std::string& db_name,
                                    const std::string& table_name,
                                    TableInfo* table_info) const {

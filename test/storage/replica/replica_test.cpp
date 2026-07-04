@@ -92,7 +92,7 @@ TEST_F(ReplicaTest, HandleInstallSnapshotUpdatesReadableState) {
     ASSERT_TRUE(
         source_state.apply(LogEntry{7, 6, WriteOpType::PUT, "foo", "bar"})
             .ok());
-    ASSERT_TRUE(source_persist.do_snapshot(source_state).ok());
+    ASSERT_TRUE(source_persist.write_snapshot(source_state).ok());
 
     uint64 offset = 0;
     Status status = Status::OK();
@@ -128,7 +128,7 @@ TEST_F(ReplicaTest, HandleInstallSnapshotUpdatesReadableState) {
     EXPECT_EQ(value, "world");
 }
 
-// InstallSnapshot覆盖已有WAL后，磁盘WAL应和RaftNode清空后的内存日志保持一致。
+// InstallSnapshot覆盖已有WAL后，磁盘WAL应和RaftCore清空后的内存日志保持一致。
 TEST_F(ReplicaTest, HandleInstallSnapshotClearsOldWalBeforeAppendingNewLog) {
     {
         PersistEngine target_persist(base_dir_.string(), replica_id_);
@@ -165,7 +165,7 @@ TEST_F(ReplicaTest, HandleInstallSnapshotClearsOldWalBeforeAppendingNewLog) {
             "value-" + std::to_string(index)));
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     }
-    ASSERT_TRUE(source_persist.do_snapshot(source_state).ok());
+    ASSERT_TRUE(source_persist.write_snapshot(source_state).ok());
 
     Status status = Status::OK();
     uint64 offset = 0;
@@ -494,7 +494,7 @@ TEST_F(ReplicaTest, SnapshotCatchupRecoveryFinishesWhenSnapshotCoversTarget) {
             "value-" + std::to_string(index)));
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     }
-    ASSERT_TRUE(source_persist.do_snapshot(source_state).ok());
+    ASSERT_TRUE(source_persist.write_snapshot(source_state).ok());
 
     uint64 offset = 0;
     while (true) {

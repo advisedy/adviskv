@@ -82,7 +82,7 @@ TEST_F(KvStateMachineTest, SnapshotAndRestoreRoundTrip) {
 
     PersistEngine persist = make_engine();
     ASSERT_TRUE(persist.init().ok());
-    ASSERT_TRUE(persist.do_snapshot(source).ok());
+    ASSERT_TRUE(persist.write_snapshot(source).ok());
 
     SnapshotPtr snapshot = std::make_shared<Snapshot>();
     ASSERT_TRUE(persist.load_snapshot_meta(snapshot).ok());

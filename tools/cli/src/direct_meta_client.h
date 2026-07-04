@@ -46,6 +46,10 @@ class DirectMetaClient {
                         const std::string& table_name, int32_t shard_count,
                         int32_t replica_count, TableID* table_id,
                         std::string resource_pool) const;
+    Status alter_table_replica_count(const std::string& db_name,
+                                     const std::string& table_name,
+                                     int32_t replica_count,
+                                     TableID* table_id) const;
     Status get_table(const std::string& db_name, const std::string& table_name,
                      TableInfo* table_info) const;
 

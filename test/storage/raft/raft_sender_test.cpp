@@ -95,7 +95,7 @@ class RaftSenderTest : public ::testing::Test {
         EXPECT_TRUE(
             machine.apply(LogEntry{1, 1, WriteOpType::PUT, "snap-key", value})
                 .ok());
-        EXPECT_TRUE(persist->do_snapshot(machine).ok());
+        EXPECT_TRUE(persist->write_snapshot(machine).ok());
 
         return InstallSnapshotParam{
             ReplicaID{101, 7, 0}, member_.replica_id, 3, 1, 1, 0, "", false,

@@ -1,12 +1,16 @@
 import re
 import time
 
+import pytest
+
 from .cluster import AdvisKVCluster
 
 
 VERIFY_TIMEOUT_MS = 90_000
 SNAPSHOT_TIMEOUT_MS = 120_000
+RESIZE_RESILIENCE_TIMEOUT_MS = 300_000
 CATCHUP_WAIT_SECONDS = 3
+OFFLINE_REPLACEMENT_WAIT_SECONDS = 40
 
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
 ROUTE_LEADER_RE = re.compile(r"\[ ROUTE_LEADER \] ([^:]+):(\d+)")
@@ -57,6 +61,13 @@ def follower_services_from_output(cluster: AdvisKVCluster, output: str) -> list[
 def leader_service_from_output(cluster: AdvisKVCluster, output: str) -> str:
     _, leader_port = parse_route_leader(output)
     return cluster.service_name_for_port(leader_port)
+
+
+def service_port(cluster: AdvisKVCluster, name: str) -> int:
+    for spec in cluster.specs:
+        if spec.name == name:
+            return spec.port
+    raise KeyError(f"unknown service: {name}")
 
 
 def run_create_table_crash_story(cluster: AdvisKVCluster, *, crash_point: str,
@@ -137,6 +148,125 @@ def test_meta_to_storage_basic_kv_chain(cluster: AdvisKVCluster):
         db="pytest_e2e_db",
         table="pytest_e2e_table",
         key_count=16,
+    )
+
+
+@pytest.mark.parametrize("cluster", [{"storage_count": 5}], indirect=True)
+def test_table_replica_count_resize_case(cluster: AdvisKVCluster):
+    run_case_and_get_output(
+        cluster,
+        case="table_replica_count_resize",
+        db="pytest_resize_db",
+        table="pytest_resize_table",
+        key_count=16,
+        replica_count=3,
+        timeout_ms=180_000,
+    )
+
+
+@pytest.mark.parametrize("cluster", [{"storage_count": 5}], indirect=True)
+def test_table_replica_count_resize_with_writes_case(cluster: AdvisKVCluster):
+    run_case_and_get_output(
+        cluster,
+        case="table_replica_count_resize_with_writes",
+        db="pytest_resize_live_db",
+        table="pytest_resize_live_table",
+        key_count=16,
+        replica_count=3,
+        timeout_ms=RESIZE_RESILIENCE_TIMEOUT_MS,
+    )
+
+
+@pytest.mark.parametrize("cluster", [{"storage_count": 5}], indirect=True)
+def test_table_replica_count_resize_storage_failure_case(
+        cluster: AdvisKVCluster):
+    prepare_output = run_case_and_get_output(
+        cluster,
+        case="table_replica_count_resize_disruption_prepare",
+        db="pytest_resize_failure_db",
+        table="pytest_resize_failure_table",
+        key_count=16,
+        replica_count=3,
+        timeout_ms=RESIZE_RESILIENCE_TIMEOUT_MS,
+    )
+    failed_storage = follower_services_from_output(cluster, prepare_output)[0]
+
+    run_case_and_get_output(
+        cluster,
+        case="table_replica_count_resize_start_alter",
+        db="pytest_resize_failure_db",
+        table="pytest_resize_failure_table",
+        key_count=16,
+        replica_count=4,
+        timeout_ms=RESIZE_RESILIENCE_TIMEOUT_MS,
+    )
+
+    cluster.stop_service(failed_storage)
+    time.sleep(OFFLINE_REPLACEMENT_WAIT_SECONDS)
+
+    verify_output = run_case_and_get_output(
+        cluster,
+        case="table_replica_count_resize_disruption_verify",
+        db="pytest_resize_failure_db",
+        table="pytest_resize_failure_table",
+        key_count=16,
+        replica_count=4,
+        timeout_ms=RESIZE_RESILIENCE_TIMEOUT_MS,
+    )
+    final_replica_ports = {
+        port for _, port, _ in parse_route_replicas(verify_output)
+    }
+    assert service_port(cluster, failed_storage) not in final_replica_ports
+    assert len(final_replica_ports) == 4, verify_output
+
+
+@pytest.mark.parametrize("cluster", [{"storage_count": 5}], indirect=True)
+def test_table_replica_count_resize_restart_recovery_case(
+        cluster: AdvisKVCluster):
+    run_case_and_get_output(
+        cluster,
+        case="table_replica_count_resize_disruption_prepare",
+        db="pytest_resize_restart_db",
+        table="pytest_resize_restart_table",
+        key_count=16,
+        replica_count=3,
+        timeout_ms=RESIZE_RESILIENCE_TIMEOUT_MS,
+    )
+
+    run_case_and_get_output(
+        cluster,
+        case="table_replica_count_resize_start_alter",
+        db="pytest_resize_restart_db",
+        table="pytest_resize_restart_table",
+        key_count=16,
+        replica_count=4,
+        timeout_ms=RESIZE_RESILIENCE_TIMEOUT_MS,
+    )
+
+    cluster.restart()
+
+    run_case_and_get_output(
+        cluster,
+        case="table_replica_count_resize_disruption_verify",
+        db="pytest_resize_restart_db",
+        table="pytest_resize_restart_table",
+        key_count=16,
+        replica_count=4,
+        timeout_ms=RESIZE_RESILIENCE_TIMEOUT_MS,
+    )
+
+
+def test_many_tables_create_drop_case(cluster: AdvisKVCluster):
+    run_case_and_get_output(
+        cluster,
+        case="many_tables_create_drop",
+        db="pytest_many_tables_db",
+        table="pytest_many_table",
+        key_count=1,
+        replica_count=3,
+        table_count=12,
+        concurrency=4,
+        timeout_ms=180_000,
     )
 
 

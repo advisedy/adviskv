@@ -48,6 +48,8 @@ int main(int argc, char** argv) {
             return 4;
         }
     }
-    persist.do_snapshot(machine);
+    if (persist.write_snapshot(machine).fail()) {
+        return 5;
+    }
     return 0;
 }

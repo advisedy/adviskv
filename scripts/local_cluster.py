@@ -349,6 +349,9 @@ def default_cluster() -> LocalCluster:
             ROOT_DIR / "conf" / "storage-1.yaml",
             ROOT_DIR / "conf" / "storage-2.yaml",
             ROOT_DIR / "conf" / "storage-3.yaml",
+            ROOT_DIR / "conf" / "storage-4.yaml",
+            ROOT_DIR / "conf" / "storage-5.yaml",
+            ROOT_DIR / "conf" / "storage-6.yaml",
         ],
         capture_output=True,
     )
@@ -435,7 +438,7 @@ def start_spec(cluster: LocalCluster, spec: ServiceSpec) -> None:
 def handle_cli(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Manage local AdvisKV demo cluster")
     parser.add_argument("command", choices=["start", "stop", "kill", "restart", "status"])
-    parser.add_argument("service", nargs="?", help="sdm, meta, storage-1, storage-2, storage-3")
+    parser.add_argument("service", nargs="?", help="sdm, meta, storage-N")
     args = parser.parse_args(argv)
 
     cluster = default_cluster()
