@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 #include <memory>
+#include <vector>
 
 #include "common/model/storage_replica_status.h"
 #include "common/status.h"
@@ -39,9 +40,32 @@ HeartBeatParam make_heartbeat_param() {
         "dc-a",
         {HeartBeatReplicaInfo{ReplicaID{1001, 0, 0}, ReplicaRole::LEADER,
                               StorageReplicaStatus::READY, 7,
-                              RaftMemberType::VOTER}},
+                              RaftMemberType::VOTER, {}}},
         987654,
     };
+}
+
+RaftMember make_heartbeat_member(const ReplicaID& rid,
+                                          const NodeID& node_id,
+                                          RaftMemberType member_type) {
+    return RaftMember{
+        PeerMember{node_id, rid, Endpoint{"127.0.0.1", 18080 + rid.replica_seq}},
+        member_type,
+    };
+}
+
+void put_group_with_replicas(SdmStore& store, const std::vector<ReplicaID>& rids) {
+    ReplicaGroup group;
+    group.shard_id = ShardID{1001, 0};
+    group.mode = ReplicaGroupMode::RAFT_RECONFIG;
+    group.target_replica_count = static_cast<int32_t>(rids.size());
+    group.desired_members = rids;
+    ASSERT_TRUE(store_test::put_replica_group(store, group).ok());
+    for (size_t i = 0; i < rids.size(); ++i) {
+        const NodeID node_id = "node-" + std::to_string(i);
+        ASSERT_TRUE(store_test::put_node(store, make_node(node_id, 18080 + i)).ok());
+        ASSERT_TRUE(store_test::put_replica(store, make_replica(rids[i], node_id)).ok());
+    }
 }
 
 }  // namespace
@@ -73,10 +97,119 @@ TEST(NodeHeartbeatServiceTest, HeartbeatUpdatesNodeAndAssignedReplicas) {
     ASSERT_FALSE(replica.is_empty());
     EXPECT_EQ(replica->state.phase, ReplicaPhase::READY);
     EXPECT_EQ(replica->state.observed_raft_role, ReplicaRole::LEADER);
-    EXPECT_EQ(replica->state.observed_member_type, RaftMemberType::VOTER);
+    EXPECT_EQ(replica->state.observed_member_type, RaftMemberType::NON_MEMBER);
     EXPECT_EQ(replica->state.observed_endpoint.ip, "10.0.0.1");
     EXPECT_EQ(replica->state.observed_endpoint.port, 19090);
     EXPECT_EQ(replica->state.term, 7);
+}
+
+// 检测只有 leader 上报的完整 membership 会投影 observed_member_type。
+TEST(NodeHeartbeatServiceTest, LeaderMembershipProjectsObservedMemberTypes) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    ReplicaID r0{1001, 0, 0};
+    ReplicaID r1{1001, 0, 1};
+    ReplicaID r2{1001, 0, 2};
+    put_group_with_replicas(store, {r0, r1, r2});
+
+    NodeService service(&store);
+    HeartBeatParam param = make_heartbeat_param();
+    param.node_id = "node-0";
+    param.replica_list = {HeartBeatReplicaInfo{
+        r0,
+        ReplicaRole::LEADER,
+        StorageReplicaStatus::READY,
+        7,
+        RaftMemberType::VOTER,
+        {make_heartbeat_member(r0, "node-0", RaftMemberType::VOTER),
+         make_heartbeat_member(r1, "node-1", RaftMemberType::LEARNER)}}};
+
+    ASSERT_TRUE(service.heartbeat(param).ok());
+
+    ReplicaOr replica0;
+    ReplicaOr replica1;
+    ReplicaOr replica2;
+    ASSERT_TRUE(store_test::get_replica(store, r0, replica0).ok());
+    ASSERT_TRUE(store_test::get_replica(store, r1, replica1).ok());
+    ASSERT_TRUE(store_test::get_replica(store, r2, replica2).ok());
+    ASSERT_FALSE(replica0.is_empty());
+    ASSERT_FALSE(replica1.is_empty());
+    ASSERT_FALSE(replica2.is_empty());
+    EXPECT_EQ(replica0->state.observed_member_type, RaftMemberType::VOTER);
+    EXPECT_EQ(replica1->state.observed_member_type, RaftMemberType::LEARNER);
+    EXPECT_EQ(replica2->state.observed_member_type, RaftMemberType::NON_MEMBER);
+
+    ReplicaGroupOr group;
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_FALSE(group.is_empty());
+    EXPECT_EQ(group->observed_membership_term, 7);
+    EXPECT_EQ(group->observed_membership_leader, r0);
+}
+
+// 检测 leader 上报空 membership 时不会投影，也不会推进 authority term。
+TEST(NodeHeartbeatServiceTest, LeaderEmptyMembershipDoesNotProject) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    ReplicaID r0{1001, 0, 0};
+    ReplicaID r1{1001, 0, 1};
+    put_group_with_replicas(store, {r0, r1});
+    ReplicaGroupOr group;
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_FALSE(group.is_empty());
+    group->observed_membership_term = 5;
+    group->observed_membership_leader = r0;
+    ASSERT_TRUE(store_test::put_replica_group(store, group.value()).ok());
+
+    NodeService service(&store);
+    HeartBeatParam param = make_heartbeat_param();
+    param.node_id = "node-0";
+    param.replica_list = {HeartBeatReplicaInfo{r0, ReplicaRole::LEADER,
+                                               StorageReplicaStatus::READY, 6,
+                                               RaftMemberType::VOTER, {}}};
+
+    ASSERT_TRUE(service.heartbeat(param).ok());
+
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_FALSE(group.is_empty());
+    EXPECT_EQ(group->observed_membership_term, 5);
+    EXPECT_EQ(group->observed_membership_leader, r0);
+    ReplicaOr replica1;
+    ASSERT_TRUE(store_test::get_replica(store, r1, replica1).ok());
+    ASSERT_FALSE(replica1.is_empty());
+    EXPECT_EQ(replica1->state.observed_member_type, RaftMemberType::NON_MEMBER);
+}
+
+// 检测同 term 不同 leader 的 membership report 会被拒绝。
+TEST(NodeHeartbeatServiceTest, SameTermDifferentLeaderMembershipRejected) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    ReplicaID r0{1001, 0, 0};
+    ReplicaID r1{1001, 0, 1};
+    put_group_with_replicas(store, {r0, r1});
+    ReplicaGroupOr group;
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_FALSE(group.is_empty());
+    group->observed_membership_term = 7;
+    group->observed_membership_leader = r0;
+    ASSERT_TRUE(store_test::put_replica_group(store, group.value()).ok());
+
+    NodeService service(&store);
+    HeartBeatParam param = make_heartbeat_param();
+    param.node_id = "node-1";
+    param.replica_list = {HeartBeatReplicaInfo{
+        r1,
+        ReplicaRole::LEADER,
+        StorageReplicaStatus::READY,
+        7,
+        RaftMemberType::VOTER,
+        {make_heartbeat_member(r1, "node-1", RaftMemberType::VOTER)}}};
+
+    ASSERT_TRUE(service.heartbeat(param).ok());
+
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_FALSE(group.is_empty());
+    EXPECT_EQ(group->observed_membership_leader, r0);
+    ReplicaOr replica1;
+    ASSERT_TRUE(store_test::get_replica(store, r1, replica1).ok());
+    ASSERT_FALSE(replica1.is_empty());
+    EXPECT_EQ(replica1->state.observed_member_type, RaftMemberType::NON_MEMBER);
 }
 
 // 检测 heartbeat 会忽略不存在的 replica 和不属于该节点的 replica。
@@ -95,6 +228,7 @@ TEST(NodeHeartbeatServiceTest, HeartbeatIgnoresMissingAndOtherNodeReplicas) {
         StorageReplicaStatus::READY,
         9,
         RaftMemberType::VOTER,
+        {},
     });
     param.replica_list.push_back(HeartBeatReplicaInfo{
         ReplicaID{9999, 0, 0},
@@ -102,6 +236,7 @@ TEST(NodeHeartbeatServiceTest, HeartbeatIgnoresMissingAndOtherNodeReplicas) {
         StorageReplicaStatus::READY,
         9,
         RaftMemberType::VOTER,
+        {},
     });
 
     Status status = service.heartbeat(param);
@@ -177,6 +312,7 @@ TEST(NodeHeartbeatServiceTest, ReplicaGroupServiceBuildsHeartbeatExpectations) {
         StorageReplicaStatus::READY,
         1,
         RaftMemberType::VOTER,
+        {},
     });
 
     ReplicaGroupService replica_group_service(&store);

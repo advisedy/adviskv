@@ -72,7 +72,6 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
     ReplicaGroup current_group;
     bool group_exists = false;
     int32_t healthy_count = 0;
-    int32_t converging_member_count = 0;
     std::vector<ReplicaID> bad_members;
     Optional<ReplicaID> remove_victim;
     bool remove_victim_is_non_member = false;
@@ -99,12 +98,9 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
             if (is_healthy(replica)) {
                 ++healthy_count;
             }
-            if (replica.state.phase == ReplicaPhase::LOST || replica.state.phase == ReplicaPhase::ERROR) {
+            else if (replica.state.phase == ReplicaPhase::LOST || replica.state.phase == ReplicaPhase::ERROR) {
                 bad_members.push_back(rid);
-            } else if (replica.state.phase != ReplicaPhase::DELETING &&
-                       replica.state.phase != ReplicaPhase::DELETED) {
-                ++converging_member_count;
-            }
+            } 
         }
         RETURN_IF_INVALID_STATUS(select_remove_member_victim(txn, current_group, remove_victim))
         if (remove_victim.has_value()) {
@@ -133,9 +129,9 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
         return cleanup_group(current_group);
     }
 
-    // 补成员
-    if (converging_member_count < target) {
-        return add_members(current_group, target - converging_member_count);
+    // 先把正常，并且不是要删除的replca进行补成员，
+    if (healthy_count < target) {
+        return add_members(current_group, target - healthy_count);
     }
 
     if (current_group.mode == ReplicaGroupMode::RAFT_RECONFIG) {

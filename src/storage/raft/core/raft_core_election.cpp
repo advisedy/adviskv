@@ -66,6 +66,23 @@ void RaftCore::handle_request_vote(const RequestVoteParam& param,
     //     return;
     // }
 
+    if (!membership_.is_voter(self_id_)) {
+        LOG_WARN(
+            "[RaftCore Election] replica:{} reject RequestVote because self is "
+            "not voter, from:{}, term:{}, current_term:{}",
+            self_id_.to_string(), param.from_replica_id.to_string(), param.term,
+            election_.current_term());
+        return;
+    }
+    if (!membership_.is_voter(param.from_replica_id)) {
+        LOG_WARN(
+            "[RaftCore Election] replica:{} reject RequestVote from non-voter "
+            "replica:{}, term:{}, current_term:{}",
+            self_id_.to_string(), param.from_replica_id.to_string(), param.term,
+            election_.current_term());
+        return;
+    }
+
     if (param.term < election_.current_term()) {
         return;
     }
@@ -79,10 +96,6 @@ void RaftCore::handle_request_vote(const RequestVoteParam& param,
     }
 
     if (ensure_ready().fail()) {
-        return;
-    }
-    if (!membership_.is_voter(self_id_) ||
-        !membership_.is_voter(param.from_replica_id)) {
         return;
     }
 

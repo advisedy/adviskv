@@ -8,6 +8,7 @@
 
 #include "common/define.h"
 #include "common/model/expected_replica.h"
+#include "common/model/raft_member.h"
 #include "common/model/storage_replica_status.h"
 #include "common/status.h"
 #include "common/type.h"
@@ -174,6 +175,7 @@ struct HeartBeatReplicaInfo {
     StorageReplicaStatus storage_status;
     Term term;  // 用来帮助判断leader，term高的优先被认定是leader
     RaftMemberType member_type{RaftMemberType::NON_MEMBER};
+    std::vector<RaftMember> full_membership;
 };
 
 struct HeartBeatParam {

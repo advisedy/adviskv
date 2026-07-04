@@ -10,6 +10,7 @@
 #include <fmt/format.h>
 
 #include "common/define.h"
+#include "common/model/raft_member.h"
 #include "common/model/raft_member_type.h"
 #include "common/optional.h"
 #include "common/status.h"
@@ -31,17 +32,6 @@ enum class WriteOpType : int32_t {
 inline bool is_config_change_op(WriteOpType op) {
     return op == WriteOpType::ADD_LEARNER || op == WriteOpType::PROMOTE_VOTER || op == WriteOpType::REMOVE_MEMBER;
 }
-
-struct RaftMember {
-    PeerMember peer;
-    RaftMemberType member_type{RaftMemberType::NON_MEMBER};
-
-    bool operator==(const RaftMember& other) const {
-        return peer == other.peer && member_type == other.member_type;
-    }
-
-    DEFINE_OPERATOR_NOT_EQUAL(RaftMember)
-};
 
 struct WriteProposal {
     WriteOpType op{WriteOpType::NONE};

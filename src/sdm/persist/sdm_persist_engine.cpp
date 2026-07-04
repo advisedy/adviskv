@@ -342,6 +342,8 @@ private:
         for (const ReplicaID& replica_id : group.desired_members) {
             encode_replica_id(replica_id, buf);
         }
+        buf.write(group.observed_membership_term);
+        encode_replica_id(group.observed_membership_leader, buf);
         buf.write(group.seq_allocator.current_id());
     }
 
@@ -372,6 +374,8 @@ private:
             RETURN_IF_INVALID_STATUS(decode_replica_id(buf, replica_id))
             group.desired_members.push_back(replica_id);
         }
+        RETURN_IF_INVALID_READ(buf, group.observed_membership_term)
+        RETURN_IF_INVALID_STATUS(decode_replica_id(buf, group.observed_membership_leader))
 
         ReplicaSeq next_replica_seq{0};
         RETURN_IF_INVALID_READ(buf, next_replica_seq)

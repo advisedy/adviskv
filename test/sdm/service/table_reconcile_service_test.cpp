@@ -170,6 +170,7 @@ void report_replica_heartbeat(ServiceHarness& services, const NodeID& node_id,
         status,
         term,
         member_type,
+        {},
     });
     ASSERT_TRUE(services.node.heartbeat(param).ok());
 }
@@ -456,6 +457,7 @@ TEST(TableServiceReconcileTest, ReplicaGroupReplacesBadMemberAfterBackfill) {
         StorageReplicaStatus::READY,
         1,
         RaftMemberType::VOTER,
+        {},
     });
 
     HeartBeatResult result;
@@ -490,8 +492,14 @@ TEST(TableServiceReconcileTest, ReplicaGroupReplacesBadMemberAfterBackfill) {
         });
     EXPECT_NE(remove_it, result.expects.end());
 
-    bad_replica->state.observed_member_type = RaftMemberType::NON_MEMBER;
-    ASSERT_TRUE(store_test::put_replica(store, bad_replica.value()).ok());
+    param.replica_list[0].full_membership = {
+        RaftMember{PeerMember{"node-a", leader_id, Endpoint{"127.0.0.1", 18080}},
+                            RaftMemberType::VOTER},
+        RaftMember{PeerMember{replacement_replica->spec.assign_node_id, replacement_id,
+                                       replacement_replica->state.observed_endpoint},
+                            RaftMemberType::VOTER},
+    };
+    ASSERT_TRUE(services.node.heartbeat(param).ok());
 
     ASSERT_TRUE(services.replica_group.reconcile_all().ok());
     ASSERT_TRUE(
@@ -594,6 +602,7 @@ TEST(TableServiceReconcileTest, ReplicaGroupShrinksAfterObservedMemberRemoved) {
         StorageReplicaStatus::READY,
         1,
         RaftMemberType::VOTER,
+        {},
     });
 
     HeartBeatResult result;

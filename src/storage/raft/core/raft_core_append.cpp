@@ -157,6 +157,23 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param,
     result.term = election_.current_term();
     result.last_log_index = raft_log_.last_log_index();
 
+    if (!membership_.contains(self_id_)) {
+        LOG_WARN(
+            "[RaftCore Append] replica:{} reject AppendEntries because self is "
+            "not member, from:{}, term:{}, current_term:{}",
+            self_id_.to_string(), param.from_replica_id.to_string(), param.term,
+            election_.current_term());
+        return;
+    }
+    if (!membership_.contains(param.from_replica_id)) {
+        LOG_WARN(
+            "[RaftCore Append] replica:{} reject AppendEntries from non-member "
+            "replica:{}, term:{}, current_term:{}",
+            self_id_.to_string(), param.from_replica_id.to_string(), param.term,
+            election_.current_term());
+        return;
+    }
+
     if (param.term < election_.current_term()) {
         ADVISKV_METRICS_COUNTER(
             "storage_raft_handle_append_entries_stale_term");

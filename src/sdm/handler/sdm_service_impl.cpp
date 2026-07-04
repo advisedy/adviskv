@@ -10,6 +10,7 @@
 #include "common/func.h"
 #include "common/log.h"
 #include "common/proto/expected_replica_proto.h"
+#include "common/proto/raft_member_proto.h"
 #include "common/proto/raft_member_type_proto.h"
 #include "common/proto/raft_role_proto.h"
 #include "common/proto/replica_id_proto.h"
@@ -104,9 +105,9 @@ grpc::Status SdmServiceImpl::Heartbeat(grpc::ServerContext* context,
                                        rpc::HeartbeatResponse* response) {
     UNUSED(context);
     std::vector<HeartBeatReplicaInfo> replica_info_list;
-    for (const auto& replica_info : request->replica_info_list()) {
+    for (const auto& replica_info_pb : request->replica_info_list()) {
         ReplicaRole role = ReplicaRole::FOLLOWER;
-        if (!decode_pb_raft_role(replica_info.role(), role)) {
+        if (!decode_pb_raft_role(replica_info_pb.role(), role)) {
             fill_base_rsp(response, Status{StatusCode::INVALID_ARGUMENT,
                                            "replica role is not valid"});
             return grpc::Status::OK;
@@ -114,7 +115,7 @@ grpc::Status SdmServiceImpl::Heartbeat(grpc::ServerContext* context,
 
         StorageReplicaStatus storage_status =
             StorageReplicaStatus::INITIALIZING;
-        if (!decode_pb_storage_replica_status(replica_info.status(),
+        if (!decode_pb_storage_replica_status(replica_info_pb.status(),
                                               storage_status)) {
             fill_base_rsp(response, Status{StatusCode::INVALID_ARGUMENT,
                                            "replica status is not valid"});
@@ -122,15 +123,24 @@ grpc::Status SdmServiceImpl::Heartbeat(grpc::ServerContext* context,
         }
 
         HeartBeatReplicaInfo one;
-        one.replica_id = decode_pb_replica_id(replica_info.replica_id());
+        one.replica_id = decode_pb_replica_id(replica_info_pb.replica_id());
         one.role = role;
         one.storage_status = storage_status;
-        one.term = replica_info.term();
-        if (!decode_pb_raft_member_type(replica_info.member_type(),
+        one.term = replica_info_pb.term();
+        if (!decode_pb_raft_member_type(replica_info_pb.member_type(),
                                         one.member_type)) {
             fill_base_rsp(response, Status{StatusCode::INVALID_ARGUMENT,
                                            "replica member type is not valid"});
             return grpc::Status::OK;
+        }
+        for (const auto& member_pb : replica_info_pb.full_membership()) {
+            RaftMember member;
+            if (!decode_pb_raft_member(member_pb, member)) {
+                fill_base_rsp(response, Status{StatusCode::INVALID_ARGUMENT,
+                                               "replica full membership member is not valid"});
+                return grpc::Status::OK;
+            }
+            one.full_membership.push_back(std::move(member));
         }
         replica_info_list.emplace_back(std::move(one));
     }

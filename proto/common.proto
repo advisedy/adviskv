@@ -96,3 +96,8 @@ message PeerMember {
   string node_id = 2;
   adviskv.pb.Endpoint endpoint = 3;
 }
+
+message RaftMember {
+  adviskv.pb.PeerMember peer = 1;
+  adviskv.pb.RaftMemberType member_type = 2;
+}

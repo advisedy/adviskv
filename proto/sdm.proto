@@ -90,6 +90,7 @@ message HeartbeatReplicaInfo{
     adviskv.pb.StorageReplicaStatus status = 3;
     int64 term = 4;
     adviskv.pb.RaftMemberType member_type = 5;
+    repeated adviskv.pb.RaftMember full_membership = 6;
 }
 
 message HeartbeatRequest{

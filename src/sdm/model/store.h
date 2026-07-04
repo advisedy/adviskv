@@ -82,6 +82,8 @@ struct ReplicaGroup {
     ReplicaGroupMode mode{ReplicaGroupMode::BOOTSTRAP};  // ReplicaGroupService
     int32_t target_replica_count{0};                     // ReplicaGroupService
     std::vector<ReplicaID> desired_members;              // ReplicaGroupService
+    Term observed_membership_term{0};                    // NodeService
+    ReplicaID observed_membership_leader;                // NodeService
     IDAllocator<ReplicaSeq> seq_allocator;               // ReplicaGroupService
 };
 

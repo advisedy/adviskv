@@ -128,6 +128,8 @@ class SdmPersistEngineTest : public ::testing::Test {
         group.mode = ReplicaGroupMode::RAFT_RECONFIG;
         group.target_replica_count = 2;
         group.desired_members = {leader_id, follower_id};
+        group.observed_membership_term = 11;
+        group.observed_membership_leader = leader_id;
         group.seq_allocator = IDAllocator<ReplicaSeq>(2);
         record.replica_groups[shard_id] = group;
 
@@ -231,6 +233,10 @@ class SdmPersistEngineTest : public ::testing::Test {
                       expected_group.target_replica_count);
             EXPECT_EQ(actual_group.desired_members,
                       expected_group.desired_members);
+            EXPECT_EQ(actual_group.observed_membership_term,
+                      expected_group.observed_membership_term);
+            EXPECT_EQ(actual_group.observed_membership_leader,
+                      expected_group.observed_membership_leader);
             EXPECT_EQ(actual_group.seq_allocator.current_id(),
                       expected_group.seq_allocator.current_id());
         }

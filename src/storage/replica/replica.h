@@ -64,6 +64,10 @@ class Replica {
         return raft_core_ ? raft_core_->member_type(replica_id_)
                           : RaftMemberType::NON_MEMBER;
     }
+    std::vector<RaftMember> get_raft_members() const {
+        std::lock_guard lock(raft_core_mutex_);
+        return raft_core_ ? raft_core_->raft_members() : std::vector<RaftMember>{};
+    }
     Term current_term() const {
         std::lock_guard lock(raft_core_mutex_);
         return raft_core_ ? raft_core_->current_term() : 0;

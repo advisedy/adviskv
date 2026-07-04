@@ -13,6 +13,7 @@
 #include "common/define.h"
 #include "common/log.h"
 #include "common/proto/expected_replica_proto.h"
+#include "common/proto/raft_member_proto.h"
 #include "common/proto/raft_member_type_proto.h"
 #include "common/proto/raft_role_proto.h"
 #include "common/proto/replica_id_proto.h"
@@ -234,7 +235,7 @@ Optional<ReplicaID> NodeAgent::find_local_leader_replica(const ShardID& shard_id
             LOG_WARN("[NodeAgent] find_local_leader_replica, replica is nullptr, shard_id:{}", shard_id.to_string());
             continue;
         }
-        if (replica->get_shard_id() != shard_id){
+        if (replica->get_shard_id() != shard_id) {
             continue;
         }
         if (replica->get_role() == ReplicaRole::LEADER) {
@@ -270,12 +271,19 @@ sdm_rpc::HeartbeatRequest NodeAgent::make_heartbeat_request() const {
             continue;
         }
         auto* info = request.add_replica_info_list();
-        const ReplicaID replica_id = replica->get_replica_id();
+        ReplicaID replica_id = replica->get_replica_id();
         encode_pb_replica_id(replica_id, *info->mutable_replica_id());
-        info->set_role(to_pb_raft_role(replica->get_role()));
+        ReplicaRole role = replica->get_role();
+        info->set_role(to_pb_raft_role(role));
         info->set_status(to_pb_storage_replica_status(replica->get_status()));
         info->set_term(replica->current_term());
         info->set_member_type(to_pb_raft_member_type(replica->get_member_type()));
+        if (role == ReplicaRole::LEADER) {
+            for (const RaftMember& member : replica->get_raft_members()) {
+                auto* member_pb = info->add_full_membership();
+                IGNORE_RESULT(encode_pb_raft_member(member, *member_pb));
+            }
+        }
     }
     return request;
 }

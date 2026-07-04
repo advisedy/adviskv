@@ -1,6 +1,7 @@
 #include "sdm/service/node_service.h"
 
 #include <algorithm>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "common/define.h"
@@ -14,6 +15,103 @@ namespace adviskv::sdm {
 
 namespace {
 constexpr size_t kHeartbeatCheckBatchSize = 16;
+
+// 判断一下是否能够接收，防止旧leader打过来干扰信息
+bool should_accept_membership_report(const ReplicaGroup& group, const HeartBeatReplicaInfo& info) {
+    if (info.term > group.observed_membership_term) {
+        return true;
+    }
+    if (info.term < group.observed_membership_term) {
+        LOG_WARN(
+                "[NodeService] skip stale leader membership report, "
+                "leader:{}, term:{}, observed_leader:{}, observed_term:{}",
+                info.replica_id.to_string(), info.term, group.observed_membership_leader.to_string(),
+                group.observed_membership_term);
+        return false;
+    }
+    if (info.replica_id == group.observed_membership_leader) {
+        return true;
+    }
+    LOG_WARN(
+            "[NodeService] skip conflicting leader membership report, "
+            "leader:{}, term:{}, observed_leader:{}, observed_term:{}",
+            info.replica_id.to_string(), info.term, group.observed_membership_leader.to_string(),
+            group.observed_membership_term);
+    return false;
+}
+
+// 把leader心跳里带上来的members进行
+Status project_leader_membership(SdmStoreTxn& txn, const HeartBeatReplicaInfo& info) {
+    if (info.full_membership.empty()) {
+        LOG_WARN(
+                "[NodeService] project_leader_membership, leader reports empty raft membership, skip projection, "
+                "leader:{}, term:{}",
+                info.replica_id.to_string(), info.term);
+        return Status::OK();
+    }
+
+    ReplicaGroupOr group_or;
+    RETURN_IF_INVALID_STATUS(txn.get_replica_group(info.replica_id.get_shard_id(), group_or))
+    if (group_or.is_empty()) {
+        LOG_WARN(
+                "[NodeService] project_leader_membership, leader membership report without replica group, "
+                "leader:{}, term:{}",
+                info.replica_id.to_string(), info.term);
+        return Status::OK();
+    }
+
+    ReplicaGroup group = group_or.value();
+    if (!should_accept_membership_report(group, info)) {
+        return Status::OK();
+    }
+
+    std::unordered_map<ReplicaID, RaftMemberType, ReplicaIDHash> types;
+    types.reserve(info.full_membership.size());
+    for (const RaftMember& member : info.full_membership) {
+        const ReplicaID& rid = member.peer.replica_id;
+        if (rid.get_shard_id() != group.shard_id) {
+            LOG_WARN(
+                    "[NodeService] project_leader_membership, leader membership report contains replica from "
+                    "another shard, leader:{}, reported:{}",
+                    info.replica_id.to_string(), rid.to_string());
+            continue;
+        }
+        if (types.count(rid) > 0) {
+            LOG_WARN(
+                    "[NodeService] project_leader_membership, leader membership report contains duplicate "
+                    "replica, leader:{}, reported:{}",
+                    info.replica_id.to_string(), rid.to_string());
+            continue;
+        }
+        types[rid] = member.member_type;
+    }
+
+    int64 now = func::get_current_ts_ms();
+    for (const ReplicaID& rid : group.desired_members) {
+        RaftMemberType next_type = RaftMemberType::NON_MEMBER;
+        if (auto it = types.find(rid); it != types.end()) {
+            next_type = it->second;
+        }
+        ReplicaOr replica;
+        RETURN_IF_INVALID_STATUS(txn.get_replica(rid, replica))
+        if (replica.is_empty()) {
+            LOG_WARN("[NodeService] project_leader_membership, desired member replica not found, replica_id:{}",
+                     rid.to_string());
+            continue;
+        }
+        if (replica->state.observed_member_type == next_type) {
+            continue;
+        }
+        replica->state.observed_member_type = next_type;
+        replica->state.update_ts = now;
+        RETURN_IF_INVALID_STATUS(txn.put_replica(replica.value()))
+    }
+
+    group.observed_membership_term = info.term;
+    group.observed_membership_leader = info.replica_id;
+    RETURN_IF_INVALID_STATUS(txn.put_replica_group(group))
+    return Status::OK();
+}
 
 }  // namespace
 
@@ -64,7 +162,7 @@ Status NodeService::update_node_heartbeat(SdmStoreTxn& txn, const HeartBeatParam
 }
 
 Status NodeService::apply_reported_replicas(SdmStoreTxn& txn, const HeartBeatParam& param) {
-    for (const auto& info : param.replica_list) {
+    for (const HeartBeatReplicaInfo& info : param.replica_list) {
         ReplicaID key = info.replica_id;
         ReplicaOr replica;
         RETURN_IF_INVALID_STATUS(txn.get_replica(key, replica))
@@ -78,7 +176,6 @@ Status NodeService::apply_reported_replicas(SdmStoreTxn& txn, const HeartBeatPar
         }
 
         replica->state.observed_raft_role = info.role;
-        replica->state.observed_member_type = info.member_type;
         replica->state.observed_endpoint = Endpoint{param.ip, param.port};
         replica->state.observed_storage_status = info.storage_status;
         replica->state.observed_no_exist = false;
@@ -88,6 +185,7 @@ Status NodeService::apply_reported_replicas(SdmStoreTxn& txn, const HeartBeatPar
 
         if (replica->state.observed_raft_role == ReplicaRole::LEADER) {
             LOG_DEBUG("[NodeService] replica_id:{} is leader", replica->replica_id.to_string());
+            RETURN_IF_INVALID_STATUS(project_leader_membership(txn, info))
         }
     }
     return Status::OK();

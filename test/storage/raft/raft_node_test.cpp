@@ -279,6 +279,77 @@ TEST_F(RaftCoreTest,
     ASSERT_EQ(actual_entries, expected_entries);
 }
 
+TEST_F(RaftCoreTest, RequestVoteFromNonVoterDoesNotBumpTerm) {
+    ReplicaID leader_id{101, 7, 1};
+    ReplicaID alien_id{101, 7, 9};
+    std::vector<PeerMember> members{
+        PeerMember{"leader", leader_id, {}},
+        PeerMember{"self", replica_id_, {}},
+    };
+    RaftCore core{replica_id_, members};
+    core.update_raft_meta(RaftMeta{3, std::nullopt});
+
+    RequestVoteResult result;
+    RaftEffects effects;
+    core.handle_request_vote(RequestVoteParam{alien_id, replica_id_, 10, 0, 0},
+                             result, effects);
+
+    EXPECT_FALSE(result.vote_granted);
+    EXPECT_EQ(result.term, 3);
+    EXPECT_EQ(core.current_term(), 3);
+    EXPECT_FALSE(effects.hard_state.has_value());
+}
+
+TEST_F(RaftCoreTest, AppendEntriesFromNonMemberDoesNotBumpTerm) {
+    ReplicaID leader_id{101, 7, 1};
+    ReplicaID alien_id{101, 7, 9};
+    std::vector<PeerMember> members{
+        PeerMember{"leader", leader_id, {}},
+        PeerMember{"self", replica_id_, {}},
+    };
+    RaftCore core{replica_id_, members};
+    core.update_raft_meta(RaftMeta{3, std::nullopt});
+
+    AppendEntriesResult result;
+    RaftEffects effects;
+    core.handle_append_entries(
+        AppendEntriesParam{alien_id, replica_id_, 10,
+                           {make_entry(10, 1, WriteOpType::PUT, "k", "v")},
+                           0, 0, 1},
+        result, effects);
+
+    EXPECT_FALSE(result.success);
+    EXPECT_EQ(result.term, 3);
+    EXPECT_EQ(core.current_term(), 3);
+    EXPECT_EQ(core.last_log_index(), 0);
+    EXPECT_EQ(core.commit_index(), 0);
+    EXPECT_FALSE(effects.hard_state.has_value());
+    EXPECT_TRUE(effects.entries_to_append.empty());
+    EXPECT_FALSE(effects.entries_to_rewrite.has_value());
+}
+
+TEST_F(RaftCoreTest, InstallSnapshotFromNonMemberDoesNotBumpTerm) {
+    ReplicaID leader_id{101, 7, 1};
+    ReplicaID alien_id{101, 7, 9};
+    std::vector<PeerMember> members{
+        PeerMember{"leader", leader_id, {}},
+        PeerMember{"self", replica_id_, {}},
+    };
+    RaftCore core{replica_id_, members};
+    core.update_raft_meta(RaftMeta{3, std::nullopt});
+
+    InstallSnapshotParam param = make_install_snapshot_param(10, 8, 10);
+    param.from_replica_id = alien_id;
+    RaftEffects effects;
+    Status status = core.prepare_install_snapshot(param, effects);
+
+    EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT) << status.to_string();
+    EXPECT_EQ(core.current_term(), 3);
+    EXPECT_EQ(core.snapshot_index(), 0);
+    EXPECT_EQ(core.commit_index(), 0);
+    EXPECT_FALSE(effects.hard_state.has_value());
+}
+
 TEST_F(RaftCoreTest,
        BecomeLeaderNoopWalAppendFailureIsReturnedByEffectsDriver) {
     PersistEngine persist = make_engine();
