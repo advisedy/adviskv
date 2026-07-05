@@ -32,13 +32,17 @@ struct MetricsSnapshot {
 
 const std::vector<int64_t>& latency_buckets_us() {
     static const std::vector<int64_t> buckets = {
-        100,     250,
-        500,     1000,
-        2000,    5000,
-        10000,   20000,
-        50000,   100000,
-        250000,  500000,
-        1000000, std::numeric_limits<int64_t>::max(),
+        10,      25,
+        50,      75,
+        100,     150,
+        200,     250,
+        500,     750,
+        1000,    2000,
+        5000,    10000,
+        20000,   50000,
+        100000,  250000,
+        500000,  1000000,
+        std::numeric_limits<int64_t>::max(),
     };
     return buckets;
 }

@@ -7,7 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Optional
 
-from scripts.local_cluster import (
+from scripts.internal.local_cluster import (
     BIN_DIR,
     BUILD_DIR,
     ROOT_DIR,

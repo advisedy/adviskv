@@ -27,7 +27,7 @@ CLIENT_CONF="${CLIENT_CONF:-conf/client.yaml}"
 cleanup() {
   echo
   echo "[demo] stopping local cluster"
-  "$PYTHON" "$ROOT_DIR/scripts/local_cluster.py" stop || true
+  "$PYTHON" "$ROOT_DIR/scripts/internal/local_cluster.py" stop || true
 }
 
 require_binary() {
@@ -54,7 +54,7 @@ require_binary "$ADVISKVCTL"
 trap cleanup EXIT INT TERM
 
 echo "[demo] starting local cluster"
-"$PYTHON" "$ROOT_DIR/scripts/local_cluster.py" start
+"$PYTHON" "$ROOT_DIR/scripts/internal/local_cluster.py" start
 
 echo "[demo] opening AdvisKV shell"
 "$ADVISKVCTL" --conf="$CLIENT_CONF"

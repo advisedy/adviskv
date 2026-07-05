@@ -492,7 +492,7 @@ private:
             return;
         }
         std::string command =
-                "cd " + adviskv::project_root_dir().string() + " && python3 scripts/local_cluster.py " + action;
+                "cd " + adviskv::project_root_dir().string() + " && python3 scripts/internal/local_cluster.py " + action;
         if (tokens.size() == 3) {
             if (!valid_demo_token(tokens[2])) {
                 fmt::print("invalid service name\n");

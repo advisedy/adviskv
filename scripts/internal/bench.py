@@ -8,14 +8,22 @@ from pathlib import Path
 from typing import Union
 
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
+ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR))
 
-from scripts.local_cluster import (  # noqa: E402
+from scripts.internal.local_cluster import (  # noqa: E402
     BIN_DIR,
     BUILD_DIR,
     build_targets,
     cluster_from_confs,
+    connect_host,
+    load_simple_kv_conf,
+)
+from scripts.internal.metrics_report import (  # noqa: E402
+    MetricsTarget,
+    MetricsSampler,
+    build_report,
+    write_text_report,
 )
 
 
@@ -128,7 +136,27 @@ def materialize_bench_confs(
     )
 
 
+def storage_metrics_targets(storage_confs: list[Path]) -> list[MetricsTarget]:
+    targets: list[MetricsTarget] = []
+    for index, conf in enumerate(storage_confs, 1):
+        values = load_simple_kv_conf(conf)
+        enabled = values.get("metrics_http_enable", "false").lower()
+        if enabled not in ("true", "1", "yes"):
+            continue
+        host = connect_host(values.get("metrics_http_host", "127.0.0.1"))
+        port = values.get("metrics_http_port")
+        if not port:
+            continue
+        path = values.get("metrics_http_path", "/metrics")
+        if not path.startswith("/"):
+            path = f"/{path}"
+        targets.append(MetricsTarget(
+            f"storage-{index}", f"http://{host}:{int(port)}{path}"))
+    return targets
+
+
 def run_bench(argv: list[str]) -> None:
+    metrics_report_enabled = env("BENCH_METRICS_REPORT", "0") == "1"
     run_id = env("RUN_ID", time.strftime("%Y%m%d_%H%M%S"))
     output_dir = repo_path(
         env("OUTPUT_DIR", str(BUILD_DIR / "bench_results" / run_id))
@@ -162,6 +190,7 @@ def run_bench(argv: list[str]) -> None:
         storage_confs=storage_confs,
         capture_output=True,
     )
+    metrics_sampler = None
     try:
         cluster.start()
         print(f"[bench] generated confs: {conf_dir}", flush=True)
@@ -170,7 +199,21 @@ def run_bench(argv: list[str]) -> None:
         print(f"[bench] process logs: {process_log_dir}", flush=True)
         command = [str(BENCH_BIN), *bench_args(argv)]
         print(f"[bench] running bench_client: {' '.join(command)}", flush=True)
-        subprocess.run(command, cwd=ROOT_DIR, check=True)
+
+        if metrics_report_enabled:
+            targets = storage_metrics_targets(storage_confs)
+            metrics_sampler = MetricsSampler(targets)
+            metrics_sampler.start()
+
+        try:
+            subprocess.run(command, cwd=ROOT_DIR, check=True)
+        finally:
+            if metrics_sampler is not None:
+                report = build_report(metrics_sampler.stop())
+                metrics_report_path = output_dir / "metrics_report.txt"
+                write_text_report(report, metrics_report_path)
+                print(f"[bench] metrics report: {metrics_report_path}",
+                      flush=True)
         print("[bench] done", flush=True)
     finally:
         cluster.stop()
