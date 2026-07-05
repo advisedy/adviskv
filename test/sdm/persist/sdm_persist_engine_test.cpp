@@ -263,6 +263,15 @@ TEST_F(SdmPersistEngineTest, InitSaveAndLoadRoundTrip) {
     expect_record_equal(loaded, record);
 }
 
+TEST_F(SdmPersistEngineTest, InitRejectsEmptyDataDir) {
+    SdmPersistEngine engine("");
+
+    Status status = engine.init();
+
+    EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
+    EXPECT_EQ(status.msg(), "sdm persist engine data_dir is empty");
+}
+
 // 检测一下还没有save的时候，load 返回空数据且不报错。
 TEST_F(SdmPersistEngineTest, LoadMissingMetaReturnsEmptyRecord) {
     SdmPersistEngine engine(base_dir_.string());

@@ -23,26 +23,37 @@ SdmStore::SdmStore(SdmMetaStoreType type,
                    std::unique_ptr<SdmRuntimeIndex> index,
                    const std::string& persistent_data_dir)
     : runtime_index_(std::move(index)) {
-    if (runtime_index_ == nullptr) {
-        runtime_index_ = std::make_unique<SdmRuntimeIndex>();
-    }
-
-    if (type == SdmMetaStoreType::PERSISTENT and persistent_data_dir.empty()) {
-        LOG_ERROR("[SdmStore] persistent_data_dir is empty");
-        return;
-    }
-
     switch (type) {
         case SdmMetaStoreType::PERSISTENT:
             meta_store_ = std::make_unique<PersistentMetaStore>(
                 std::filesystem::path(persistent_data_dir));
-            IGNORE_RESULT(rebuild_runtime_index());
             break;
         case SdmMetaStoreType::MEMORY:
         default:
             meta_store_ = std::make_unique<MemoryMetaStore>();
             break;
     }
+}
+
+Status SdmStore::init() {
+    std::unique_lock locker{mutex_};
+
+    RETURN_IF_NULLPTR(meta_store_, "sdm meta store is nullptr")
+    RETURN_IF_NULLPTR(runtime_index_, "sdm runtime index is nullptr")
+
+    Status status = meta_store_->init();
+    if (status.fail()) {
+        LOG_ERROR("[SdmStore] metastore init failed: {}",
+                  status.to_string());
+        return status;
+    }
+    status = rebuild_runtime_index();
+    if (status.fail()) {
+        LOG_ERROR("[SdmStore] rebuild runtime index failed: {}",
+                  status.to_string());
+        return status;
+    }
+    return Status::OK();
 }
 
 SdmStore::SdmStore(std::unique_ptr<ISdmMetaStore> meta_store,
@@ -56,6 +67,8 @@ Status SdmStore::read_with(
         return Status::INVALID_ARGUMENT("read_with fn is nullptr");
     }
     std::shared_lock locker{mutex_};
+    RETURN_IF_NULLPTR(meta_store_, "sdm meta store is nullptr")
+    RETURN_IF_NULLPTR(runtime_index_, "sdm runtime index is nullptr")
     // 这里通过设置func的参数是const SdmStoreTxn&，
     // 所以能保证txn在外部调用的时候用的也是const
     // 函数，不然这里this是const T*，没法构造出来txn
@@ -69,6 +82,8 @@ Status SdmStore::write_with(const std::function<Status(SdmStoreTxn&)>& func) {
     }
 
     std::unique_lock locker{mutex_};
+    RETURN_IF_NULLPTR(meta_store_, "sdm meta store is nullptr")
+    RETURN_IF_NULLPTR(runtime_index_, "sdm runtime index is nullptr")
 
     std::unique_ptr<ISdmMetaStore> clone_meta =
         meta_store_->clone_memory_snapshot();
@@ -450,7 +465,8 @@ Status SdmStore::maybe_repair_runtime_index(Status index_status) {
 }
 
 Status SdmStore::rebuild_runtime_index() {
-    runtime_index_ = std::make_unique<SdmRuntimeIndex>();
+    RETURN_IF_NULLPTR(runtime_index_, "sdm runtime index is nullptr")
+    runtime_index_->clear();
 
     std::vector<TablePtr> tables;
     Status status = meta_store_->list_tables(tables);

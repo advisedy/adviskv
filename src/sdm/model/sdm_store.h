@@ -26,6 +26,8 @@ class SdmStore {
     SdmStore(SdmMetaStoreType type, std::unique_ptr<SdmRuntimeIndex> index,
              const std::string& persistent_data_dir = "");
 
+    Status init();
+
     Status read_with(const std::function<Status(const SdmStoreTxn&)>& fn) const;
     Status write_with(const std::function<Status(SdmStoreTxn&)>& fn);
 

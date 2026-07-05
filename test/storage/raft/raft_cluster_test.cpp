@@ -9,6 +9,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -1260,11 +1261,14 @@ TEST_F(RaftClusterTest, ConcurrentPropose_ThreadSafety) {
     create_and_stabilize(5);
     auto* leader = cluster_.leader_ptr();
     ASSERT_NE(leader, nullptr);
+    int leader_idx = cluster_.leader_idx();
+    ASSERT_GE(leader_idx, 0);
 
     constexpr int kThreads = 4;
     constexpr int kOpsPerThread = 25;
     std::atomic<int> success_count{0};
     std::vector<std::thread> threads;
+    std::mutex raft_core_mutex;
 
     for (int t = 0; t < kThreads; t++) {
         threads.emplace_back([&, t]() {
@@ -1272,9 +1276,14 @@ TEST_F(RaftClusterTest, ConcurrentPropose_ThreadSafety) {
                 auto kv = "concurrent_t" + std::to_string(t) + "_i" +
                           std::to_string(i);
                 auto vv = "value";
-                auto [status, idx] =
-                    cluster_.propose(cluster_.leader_idx(), WriteOpType::PUT,
-                                     Key(kv), Value(vv));
+                Status status;
+                {
+                    // RaftCore 本身要求外层持有 raft_core_mutex_；这里模拟
+                    // Replica/ReplicaLoop 的真实同步边界。
+                    std::lock_guard lock(raft_core_mutex);
+                    std::tie(status, std::ignore) = cluster_.propose(
+                        leader_idx, WriteOpType::PUT, Key(kv), Value(vv));
+                }
                 if (status.ok()) success_count++;
             }
         });

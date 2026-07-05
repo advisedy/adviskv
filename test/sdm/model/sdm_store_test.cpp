@@ -85,6 +85,10 @@ std::vector<ReplicaID> replica_ids(std::vector<Replica> replicas) {
 
 class FailOnceOnReplicaDeleteIndex : public SdmRuntimeIndex {
    public:
+    std::unique_ptr<SdmRuntimeIndex> clone() const override {
+        return std::make_unique<FailOnceOnReplicaDeleteIndex>(*this);
+    }
+
     Status on_replica_delete(const Replica& replica) override {
         if (!failed_) {
             failed_ = true;
@@ -101,9 +105,37 @@ int persistent_sequence{0};
 
 }  // namespace
 
+TEST(SdmStoreTest, MemoryStoreInitAllowsReadWrite) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+
+    Status status = store.init();
+    ASSERT_TRUE(status.ok()) << status.to_string();
+
+    status = store.read_with([](const SdmStoreTxn&) {
+        return Status::OK();
+    });
+    EXPECT_TRUE(status.ok()) << status.to_string();
+
+    status = store.write_with([](SdmStoreTxn&) {
+        return Status::OK();
+    });
+    EXPECT_TRUE(status.ok()) << status.to_string();
+}
+
+TEST(SdmStoreTest, InitRejectsNullRuntimeIndex) {
+    SdmStore store(SdmMetaStoreType::MEMORY,
+                   std::unique_ptr<SdmRuntimeIndex>{});
+
+    Status status = store.init();
+
+    EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
+    EXPECT_EQ(status.msg(), "sdm runtime index is nullptr");
+}
+
 // 检测 SdmStore 的正常写入、查询、更新和删除流程。
 TEST(SdmStoreTest, NormalStoreFlowWorks) {
     SdmStore store{SdmMetaStoreType::MEMORY};
+    ASSERT_TRUE(store.init().ok());
 
     Table table = make_table(1001, "commerce", "orders");
     ASSERT_TRUE(store_test::put_table(store, table).ok());
@@ -181,11 +213,8 @@ TEST(SdmStoreTest, PersistentStoreReportsCorruptedMetaOnInit) {
 
     SdmStore store(SdmMetaStoreType::PERSISTENT, dir.string());
 
-    EXPECT_TRUE(store.init_status().fail()) << store.init_status().to_string();
-    Status status = store.read_with([](const SdmStoreTxn&) {
-        return Status::OK();
-    });
-    EXPECT_TRUE(status.fail()) << status.to_string();
+    Status init_status = store.init();
+    EXPECT_TRUE(init_status.fail()) << init_status.to_string();
 }
 
 // 检测 runtime index 更新失败时，SdmStore 会 rebuild runtime index
@@ -193,6 +222,7 @@ TEST(SdmStoreTest, PersistentStoreReportsCorruptedMetaOnInit) {
 TEST(SdmStoreTest, RebuildsRuntimeIndexWhenReplicaDeleteIndexUpdateFails) {
     auto failing_index = std::make_unique<FailOnceOnReplicaDeleteIndex>();
     SdmStore store{SdmMetaStoreType::MEMORY, std::move(failing_index)};
+    ASSERT_TRUE(store.init().ok());
 
     ASSERT_TRUE(
         store_test::put_table(store, make_table(1001, "commerce", "orders"))
@@ -256,6 +286,7 @@ TEST(SdmStoreTest, WriteWithPersistentStoreSurvivesReload) {
 
     {
         SdmStore store(SdmMetaStoreType::PERSISTENT, data_dir.string());
+        ASSERT_TRUE(store.init().ok());
         Status status = store.write_with([&](SdmStoreTxn& txn) {
             Status put_status =
                 txn.put_table(make_table(1001, "commerce", "orders"));
@@ -280,6 +311,7 @@ TEST(SdmStoreTest, WriteWithPersistentStoreSurvivesReload) {
 
     {
         SdmStore reloaded(SdmMetaStoreType::PERSISTENT, data_dir.string());
+        ASSERT_TRUE(reloaded.init().ok());
         TableOr table;
         ASSERT_TRUE(store_test::get_table(reloaded, 1001, table).ok());
         ASSERT_FALSE(table.is_empty());

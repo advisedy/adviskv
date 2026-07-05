@@ -41,6 +41,7 @@ class SdmRuntimeIndex {
    public:
     virtual ~SdmRuntimeIndex() = default;
 
+    virtual void clear();
     virtual std::unique_ptr<SdmRuntimeIndex> clone() const;
 
     virtual Status on_table_upsert(const Table* old_table,

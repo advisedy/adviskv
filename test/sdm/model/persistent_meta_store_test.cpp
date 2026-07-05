@@ -91,6 +91,7 @@ PersistentMetaStore make_store(FakeSdmPersistEngine** fake_out) {
 TEST(PersistentMetaStoreTest, CommitWithPublishesMemoryAfterPersistSuccess) {
     FakeSdmPersistEngine* fake{nullptr};
     PersistentMetaStore store = make_store(&fake);
+    ASSERT_TRUE(store.init().ok());
 
     Table table = make_table(1001, "orders");
     Status status = store.upsert_table(table);
@@ -138,6 +139,7 @@ TEST(PersistentMetaStoreTest, CommitWithKeepsOldMemoryWhenPersistFails) {
     fake->save_status = Status::ERROR("save failed");
 
     PersistentMetaStore store(std::move(memory_store), std::move(fake_engine));
+    ASSERT_TRUE(store.init().ok());
 
     Status status = store.upsert_table(make_table(1001, "new_orders"));
 
@@ -160,6 +162,24 @@ TEST(PersistentMetaStoreTest, CommitWithKeepsOldMemoryWhenPersistFails) {
     ASSERT_TRUE(store.get_table(1001, stored_table).ok());
     ASSERT_NE(stored_table, nullptr);
     EXPECT_EQ(stored_table->spec.table_name, "new_orders");
+}
+
+TEST(PersistentMetaStoreTest, InitRejectsNullInjectedDependencies) {
+    {
+        PersistentMetaStore store(nullptr,
+                                  std::make_unique<FakeSdmPersistEngine>());
+        Status status = store.init();
+        ASSERT_TRUE(status.fail());
+        EXPECT_EQ(status.msg(), "sdm memory store is nullptr");
+    }
+
+    {
+        PersistentMetaStore store(std::make_unique<MemoryMetaStore>(),
+                                  nullptr);
+        Status status = store.init();
+        ASSERT_TRUE(status.fail());
+        EXPECT_EQ(status.msg(), "sdm persist engine is nullptr");
+    }
 }
 
 }  // namespace adviskv::sdm

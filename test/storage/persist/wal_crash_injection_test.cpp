@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #include <cstdlib>
@@ -50,25 +49,25 @@ class WalCrashInjectionTest : public ::testing::Test {
         ASSERT_TRUE(persist.close().ok());
     }
 
-    int run_crash_runner(const char* crash_point) const {
-        pid_t pid = ::fork();
-        // 父进程的返回值大于0，代表子进程的pid，子进程的返回值是0
-        if (pid == 0) {
-            ::setenv("ADVISKV_ENABLE_CRASH_POINT", crash_point, 1);
-            ::execl(ADVISKV_CRASH_RUNNER_PATH, ADVISKV_CRASH_RUNNER_PATH,
-                    base_dir_.c_str(), static_cast<char*>(nullptr));
-            ::_exit(127);
-        }
+    void expect_append_wal_crashes_at(const char* crash_point) const {
+        ASSERT_EXIT(
+            {
+                ::setenv("ADVISKV_ENABLE_CRASH_POINT", crash_point, 1);
 
-        if (pid < 0) {
-            return -1;
-        }
+                PersistEngine persist(base_dir_.string(), replica_id_);
+                Status status = persist.init();
+                if (status.fail()) {
+                    ::_exit(3);
+                }
 
-        int status = 0;
-        if (::waitpid(pid, &status, 0) < 0) {
-            return -1;
-        }
-        return status;
+                status = persist.append_wal(
+                    make_entry(2, 3, "crash-key", "crash-value"));
+                if (status.fail()) {
+                    ::_exit(4);
+                }
+                ::_exit(0);
+            },
+            ::testing::ExitedWithCode(137), "");
     }
 
     void assert_recovery_truncates_crashed_tail() const {
@@ -130,28 +129,15 @@ TEST_F(WalCrashInjectionTest,
             testhook::crash_point("framed_record.after_payload_write");
     */
     {
-        int child_status = run_crash_runner("framed_record.after_len_write");
-        ASSERT_NE(child_status, -1);
-        ASSERT_TRUE(WIFEXITED(child_status));
-        ASSERT_EQ(WEXITSTATUS(child_status), 137);
-
+        expect_append_wal_crashes_at("framed_record.after_len_write");
         assert_recovery_truncates_crashed_tail();
     }
     {
-        int child_status = run_crash_runner("framed_record.after_crc_write");
-        ASSERT_NE(child_status, -1);
-        ASSERT_TRUE(WIFEXITED(child_status));
-        ASSERT_EQ(WEXITSTATUS(child_status), 137);
-
+        expect_append_wal_crashes_at("framed_record.after_crc_write");
         assert_recovery_truncates_crashed_tail();
     }
     {
-        int child_status =
-            run_crash_runner("framed_record.after_payload_write");
-        ASSERT_NE(child_status, -1);
-        ASSERT_TRUE(WIFEXITED(child_status));
-        ASSERT_EQ(WEXITSTATUS(child_status), 137);
-
+        expect_append_wal_crashes_at("framed_record.after_payload_write");
         assert_recovery_not_truncates_crashed_tail();
     }
 }
@@ -159,11 +145,8 @@ TEST_F(WalCrashInjectionTest,
 TEST_F(WalCrashInjectionTest, RecoverTruncatesPayloadPartialWriteCrash) {
     save_basic_wal();
 
-    int child_status =
-        run_crash_runner("framed_record.payload_write.after_partial_write");
-    ASSERT_NE(child_status, -1);
-    ASSERT_TRUE(WIFEXITED(child_status));
-    ASSERT_EQ(WEXITSTATUS(child_status), 137);
+    expect_append_wal_crashes_at(
+        "framed_record.payload_write.after_partial_write");
 
     assert_recovery_truncates_crashed_tail();
 }

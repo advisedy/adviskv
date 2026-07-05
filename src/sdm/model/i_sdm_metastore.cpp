@@ -238,16 +238,12 @@ Status MemoryMetaStore::list_replica_groups(
 PersistentMetaStore::PersistentMetaStore(std::filesystem::path data_dir)
     : memory_store_(std::make_unique<MemoryMetaStore>()),
       persist_engine_(std::make_unique<SdmPersistEngine>(data_dir.string())) {
-    persist_engine_->init();
-    IGNORE_RESULT(load());
 }
 
 PersistentMetaStore::PersistentMetaStore(
     std::unique_ptr<ISdmMetaStore> memory_store, std::filesystem::path data_dir)
     : memory_store_(std::move(memory_store)),
       persist_engine_(std::make_unique<SdmPersistEngine>(data_dir.string())) {
-    persist_engine_->init();
-    IGNORE_RESULT(load());
 }
 
 PersistentMetaStore::PersistentMetaStore(
@@ -255,9 +251,15 @@ PersistentMetaStore::PersistentMetaStore(
     std::unique_ptr<ISdmPersistEngine> persist_engine)
     : memory_store_(std::move(memory_store)),
       persist_engine_(std::move(persist_engine)) {
-    if (memory_store_ == nullptr) {
-        memory_store_ = std::make_unique<MemoryMetaStore>();
-    }
+}
+
+Status PersistentMetaStore::init() {
+    RETURN_IF_NULLPTR(memory_store_, "sdm memory store is nullptr")
+    RETURN_IF_NULLPTR(persist_engine_, "sdm persist engine is nullptr")
+    RETURN_IF_INVALID_STATUS(memory_store_->init())
+    RETURN_IF_INVALID_STATUS(persist_engine_->init())
+    RETURN_IF_INVALID_STATUS(load())
+    return Status::OK();
 }
 
 std::unique_ptr<ISdmMetaStore> PersistentMetaStore::clone_memory_snapshot()

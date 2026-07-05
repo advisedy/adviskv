@@ -10,7 +10,6 @@
 
 #include <fmt/base.h>
 #include <gtest/gtest.h>
-#include <unistd.h>
 
 #include "common/buffer.h"
 #include "common/crc.h"
@@ -119,27 +118,6 @@ protected:
         ASSERT_TRUE(out.is_open()) << path.string();
         out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
         ASSERT_TRUE(out.good()) << path.string();
-    }
-
-    int run_snapshot_crash_runner(const char* crash_point) {
-        pid_t pid = ::fork();
-        // 父进程的返回值大于0，代表子进程的pid，子进程的返回值是0
-        if (pid == 0) {
-            ::setenv("ADVISKV_ENABLE_CRASH_POINT", crash_point, 1);
-            ::execl(ADVISKV_CRASH_RUNNER_PATH, ADVISKV_CRASH_RUNNER_PATH, base_dir_.c_str(),
-                    static_cast<char*>(nullptr));
-            ::_exit(127);
-        }
-
-        if (pid < 0) {
-            return -1;
-        }
-
-        int status = 0;
-        if (::waitpid(pid, &status, 0) < 0) {
-            return -1;
-        }
-        return status;
     }
 
     static inline int sequence_{0};
@@ -629,7 +607,7 @@ TEST_F(PersistEngineTest, RecoverHandlesInvalidWalDataLenByCommitIndex) {
 }
 
 TEST_F(PersistEngineTest, RecoverSnapshotAndWalAfterWriteSnapshot) {
-    // write_snapshot 不再截断 WAL，子进程写完 snapshot 后正常退出
+    // write_snapshot 不再截断 WAL，写完 snapshot 后 recover 会过滤掉快照前缀。
     PersistEngine engine = make_engine();
     Status status = engine.init();
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -646,12 +624,17 @@ TEST_F(PersistEngineTest, RecoverSnapshotAndWalAfterWriteSnapshot) {
     ASSERT_TRUE(engine.save_raft_meta(RaftMeta{2, std::nullopt}).ok());
     ASSERT_TRUE(engine.close().ok());
 
-    // 子进程写 snapshot 后正常退出（write_snapshot 不截断 WAL）
-    int child_status =
-        run_snapshot_crash_runner("do_snapshot.after_write_snapshot");
-    ASSERT_NE(child_status, -1);
-    ASSERT_TRUE(WIFEXITED(child_status));
-    ASSERT_EQ(WEXITSTATUS(child_status), 0);
+    KvStateMachine state_machine(EngineType::MAP);
+    for (size_t i = 0; i < 2; ++i) {
+        status = state_machine.apply(entries[i]);
+        ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    }
+    PersistEngine snapshot_writer = make_engine();
+    status = snapshot_writer.init();
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    status = snapshot_writer.write_snapshot(state_machine);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    ASSERT_TRUE(snapshot_writer.close().ok());
 
     // 重启 recover：snapshot 写完，recover 会过滤掉 snapshot 之前的 WAL 条目
     PersistEngine recovered = make_engine();

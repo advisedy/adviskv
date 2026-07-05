@@ -394,6 +394,10 @@ SdmPersistEngine::~SdmPersistEngine() {
 }
 
 Status SdmPersistEngine::init() {
+    if (data_dir_.empty()) {
+        return Status::INVALID_ARGUMENT("sdm persist engine data_dir is empty");
+    }
+
     meta_path_ = data_dir_ + "/sdm_meta";
     meta_tmp_path_ = data_dir_ + "/sdm_meta.tmp";
 

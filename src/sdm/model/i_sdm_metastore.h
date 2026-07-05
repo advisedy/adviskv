@@ -53,6 +53,7 @@ enum class SdmMetaStoreType {
 class ISdmMetaStore {
    public:
     virtual ~ISdmMetaStore() = default;
+    virtual Status init() = 0;
 
 #define X(...) virtual __VA_ARGS__ = 0;
     ISDM_METASTORE_METHODS(X)
@@ -61,6 +62,8 @@ class ISdmMetaStore {
 
 class MemoryMetaStore : public ISdmMetaStore {
    public:
+    Status init() override { return Status::OK(); }
+
 #define X(...) __VA_ARGS__ override;
     ISDM_METASTORE_METHODS(X)
 #undef X
@@ -81,6 +84,8 @@ class PersistentMetaStore : public ISdmMetaStore {
                         std::filesystem::path data_dir);
     PersistentMetaStore(std::unique_ptr<ISdmMetaStore> memory_store,
                         std::unique_ptr<ISdmPersistEngine> persist_engine);
+
+    Status init() override;
 
 #define X(...) __VA_ARGS__ override;
     ISDM_METASTORE_METHODS(X)

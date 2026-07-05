@@ -53,6 +53,15 @@ void cleanup_empty_pool_set(
 
 }  // namespace
 
+void SdmRuntimeIndex::clear() {
+    table_name_index_.clear();
+    pool_nodes_index_.clear();
+    shard_replicas_index_.clear();
+    node_replicas_index_.clear();
+    node_pool_index_.clear();
+    shard_route_cache_.clear();
+}
+
 Status SdmRuntimeIndex::on_table_upsert(const Table* old_table,
                                         const Table& new_table) {
     if (old_table != nullptr) {
