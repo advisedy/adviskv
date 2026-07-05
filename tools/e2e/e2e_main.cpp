@@ -12,6 +12,7 @@
 #include "cases/many_tables_create_drop_case.h"
 #include "cases/meta_crash_recovery_case.h"
 #include "cases/restart_persistence_case.h"
+#include "cases/scale_to_zero_case.h"
 #include "cases/sdm_crash_recovery_case.h"
 #include "cases/table_replica_count_resize_case.h"
 #include "cases/table_replica_count_resize_resilience_case.h"
@@ -98,6 +99,7 @@ bool run_case(const adviskv::e2e::Options& options) {
     RUN_CASE("sdm_crash_verify", adviskv::e2e::run_sdm_crash_verify_case)
     RUN_CASE("meta_crash_seed", adviskv::e2e::run_meta_crash_seed_case)
     RUN_CASE("meta_crash_verify", adviskv::e2e::run_meta_crash_verify_case)
+    RUN_CASE("scale_to_zero", adviskv::e2e::run_scale_to_zero_case)
     RUN_CASE("table_replica_count_resize", adviskv::e2e::run_table_replica_count_resize_case)
     RUN_CASE("table_replica_count_resize_with_writes", adviskv::e2e::run_table_replica_count_resize_with_writes_case)
     RUN_CASE("table_replica_count_resize_disruption_prepare",

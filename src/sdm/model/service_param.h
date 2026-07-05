@@ -29,6 +29,7 @@ struct PlaceTableParam {
         RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
         RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
         RETURN_IF_INVALID_CONDITION(!operation_id.empty(), "operation_id should not empty")
+        // replica_count 是可以等于0的
         RETURN_IF_INVALID_CONDITION(replica_count >= 0, "replica_count should be greater than or equal to 0")
         RETURN_IF_INVALID_CONDITION(shard_count > 0, "shard_count should be greater than 0")
         return Status::OK();
@@ -63,6 +64,7 @@ struct AlterReplicaCountParam {
 
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(table_id >= 0, "table_id should be greater than or equal to 0")
+        // replica_count 是可以等于0的
         RETURN_IF_INVALID_CONDITION(replica_count >= 0, "replica_count should be greater than or equal to 0")
         RETURN_IF_INVALID_CONDITION(!operation_id.empty(), "operation_id should not empty")
         return Status::OK();

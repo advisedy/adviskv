@@ -12,7 +12,24 @@
 #include "sdm/model/service_param.h"
 #include "storage.grpc.pb.h"
 
-namespace adviskv::sdm {
+namespace adviskv::tools {
+
+/*
+在最开始的架构里面，是SDM主动给storage发消息，但是后来改版成了node agent，
+又不希望这段代码直接删掉，万一以后可以测试用，所以就先放在这里了。
+
+target_include_directories(adviskv_tools_storage_client PUBLIC
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+include的路径就用tools/storage_client/xxx这种吧
+
+*/
+
+using ::adviskv::sdm::CreateReplicaParam;
+using ::adviskv::sdm::DeleteReplicaParam;
+using ::adviskv::sdm::GetReplicaInfoParam;
 
 struct StorageReplicaInfo {
     ReplicaID replica_id;
@@ -48,4 +65,4 @@ class StorageClient : public IStorageClient {
     std::unordered_map<std::string, std::unique_ptr<rpc::StorageService::Stub>>
         stub_cache_;
 };
-}  // namespace adviskv::sdm
+}  // namespace adviskv::tools

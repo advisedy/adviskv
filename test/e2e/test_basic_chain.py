@@ -151,6 +151,18 @@ def test_meta_to_storage_basic_kv_chain(cluster: AdvisKVCluster):
     )
 
 
+def test_scale_to_zero_contract_case(cluster: AdvisKVCluster):
+    run_case_and_get_output(
+        cluster,
+        case="scale_to_zero",
+        db="pytest_scale_zero_db",
+        table="pytest_scale_zero_table",
+        key_count=4,
+        replica_count=0,
+        timeout_ms=180_000,
+    )
+
+
 @pytest.mark.parametrize("cluster", [{"storage_count": 5}], indirect=True)
 def test_table_replica_count_resize_case(cluster: AdvisKVCluster):
     run_case_and_get_output(

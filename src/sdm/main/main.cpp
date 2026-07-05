@@ -15,7 +15,6 @@
 #include "common/path_util.h"
 #include "common/type.h"
 #include "sdm/background/background.h"
-#include "sdm/client/storage_client.h"
 #include "sdm/handler/sdm_service_impl.h"
 #include "sdm/model/sdm_store.h"
 #include "sdm/selector/node_selector/node_selector.h"
@@ -102,7 +101,6 @@ int main(int argc, char* argv[]) {
                  metastore_type == SdmMetaStoreType::PERSISTENT ? "persistent"
                                                                 : "memory",
                  metastore_data_dir);
-        auto storage_client = std::make_unique<StorageClient>();
         auto node_selector =
             std::make_unique<DefaultNodeSelector>(sdm_store.get());
 

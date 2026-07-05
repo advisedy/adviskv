@@ -40,6 +40,7 @@ struct CreateTableParam {
         RETURN_IF_INVALID_CONDITION(!table_name.empty(),
                                     "table_name should not empty")
         RETURN_IF_INVALID_CONDITION(shard_count > 0, "shard count should > 0")
+        // replica_count 是可以等于0的
         RETURN_IF_INVALID_CONDITION(replica_count >= 0,
                                     "replica count should >= 0")
         return Status::OK();
@@ -87,6 +88,7 @@ struct AlterTableReplicaCountParam {
                                     "db_name should not empty")
         RETURN_IF_INVALID_CONDITION(!table_name.empty(),
                                     "table_name should not empty")
+        // replica_count 是可以等于0的
         RETURN_IF_INVALID_CONDITION(replica_count >= 0,
                                     "replica_count should >= 0")
         return Status::OK();

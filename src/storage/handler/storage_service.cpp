@@ -52,6 +52,13 @@ void record_storage_write_handler_result(std::string_view op_name,
     }
 }
 
+Status check_test_api_enabled() {
+    if (CONF_GET_BOOL("enable_test_api", false)) {
+        return Status::OK();
+    }
+    return Status::ERROR("enable_test_api is false");
+}
+
 }  // namespace
 
 grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
@@ -187,6 +194,11 @@ grpc::Status StorageServiceImpl::CreateReplica(
     rpc::CreateReplicaResponse* response) {
     UNUSED(context);
 
+    if (Status status = check_test_api_enabled(); status.fail()) {
+        fill_base_rsp(response, status);
+        return grpc::Status::OK;
+    }
+
     if (!replica_manager_) {
         LOG_WARN("replica manager is nullptr");
         fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
@@ -212,6 +224,12 @@ grpc::Status StorageServiceImpl::DeleteReplica(
     grpc::ServerContext* context, const rpc::DeleteReplicaRequest* request,
     rpc::DeleteReplicaResponse* response) {
     UNUSED(context);
+
+    if (Status status = check_test_api_enabled(); status.fail()) {
+        fill_base_rsp(response, status);
+        return grpc::Status::OK;
+    }
+
     if (!replica_manager_) {
         LOG_WARN("replica manager is nullptr");
         fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND,
@@ -229,6 +247,11 @@ grpc::Status StorageServiceImpl::GetReplicaInfo(
     grpc::ServerContext* context, const rpc::GetReplicaInfoRequest* request,
     rpc::GetReplicaInfoResponse* response) {
     UNUSED(context);
+
+    if (Status status = check_test_api_enabled(); status.fail()) {
+        fill_base_rsp(response, status);
+        return grpc::Status::OK;
+    }
 
     if (!replica_manager_) {
         LOG_WARN("replica manager is nullptr");
@@ -410,8 +433,8 @@ grpc::Status StorageServiceImpl::TestGetReplicaState(
     grpc::ServerContext* context,
     const rpc::TestGetReplicaStateRequest* request,
     rpc::TestGetReplicaStateResponse* response) {
-    if (!CONF_GET_BOOL("enable_test_api", "false")) {
-        fill_base_rsp(response, Status::ERROR("enable_test_api is false"));
+    if (Status status = check_test_api_enabled(); status.fail()) {
+        fill_base_rsp(response, status);
         return grpc::Status::OK;
     }
 

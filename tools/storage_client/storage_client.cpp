@@ -1,4 +1,4 @@
-#include "sdm/client/storage_client.h"
+#include "tools/storage_client/storage_client.h"
 
 #include <fmt/format.h>
 #include <grpcpp/channel.h>
@@ -13,7 +13,7 @@
 #include "common/status.h"
 #include "sdm/model/store.h"
 
-namespace adviskv::sdm {
+namespace adviskv::tools {
 
 // 这个里面如果没有的话，就去create，然后放到cache里面
 rpc::StorageService::Stub* StorageClient::make_stub(const std::string& ip,
@@ -136,4 +136,4 @@ Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
     out.term = replica.term();
     return Status::OK();
 }
-}  // namespace adviskv::sdm
+}  // namespace adviskv::tools
