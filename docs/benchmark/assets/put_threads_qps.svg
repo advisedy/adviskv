@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="480" viewBox="0 0 860 480" role="img" aria-labelledby="title desc">
+  <title id="title">Put Threads</title>
+  <desc id="desc">success_qps benchmark chart for threads</desc>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <style>text{font-family:Arial,sans-serif}.axis{stroke:#374151}.grid{stroke:#e5e7eb}.tick{fill:#6b7280}.label{fill:#374151}.qps-label{fill:#111827;font-size:11px;font-weight:600}</style>
+<text x="88" y="34" font-size="20" font-weight="700" fill="#111827">Put Threads</text>
+  <rect x="88" y="72" width="730" height="326" fill="#f9fafb" stroke="#e5e7eb" stroke-width="1"/>
+<line x1="88" y1="398.0" x2="818" y2="398.0" class="grid" stroke-width="1"/>
+<text x="76" y="402.0" text-anchor="end" font-size="12" class="tick">0</text>
+<line x1="88" y1="332.8" x2="818" y2="332.8" class="grid" stroke-width="1"/>
+<text x="76" y="336.8" text-anchor="end" font-size="12" class="tick">2500</text>
+<line x1="88" y1="267.6" x2="818" y2="267.6" class="grid" stroke-width="1"/>
+<text x="76" y="271.6" text-anchor="end" font-size="12" class="tick">5000</text>
+<line x1="88" y1="202.4" x2="818" y2="202.4" class="grid" stroke-width="1"/>
+<text x="76" y="206.4" text-anchor="end" font-size="12" class="tick">7500</text>
+<line x1="88" y1="137.2" x2="818" y2="137.2" class="grid" stroke-width="1"/>
+<text x="76" y="141.2" text-anchor="end" font-size="12" class="tick">10000</text>
+<line x1="88" y1="72.0" x2="818" y2="72.0" class="grid" stroke-width="1"/>
+<text x="76" y="76.0" text-anchor="end" font-size="12" class="tick">12500</text>
+<line x1="88" y1="72" x2="88" y2="398" class="axis" stroke-width="1.2"/>
+<line x1="88" y1="398" x2="818" y2="398" class="axis" stroke-width="1.2"/>
+<line x1="88.0" y1="398" x2="88.0" y2="404" class="axis" stroke-width="1"/>
+<text x="88.0" y="423" text-anchor="middle" font-size="12" fill="#374151">1</text>
+<line x1="234.0" y1="398" x2="234.0" y2="404" class="axis" stroke-width="1"/>
+<text x="234.0" y="423" text-anchor="middle" font-size="12" fill="#374151">2</text>
+<line x1="380.0" y1="398" x2="380.0" y2="404" class="axis" stroke-width="1"/>
+<text x="380.0" y="423" text-anchor="middle" font-size="12" fill="#374151">4</text>
+<line x1="526.0" y1="398" x2="526.0" y2="404" class="axis" stroke-width="1"/>
+<text x="526.0" y="423" text-anchor="middle" font-size="12" fill="#374151">8</text>
+<line x1="672.0" y1="398" x2="672.0" y2="404" class="axis" stroke-width="1"/>
+<text x="672.0" y="423" text-anchor="middle" font-size="12" fill="#374151">16</text>
+<line x1="818.0" y1="398" x2="818.0" y2="404" class="axis" stroke-width="1"/>
+<text x="818.0" y="423" text-anchor="middle" font-size="12" fill="#374151">32</text>
+  <polyline fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="88.0,371.1 234.0,342.1 380.0,289.0 526.0,218.0 672.0,190.4 818.0,143.9"/>
+  <rect x="92.0" y="341.1" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
+<text x="115.5" y="355.1" text-anchor="middle" class="qps-label">1,030</text>
+  <rect x="210.5" y="312.1" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
+<text x="234.0" y="326.1" text-anchor="middle" class="qps-label">2,145</text>
+  <rect x="356.5" y="259.0" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
+<text x="380.0" y="273.0" text-anchor="middle" class="qps-label">4,178</text>
+  <rect x="502.5" y="188.0" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
+<text x="526.0" y="202.0" text-anchor="middle" class="qps-label">6,900</text>
+  <rect x="648.5" y="160.4" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
+<text x="672.0" y="174.4" text-anchor="middle" class="qps-label">7,960</text>
+  <rect x="767.0" y="113.9" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
+<text x="790.5" y="127.9" text-anchor="middle" class="qps-label">9,742</text>
+  <circle cx="88.0" cy="371.1" r="5" fill="#ffffff" stroke="#2563eb" stroke-width="2.5"><title>threads=1, success_qps=1029.99, avg_us=970.28, p95_us=1157, p99_us=1515</title></circle>
+  <circle cx="234.0" cy="342.1" r="5" fill="#ffffff" stroke="#2563eb" stroke-width="2.5"><title>threads=2, success_qps=2145.12, avg_us=931.73, p95_us=1283, p99_us=2017</title></circle>
+  <circle cx="380.0" cy="289.0" r="5" fill="#ffffff" stroke="#2563eb" stroke-width="2.5"><title>threads=4, success_qps=4177.99, avg_us=956.79, p95_us=1158, p99_us=1561</title></circle>
+  <circle cx="526.0" cy="218.0" r="5" fill="#ffffff" stroke="#2563eb" stroke-width="2.5"><title>threads=8, success_qps=6900.30, avg_us=1158.58, p95_us=1579, p99_us=2475</title></circle>
+  <circle cx="672.0" cy="190.4" r="5" fill="#ffffff" stroke="#2563eb" stroke-width="2.5"><title>threads=16, success_qps=7960.23, avg_us=2008.92, p95_us=3087, p99_us=6192</title></circle>
+  <circle cx="818.0" cy="143.9" r="5" fill="#ffffff" stroke="#2563eb" stroke-width="2.5"><title>threads=32, success_qps=9742.05, avg_us=3282.29, p95_us=6185, p99_us=10143</title></circle>
+<text x="453.0" y="452" text-anchor="middle" font-size="13" class="label">threads</text>
+<text x="22" y="235.0" text-anchor="middle" font-size="13" class="label" transform="rotate(-90 22 235.0)">success_qps</text>
+</svg>

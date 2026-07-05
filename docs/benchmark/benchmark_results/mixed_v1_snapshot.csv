@@ -1,0 +1,6 @@
+group,variable,value,workload,read_ratio,threads,shard_count,replica_count,value_size,requests,success,failure,failure_rate,elapsed_s,success_qps,avg_us,p50_us,p95_us,p99_us,max_us,run_dir
+read_ratio,read_ratio,0.00,mixed,0.0,16,2,3,128,30000,30000,0,0.0,3.617458,8293.115847,1928.184,1721,3007,6316,25513,build/benchmark_v1/mixed_snapshot_30k_20260705_212402/raw/read_ratio_0_00
+read_ratio,read_ratio,0.50,mixed,0.5,16,2,3,128,30000,30000,0,0.0,4.143882,7239.588968,2208.836,1815,4867,7441,37796,build/benchmark_v1/mixed_snapshot_30k_20260705_212402/raw/read_ratio_0_50
+read_ratio,read_ratio,0.80,mixed,0.8,16,2,3,128,30000,30000,0,0.0,3.979916,7537.847139,2121.472,1904,3507,4686,25157,build/benchmark_v1/mixed_snapshot_30k_20260705_212402/raw/read_ratio_0_80
+read_ratio,read_ratio,0.95,mixed,0.95,16,2,3,128,30000,30000,0,0.0,3.617816,8292.295589,1928.37,1813,3015,3728,18185,build/benchmark_v1/mixed_snapshot_30k_20260705_212402/raw/read_ratio_0_95
+read_ratio,read_ratio,1.00,mixed,1.0,16,2,3,128,30000,30000,0,0.0,3.391255,8846.282678,1807.468,1764,2429,2939,12791,build/benchmark_v1/mixed_snapshot_30k_20260705_212402/raw/read_ratio_1_00

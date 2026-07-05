@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="480" viewBox="0 0 860 480" role="img" aria-labelledby="title desc">
+  <title id="title">Get Value Size</title>
+  <desc id="desc">success_qps benchmark chart for value_size bytes</desc>
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <style>text{font-family:Arial,sans-serif}.axis{stroke:#374151}.grid{stroke:#e5e7eb}.tick{fill:#6b7280}.label{fill:#374151}.qps-label{fill:#111827;font-size:11px;font-weight:600}</style>
+<text x="88" y="34" font-size="20" font-weight="700" fill="#111827">Get Value Size</text>
+  <rect x="88" y="72" width="730" height="326" fill="#f9fafb" stroke="#e5e7eb" stroke-width="1"/>
+<line x1="88" y1="398.0" x2="818" y2="398.0" class="grid" stroke-width="1"/>
+<text x="76" y="402.0" text-anchor="end" font-size="12" class="tick">0</text>
+<line x1="88" y1="332.8" x2="818" y2="332.8" class="grid" stroke-width="1"/>
+<text x="76" y="336.8" text-anchor="end" font-size="12" class="tick">2000</text>
+<line x1="88" y1="267.6" x2="818" y2="267.6" class="grid" stroke-width="1"/>
+<text x="76" y="271.6" text-anchor="end" font-size="12" class="tick">4000</text>
+<line x1="88" y1="202.4" x2="818" y2="202.4" class="grid" stroke-width="1"/>
+<text x="76" y="206.4" text-anchor="end" font-size="12" class="tick">6000</text>
+<line x1="88" y1="137.2" x2="818" y2="137.2" class="grid" stroke-width="1"/>
+<text x="76" y="141.2" text-anchor="end" font-size="12" class="tick">8000</text>
+<line x1="88" y1="72.0" x2="818" y2="72.0" class="grid" stroke-width="1"/>
+<text x="76" y="76.0" text-anchor="end" font-size="12" class="tick">10000</text>
+<line x1="88" y1="72" x2="88" y2="398" class="axis" stroke-width="1.2"/>
+<line x1="88" y1="398" x2="818" y2="398" class="axis" stroke-width="1.2"/>
+<line x1="88.0" y1="398" x2="88.0" y2="404" class="axis" stroke-width="1"/>
+<text x="88.0" y="423" text-anchor="middle" font-size="12" fill="#374151">16</text>
+<line x1="234.0" y1="398" x2="234.0" y2="404" class="axis" stroke-width="1"/>
+<text x="234.0" y="423" text-anchor="middle" font-size="12" fill="#374151">64</text>
+<line x1="380.0" y1="398" x2="380.0" y2="404" class="axis" stroke-width="1"/>
+<text x="380.0" y="423" text-anchor="middle" font-size="12" fill="#374151">128</text>
+<line x1="526.0" y1="398" x2="526.0" y2="404" class="axis" stroke-width="1"/>
+<text x="526.0" y="423" text-anchor="middle" font-size="12" fill="#374151">512</text>
+<line x1="672.0" y1="398" x2="672.0" y2="404" class="axis" stroke-width="1"/>
+<text x="672.0" y="423" text-anchor="middle" font-size="12" fill="#374151">1024</text>
+<line x1="818.0" y1="398" x2="818.0" y2="404" class="axis" stroke-width="1"/>
+<text x="818.0" y="423" text-anchor="middle" font-size="12" fill="#374151">4096</text>
+  <polyline fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="88.0,118.5 234.0,117.2 380.0,115.4 526.0,119.1 672.0,116.1 818.0,118.6"/>
+  <rect x="92.0" y="88.5" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
+<text x="115.5" y="102.5" text-anchor="middle" class="qps-label">8,573</text>
+  <rect x="210.5" y="87.2" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
+<text x="234.0" y="101.2" text-anchor="middle" class="qps-label">8,613</text>
+  <rect x="356.5" y="85.4" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
+<text x="380.0" y="99.4" text-anchor="middle" class="qps-label">8,670</text>
+  <rect x="502.5" y="89.1" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
+<text x="526.0" y="103.1" text-anchor="middle" class="qps-label">8,556</text>
+  <rect x="648.5" y="86.1" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
+<text x="672.0" y="100.1" text-anchor="middle" class="qps-label">8,647</text>
+  <rect x="767.0" y="88.6" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
+<text x="790.5" y="102.6" text-anchor="middle" class="qps-label">8,570</text>
+  <circle cx="88.0" cy="118.5" r="5" fill="#ffffff" stroke="#059669" stroke-width="2.5"><title>value_size bytes=16, success_qps=8573.46, avg_us=1865.12, p95_us=2439, p99_us=3254</title></circle>
+  <circle cx="234.0" cy="117.2" r="5" fill="#ffffff" stroke="#059669" stroke-width="2.5"><title>value_size bytes=64, success_qps=8612.90, avg_us=1856.60, p95_us=2469, p99_us=3040</title></circle>
+  <circle cx="380.0" cy="115.4" r="5" fill="#ffffff" stroke="#059669" stroke-width="2.5"><title>value_size bytes=128, success_qps=8669.53, avg_us=1844.45, p95_us=2410, p99_us=3082</title></circle>
+  <circle cx="526.0" cy="119.1" r="5" fill="#ffffff" stroke="#059669" stroke-width="2.5"><title>value_size bytes=512, success_qps=8555.62, avg_us=1869.03, p95_us=2507, p99_us=3271</title></circle>
+  <circle cx="672.0" cy="116.1" r="5" fill="#ffffff" stroke="#059669" stroke-width="2.5"><title>value_size bytes=1024, success_qps=8647.08, avg_us=1849.20, p95_us=2488, p99_us=2926</title></circle>
+  <circle cx="818.0" cy="118.6" r="5" fill="#ffffff" stroke="#059669" stroke-width="2.5"><title>value_size bytes=4096, success_qps=8569.62, avg_us=1865.95, p95_us=2563, p99_us=3111</title></circle>
+<text x="453.0" y="452" text-anchor="middle" font-size="13" class="label">value_size bytes</text>
+<text x="22" y="235.0" text-anchor="middle" font-size="13" class="label" transform="rotate(-90 22 235.0)">success_qps</text>
+</svg>
