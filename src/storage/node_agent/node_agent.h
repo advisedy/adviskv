@@ -50,6 +50,7 @@ struct NodeAgentConf {
     int32_t heartbeat_interval_ms{3000};
     int32_t register_interval_ms{30 * 1000};
     int32_t first_sync_retry_ms{1000};
+    int32_t rpc_timeout_ms{3000};
     NodeAgentReplicaOps replica_ops;
 
     Status validate() const {
@@ -63,6 +64,7 @@ struct NodeAgentConf {
         RETURN_IF_INVALID_CONDITION(heartbeat_interval_ms > 0, "heartbeat_interval_ms should > 0")
         RETURN_IF_INVALID_CONDITION(register_interval_ms > 0, "register_interval_ms should > 0")
         RETURN_IF_INVALID_CONDITION(first_sync_retry_ms > 0, "first_sync_retry_ms should > 0")
+        RETURN_IF_INVALID_CONDITION(rpc_timeout_ms > 0, "rpc_timeout_ms should > 0")
         RETURN_IF_INVALID_STATUS(replica_ops.validate())
         return Status::OK();
     }

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -168,6 +169,23 @@ TEST(SdmStoreTest, NormalStoreFlowWorks) {
                                             table_by_name)
                   .code(),
               StatusCode::TABLE_NOT_FOUND);
+}
+
+TEST(SdmStoreTest, PersistentStoreReportsCorruptedMetaOnInit) {
+    const fs::path dir = test::make_unique_test_dir("sdm_store_corrupt", 1);
+    fs::create_directories(dir);
+    {
+        std::ofstream out(dir / "sdm_meta", std::ios::binary);
+        out << "corrupted sdm meta";
+    }
+
+    SdmStore store(SdmMetaStoreType::PERSISTENT, dir.string());
+
+    EXPECT_TRUE(store.init_status().fail()) << store.init_status().to_string();
+    Status status = store.read_with([](const SdmStoreTxn&) {
+        return Status::OK();
+    });
+    EXPECT_TRUE(status.fail()) << status.to_string();
 }
 
 // 检测 runtime index 更新失败时，SdmStore 会 rebuild runtime index

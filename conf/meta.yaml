@@ -6,6 +6,7 @@ data_dir: "build/runtime/data/meta"
 # sdm
 sdm_host: "127.0.0.1"
 sdm_port: 50049
+sdm_rpc_timeout_ms: 3000
 
 # log
 logger_name: "meta_log"

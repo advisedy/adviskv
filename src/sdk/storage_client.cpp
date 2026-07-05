@@ -85,7 +85,7 @@ Status StorageClient::put(const RouteInfo& route, const Key& key,
     rpc::PutResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +
-                         std::chrono::milliseconds(conf_.storage_timeout_ms));
+                         Milliseconds(conf_.storage_timeout_ms));
 
     grpc::Status grpc_status;
     {
@@ -153,7 +153,7 @@ Status StorageClient::del(const RouteInfo& route, const Key& key) const {
     rpc::DeleteResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +
-                         std::chrono::milliseconds(conf_.storage_timeout_ms));
+                         Milliseconds(conf_.storage_timeout_ms));
 
     grpc::Status grpc_status;
     {
@@ -216,7 +216,7 @@ Status StorageClient::get(const RouteInfo& route, const Key& key,
     rpc::GetResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +
-                         std::chrono::milliseconds(conf_.storage_timeout_ms));
+                         Milliseconds(conf_.storage_timeout_ms));
 
     grpc::Status grpc_status = stub->Get(&context, request, &response);
     if (!grpc_status.ok()) {

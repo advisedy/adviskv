@@ -33,7 +33,7 @@ Status DirectMetaClient::create_db(const std::string& db_name,
     meta_rpc::CreateDBResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +
-                         std::chrono::milliseconds(target_.timeout_ms));
+                         Milliseconds(target_.timeout_ms));
 
     grpc::Status grpc_status = stub_->CreateDB(&context, request, &response);
     if (!grpc_status.ok()) {
@@ -58,7 +58,7 @@ Status DirectMetaClient::drop_db(const std::string& db_name,
     meta_rpc::DropDBResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +
-                         std::chrono::milliseconds(target_.timeout_ms));
+                         Milliseconds(target_.timeout_ms));
 
     grpc::Status grpc_status = stub_->DropDB(&context, request, &response);
     if (!grpc_status.ok()) {
@@ -91,7 +91,7 @@ Status DirectMetaClient::create_table(const std::string& db_name,
     meta_rpc::CreateTableResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +
-                         std::chrono::milliseconds(target_.timeout_ms));
+                         Milliseconds(target_.timeout_ms));
 
     grpc::Status grpc_status = stub_->CreateTable(&context, request, &response);
     if (!grpc_status.ok()) {
@@ -120,7 +120,7 @@ Status DirectMetaClient::alter_table_replica_count(
     meta_rpc::AlterTableReplicaCountResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +
-                         std::chrono::milliseconds(target_.timeout_ms));
+                         Milliseconds(target_.timeout_ms));
 
     grpc::Status grpc_status =
         stub_->AlterTableReplicaCount(&context, request, &response);
@@ -149,7 +149,7 @@ Status DirectMetaClient::get_table(const std::string& db_name,
     meta_rpc::GetTableResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +
-                         std::chrono::milliseconds(target_.timeout_ms));
+                         Milliseconds(target_.timeout_ms));
 
     grpc::Status grpc_status = stub_->GetTable(&context, request, &response);
     if (!grpc_status.ok()) {

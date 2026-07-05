@@ -124,6 +124,8 @@ int main(int argc, char* argv[]) {
             CONF_GET_INT("heartbeat_interval_ms");
         agent_conf.register_interval_ms =
             CONF_GET_INT("register_interval_ms", 30 * 1000);
+        agent_conf.rpc_timeout_ms =
+            CONF_GET_INT("node_agent_rpc_timeout_ms", 3000);
         agent_conf.replica_ops.list_replicas = [replica_manager_ptr]() {
             return replica_manager_ptr->get_replicas();
         };
@@ -159,7 +161,8 @@ int main(int argc, char* argv[]) {
         if (agent_status.ok()) {
             LOG_INFO("node agent started, node_id={}", agent_conf.node_id);
         } else {
-            LOG_WARN("node agent setup failed: {}", agent_status.msg());
+            LOG_ERROR("node agent setup failed: {}", agent_status.to_string());
+            return 1;
         }
 
         std::string listen_host =

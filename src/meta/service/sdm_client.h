@@ -2,6 +2,7 @@
 
 #include <grpcpp/impl/channel_interface.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -35,8 +36,10 @@ class ISdmClient {
 
 class SdmClient : public ISdmClient {
    public:
-    explicit SdmClient(const std::shared_ptr<grpc::ChannelInterface>& channel)
-        : stub_(sdm_rpc::SdmService::NewStub(channel)) {}
+    explicit SdmClient(const std::shared_ptr<grpc::ChannelInterface>& channel,
+                       int32_t timeout_ms = 3000)
+        : stub_(sdm_rpc::SdmService::NewStub(channel)),
+          timeout_ms_(timeout_ms > 0 ? timeout_ms : 3000) {}
 
     Status call_place_table(const TableMeta& table_meta) override;
     Status call_drop_table(const TableMeta& table_meta) override;
@@ -49,6 +52,7 @@ class SdmClient : public ISdmClient {
     using SdmClientStub = std::unique_ptr<sdm_rpc::SdmService::Stub>;
 
     SdmClientStub stub_;
+    int32_t timeout_ms_{3000};
 };
 
 }  // namespace adviskv::meta

@@ -83,6 +83,8 @@ int main(int argc, char* argv[]) {
                                                               "127.0.0.1");
         std::string sdm_host = CONF_GET_STR("sdm_host");
         int32_t sdm_port = CONF_GET_INT("sdm_port");
+        int32_t sdm_rpc_timeout_ms =
+            CONF_GET_INT("sdm_rpc_timeout_ms", 3000);
         std::string data_dir =
             adviskv::path_from_project_root(CONF_GET_STR("data_dir")).string();
 
@@ -103,7 +105,8 @@ int main(int argc, char* argv[]) {
         auto sdm_channel =
             grpc::CreateChannel(fmt::format("{}:{}", sdm_host, sdm_port),
                                 grpc::InsecureChannelCredentials());
-        auto sdm_client = std::make_unique<SdmClient>(sdm_channel);
+        auto sdm_client =
+            std::make_unique<SdmClient>(sdm_channel, sdm_rpc_timeout_ms);
 
         auto ddl_service = std::make_unique<DdlService>(catalog_manager.get(),
                                                         sdm_client.get());

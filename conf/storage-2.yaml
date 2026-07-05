@@ -7,6 +7,7 @@ resource_pool: "default"
 dc: "dc1"
 data_dir: "build/runtime/data/storage-2"
 heartbeat_interval_ms: 3000
+node_agent_rpc_timeout_ms: 3000
 raft_rpc_timeout_ms: 1000
 
 #log

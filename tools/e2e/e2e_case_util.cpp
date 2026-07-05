@@ -33,7 +33,7 @@ bool run_seed_case(const Options& options, const std::string& prefix,
 }
 
 bool run_verify_case(const Options& options, const std::string& prefix,
-                     const std::string& after_key_suffix) {
+                     const std::string& after_key_suffix, bool print_leader) {
     if (!validate_key_count(options)) {
         return false;
     }
@@ -51,7 +51,10 @@ bool run_verify_case(const Options& options, const std::string& prefix,
         return false;
     }
 
-    if (after_key_suffix.empty()) return true;
+    if (after_key_suffix.empty()) {
+        return !print_leader ||
+               print_current_leader(&context, prefix + "-key-000");
+    }
 
     const std::string after_key = prefix + "-" + after_key_suffix;
     const std::string after_value = prefix + "-value-" + after_key_suffix;
@@ -59,7 +62,11 @@ bool run_verify_case(const Options& options, const std::string& prefix,
                      [&]() { return client.put(after_key, after_value); })) {
         return false;
     }
-    return wait_get_value(&client, options, after_key, after_value);
+    if (!wait_get_value(&client, options, after_key, after_value)) {
+        return false;
+    }
+    return !print_leader ||
+           print_current_leader(&context, prefix + "-key-000");
 }
 
 }  // namespace adviskv::e2e

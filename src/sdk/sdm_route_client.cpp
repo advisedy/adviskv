@@ -33,7 +33,7 @@ Status SdmRouteClient::get_route(const Key& key, RouteInfo* route) const {
     sdm_rpc::GetRouteResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() +
-                         std::chrono::milliseconds(conf_.sdm_timeout_ms));
+                         Milliseconds(conf_.sdm_timeout_ms));
 
     grpc::Status grpc_status = stub_->GetRoute(&context, request, &response);
     if (!grpc_status.ok()) {

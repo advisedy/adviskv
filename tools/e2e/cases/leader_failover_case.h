@@ -17,7 +17,8 @@ inline bool run_leader_failover_seed_case(const Options& options) {
 }
 
 inline bool run_leader_failover_verify_case(const Options& options) {
-    return run_verify_case(options, "leader-failover", "after-failover");
+    return run_verify_case(options, "leader-failover", "after-failover",
+                           true);
 }
 
 }  // namespace adviskv::e2e

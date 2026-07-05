@@ -169,6 +169,51 @@ private:
     std::unique_ptr<grpc::Server> server_;
 };
 
+NodeAgentReplicaOps make_noop_replica_ops() {
+    NodeAgentReplicaOps ops;
+    ops.list_replicas = [] { return std::vector<ReplicaPtr>{}; };
+    ops.create_replica = [](const ReplicaInitParam&) { return Status::OK(); };
+    ops.delete_replica = [](const ReplicaID&) { return Status::OK(); };
+    ops.add_member = [](const ReplicaID&, const PeerMember&) { return Status::OK(); };
+    ops.remove_member = [](const ReplicaID&, const ReplicaID&) { return Status::OK(); };
+    return ops;
+}
+
+NodeAgentConf make_valid_conf_for_validation() {
+    NodeAgentConf conf;
+    conf.node_id = "node-1";
+    conf.ip = "127.0.0.1";
+    conf.port = 50050;
+    conf.resource_pool = "default";
+    conf.dc = "dc1";
+    conf.manager_host = "127.0.0.1";
+    conf.manager_port = 50049;
+    conf.heartbeat_interval_ms = 20;
+    conf.register_interval_ms = 30 * 1000;
+    conf.first_sync_retry_ms = 10;
+    conf.rpc_timeout_ms = 3000;
+    conf.replica_ops = make_noop_replica_ops();
+    return conf;
+}
+
+// 检测 NodeAgentConf 会拒绝关键字段缺失或非法的配置。
+TEST(NodeAgentConfTest, RejectsInvalidConfig) {
+    NodeAgentConf conf = make_valid_conf_for_validation();
+
+    EXPECT_TRUE(conf.validate().ok());
+
+    conf.node_id.clear();
+    EXPECT_TRUE(conf.validate().fail());
+
+    conf = make_valid_conf_for_validation();
+    conf.manager_port = 0;
+    EXPECT_TRUE(conf.validate().fail());
+
+    conf = make_valid_conf_for_validation();
+    conf.rpc_timeout_ms = 0;
+    EXPECT_TRUE(conf.validate().fail());
+}
+
 class NodeAgentTest : public ::testing::Test {
 protected:
     void SetUp() override {
@@ -203,13 +248,7 @@ protected:
     }
 
     NodeAgentReplicaOps noop_replica_ops() const {
-        NodeAgentReplicaOps ops;
-        ops.list_replicas = [] { return std::vector<ReplicaPtr>{}; };
-        ops.create_replica = [](const ReplicaInitParam&) { return Status::OK(); };
-        ops.delete_replica = [](const ReplicaID&) { return Status::OK(); };
-        ops.add_member = [](const ReplicaID&, const PeerMember&) { return Status::OK(); };
-        ops.remove_member = [](const ReplicaID&, const ReplicaID&) { return Status::OK(); };
-        return ops;
+        return make_noop_replica_ops();
     }
 
     NodeAgentReplicaOps replica_manager_ops(ReplicaManager* replica_manager) const {
@@ -257,20 +296,6 @@ protected:
     fs::path base_dir_;
     FakeSdmServer fake_sdm_;
 };
-
-// 检测 NodeAgentConf 会拒绝缺少 node_id 或非法 manager_port 的配置。
-TEST_F(NodeAgentTest, RejectsInvalidConfig) {
-    NodeAgentConf conf = valid_conf();
-
-    EXPECT_TRUE(conf.validate().ok());
-
-    conf.node_id.clear();
-    EXPECT_TRUE(conf.validate().fail());
-
-    conf = valid_conf();
-    conf.manager_port = 0;
-    EXPECT_TRUE(conf.validate().fail());
-}
 
 // 检测 NodeAgent 启动后会注册节点，并周期性上报本地 replica 心跳。
 TEST_F(NodeAgentTest, StartRegistersNodeAndSendsPeriodicHeartbeat) {

@@ -124,6 +124,7 @@ def write_storage_config(index: int) -> None:
         manager_host: "{LOCALHOST}"
         manager_port: {SDM_PORT}
         heartbeat_interval_ms: 3000
+        node_agent_rpc_timeout_ms: 3000
         enable_test_api: true
 
         {logger_block(f'e2e_{name}_log', LOG_DIR / name, f'{name}.log')}

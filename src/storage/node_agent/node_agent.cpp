@@ -151,6 +151,8 @@ Status NodeAgent::send_heartbeat_once(sdm_rpc::HeartbeatResponse* response) {
 
     sdm_rpc::HeartbeatRequest request = make_heartbeat_request();
     grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() +
+                         Milliseconds(conf_.rpc_timeout_ms));
     grpc::Status grpc_status = stub_->Heartbeat(&context, request, response);
     RETURN_IF_INVALID_CONDITION(grpc_status.ok(), grpc_status.error_message())
     RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response->base_rsp()))
@@ -167,6 +169,8 @@ Status NodeAgent::register_node() {
 
     sdm_rpc::RegisterNodeResponse response;
     grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() +
+                         Milliseconds(conf_.rpc_timeout_ms));
     grpc::Status grpc_status = stub_->RegisterNode(&context, request, &response);
     RETURN_IF_INVALID_CONDITION(grpc_status.ok(), grpc_status.error_message())
     RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))

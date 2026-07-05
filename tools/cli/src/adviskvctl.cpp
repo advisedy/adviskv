@@ -19,7 +19,7 @@
 #include "meta/catalog/meta_types.h"
 #include "sdk/client.h"
 #include "sdk/sdm_route_client.h"
-
+#include "common/type.h"
 namespace {
 
 using adviskv::DatabaseID;
@@ -351,7 +351,7 @@ private:
             fmt::print("timeout_ms should be an integer\n");
             return;
         }
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+        const auto deadline = std::chrono::steady_clock::now() + adviskv::Milliseconds(timeout_ms);
         TableInfo table_info;
         while (std::chrono::steady_clock::now() < deadline) {
             if (!fetch_table(tokens[1], tokens[2], &table_info))
@@ -364,7 +364,7 @@ private:
                 print_table(table_info);
                 return;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            std::this_thread::sleep_for(adviskv::Milliseconds(500));
         }
         fmt::print("ERR wait_table timeout\n");
         print_table(table_info);

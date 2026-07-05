@@ -1,8 +1,4 @@
 #pragma once
-#include <fcntl.h>
-#include <fmt/format.h>
-#include <unistd.h>
-
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
@@ -14,6 +10,10 @@
 #include <utility>
 #include <vector>
 
+#include <fcntl.h>
+#include <fmt/format.h>
+#include <unistd.h>
+
 #include "common/buffer.h"
 #include "common/crash_injection.h"
 #include "common/defer.h"
@@ -24,9 +24,7 @@ namespace adviskv {
 namespace func {
 
 inline int64_t get_current_ts_ms() {
-    return std::chrono::duration_cast<Milliseconds>(
-               std::chrono::system_clock::now().time_since_epoch())
-        .count();
+    return std::chrono::duration_cast<Milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
 inline int32_t get_random_int32(int32_t down, int32_t up) {
@@ -47,8 +45,7 @@ inline void ad_erase_if(std::vector<T>& a, U f) {
     }
 }
 
-inline Status write_full(int fd, const void* buf, size_t len,
-                         const char* crash_point_name = nullptr) {
+inline Status write_full(int fd, const void* buf, size_t len, const char* crash_point_name = nullptr) {
     const char* b = static_cast<const char*>(buf);
     size_t have_write_len = 0;
     while (have_write_len < len) {
@@ -76,8 +73,7 @@ inline Status read_full(int fd, void* buf, size_t len) {
     char* b = static_cast<char*>(buf);
     size_t have_read_len = 0;
     while (have_read_len < len) {
-        ssize_t cur_read_len =
-            ::read(fd, b + have_read_len, len - have_read_len);
+        ssize_t cur_read_len = ::read(fd, b + have_read_len, len - have_read_len);
         if (cur_read_len == 0 and have_read_len == 0) {
             return StatusCode::GET_EOF;
         }
@@ -112,7 +108,8 @@ inline Status read_value(int fd, T& v) {
 inline Status write_string(int fd, const std::string& s) {
     int32_t len = static_cast<int32_t>(s.size());
     RETURN_IF_INVALID_STATUS(write_value(fd, len))
-    if (len == 0) return Status::OK();
+    if (len == 0)
+        return Status::OK();
     return write_full(fd, s.data(), static_cast<size_t>(len));
 }
 
@@ -133,8 +130,7 @@ inline Status read_string(int fd, std::string& s) {
 inline Status fsync_dir(const std::string& dir_path) {
     int dir_fd = ::open(dir_path.c_str(), O_RDONLY | O_DIRECTORY);
     if (dir_fd < 0) {
-        return Status::ERROR(
-            fmt::format("failed to open dir for fsync: {}", dir_path));
+        return Status::ERROR(fmt::format("failed to open dir for fsync: {}", dir_path));
     }
     auto dir_fd_guard = Defer([&dir_fd]() {
         if (dir_fd != -1) {
@@ -148,8 +144,7 @@ inline Status fsync_dir(const std::string& dir_path) {
     }
     if (::close(dir_fd) != 0) {
         dir_fd = -1;
-        return Status::ERROR(
-            fmt::format("failed to close dir after fsync: {}", dir_path));
+        return Status::ERROR(fmt::format("failed to close dir after fsync: {}", dir_path));
     }
     dir_fd = -1;
     return Status::OK();
@@ -168,8 +163,7 @@ inline Status atomic_replace_file(std::filesystem::path path, Func func) {
     try {
         std::filesystem::create_directories(path.parent_path());
     } catch (const std::exception& e) {
-        return Status::ERROR(fmt::format(
-            "create dir:{} failed: {}", path.parent_path().string(), e.what()));
+        return Status::ERROR(fmt::format("create dir:{} failed: {}", path.parent_path().string(), e.what()));
     }
 
     fs::path tmp_path = (fs::path)(path.string() + ".tmp");
@@ -197,8 +191,7 @@ inline Status atomic_replace_file(std::filesystem::path path, Func func) {
     fd = -1;
 
     if (::rename(tmp_path.c_str(), path.c_str()) != 0) {
-        return Status::ERROR(
-            fmt::format("failed to rename tmp file to file:{}", path.string()));
+        return Status::ERROR(fmt::format("failed to rename tmp file to file:{}", path.string()));
     }
 
     fs::path parent_path = path.parent_path();

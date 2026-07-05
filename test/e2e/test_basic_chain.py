@@ -320,9 +320,11 @@ def test_leader_failover_case(cluster: AdvisKVCluster):
         table="pytest_leader_failover_table",
         key_count=16,
     )
-    cluster.stop_service(leader_service_from_output(cluster, prepare_output))
+    old_leader = leader_service_from_output(cluster, prepare_output)
+    cluster.stop_service(old_leader)
+    cluster.assert_service_stopped(old_leader)
 
-    run_case_and_get_output(
+    verify_output = run_case_and_get_output(
         cluster,
         case="leader_failover_verify",
         db="pytest_leader_failover_db",
@@ -330,6 +332,8 @@ def test_leader_failover_case(cluster: AdvisKVCluster):
         key_count=16,
         timeout_ms=VERIFY_TIMEOUT_MS,
     )
+    new_leader = leader_service_from_output(cluster, verify_output)
+    assert new_leader != old_leader, verify_output
 
 
 def test_follower_log_catchup_case(cluster: AdvisKVCluster):

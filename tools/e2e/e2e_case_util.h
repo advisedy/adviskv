@@ -13,6 +13,7 @@ bool run_seed_case(const Options& options, const std::string& prefix,
 // wait table is normal + verify_dataset
 // 并且再次尝试写入key和读取key，看看是否正常 (after_key_suffix非空的时候)
 bool run_verify_case(const Options& options, const std::string& prefix,
-                     const std::string& after_key_suffix = "");
+                     const std::string& after_key_suffix = "",
+                     bool print_leader = false);
 
 }  // namespace adviskv::e2e
