@@ -65,7 +65,7 @@ private:
     Status get_replica(const ReplicaID& replica_key, ReplicaOr& out) const;
     Status put_replica(const Replica& replica);
     Status put_replicas(const std::vector<Replica>& replicas);
-    Status del_replica(const ReplicaID& replica_key);
+    Status delete_replica(const ReplicaID& replica_key);
     Status list_replicas(std::vector<Replica>& out) const;
     Status list_replicas_by_shard(const ShardID& shard_id, std::vector<Replica>& out) const;
     Status list_replicas_by_node(NodeID node_id, std::vector<Replica>& out) const;

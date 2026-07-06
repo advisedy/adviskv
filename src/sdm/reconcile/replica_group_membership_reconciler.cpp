@@ -11,12 +11,12 @@
 #include "common/log.h"
 #include "common/model/type.h"
 #include "common/status.h"
-#include "sdm/store/sdm_store.h"
-#include "sdm/store/sdm_store_txn.h"
-#include "sdm/model/param.h"
 #include "sdm/model/model.h"
+#include "sdm/model/param.h"
 #include "sdm/selector/node_selector/node_selector.h"
 #include "sdm/service/replica_group_service.h"
+#include "sdm/store/sdm_store.h"
+#include "sdm/store/sdm_store_txn.h"
 
 namespace adviskv::sdm {
 
@@ -25,8 +25,7 @@ namespace {
 // 所有的members都是READY + VOTER
 // group是空的时候，得返回false啊，否则从0开始扩容的话会出现问题，没有leader啊
 bool all_members_ready(const SdmStoreTxn& txn, const ReplicaGroup& group) {
-    if (group.desired_members.empty())
-        return false;
+    if (group.desired_members.empty()) return false;
     for (const ReplicaID& rid : group.desired_members) {
         ReplicaOr replica;
         if (txn.get_replica(rid, replica).fail() || replica.is_empty()) {
@@ -45,8 +44,7 @@ bool all_members_ready(const SdmStoreTxn& txn, const ReplicaGroup& group) {
 }  // namespace
 
 ReplicaGroupMembershipReconciler::ReplicaGroupMembershipReconciler(ReplicaGroupReconcileContext ctx)
-        : ctx_(std::move(ctx)) {
-}
+        : ctx_(std::move(ctx)) {}
 
 Status ReplicaGroupMembershipReconciler::reconcile_all() {
     RETURN_IF_NULLPTR(ctx_.store, "store is nullptr")
@@ -89,8 +87,7 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
     RETURN_IF_INVALID_STATUS(ctx_.store->read_with([&](const SdmStoreTxn& txn) -> Status {
         ReplicaGroupOr current_or;
         RETURN_IF_INVALID_STATUS(txn.get_replica_group(group.shard_id, current_or))
-        if (current_or.is_empty())
-            return Status::OK();
+        if (current_or.is_empty()) return Status::OK();
 
         group_exists = true;
         current_group = current_or.value();
@@ -122,8 +119,7 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
     }))
     ///
 
-    if (!group_exists)
-        return Status::OK();
+    if (!group_exists) return Status::OK();
 
     {
         std::stringstream ids;
@@ -202,14 +198,13 @@ Status ReplicaGroupMembershipReconciler::cleanup_group(const ReplicaGroup& group
     return ctx_.store->write_with([&](SdmStoreTxn& txn) -> Status {
         ReplicaGroupOr current_or;
         RETURN_IF_INVALID_STATUS(txn.get_replica_group(group.shard_id, current_or))
-        if (current_or.is_empty())
-            return Status::OK();
+        if (current_or.is_empty()) return Status::OK();
 
         std::vector<Replica> shard_replicas;
         RETURN_IF_INVALID_STATUS(txn.list_replicas_by_shard(group.shard_id, shard_replicas));
         for (const Replica& replica : shard_replicas) {
             if (replica.state.phase == ReplicaPhase::DELETED) {
-                RETURN_IF_INVALID_STATUS(txn.del_replica(replica.replica_id))
+                RETURN_IF_INVALID_STATUS(txn.delete_replica(replica.replica_id))
             }
         }
 
@@ -271,8 +266,7 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
             return Status::OK();
         });
         RETURN_IF_INVALID_STATUS(status)
-        if (!should_add)
-            return Status::OK();
+        if (!should_add) return Status::OK();
         resource_pool = table_or->spec.resource_pool;
         engine_type = table_or->spec.engine_type;
     }
@@ -283,18 +277,22 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
     param.shard_count = 1;
     param.replica_count = count_to_add;
     param.excluded_node_ids = std::move(occupied_node_ids);
-    RETURN_IF_INVALID_STATUS(ctx_.selector->select_table_nodes(param, placement))
+
+    if (Status select_status = ctx_.selector->select_table_nodes(param, placement); select_status.fail()) {
+        LOG_WARN("[ReplicaGroupMembershipReconciler] add_members, node selector failed, status:{}",
+                 select_status.to_string());
+        return select_status;
+    }
+
     const std::vector<Node>& nodes = placement.shards.front().nodes;
 
     return ctx_.store->write_with([&](SdmStoreTxn& txn) -> Status {
         ReplicaGroupOr current_or;
         RETURN_IF_INVALID_STATUS(txn.get_replica_group(group.shard_id, current_or))
-        if (current_or.is_empty())
-            return Status::OK();
+        if (current_or.is_empty()) return Status::OK();
 
         ReplicaGroup current = current_or.value();
-        if (current.target_replica_count <= 0)
-            return Status::OK();
+        if (current.target_replica_count <= 0) return Status::OK();
 
         std::vector<Replica> new_replicas;
         std::vector<ReplicaID> new_rids;
@@ -335,14 +333,12 @@ Status ReplicaGroupMembershipReconciler::remove_members(const ReplicaGroup& grou
     return ctx_.store->write_with([&](SdmStoreTxn& txn) -> Status {
         ReplicaGroupOr current_or;
         RETURN_IF_INVALID_STATUS(txn.get_replica_group(group.shard_id, current_or))
-        if (current_or.is_empty())
-            return Status::OK();
+        if (current_or.is_empty()) return Status::OK();
 
         ReplicaGroup current = current_or.value();
         int32 actual_remove_count = std::min(
                 count_to_remove, static_cast<int32_t>(current.desired_members.size()) - current.target_replica_count);
-        if (actual_remove_count <= 0)
-            return Status::OK();
+        if (actual_remove_count <= 0) return Status::OK();
 
         std::vector<ReplicaID> victims;
         victims.reserve(actual_remove_count);
@@ -357,8 +353,7 @@ Status ReplicaGroupMembershipReconciler::remove_members(const ReplicaGroup& grou
         for (const ReplicaID& rid : victims) {
             ReplicaOr replica_or;
             RETURN_IF_INVALID_STATUS(txn.get_replica(rid, replica_or))
-            if (replica_or.is_empty())
-                continue;
+            if (replica_or.is_empty()) continue;
             Replica replica = replica_or.value();
             bool changed = false;
             if (replica.state.desired != ReplicaDesired::ABSENT) {
@@ -386,14 +381,12 @@ Status ReplicaGroupMembershipReconciler::remove_members(const ReplicaGroup& grou
 
 Status ReplicaGroupMembershipReconciler::remove_specific_members(const ReplicaGroup& group,
                                                                  const std::vector<ReplicaID>& victims) {
-    if (victims.empty())
-        return Status::OK();
+    if (victims.empty()) return Status::OK();
 
     return ctx_.store->write_with([&](SdmStoreTxn& txn) -> Status {
         ReplicaGroupOr current_or;
         RETURN_IF_INVALID_STATUS(txn.get_replica_group(group.shard_id, current_or))
-        if (current_or.is_empty())
-            return Status::OK();
+        if (current_or.is_empty()) return Status::OK();
 
         std::unordered_set<ReplicaID, ReplicaIDHash> victim_set;
         victim_set.reserve(victims.size());
@@ -412,8 +405,7 @@ Status ReplicaGroupMembershipReconciler::remove_specific_members(const ReplicaGr
             }
             kept_members.push_back(rid);
         }
-        if (!changed_group)
-            return Status::OK();
+        if (!changed_group) return Status::OK();
         current.desired_members = std::move(kept_members);
         LOG_DEBUG(
                 "[ReplicaGroupMembershipReconciler] remove_specific_members, remove victims from desired members, shard_id:{}, victim_count:{}, kept_member_count:{}",
@@ -422,8 +414,7 @@ Status ReplicaGroupMembershipReconciler::remove_specific_members(const ReplicaGr
         for (const ReplicaID& rid : victims) {
             ReplicaOr replica_or;
             RETURN_IF_INVALID_STATUS(txn.get_replica(rid, replica_or))
-            if (replica_or.is_empty())
-                continue;
+            if (replica_or.is_empty()) continue;
             Replica replica = replica_or.value();
             bool changed_replica = false;
             if (replica.state.desired != ReplicaDesired::ABSENT) {

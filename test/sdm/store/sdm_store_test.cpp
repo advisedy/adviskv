@@ -190,7 +190,7 @@ TEST(SdmStoreTest, NormalStoreFlowWorks) {
     ASSERT_FALSE(route.is_empty());
     ASSERT_EQ(route->replicas.size(), 1U);
 
-    ASSERT_TRUE(store_test::del_replica(store, replica_id).ok());
+    ASSERT_TRUE(store_test::delete_replica(store, replica_id).ok());
     ASSERT_TRUE(
         store_test::list_replicas_by_shard(store, shard_id, replicas).ok());
     EXPECT_TRUE(replicas.empty());
@@ -269,7 +269,7 @@ TEST(SdmStoreTest, RebuildsRuntimeIndexWhenReplicaDeleteIndexUpdateFails) {
     ASSERT_TRUE(
         store_test::put_shard_route(store, make_route(ShardID{1001, 0})).ok());
 
-    Status status = store_test::del_replica(store, deleted_id);
+    Status status = store_test::delete_replica(store, deleted_id);
 
     ASSERT_TRUE(status.ok()) << status.to_string();
     ReplicaOr deleted;

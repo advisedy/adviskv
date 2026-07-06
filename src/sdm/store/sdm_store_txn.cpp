@@ -57,8 +57,8 @@ Status SdmStoreTxn::get_replica(const ReplicaID& replica_key,
                                 ReplicaOr& out) const {
     return store_->get_replica(replica_key, out);
 }
-Status SdmStoreTxn::del_replica(const ReplicaID& replica_key) {
-    return store_->del_replica(replica_key);
+Status SdmStoreTxn::delete_replica(const ReplicaID& replica_key) {
+    return store_->delete_replica(replica_key);
 }
 Status SdmStoreTxn::list_replicas(std::vector<Replica>& out) const {
     return store_->list_replicas(out);

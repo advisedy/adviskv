@@ -76,9 +76,9 @@ inline Status get_replica(const SdmStore& store, const ReplicaID& replica_id,
     });
 }
 
-inline Status del_replica(SdmStore& store, const ReplicaID& replica_id) {
+inline Status delete_replica(SdmStore& store, const ReplicaID& replica_id) {
     return store.write_with([&](SdmStoreTxn& txn) {
-        return txn.del_replica(replica_id);
+        return txn.delete_replica(replica_id);
     });
 }
 

@@ -27,6 +27,15 @@ if [ -n "$GCOV" ]; then
   GCOV_ARGS=(--gcov-executable "$GCOV")
 fi
 
+GCOVR_EXCLUDES=(
+  --exclude 'third_party/.*'
+  --exclude 'test/.*'
+  --exclude 'build.*/.*'
+  --exclude '.adviskv_deps/.*'
+  --exclude 'tools/.*'
+  --exclude 'src/.*/main/.*'
+)
+
 BUILD_DIR="$BUILD_DIR" BUILD_TYPE=Debug ./scripts/build.sh \
   -DADVISKV_ENABLE_COVERAGE=ON \
   "$@"
@@ -43,11 +52,7 @@ find "$BUILD_DIR" -maxdepth 1 \
 
 "$GCOVR" -r . "$BUILD_DIR" \
   "${GCOV_ARGS[@]}" \
-  --exclude 'third_party/.*' \
-  --exclude 'test/.*' \
-  --exclude 'build.*/.*' \
-  --exclude '.adviskv_deps/.*' \
-  --exclude 'tools/.*' \
+  "${GCOVR_EXCLUDES[@]}" \
   --html-details "$REPORT_DIR/index.html" \
   --xml "$REPORT_DIR/coverage.xml" \
   --print-summary

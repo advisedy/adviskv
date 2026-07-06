@@ -308,7 +308,7 @@ Status SdmStore::get_replica(const ReplicaID& replica_key, ReplicaOr& out) const
     return Status::OK();
 }
 
-Status SdmStore::del_replica(const ReplicaID& replica_key) {
+Status SdmStore::delete_replica(const ReplicaID& replica_key) {
     ReplicaPtr old_ptr;
     RETURN_IF_INVALID_STATUS(meta_store_->get_replica(replica_key, old_ptr))
     if (old_ptr == nullptr) {
