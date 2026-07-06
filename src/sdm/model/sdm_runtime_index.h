@@ -39,6 +39,9 @@ struct TableNameKeyHash {
 
 class SdmRuntimeIndex {
    public:
+    SdmRuntimeIndex() = default;
+    SdmRuntimeIndex(const SdmRuntimeIndex& other);
+    SdmRuntimeIndex& operator=(const SdmRuntimeIndex& other);
     virtual ~SdmRuntimeIndex() = default;
 
     virtual void clear();

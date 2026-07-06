@@ -203,6 +203,32 @@ TEST(SdmStoreTest, NormalStoreFlowWorks) {
               StatusCode::TABLE_NOT_FOUND);
 }
 
+TEST(SdmStoreTest, FailedRouteEntryMutationDoesNotPublish) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    ASSERT_TRUE(store.init().ok());
+
+    ShardID shard_id{1001, 0};
+    ShardRoute route = make_route(shard_id);
+    route.replicas.push_back(
+        RouteEntry{ReplicaID{1001, 0, 1}, "node-b", "127.0.0.2", 18081,
+                   ReplicaRole::FOLLOWER, 7});
+    ASSERT_TRUE(store_test::put_shard_route(store, route).ok());
+
+    Status status = store.write_with([&](SdmStoreTxn& txn) {
+        RETURN_IF_INVALID_STATUS(
+            txn.del_shard_route_entry(shard_id, ReplicaID{1001, 0, 0}))
+        return Status::ERROR("rollback route mutation");
+    });
+    ASSERT_TRUE(status.fail());
+
+    ShardRouteOr loaded;
+    ASSERT_TRUE(store_test::get_shard_route(store, shard_id, loaded).ok());
+    ASSERT_FALSE(loaded.is_empty());
+    ASSERT_EQ(loaded->replicas.size(), 2U);
+    EXPECT_EQ(loaded->replicas[0].replica_id, ReplicaID({1001, 0, 0}));
+    EXPECT_EQ(loaded->replicas[1].replica_id, ReplicaID({1001, 0, 1}));
+}
+
 TEST(SdmStoreTest, PersistentStoreReportsCorruptedMetaOnInit) {
     const fs::path dir = test::make_unique_test_dir("sdm_store_corrupt", 1);
     fs::create_directories(dir);
@@ -271,10 +297,42 @@ TEST(SdmStoreTest, RebuildsRuntimeIndexWhenReplicaDeleteIndexUpdateFails) {
     ShardRouteOr route;
     ASSERT_TRUE(
         store_test::get_shard_route(store, ShardID{1001, 0}, route).ok());
-    ASSERT_FALSE(route.is_empty());
+    EXPECT_TRUE(route.is_empty());
 }
 
-// 检测 PERSISTENT 类型的 SdmStore 写入后，重新加载仍能恢复 table、replica、group、node 和 route。
+TEST(SdmStoreTest, RouteOnlyWriteDoesNotCreatePersistentSnapshot) {
+    fs::path data_dir = adviskv::test::make_unique_test_dir(
+        "sdm_store_route_only", persistent_sequence++);
+    std::error_code ec;
+    fs::remove_all(data_dir, ec);
+
+    {
+        SdmStore store(SdmMetaStoreType::PERSISTENT, data_dir.string());
+        ASSERT_TRUE(store.init().ok());
+        ASSERT_TRUE(store_test::put_shard_route(
+                        store, make_route(ShardID{1001, 0}))
+                        .ok());
+
+        ShardRouteOr route;
+        ASSERT_TRUE(store_test::get_shard_route(store, ShardID{1001, 0}, route)
+                        .ok());
+        ASSERT_FALSE(route.is_empty());
+        EXPECT_FALSE(fs::exists(data_dir / "sdm_meta"));
+    }
+
+    {
+        SdmStore reloaded(SdmMetaStoreType::PERSISTENT, data_dir.string());
+        ASSERT_TRUE(reloaded.init().ok());
+        ShardRouteOr route;
+        ASSERT_TRUE(store_test::get_shard_route(reloaded, ShardID{1001, 0}, route)
+                        .ok());
+        EXPECT_TRUE(route.is_empty());
+    }
+
+    fs::remove_all(data_dir, ec);
+}
+
+// 检测 PERSISTENT 类型的 SdmStore 写入后，重新加载仍能恢复 table 和 group；node 当前仍是内存态。
 TEST(SdmStoreTest, WriteWithPersistentStoreSurvivesReload) {
     fs::path data_dir = adviskv::test::make_unique_test_dir(
         "sdm_store_persistent", persistent_sequence++);

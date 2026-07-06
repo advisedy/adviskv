@@ -43,18 +43,6 @@ Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id,
                    state};
 }
 
-ShardRoute make_route(const ShardID& shard_id) {
-    return ShardRoute{shard_id,
-                      {RouteEntry{ReplicaID{shard_id.table_id,
-                                            shard_id.shard_index, 0},
-                                  "node-a", "127.0.0.1", 18080,
-                                  ReplicaRole::LEADER, 8},
-                       RouteEntry{ReplicaID{shard_id.table_id,
-                                            shard_id.shard_index, 1},
-                                  "node-b", "127.0.0.2", 18081,
-                                  ReplicaRole::FOLLOWER, 8}}};
-}
-
 std::vector<TableID> sorted_table_ids(const std::vector<TablePtr>& tables) {
     std::vector<TableID> ids;
     ids.reserve(tables.size());
@@ -104,23 +92,6 @@ std::vector<std::string> sorted_pool_names(
     }
     std::sort(names.begin(), names.end());
     return names;
-}
-
-std::vector<ShardID> sorted_shard_ids(
-    const std::vector<ShardRoutePtr>& routes) {
-    std::vector<ShardID> ids;
-    ids.reserve(routes.size());
-    for (const auto& route : routes) {
-        ids.push_back(route->shard_id);
-    }
-    std::sort(ids.begin(), ids.end(),
-              [](const ShardID& lhs, const ShardID& rhs) {
-                  if (lhs.table_id != rhs.table_id) {
-                      return lhs.table_id < rhs.table_id;
-                  }
-                  return lhs.shard_index < rhs.shard_index;
-              });
-    return ids;
 }
 
 // 验证Table这几个基础接口能不能正常新增、覆盖、查询、列表和删除。
@@ -264,55 +235,18 @@ TEST(MemoryMetaStoreTest, ResourcePoolUpsertGetListAndDeleteWork) {
     EXPECT_EQ(out, nullptr);
 }
 
-// 验证ShardRoute按ShardID维护，路由的写入、覆盖、查询、列表、删除都正常。
-TEST(MemoryMetaStoreTest, ShardRouteUpsertGetListAndDeleteWork) {
-    MemoryMetaStore store;
-    ShardRoute route_a = make_route(ShardID{1001, 0});
-    ShardRoute route_b = make_route(ShardID{1001, 1});
-
-    ASSERT_TRUE(store.upsert_shard_route(route_a).ok());
-    ASSERT_TRUE(store.upsert_shard_route(route_b).ok());
-
-    ShardRoutePtr out;
-    ASSERT_TRUE(store.get_shard_route(route_a.shard_id, out).ok());
-    ASSERT_TRUE(out != nullptr);
-    ASSERT_EQ(out->replicas.size(), 2);
-    EXPECT_EQ(out->replicas[0].replica_id, ReplicaID({1001, 0, 0}));
-    EXPECT_EQ(out->replicas[0].role, ReplicaRole::LEADER);
-    EXPECT_EQ(out->replicas[1].node_id, "node-b");
-
-    ShardRoute updated = make_route(route_a.shard_id);
-    updated.replicas[0].port = 19080;
-    ASSERT_TRUE(store.upsert_shard_route(updated).ok());
-    ASSERT_TRUE(store.get_shard_route(route_a.shard_id, out).ok());
-    ASSERT_TRUE(out != nullptr);
-    ASSERT_EQ(out->replicas.size(), 2);
-    EXPECT_EQ(out->replicas[0].port, 19080);
-
-    std::vector<ShardRoutePtr> routes;
-    ASSERT_TRUE(store.list_shard_routes(routes).ok());
-    EXPECT_EQ(sorted_shard_ids(routes),
-              std::vector<ShardID>({route_a.shard_id, route_b.shard_id}));
-
-    ASSERT_TRUE(store.delete_shard_route(route_a.shard_id).ok());
-    ASSERT_TRUE(store.get_shard_route(route_a.shard_id, out).ok());
-    EXPECT_EQ(out, nullptr);
-}
-
 // 验证clone_memory_snapshot真的是内存快照，后面原store再改也不应该污染它。
 TEST(MemoryMetaStoreTest, CloneMemorySnapshotCopiesCurrentDataIndependently) {
     MemoryMetaStore store;
     TableID table_id = 1001;
     NodeID node_id = "node-a";
     ReplicaID replica_id{1001, 0, 0};
-    ShardID shard_id{1001, 0};
 
     ASSERT_TRUE(store.upsert_table(make_table(table_id, "orders")).ok());
     ASSERT_TRUE(store.upsert_node(make_node(node_id, "pool-a")).ok());
     ASSERT_TRUE(store.upsert_replica(make_replica(replica_id, node_id)).ok());
     ASSERT_TRUE(
         store.upsert_resource_pool(ResourcePool{"pool-a"}).ok());
-    ASSERT_TRUE(store.upsert_shard_route(make_route(shard_id)).ok());
 
     std::unique_ptr<ISdmMetaStore> snapshot = store.clone_memory_snapshot();
     ASSERT_TRUE(snapshot != nullptr);
@@ -321,7 +255,6 @@ TEST(MemoryMetaStoreTest, CloneMemorySnapshotCopiesCurrentDataIndependently) {
     ASSERT_TRUE(store.upsert_node(make_node(node_id, "pool-b", 19080)).ok());
     ASSERT_TRUE(store.delete_replica(replica_id).ok());
     ASSERT_TRUE(store.delete_resource_pool("pool-a").ok());
-    ASSERT_TRUE(store.delete_shard_route(shard_id).ok());
 
     TablePtr table;
     ASSERT_TRUE(snapshot->get_table(table_id, table).ok());
@@ -343,12 +276,6 @@ TEST(MemoryMetaStoreTest, CloneMemorySnapshotCopiesCurrentDataIndependently) {
     ASSERT_TRUE(snapshot->get_resource_pool("pool-a", pool).ok());
     ASSERT_TRUE(pool != nullptr);
     EXPECT_EQ(pool->name, "pool-a");
-
-    ShardRoutePtr route;
-    ASSERT_TRUE(snapshot->get_shard_route(shard_id, route).ok());
-    ASSERT_TRUE(route != nullptr);
-    ASSERT_EQ(route->replicas.size(), 2);
-    EXPECT_EQ(route->replicas[0].replica_id, replica_id);
 }
 
 }  // namespace

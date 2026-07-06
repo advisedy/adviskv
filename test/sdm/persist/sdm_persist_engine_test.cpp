@@ -63,13 +63,6 @@ class SdmPersistEngineTest : public ::testing::Test {
 
         record.resource_pools["pool-a"] = ResourcePool{"pool-a"};
 
-        ShardID shard_id{101, 2};
-        record.shard_routes[shard_id] = ShardRoute{
-            shard_id,
-            {RouteEntry{replica_id, "node-1", "127.0.0.1", 9000,
-                        ReplicaRole::LEADER, 4}},
-        };
-
         return record;
     }
 
@@ -113,16 +106,6 @@ class SdmPersistEngineTest : public ::testing::Test {
         record.resource_pools["pool-b"] = ResourcePool{"pool-b"};
 
         ShardID shard_id{202, 3};
-        record.shard_routes[shard_id] = ShardRoute{
-            shard_id,
-            {
-                RouteEntry{leader_id, "node-2", "127.0.0.2", 9100,
-                           ReplicaRole::LEADER, 11},
-                RouteEntry{follower_id, "node-3", "127.0.0.3", 9101,
-                           ReplicaRole::FOLLOWER, 10},
-            },
-        };
-
         ReplicaGroup group;
         group.shard_id = shard_id;
         group.mode = ReplicaGroupMode::RAFT_RECONFIG;
@@ -202,26 +185,6 @@ class SdmPersistEngineTest : public ::testing::Test {
             EXPECT_EQ(it->second.name, expected_pool.name);
         }
 
-        ASSERT_EQ(actual.shard_routes.size(), expected.shard_routes.size());
-        for (const auto& [id, expected_route] : expected.shard_routes) {
-            auto it = actual.shard_routes.find(id);
-            ASSERT_NE(it, actual.shard_routes.end());
-            const ShardRoute& actual_route = it->second;
-            EXPECT_EQ(actual_route.shard_id, expected_route.shard_id);
-            ASSERT_EQ(actual_route.replicas.size(),
-                      expected_route.replicas.size());
-            for (size_t i = 0; i < expected_route.replicas.size(); ++i) {
-                const RouteEntry& actual_entry = actual_route.replicas[i];
-                const RouteEntry& expected_entry = expected_route.replicas[i];
-                EXPECT_EQ(actual_entry.replica_id, expected_entry.replica_id);
-                EXPECT_EQ(actual_entry.node_id, expected_entry.node_id);
-                EXPECT_EQ(actual_entry.ip, expected_entry.ip);
-                EXPECT_EQ(actual_entry.port, expected_entry.port);
-                EXPECT_EQ(actual_entry.role, expected_entry.role);
-                EXPECT_EQ(actual_entry.term, expected_entry.term);
-            }
-        }
-
         ASSERT_EQ(actual.replica_groups.size(), expected.replica_groups.size());
         for (const auto& [id, expected_group] : expected.replica_groups) {
             auto it = actual.replica_groups.find(id);
@@ -285,7 +248,6 @@ TEST_F(SdmPersistEngineTest, LoadMissingMetaReturnsEmptyRecord) {
     EXPECT_TRUE(loaded.tables.empty());
     EXPECT_TRUE(loaded.replicas.empty());
     EXPECT_TRUE(loaded.resource_pools.empty());
-    EXPECT_TRUE(loaded.shard_routes.empty());
     EXPECT_TRUE(loaded.replica_groups.empty());
 }
 

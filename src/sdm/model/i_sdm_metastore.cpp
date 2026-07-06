@@ -5,6 +5,7 @@
 
 #include "common/define.h"
 #include "common/log.h"
+#include "common/metrics/metrics.h"
 #include "common/status.h"
 #include "sdm/model/store.h"
 #include "sdm/persist/sdm_persist_engine.h"
@@ -25,9 +26,6 @@ std::unique_ptr<ISdmMetaStore> MemoryMetaStore::clone_memory_snapshot() const {
     for (const auto& [name, pool] : resource_pools_) {
         copied->resource_pools_[name] = std::make_shared<ResourcePool>(*pool);
     }
-    for (const auto& [id, route] : shard_routes_) {
-        copied->shard_routes_[id] = std::make_shared<ShardRoute>(*route);
-    }
     for (const auto& [id, group] : replica_groups_) {
         copied->replica_groups_[id] = std::make_shared<ReplicaGroup>(*group);
     }
@@ -45,7 +43,6 @@ Status MemoryMetaStore::commit_memory_snapshot(
     nodes_ = std::move(next->nodes_);
     replicas_ = std::move(next->replicas_);
     resource_pools_ = std::move(next->resource_pools_);
-    shard_routes_ = std::move(next->shard_routes_);
     replica_groups_ = std::move(next->replica_groups_);
     return Status::OK();
 }
@@ -172,37 +169,6 @@ Status MemoryMetaStore::delete_resource_pool(const std::string& name) {
     return Status::OK();
 }
 
-Status MemoryMetaStore::upsert_shard_route(const ShardRoute& route) {
-    shard_routes_[route.shard_id] = std::make_shared<ShardRoute>(route);
-    return Status::OK();
-}
-
-Status MemoryMetaStore::get_shard_route(const ShardID& shard_id,
-                                        ShardRoutePtr& out) const {
-    auto it = shard_routes_.find(shard_id);
-    if (it == shard_routes_.end()) {
-        out.reset();
-        return Status::OK();
-    }
-    out = it->second;
-    return Status::OK();
-}
-
-Status MemoryMetaStore::delete_shard_route(const ShardID& shard_id) {
-    shard_routes_.erase(shard_id);
-    return Status::OK();
-}
-
-Status MemoryMetaStore::list_shard_routes(
-    std::vector<ShardRoutePtr>& out) const {
-    out.clear();
-    out.reserve(shard_routes_.size());
-    for (const auto& [_, route] : shard_routes_) {
-        out.push_back(route);
-    }
-    return Status::OK();
-}
-
 Status MemoryMetaStore::upsert_replica_group(const ReplicaGroup& group) {
     replica_groups_[group.shard_id] = std::make_shared<ReplicaGroup>(group);
     return Status::OK();
@@ -269,6 +235,9 @@ std::unique_ptr<ISdmMetaStore> PersistentMetaStore::clone_memory_snapshot()
 
 Status PersistentMetaStore::commit_memory_snapshot(
     std::unique_ptr<ISdmMetaStore> next_memory_store) {
+    ADVISKV_METRICS_TIMER("sdm_metastore_commit_snapshot");
+    ADVISKV_METRICS_COUNTER("sdm_metastore_commit_snapshot_request");
+
     RETURN_IF_NULLPTR(next_memory_store, "next_memory_store is nullptr");
 
     SdmPersistedRecord record;
@@ -296,10 +265,6 @@ Status PersistentMetaStore::load() {
     for (const auto& [_, pool] : record.resource_pools) {
         UNUSED(_);
         memory_store_->upsert_resource_pool(pool);
-    }
-    for (const auto& [_, route] : record.shard_routes) {
-        UNUSED(_);
-        memory_store_->upsert_shard_route(route);
     }
     for (const auto& [_, group] : record.replica_groups) {
         UNUSED(_);
@@ -329,12 +294,6 @@ Status PersistentMetaStore::build_record_from_store(
     RETURN_IF_INVALID_STATUS(store.list_resource_pools(pools))
     for (const auto& p : pools) {
         record.resource_pools[p->name] = *p;
-    }
-
-    std::vector<ShardRoutePtr> routes;
-    RETURN_IF_INVALID_STATUS(store.list_shard_routes(routes))
-    for (const auto& r : routes) {
-        record.shard_routes[r->shard_id] = *r;
     }
 
     std::vector<ReplicaGroupPtr> groups;
@@ -456,28 +415,6 @@ Status PersistentMetaStore::delete_resource_pool(const std::string& name) {
     return commit_with([&name](ISdmMetaStore& store) {
         return store.delete_resource_pool(name);
     });
-}
-
-Status PersistentMetaStore::upsert_shard_route(const ShardRoute& route) {
-    return commit_with([&route](ISdmMetaStore& store) {
-        return store.upsert_shard_route(route);
-    });
-}
-
-Status PersistentMetaStore::get_shard_route(const ShardID& shard_id,
-                                            ShardRoutePtr& out) const {
-    return memory_store_->get_shard_route(shard_id, out);
-}
-
-Status PersistentMetaStore::delete_shard_route(const ShardID& shard_id) {
-    return commit_with([&shard_id](ISdmMetaStore& store) {
-        return store.delete_shard_route(shard_id);
-    });
-}
-
-Status PersistentMetaStore::list_shard_routes(
-    std::vector<ShardRoutePtr>& out) const {
-    return memory_store_->list_shard_routes(out);
 }
 
 Status PersistentMetaStore::upsert_replica_group(const ReplicaGroup& group) {

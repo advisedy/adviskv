@@ -53,6 +53,34 @@ void cleanup_empty_pool_set(
 
 }  // namespace
 
+SdmRuntimeIndex::SdmRuntimeIndex(const SdmRuntimeIndex& other) {
+    *this = other;
+}
+
+SdmRuntimeIndex& SdmRuntimeIndex::operator=(const SdmRuntimeIndex& other) {
+    if (this == &other) {
+        return *this;
+    }
+
+    table_name_index_ = other.table_name_index_;
+    pool_nodes_index_ = other.pool_nodes_index_;
+    shard_replicas_index_ = other.shard_replicas_index_;
+    node_replicas_index_ = other.node_replicas_index_;
+    node_pool_index_ = other.node_pool_index_;
+
+    shard_route_cache_.clear();
+    shard_route_cache_.reserve(other.shard_route_cache_.size());
+    for (const auto& [shard_id, route] : other.shard_route_cache_) {
+        if (route != nullptr) {
+            shard_route_cache_[shard_id] = std::make_shared<ShardRoute>(*route);
+        } else {
+            shard_route_cache_[shard_id] = nullptr;
+        }
+    }
+
+    return *this;
+}
+
 void SdmRuntimeIndex::clear() {
     table_name_index_.clear();
     pool_nodes_index_.clear();

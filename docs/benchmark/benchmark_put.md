@@ -22,12 +22,7 @@ key_count       = 1000
 warmup_requests = 0
 ```
 
-本次只测试 `put` 场景。每组实验只改变一个变量：
-
-- Threads：改变 `threads`。
-- Shard Count：改变 `shard_count`。
-- Replica Count：改变 `replica_count`。
-- Value Size：改变 `value_size`。
+本次只测试 `put`，每组只改变一个参数：`threads`、`shard_count`、`replica_count`、`value_size`。
 
 ## 测试环境
 
@@ -36,7 +31,7 @@ warmup_requests = 0
 - 测试机器：`Mac15,7`，Apple M3 Pro，12 物理核心 / 12 逻辑 CPU，36 GiB 内存。
 - 操作系统：macOS 15.7.4 (24G517)，arm64。
 - 构建方式：Release
-- 最近更新时间：`20260705_203718`。
+- 生成时间：`20260705_203718`。
 - 原始结果：[`benchmark_results/put_v1_snapshot.csv`](benchmark_results/put_v1_snapshot.csv)。
 
 ## 结果摘要

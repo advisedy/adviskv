@@ -5,7 +5,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -136,22 +136,37 @@ def materialize_bench_confs(
     )
 
 
+def metrics_target_from_conf(name: str, conf: Path) -> Optional[MetricsTarget]:
+    values = load_simple_kv_conf(conf)
+    enabled = values.get("metrics_http_enable", "false").lower()
+    if enabled not in ("true", "1", "yes"):
+        return None
+    host = connect_host(values.get("metrics_http_host", "127.0.0.1"))
+    port = values.get("metrics_http_port")
+    if not port:
+        return None
+    path = values.get("metrics_http_path", "/metrics")
+    if not path.startswith("/"):
+        path = f"/{path}"
+    return MetricsTarget(name, f"http://{host}:{int(port)}{path}")
+
+
 def storage_metrics_targets(storage_confs: list[Path]) -> list[MetricsTarget]:
     targets: list[MetricsTarget] = []
     for index, conf in enumerate(storage_confs, 1):
-        values = load_simple_kv_conf(conf)
-        enabled = values.get("metrics_http_enable", "false").lower()
-        if enabled not in ("true", "1", "yes"):
-            continue
-        host = connect_host(values.get("metrics_http_host", "127.0.0.1"))
-        port = values.get("metrics_http_port")
-        if not port:
-            continue
-        path = values.get("metrics_http_path", "/metrics")
-        if not path.startswith("/"):
-            path = f"/{path}"
-        targets.append(MetricsTarget(
-            f"storage-{index}", f"http://{host}:{int(port)}{path}"))
+        target = metrics_target_from_conf(f"storage-{index}", conf)
+        if target is not None:
+            targets.append(target)
+    return targets
+
+
+def bench_metrics_targets(sdm_conf: Path,
+                          storage_confs: list[Path]) -> list[MetricsTarget]:
+    targets: list[MetricsTarget] = []
+    sdm_target = metrics_target_from_conf("sdm", sdm_conf)
+    if sdm_target is not None:
+        targets.append(sdm_target)
+    targets.extend(storage_metrics_targets(storage_confs))
     return targets
 
 
@@ -201,7 +216,7 @@ def run_bench(argv: list[str]) -> None:
         print(f"[bench] running bench_client: {' '.join(command)}", flush=True)
 
         if metrics_report_enabled:
-            targets = storage_metrics_targets(storage_confs)
+            targets = bench_metrics_targets(sdm_conf, storage_confs)
             metrics_sampler = MetricsSampler(targets)
             metrics_sampler.start()
 

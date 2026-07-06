@@ -40,14 +40,6 @@ Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
                    state};
 }
 
-ShardRoute make_route(const ShardID& shard_id) {
-    return ShardRoute{shard_id,
-                      {RouteEntry{ReplicaID{shard_id.table_id,
-                                            shard_id.shard_index, 0},
-                                  "node-a", "127.0.0.1", 18080,
-                                  ReplicaRole::LEADER, 7}}};
-}
-
 class FakeSdmPersistEngine : public ISdmPersistEngine {
    public:
     Status init() override { return Status::OK(); }
@@ -117,13 +109,11 @@ TEST(PersistentMetaStoreTest, CommitWithPublishesMemoryAfterPersistSuccess) {
             .ok());
     ASSERT_TRUE(
         store.upsert_resource_pool(ResourcePool{"pool-a"}).ok());
-    ASSERT_TRUE(store.upsert_shard_route(make_route(ShardID{1001, 0})).ok());
 
-    EXPECT_EQ(fake->save_count, 4);
+    EXPECT_EQ(fake->save_count, 3);
     EXPECT_EQ(fake->last_saved_record.tables.size(), 1U);
     EXPECT_EQ(fake->last_saved_record.replicas.size(), 1U);
     EXPECT_EQ(fake->last_saved_record.resource_pools.size(), 1U);
-    EXPECT_EQ(fake->last_saved_record.shard_routes.size(), 1U);
 }
 
 // 检测 commit_with 里 persist_record

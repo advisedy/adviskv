@@ -65,7 +65,6 @@ read_ratio = 0.0, 0.5, 0.8, 0.95, 1.0
 
 ## 复现方式
 
-
 ```bash
 BENCH_LOG_LEVEL=warning \
   ./scripts/bench.sh \

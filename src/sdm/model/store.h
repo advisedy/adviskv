@@ -42,7 +42,7 @@ enum class ReplicaPhase : int8 {
     DELETING = 4,
     DELETED = 5,
     LOST = 6,
-    ERROR = 7,  // TODO111 之后应该也会多个阶段
+    ERROR = 7,
 };
 
 struct ReplicaSpec {
@@ -57,7 +57,7 @@ struct ReplicaState {
     ReplicaRole observed_raft_role{ReplicaRole::FOLLOWER};                             // NodeService
     RaftMemberType observed_member_type{RaftMemberType::NON_MEMBER};                   // NodeService
     Endpoint observed_endpoint;                                                        // NodeService
-    StorageReplicaStatus observed_storage_status{StorageReplicaStatus::INITIALIZING};  // NodeService //TODO111
+    StorageReplicaStatus observed_storage_status{StorageReplicaStatus::INITIALIZING};  // NodeService 
     bool observed_no_exist{false};                                                     // NodeService
     std::string last_error_msg;                                                        // ReplicaGroupService
     int64 update_ts{0};                                                                // evertone

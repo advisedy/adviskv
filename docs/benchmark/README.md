@@ -1,8 +1,8 @@
 # AdvisKV Benchmark
 
-AdvisKV benchmark 用于观察 V1 prototype 的本地端到端 KV 主链路表现。它测的是 `SDK -> SDM route -> Storage leader -> Raft/WAL/KV` 端到端链路的 V1 性能表现。
+AdvisKV benchmark 记录本地 V1 的端到端 KV 表现，链路覆盖 `SDK -> SDM route -> Storage leader -> Raft/WAL/KV`。本页只放入口和摘要，完整数据见 put、get、mixed 三份报告。
 
-## Benchmark Program
+## 运行方式
 
 项目使用 `tools/bench/bench_client` 作为 benchmark client，并通过 `scripts/bench.sh` 自动拉起本地集群后运行。默认本地集群为：
 
@@ -25,7 +25,7 @@ BENCH_LOG_LEVEL=warning \
   --output_json=build/release/bench_results/mixed_baseline.json
 ```
 
-## V1 Snapshot
+## 本次结果
 
 测试环境：`Mac15,7`，Apple M3 Pro，12 物理核心 / 12 逻辑 CPU，36 GiB 内存；macOS 15.7.4，arm64。本地集群：`1 meta + 1 sdm + 5 storage`，所有进程都运行在同一台机器上，并通过 `127.0.0.1/localhost` 通信。
 
@@ -46,7 +46,7 @@ key_count     = 1000
 | get | baseline | 8879.04 | 1800.89 | 2375 | 2831 |
 | mixed | read_ratio=0.80 | 7537.85 | 2121.47 | 3507 | 4686 |
 
-## Detailed Results
+## 详细结果
 
 - [Put benchmark](benchmark_put.md)
 - [Get benchmark](benchmark_get.md)

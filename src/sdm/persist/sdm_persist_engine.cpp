@@ -3,6 +3,7 @@
 #include <cerrno>
 #include <cstring>
 #include <filesystem>
+#include <utility>
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -12,6 +13,7 @@
 #include "common/define.h"
 #include "common/framed_record_codec.h"
 #include "common/log.h"
+#include "common/metrics/metrics.h"
 #include "common/status.h"
 
 namespace adviskv::sdm {
@@ -63,12 +65,6 @@ private:
             buf.write(pool.name);
         }
 
-        buf.write(static_cast<int32>(record.shard_routes.size()));
-        for (const auto& [shard_id, route] : record.shard_routes) {
-            UNUSED(shard_id);
-            encode_shard_route(route, buf);
-        }
-
         buf.write(static_cast<int32>(record.replica_groups.size()));
         for (const auto& [shard_id, group] : record.replica_groups) {
             UNUSED(shard_id);
@@ -113,16 +109,6 @@ private:
             ResourcePool pool;
             RETURN_IF_INVALID_READ(buf, pool.name)
             record.resource_pools[pool.name] = std::move(pool);
-        }
-
-        int32 route_count{0};
-        RETURN_IF_INVALID_READ(buf, route_count)
-        if (route_count < 0)
-            return Status::ERROR("invalid route_count");
-        for (int32 i = 0; i < route_count; ++i) {
-            ShardRoute route;
-            RETURN_IF_INVALID_STATUS(decode_shard_route(buf, route))
-            record.shard_routes[route.shard_id] = std::move(route);
         }
 
         int32 group_count{0};
@@ -294,46 +280,6 @@ private:
         return Status::OK();
     }
 
-    static void encode_shard_route(const ShardRoute& route, EncodeBuffer& buf) {
-        encode_shard_id(route.shard_id, buf);
-        buf.write<int32>(static_cast<int32>(route.replicas.size()));
-        for (const RouteEntry& entry : route.replicas) {
-            encode_replica_id(entry.replica_id, buf);
-            buf.write(entry.node_id);
-            buf.write(entry.ip);
-            buf.write(entry.port);
-            buf.write(static_cast<int32>(entry.role));
-            buf.write(entry.term);
-        }
-    }
-
-    static Status decode_shard_route(DecodeBuffer& buf, ShardRoute& route) {
-        route = {};
-        RETURN_IF_INVALID_STATUS(decode_shard_id(buf, route.shard_id))
-
-        int32 entry_count{0};
-        RETURN_IF_INVALID_READ(buf, entry_count)
-        if (entry_count < 0)
-            return Status::ERROR("invalid route entry count");
-
-        route.replicas.reserve(entry_count);
-        for (int32 i = 0; i < entry_count; ++i) {
-            RouteEntry entry;
-            RETURN_IF_INVALID_STATUS(decode_replica_id(buf, entry.replica_id))
-            RETURN_IF_INVALID_READ(buf, entry.node_id)
-            RETURN_IF_INVALID_READ(buf, entry.ip)
-            RETURN_IF_INVALID_READ(buf, entry.port)
-
-            int32 role{0};
-            RETURN_IF_INVALID_READ(buf, role)
-            RETURN_IF_INVALID_CONDITION(decode_replica_role(role, entry.role), "invalid route entry role")
-            RETURN_IF_INVALID_READ(buf, entry.term)
-
-            route.replicas.push_back(std::move(entry));
-        }
-        return Status::OK();
-    }
-
     static void encode_replica_group(const ReplicaGroup& group, EncodeBuffer& buf) {
         encode_shard_id(group.shard_id, buf);
         buf.write(static_cast<int32>(group.mode));
@@ -419,6 +365,9 @@ Status SdmPersistEngine::close() {
 }
 
 Status SdmPersistEngine::save_sdm_meta(const SdmPersistedRecord& record) {
+    ADVISKV_METRICS_TIMER("sdm_persist_save_sdm_meta");
+    ADVISKV_METRICS_COUNTER("sdm_persist_save_sdm_meta_request");
+
     if (!init_flag_)
         return Status::NOT_INIT("sdm persist engine is not init");
 
@@ -460,9 +409,8 @@ Status SdmPersistEngine::save_sdm_meta(const SdmPersistedRecord& record) {
 
     LOG_DEBUG(
             "sdm persist engine save_meta success, tables={}, replicas={}, "
-            "pools={}, routes={}, replica_groups={}",
-            record.tables.size(), record.replicas.size(), record.resource_pools.size(), record.shard_routes.size(),
-            record.replica_groups.size());
+            "pools={}, replica_groups={}",
+            record.tables.size(), record.replicas.size(), record.resource_pools.size(), record.replica_groups.size());
     return Status::OK();
 }
 
@@ -486,9 +434,8 @@ Status SdmPersistEngine::load_sdm_meta(SdmPersistedRecord& record) {
 
     LOG_DEBUG(
             "sdm persist engine load_meta success, tables={}, replicas={}, "
-            "pools={}, routes={}, replica_groups={}",
-            record.tables.size(), record.replicas.size(), record.resource_pools.size(), record.shard_routes.size(),
-            record.replica_groups.size());
+            "pools={}, replica_groups={}",
+            record.tables.size(), record.replicas.size(), record.resource_pools.size(), record.replica_groups.size());
     return Status::OK();
 }
 

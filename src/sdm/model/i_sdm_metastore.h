@@ -35,11 +35,6 @@ enum class SdmMetaStoreType {
           const)                                                              \
     X(Status list_resource_pools(std::vector<ResourcePoolPtr>& out) const)    \
     X(Status delete_resource_pool(const std::string& name))                   \
-    X(Status upsert_shard_route(const ShardRoute& route))                     \
-    X(Status get_shard_route(const ShardID& shard_id, ShardRoutePtr& out)     \
-          const)                                                              \
-    X(Status delete_shard_route(const ShardID& shard_id))                     \
-    X(Status list_shard_routes(std::vector<ShardRoutePtr>& out) const)        \
     X(Status upsert_replica_group(const ReplicaGroup& group))                 \
     X(Status delete_replica_group(const ShardID& shard_id))                   \
     X(Status get_replica_group(const ShardID& shard_id, ReplicaGroupPtr& out) \
@@ -73,7 +68,6 @@ class MemoryMetaStore : public ISdmMetaStore {
     std::unordered_map<NodeID, NodePtr> nodes_;
     std::unordered_map<ReplicaID, ReplicaPtr, ReplicaIDHash> replicas_;
     std::unordered_map<std::string, ResourcePoolPtr> resource_pools_;
-    std::unordered_map<ShardID, ShardRoutePtr, ShardIDHash> shard_routes_;
     std::unordered_map<ShardID, ReplicaGroupPtr, ShardIDHash> replica_groups_;
 };
 

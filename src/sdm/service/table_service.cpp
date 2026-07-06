@@ -442,12 +442,10 @@ Status TableService::ensure_all_shards_deleted(SdmStoreTxn& txn, Table& table, b
             return Status::OK();
         }
 
-        ShardRouteOr route;
-        RETURN_IF_INVALID_STATUS(txn.get_shard_route(shard_id, route))
-        if (!route.is_empty()) {
-            all_shards_deleted = false;
-            return Status::OK();
-        }
+        // 这里就不check是否route存在了，毕竟这个
+        // 只是一个缓存，不在的话就是SDK可能访问到
+        // 残留的route打过去，但是会返回replica已经不在的error，
+        // 这个个人觉得是可以理解的
     }
     return Status::OK();
 }

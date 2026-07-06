@@ -18,7 +18,6 @@ namespace adviskv::sdm {
 这里暂时统一一下，关于get没有找到的情况，错误码返回的还是Status::OK，只不过指针是nullptr.
 */
 
-// TODO111 感觉这个SdmStore和metastore的内容有点混合，职责有一点不清楚了。
 class SdmStore {
    public:
     explicit SdmStore(SdmMetaStoreType type,
@@ -37,6 +36,8 @@ class SdmStore {
 
     Status rebuild_runtime_index();
     Status maybe_repair_runtime_index(Status index_status);
+    void mark_meta_dirty();
+    void mark_runtime_dirty();
 
     Status put_table(const Table& table);
     Status get_table(TableID table_id, TableOr& out) const;
@@ -79,7 +80,9 @@ class SdmStore {
 
     mutable std::shared_mutex mutex_;
     std::unique_ptr<ISdmMetaStore> meta_store_;
-    std::unique_ptr<SdmRuntimeIndex> runtime_index_;
+    std::unique_ptr<SdmRuntimeIndex> runtime_index_; // 维护的是一个二级索引，方便对 metastore 进行检索
+    bool meta_dirty_{false};
+    bool runtime_dirty_{false};
 
     friend class SdmStoreTxn;
 };

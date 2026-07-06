@@ -12,6 +12,7 @@
 #include "common/arg_parser.h"
 #include "common/confmgr.h"
 #include "common/log.h"
+#include "common/metrics/metrics.h"
 #include "common/path_util.h"
 #include "common/type.h"
 #include "sdm/background/background.h"
@@ -55,6 +56,30 @@ void init_logger() {
         config.log_level, config.log_to_console, config.log_to_file);
 }
 
+void init_metrics() {
+    adviskv::MetricsOptions options;
+    options.http_enable = CONF_GET_BOOL("metrics_http_enable", false);
+    if (options.http_enable) {
+        options.http_host =
+            CONF_GET_STR("metrics_http_host", options.http_host);
+        options.http_port =
+            CONF_GET_INT("metrics_http_port", options.http_port);
+        options.http_path =
+            CONF_GET_STR("metrics_http_path", options.http_path);
+    }
+
+    adviskv::Status status =
+        adviskv::AdvisMetrics::get_instance().init(options);
+    if (status.ok()) {
+        if (options.http_enable) {
+            LOG_INFO("metrics http server listening on {}:{}{}",
+                     options.http_host, options.http_port, options.http_path);
+        }
+        return;
+    }
+    LOG_WARN("metrics init failed: {}", status.msg());
+}
+
 adviskv::sdm::SdmMetaStoreType get_metastore_type() {
     return adviskv::sdm::SdmMetaStoreType::PERSISTENT;
 }
@@ -76,6 +101,7 @@ int main(int argc, char* argv[]) {
     try {
         init_conf(conf_file.c_str());
         init_logger();
+        init_metrics();
         LOG_INFO("init phase finish");
     } catch (const std::exception& e) {
         fmt::print(stderr, "Exception caught in main: {}\n", e.what());

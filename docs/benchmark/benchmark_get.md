@@ -22,12 +22,7 @@ key_count       = 1000
 warmup_requests = 0
 ```
 
-本次只测试 `get` 场景。每组实验只改变一个变量：
-
-- Threads：改变 `threads`。
-- Shard Count：改变 `shard_count`。
-- Replica Count：改变 `replica_count`。
-- Value Size：改变 `value_size`。
+本次只测试 `get`，每组只改变一个参数：`threads`、`shard_count`、`replica_count`、`value_size`。
 
 当前 SDK 的 `get` 会通过 SDM 下发的 route 选择 leader replica 读，并经过 Storage 侧 ReadIndex 检查。因此这里的 get benchmark 衡量的是 leader-based linearizable read path，不是 follower read 或多副本分摊读流量。
 
@@ -106,7 +101,6 @@ warmup_requests = 0
 | 4096 | 8569.62 | 1865.95 | 1815 | 2563 | 3111 | 0 |
 
 ## 复现方式
-
 
 ```bash
 BENCH_LOG_LEVEL=warning \

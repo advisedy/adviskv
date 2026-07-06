@@ -5,8 +5,8 @@
 #include <mutex>
 
 #include "common/define.h"
-#include "common/func.h"
 #include "common/log.h"
+#include "common/metrics/metrics.h"
 #include "common/status.h"
 #include "sdm/model/i_sdm_metastore.h"
 #include "sdm/model/sdm_store_txn.h"
@@ -81,6 +81,9 @@ Status SdmStore::write_with(const std::function<Status(SdmStoreTxn&)>& func) {
         return Status::INVALID_ARGUMENT("write_with fn is nullptr");
     }
 
+    ADVISKV_METRICS_TIMER("sdm_store_write_with");
+    ADVISKV_METRICS_COUNTER("sdm_store_write_with_request");
+
     std::unique_lock locker{mutex_};
     RETURN_IF_NULLPTR(meta_store_, "sdm meta store is nullptr")
     RETURN_IF_NULLPTR(runtime_index_, "sdm runtime index is nullptr")
@@ -102,11 +105,23 @@ Status SdmStore::write_with(const std::function<Status(SdmStoreTxn&)>& func) {
         return status;
     }
 
-    status =
-        meta_store_->commit_memory_snapshot(std::move(clone_store.meta_store_));
-    RETURN_IF_INVALID_STATUS(status)
-    runtime_index_ = std::move(clone_store.runtime_index_);
+    if (clone_store.meta_dirty_) {
+        status = meta_store_->commit_memory_snapshot(
+            std::move(clone_store.meta_store_));
+        RETURN_IF_INVALID_STATUS(status)
+    }
+    if (clone_store.runtime_dirty_) {
+        runtime_index_ = std::move(clone_store.runtime_index_);
+    }
     return Status::OK();
+}
+
+void SdmStore::mark_meta_dirty() {
+    meta_dirty_ = true;
+}
+
+void SdmStore::mark_runtime_dirty() {
+    runtime_dirty_ = true;
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -115,8 +130,11 @@ Status SdmStore::put_table(const Table& table) {
     TablePtr old_ptr;
     RETURN_IF_INVALID_STATUS(meta_store_->get_table(table.table_id, old_ptr))
     RETURN_IF_INVALID_STATUS(meta_store_->upsert_table(table))
-    return maybe_repair_runtime_index(
-        runtime_index_->on_table_upsert(old_ptr.get(), table));
+    RETURN_IF_INVALID_STATUS(maybe_repair_runtime_index(
+        runtime_index_->on_table_upsert(old_ptr.get(), table)))
+    mark_meta_dirty();
+    mark_runtime_dirty();
+    return Status::OK();
 }
 
 Status SdmStore::get_table(TableID table_id, TableOr& out) const {
@@ -161,8 +179,11 @@ Status SdmStore::delete_table(TableID table_id) {
         return Status::OK();
     }
     RETURN_IF_INVALID_STATUS(meta_store_->delete_table(table_id))
-    return maybe_repair_runtime_index(
-        runtime_index_->on_table_delete(*old_ptr));
+    RETURN_IF_INVALID_STATUS(
+        maybe_repair_runtime_index(runtime_index_->on_table_delete(*old_ptr)))
+    mark_meta_dirty();
+    mark_runtime_dirty();
+    return Status::OK();
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -171,8 +192,11 @@ Status SdmStore::put_node(const Node& node) {
     NodePtr old_ptr;
     RETURN_IF_INVALID_STATUS(meta_store_->get_node(node.id, old_ptr))
     RETURN_IF_INVALID_STATUS(meta_store_->upsert_node(node))
-    return maybe_repair_runtime_index(
-        runtime_index_->on_node_upsert(old_ptr.get(), node));
+    RETURN_IF_INVALID_STATUS(maybe_repair_runtime_index(
+        runtime_index_->on_node_upsert(old_ptr.get(), node)))
+    mark_meta_dirty();
+    mark_runtime_dirty();
+    return Status::OK();
 }
 
 Status SdmStore::get_node(const NodeID& node_id, NodeOr& out) const {
@@ -250,8 +274,11 @@ Status SdmStore::put_replica(const Replica& replica) {
     RETURN_IF_INVALID_STATUS(
         meta_store_->get_replica(replica.replica_id, old_ptr))
     RETURN_IF_INVALID_STATUS(meta_store_->upsert_replica(replica))
-    return maybe_repair_runtime_index(
-        runtime_index_->on_replica_upsert(old_ptr.get(), replica));
+    RETURN_IF_INVALID_STATUS(maybe_repair_runtime_index(
+        runtime_index_->on_replica_upsert(old_ptr.get(), replica)))
+    mark_meta_dirty();
+    mark_runtime_dirty();
+    return Status::OK();
 }
 
 Status SdmStore::put_replicas(const std::vector<Replica>& replicas) {
@@ -271,8 +298,15 @@ Status SdmStore::put_replicas(const std::vector<Replica>& replicas) {
         Status status =
             runtime_index_->on_replica_upsert(old_ptrs[i].get(), replicas[i]);
         if (status.fail()) {
-            return maybe_repair_runtime_index(status);
+            RETURN_IF_INVALID_STATUS(maybe_repair_runtime_index(status))
+            mark_meta_dirty();
+            mark_runtime_dirty();
+            return Status::OK();
         }
+    }
+    if (!replicas.empty()) {
+        mark_meta_dirty();
+        mark_runtime_dirty();
     }
     return Status::OK();
 }
@@ -292,8 +326,11 @@ Status SdmStore::del_replica(const ReplicaID& replica_key) {
         return Status::OK();
     }
     RETURN_IF_INVALID_STATUS(meta_store_->delete_replica(replica_key))
-    return maybe_repair_runtime_index(
-        runtime_index_->on_replica_delete(*old_ptr));
+    RETURN_IF_INVALID_STATUS(
+        maybe_repair_runtime_index(runtime_index_->on_replica_delete(*old_ptr)))
+    mark_meta_dirty();
+    mark_runtime_dirty();
+    return Status::OK();
 }
 
 Status SdmStore::list_replicas(std::vector<Replica>& out) const {
@@ -374,45 +411,49 @@ Status SdmStore::list_replicas_by_node(NodeID node_id,
 //////////////////////////////////////////////////////////////////////
 
 Status SdmStore::put_shard_route(const ShardRoute& route) {
-    RETURN_IF_INVALID_STATUS(meta_store_->upsert_shard_route(route))
-    return maybe_repair_runtime_index(runtime_index_->put_shard_route(route));
+    RETURN_IF_INVALID_STATUS(runtime_index_->put_shard_route(route))
+    mark_runtime_dirty();
+    return Status::OK();
 }
 
 Status SdmStore::get_shard_route(const ShardID& shard_id,
                                  ShardRouteOr& out) const {
     ShardRoutePtr route;
-    RETURN_IF_INVALID_STATUS(meta_store_->get_shard_route(shard_id, route))
+    RETURN_IF_INVALID_STATUS(runtime_index_->get_shard_route(shard_id, route))
     out = route ? ShardRouteOr{*route} : ShardRouteOr{};
     return Status::OK();
 }
 
 Status SdmStore::delete_shard_route(const ShardID& shard_id) {
-    RETURN_IF_INVALID_STATUS(meta_store_->delete_shard_route(shard_id))
-    return maybe_repair_runtime_index(
-        runtime_index_->delete_shard_route(shard_id));
+    ShardRoutePtr route;
+    RETURN_IF_INVALID_STATUS(runtime_index_->get_shard_route(shard_id, route))
+    if (route == nullptr) {
+        return Status::OK();
+    }
+    RETURN_IF_INVALID_STATUS(runtime_index_->delete_shard_route(shard_id))
+    mark_runtime_dirty();
+    return Status::OK();
 }
 
 Status SdmStore::del_shard_route_entry(const ShardID& shard_id,
                                        const ReplicaKey& replica_key) {
     ShardRoutePtr route;
-    RETURN_IF_INVALID_STATUS(meta_store_->get_shard_route(shard_id, route))
+    RETURN_IF_INVALID_STATUS(runtime_index_->get_shard_route(shard_id, route))
     if (route == nullptr) {
         return Status::OK();
     }
-
-    func::ad_erase_if(route->replicas, [&replica_key](const RouteEntry& entry) {
-        return entry.replica_id.table_id == replica_key.table_id &&
-               entry.replica_id.shard_index == replica_key.shard_index &&
-               entry.replica_id.replica_seq == replica_key.replica_seq;
-    });
-    RETURN_IF_INVALID_STATUS(meta_store_->upsert_shard_route(*route))
-    return maybe_repair_runtime_index(runtime_index_->put_shard_route(*route));
+    RETURN_IF_INVALID_STATUS(
+        runtime_index_->del_shard_route_entry(shard_id, replica_key))
+    mark_runtime_dirty();
+    return Status::OK();
 }
 
 //////////////////////////////////////////////////////////////////////
 
 Status SdmStore::put_replica_group(const ReplicaGroup& group) {
-    return meta_store_->upsert_replica_group(group);
+    RETURN_IF_INVALID_STATUS(meta_store_->upsert_replica_group(group))
+    mark_meta_dirty();
+    return Status::OK();
 }
 
 Status SdmStore::get_replica_group(const ShardID& shard_id,
@@ -424,7 +465,9 @@ Status SdmStore::get_replica_group(const ShardID& shard_id,
 }
 
 Status SdmStore::delete_replica_group(const ShardID& shard_id) {
-    return meta_store_->delete_replica_group(shard_id);
+    RETURN_IF_INVALID_STATUS(meta_store_->delete_replica_group(shard_id))
+    mark_meta_dirty();
+    return Status::OK();
 }
 
 Status SdmStore::list_replica_groups(std::vector<ReplicaGroup>& out) const {
@@ -495,15 +538,6 @@ Status SdmStore::rebuild_runtime_index() {
         RETURN_IF_INVALID_STATUS(status)
     }
 
-    std::vector<ShardRoutePtr> routes;
-    status = meta_store_->list_shard_routes(routes);
-    RETURN_IF_INVALID_STATUS(status)
-    for (const ShardRoutePtr& route : routes) {
-        if (route != nullptr) {
-            status = runtime_index_->put_shard_route(*route);
-            RETURN_IF_INVALID_STATUS(status)
-        }
-    }
     return Status::OK();
 }
 
