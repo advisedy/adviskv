@@ -80,10 +80,6 @@ void init_metrics() {
     LOG_WARN("metrics init failed: {}", status.msg());
 }
 
-adviskv::sdm::SdmMetaStoreType get_metastore_type() {
-    return adviskv::sdm::SdmMetaStoreType::PERSISTENT;
-}
-
 std::string get_metastore_data_dir() {
     return adviskv::path_from_project_root(
                CONF_GET_STR("data_dir", std::string("build/runtime/data/sdm")))
@@ -115,17 +111,14 @@ int main(int argc, char* argv[]) {
         std::string listen_host =
             CONF_GET_STR("listen_host", std::string("127.0.0.1"));
 
-        const SdmMetaStoreType metastore_type = get_metastore_type();
         const std::string metastore_data_dir = get_metastore_data_dir();
-        auto sdm_store =
-            std::make_unique<SdmStore>(metastore_type, metastore_data_dir);
+        auto sdm_store = std::make_unique<SdmStore>(
+            PersistentMetaStoreParam{metastore_data_dir});
         if (adviskv::Status status = sdm_store->init(); status.fail()) {
             LOG_ERROR("failed to init SDM metastore: {}", status.to_string());
             return 1;
         }
-        LOG_INFO("SDM metastore initialized: type={}, data_dir={}",
-                 metastore_type == SdmMetaStoreType::PERSISTENT ? "persistent"
-                                                                : "memory",
+        LOG_INFO("SDM metastore initialized: type=persistent, data_dir={}",
                  metastore_data_dir);
         auto node_selector =
             std::make_unique<DefaultNodeSelector>(sdm_store.get());

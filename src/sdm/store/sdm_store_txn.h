@@ -5,7 +5,6 @@
 
 #include "common/status.h"
 #include "common/model/type.h"
-#include "sdm/store/runtime_index.h"
 #include "sdm/model/model.h"
 
 namespace adviskv::sdm {
@@ -45,7 +44,7 @@ class SdmStoreTxn {
     Status get_shard_route(const ShardID& shard_id, ShardRouteOr& out) const;
     Status delete_shard_route(const ShardID& shard_id);
     Status del_shard_route_entry(const ShardID& shard_id,
-                                 const ReplicaKey& replica_key);
+                                 const ReplicaID& replica_id);
 
     Status put_replica_group(const ReplicaGroup& group);
     Status get_replica_group(const ShardID& shard_id,

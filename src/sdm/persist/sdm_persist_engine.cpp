@@ -47,12 +47,6 @@ private:
             encode_table(table, buf);
         }
 
-        // buf.write(static_cast<int32>(record.nodes.size()));
-        // for (const auto& [node_id, node] : record.nodes) {
-        //     UNUSED(node_id);
-        //     encode_node(node, buf);
-        // }
-
         buf.write(static_cast<int32>(record.replicas.size()));
         for (const auto& [replica_id, replica] : record.replicas) {
             UNUSED(replica_id);
@@ -82,14 +76,6 @@ private:
             RETURN_IF_INVALID_STATUS(decode_table(buf, table))
             record.tables[table.table_id] = std::move(table);
         }
-
-        // int32 node_count{0};
-        // RETURN_IF_INVALID_READ(buf, node_count)
-        // if (node_count < 0) return Status::ERROR("invalid node_count");
-        // for (int32 i = 0; i < node_count; ++i) {
-        //     Node node;
-        //     RETURN_IF_INVALID_STATUS(decode_node(buf, node))
-        // }
 
         int32 replica_count{0};
         RETURN_IF_INVALID_READ(buf, replica_count)
@@ -209,23 +195,6 @@ private:
         RETURN_IF_INVALID_READ(buf, table.state.update_ts)
         return Status::OK();
     }
-
-    // static Status decode_node(DecodeBuffer& buf, Node& node) {
-    //     node = {};
-    //     RETURN_IF_INVALID_READ(buf, node.id)
-    //     RETURN_IF_INVALID_READ(buf, node.meta.resource_pool)
-    //     RETURN_IF_INVALID_READ(buf, node.meta.dc)
-
-    //     int32 status{0};
-    //     RETURN_IF_INVALID_READ(buf, status)
-    //     node.state.status = static_cast<NodeStatus>(status);
-
-    //     RETURN_IF_INVALID_STATUS(decode_endpoint(buf, node.state.endpoint))
-    //     RETURN_IF_INVALID_READ(buf, node.state.last_heartbeat_ts)
-    //     RETURN_IF_INVALID_READ(buf, node.derived.owned_replica_count)
-    //     RETURN_IF_INVALID_READ(buf, node.derived.owned_leader_count)
-    //     return Status::OK();
-    // }
 
     static void encode_replica(const Replica& replica, EncodeBuffer& buf) {
         encode_replica_id(replica.replica_id, buf);

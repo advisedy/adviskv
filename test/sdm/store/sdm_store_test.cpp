@@ -106,7 +106,7 @@ int persistent_sequence{0};
 }  // namespace
 
 TEST(SdmStoreTest, MemoryStoreInitAllowsReadWrite) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
 
     Status status = store.init();
     ASSERT_TRUE(status.ok()) << status.to_string();
@@ -123,8 +123,9 @@ TEST(SdmStoreTest, MemoryStoreInitAllowsReadWrite) {
 }
 
 TEST(SdmStoreTest, InitRejectsNullRuntimeIndex) {
-    SdmStore store(SdmMetaStoreType::MEMORY,
-                   std::unique_ptr<SdmRuntimeIndex>{});
+    SdmStore store(MemoryMetaStoreParam{},
+                   std::unique_ptr<SdmRuntimeIndex>{},
+                   std::make_unique<SdmRuntimeStore>());
 
     Status status = store.init();
 
@@ -134,7 +135,7 @@ TEST(SdmStoreTest, InitRejectsNullRuntimeIndex) {
 
 // 检测 SdmStore 的正常写入、查询、更新和删除流程。
 TEST(SdmStoreTest, NormalStoreFlowWorks) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
 
     Table table = make_table(1001, "commerce", "orders");
@@ -204,7 +205,7 @@ TEST(SdmStoreTest, NormalStoreFlowWorks) {
 }
 
 TEST(SdmStoreTest, FailedRouteEntryMutationDoesNotPublish) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
 
     ShardID shard_id{1001, 0};
@@ -237,7 +238,7 @@ TEST(SdmStoreTest, PersistentStoreReportsCorruptedMetaOnInit) {
         out << "corrupted sdm meta";
     }
 
-    SdmStore store(SdmMetaStoreType::PERSISTENT, dir.string());
+    SdmStore store{PersistentMetaStoreParam{dir.string()}};
 
     Status init_status = store.init();
     EXPECT_TRUE(init_status.fail()) << init_status.to_string();
@@ -247,7 +248,8 @@ TEST(SdmStoreTest, PersistentStoreReportsCorruptedMetaOnInit) {
 // 并恢复索引一致性。
 TEST(SdmStoreTest, RebuildsRuntimeIndexWhenReplicaDeleteIndexUpdateFails) {
     auto failing_index = std::make_unique<FailOnceOnReplicaDeleteIndex>();
-    SdmStore store{SdmMetaStoreType::MEMORY, std::move(failing_index)};
+    SdmStore store{MemoryMetaStoreParam{}, std::move(failing_index),
+                   std::make_unique<SdmRuntimeStore>()};
     ASSERT_TRUE(store.init().ok());
 
     ASSERT_TRUE(
@@ -297,7 +299,9 @@ TEST(SdmStoreTest, RebuildsRuntimeIndexWhenReplicaDeleteIndexUpdateFails) {
     ShardRouteOr route;
     ASSERT_TRUE(
         store_test::get_shard_route(store, ShardID{1001, 0}, route).ok());
-    EXPECT_TRUE(route.is_empty());
+    ASSERT_FALSE(route.is_empty());
+    ASSERT_EQ(route->replicas.size(), 1U);
+    EXPECT_EQ(route->replicas[0].replica_id, deleted_id);
 }
 
 TEST(SdmStoreTest, RouteOnlyWriteDoesNotCreatePersistentSnapshot) {
@@ -307,7 +311,7 @@ TEST(SdmStoreTest, RouteOnlyWriteDoesNotCreatePersistentSnapshot) {
     fs::remove_all(data_dir, ec);
 
     {
-        SdmStore store(SdmMetaStoreType::PERSISTENT, data_dir.string());
+        SdmStore store{PersistentMetaStoreParam{data_dir.string()}};
         ASSERT_TRUE(store.init().ok());
         ASSERT_TRUE(store_test::put_shard_route(
                         store, make_route(ShardID{1001, 0}))
@@ -321,7 +325,7 @@ TEST(SdmStoreTest, RouteOnlyWriteDoesNotCreatePersistentSnapshot) {
     }
 
     {
-        SdmStore reloaded(SdmMetaStoreType::PERSISTENT, data_dir.string());
+        SdmStore reloaded{PersistentMetaStoreParam{data_dir.string()}};
         ASSERT_TRUE(reloaded.init().ok());
         ShardRouteOr route;
         ASSERT_TRUE(store_test::get_shard_route(reloaded, ShardID{1001, 0}, route)
@@ -343,7 +347,7 @@ TEST(SdmStoreTest, WriteWithPersistentStoreSurvivesReload) {
     ReplicaID replica_id{1001, 0, 0};
 
     {
-        SdmStore store(SdmMetaStoreType::PERSISTENT, data_dir.string());
+        SdmStore store{PersistentMetaStoreParam{data_dir.string()}};
         ASSERT_TRUE(store.init().ok());
         Status status = store.write_with([&](SdmStoreTxn& txn) {
             Status put_status =
@@ -368,7 +372,7 @@ TEST(SdmStoreTest, WriteWithPersistentStoreSurvivesReload) {
     }
 
     {
-        SdmStore reloaded(SdmMetaStoreType::PERSISTENT, data_dir.string());
+        SdmStore reloaded{PersistentMetaStoreParam{data_dir.string()}};
         ASSERT_TRUE(reloaded.init().ok());
         TableOr table;
         ASSERT_TRUE(store_test::get_table(reloaded, 1001, table).ok());

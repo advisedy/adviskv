@@ -70,13 +70,6 @@ class SdmRuntimeIndex {
     virtual Status list_replicas_by_node(const NodeID& node_id,
                                          std::vector<ReplicaKey>& out) const;
 
-    virtual Status get_shard_route(const ShardID& shard_id,
-                                   ShardRoutePtr& out) const;
-    virtual Status put_shard_route(const ShardRoute& route);
-    virtual Status delete_shard_route(const ShardID& shard_id);
-    virtual Status del_shard_route_entry(const ShardID& shard_id,
-                                         const ReplicaKey& replica_key);
-
    private:
     std::unordered_map<TableNameKey, TableID, TableNameKeyHash>
         table_name_index_;
@@ -89,8 +82,5 @@ class SdmRuntimeIndex {
         node_replicas_index_;
 
     std::unordered_map<NodeID, std::string> node_pool_index_;
-
-    std::unordered_map<ShardKey, ShardRoutePtr, ShardKeyHash>
-        shard_route_cache_;
 };
 }  // namespace adviskv::sdm

@@ -83,8 +83,8 @@ Status SdmStoreTxn::delete_shard_route(const ShardID& shard_id) {
     return store_->delete_shard_route(shard_id);
 }
 Status SdmStoreTxn::del_shard_route_entry(const ShardID& shard_id,
-                                          const ReplicaKey& replica_key) {
-    return store_->del_shard_route_entry(shard_id, replica_key);
+                                          const ReplicaID& replica_id) {
+    return store_->del_shard_route_entry(shard_id, replica_id);
 }
 
 Status SdmStoreTxn::put_replica_group(const ReplicaGroup& group) {

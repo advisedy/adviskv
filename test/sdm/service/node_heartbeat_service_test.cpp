@@ -71,7 +71,7 @@ void put_group_with_replicas(SdmStore& store, const std::vector<ReplicaID>& rids
 
 // 检测 heartbeat 会更新节点心跳信息，并同步更新本节点上的 replica 状态。
 TEST(NodeHeartbeatServiceTest, HeartbeatUpdatesNodeAndAssignedReplicas) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     ASSERT_TRUE(store_test::put_node(store, make_node("node-a")).ok());
     ASSERT_TRUE(store_test::put_replica(store, make_replica(ReplicaID{1001, 0, 0}, "node-a")).ok());
@@ -102,7 +102,7 @@ TEST(NodeHeartbeatServiceTest, HeartbeatUpdatesNodeAndAssignedReplicas) {
 
 // 检测只有 leader 上报的完整 membership 会投影 observed_member_type。
 TEST(NodeHeartbeatServiceTest, LeaderMembershipProjectsObservedMemberTypes) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     ReplicaID r0{1001, 0, 0};
     ReplicaID r1{1001, 0, 1};
@@ -144,7 +144,7 @@ TEST(NodeHeartbeatServiceTest, LeaderMembershipProjectsObservedMemberTypes) {
 
 // 检测 leader 上报空 membership 时不会投影，也不会推进 authority term。
 TEST(NodeHeartbeatServiceTest, LeaderEmptyMembershipDoesNotProject) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     ReplicaID r0{1001, 0, 0};
     ReplicaID r1{1001, 0, 1};
@@ -176,7 +176,7 @@ TEST(NodeHeartbeatServiceTest, LeaderEmptyMembershipDoesNotProject) {
 
 // 检测同 term 不同 leader 的 membership report 会被拒绝。
 TEST(NodeHeartbeatServiceTest, SameTermDifferentLeaderMembershipRejected) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     ReplicaID r0{1001, 0, 0};
     ReplicaID r1{1001, 0, 1};
@@ -211,7 +211,7 @@ TEST(NodeHeartbeatServiceTest, SameTermDifferentLeaderMembershipRejected) {
 
 // 检测 heartbeat 会忽略不存在的 replica 和不属于该节点的 replica。
 TEST(NodeHeartbeatServiceTest, HeartbeatIgnoresMissingAndOtherNodeReplicas) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     ASSERT_TRUE(store_test::put_node(store, make_node("node-a")).ok());
     ASSERT_TRUE(store_test::put_replica(store, make_replica(ReplicaID{1001, 0, 1}, "node-b")).ok());
@@ -249,7 +249,7 @@ TEST(NodeHeartbeatServiceTest, HeartbeatIgnoresMissingAndOtherNodeReplicas) {
 // 检测心跳没上报 DELETING 状态的 replica 时，会记录 no-exist 观测，
 // ReplicaGroupService 再将其推进为 DELETED。
 TEST(NodeHeartbeatServiceTest, HeartbeatMarksDeletingReplicaDeletedWhenMissing) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     ASSERT_TRUE(store_test::put_node(store, make_node("node-a")).ok());
 
@@ -281,7 +281,7 @@ TEST(NodeHeartbeatServiceTest, HeartbeatMarksDeletingReplicaDeletedWhenMissing) 
 
 // 检测 ReplicaGroupService 能正确构建心跳响应：在 desired_members 中的 replica 发 PRESENT，不在的报 ABSENT。
 TEST(NodeHeartbeatServiceTest, ReplicaGroupServiceBuildsHeartbeatExpectations) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     ASSERT_TRUE(store_test::put_node(store, make_node("node-a")).ok());
 
@@ -345,7 +345,7 @@ TEST(NodeHeartbeatServiceTest, ReplicaGroupServiceBuildsHeartbeatExpectations) {
 
 // 检测非法 heartbeat 参数会被拒绝。
 TEST(NodeHeartbeatServiceTest, HeartbeatRejectsInvalidParam) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     NodeService service(&store);
     HeartBeatParam param = make_heartbeat_param();
@@ -358,7 +358,7 @@ TEST(NodeHeartbeatServiceTest, HeartbeatRejectsInvalidParam) {
 
 // 检测节点不存在时，heartbeat 返回错误且不会创建新节点。
 TEST(NodeHeartbeatServiceTest, HeartbeatReturnsErrorWhenNodeMissing) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     NodeService service(&store);
 

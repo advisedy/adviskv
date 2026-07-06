@@ -1,204 +1,13 @@
-#include "sdm/store/memory_metastore.h"
+#include "sdm/store/persistent_metastore.h"
 
 #include <memory>
 #include <utility>
 
-#include "common/define.h"
-#include "common/log.h"
 #include "common/metrics/metrics.h"
 #include "common/status.h"
-#include "sdm/store/persistent_metastore.h"
+#include "sdm/store/memory_metastore.h"
 
 namespace adviskv::sdm {
-
-std::unique_ptr<ISdmMetaStore> MemoryMetaStore::clone_memory_snapshot() const {
-    auto copied = std::make_unique<MemoryMetaStore>();
-    for (const auto& [id, table] : tables_) {
-        copied->tables_[id] = std::make_shared<Table>(*table);
-    }
-    for (const auto& [id, node] : nodes_) {
-        copied->nodes_[id] = std::make_shared<Node>(*node);
-    }
-    for (const auto& [id, replica] : replicas_) {
-        copied->replicas_[id] = std::make_shared<Replica>(*replica);
-    }
-    for (const auto& [name, pool] : resource_pools_) {
-        copied->resource_pools_[name] = std::make_shared<ResourcePool>(*pool);
-    }
-    for (const auto& [id, group] : replica_groups_) {
-        copied->replica_groups_[id] = std::make_shared<ReplicaGroup>(*group);
-    }
-    return copied;
-}
-
-Status MemoryMetaStore::commit_memory_snapshot(
-    std::unique_ptr<ISdmMetaStore> next_memory_store) {
-    RETURN_IF_NULLPTR(next_memory_store, "next_memory_store is nullptr");
-
-    auto* next = dynamic_cast<MemoryMetaStore*>(next_memory_store.get());
-    RETURN_IF_NULLPTR(next, "next_memory_store should be MemoryMetaStore");
-
-    tables_ = std::move(next->tables_);
-    nodes_ = std::move(next->nodes_);
-    replicas_ = std::move(next->replicas_);
-    resource_pools_ = std::move(next->resource_pools_);
-    replica_groups_ = std::move(next->replica_groups_);
-    return Status::OK();
-}
-
-Status MemoryMetaStore::upsert_table(const Table& table) {
-    tables_[table.table_id] = std::make_shared<Table>(table);
-    return Status::OK();
-}
-
-Status MemoryMetaStore::get_table(TableID table_id, TablePtr& out) const {
-    auto it = tables_.find(table_id);
-    if (it == tables_.end()) {
-        out.reset();
-        return Status::OK();
-    }
-    out = it->second;
-    return Status::OK();
-}
-
-Status MemoryMetaStore::delete_table(TableID table_id) {
-    tables_.erase(table_id);
-    return Status::OK();
-}
-
-Status MemoryMetaStore::list_tables(std::vector<TablePtr>& out) const {
-    out.clear();
-    out.reserve(tables_.size());
-    for (const auto& [_, table] : tables_) {
-        out.push_back(table);
-    }
-    return Status::OK();
-}
-
-Status MemoryMetaStore::upsert_node(const Node& node) {
-    nodes_[node.id] = std::make_shared<Node>(node);
-    return Status::OK();
-}
-
-Status MemoryMetaStore::get_node(const NodeID& node_id, NodePtr& out) const {
-    auto it = nodes_.find(node_id);
-    if (it == nodes_.end()) {
-        out.reset();
-        return Status::OK();
-    }
-    out = it->second;
-    return Status::OK();
-}
-
-Status MemoryMetaStore::list_nodes(std::vector<NodePtr>& out) const {
-    out.clear();
-    out.reserve(nodes_.size());
-    for (const auto& [_, node] : nodes_) {
-        out.push_back(node);
-    }
-    return Status::OK();
-}
-
-Status MemoryMetaStore::upsert_replica(const Replica& replica) {
-    replicas_[replica.replica_id] = std::make_shared<Replica>(replica);
-    return Status::OK();
-}
-
-Status MemoryMetaStore::get_replica(const ReplicaID& key,
-                                    ReplicaPtr& out) const {
-    auto it = replicas_.find(key);
-    if (it == replicas_.end()) {
-        out.reset();
-        return Status::OK();
-    }
-    out = it->second;
-    return Status::OK();
-}
-
-Status MemoryMetaStore::delete_replica(const ReplicaID& key) {
-    replicas_.erase(key);
-    return Status::OK();
-}
-
-Status MemoryMetaStore::upsert_replicas(const std::vector<Replica>& replicas) {
-    for (const Replica& replica : replicas) {
-        replicas_[replica.replica_id] = std::make_shared<Replica>(replica);
-    }
-
-    return Status::OK();
-}
-
-Status MemoryMetaStore::list_replicas(std::vector<ReplicaPtr>& out) const {
-    out.clear();
-    out.reserve(replicas_.size());
-    for (const auto& [_, replica] : replicas_) {
-        out.push_back(replica);
-    }
-    return Status::OK();
-}
-
-Status MemoryMetaStore::upsert_resource_pool(const ResourcePool& pool) {
-    resource_pools_[pool.name] = std::make_shared<ResourcePool>(pool);
-    return Status::OK();
-}
-
-Status MemoryMetaStore::get_resource_pool(const std::string& name,
-                                          ResourcePoolPtr& out) const {
-    auto it = resource_pools_.find(name);
-    if (it == resource_pools_.end()) {
-        out.reset();
-        return Status::OK();
-    }
-    out = it->second;
-    return Status::OK();
-}
-
-Status MemoryMetaStore::list_resource_pools(
-    std::vector<ResourcePoolPtr>& out) const {
-    out.clear();
-    out.reserve(resource_pools_.size());
-    for (const auto& [_, pool] : resource_pools_) {
-        out.push_back(pool);
-    }
-    return Status::OK();
-}
-
-Status MemoryMetaStore::delete_resource_pool(const std::string& name) {
-    resource_pools_.erase(name);
-    return Status::OK();
-}
-
-Status MemoryMetaStore::upsert_replica_group(const ReplicaGroup& group) {
-    replica_groups_[group.shard_id] = std::make_shared<ReplicaGroup>(group);
-    return Status::OK();
-}
-
-Status MemoryMetaStore::delete_replica_group(const ShardID& shard_id) {
-    replica_groups_.erase(shard_id);
-    return Status::OK();
-}
-
-Status MemoryMetaStore::get_replica_group(const ShardID& shard_id,
-                                          ReplicaGroupPtr& out) const {
-    auto it = replica_groups_.find(shard_id);
-    if (it == replica_groups_.end()) {
-        out.reset();
-        return Status::OK();
-    }
-    out = it->second;
-    return Status::OK();
-}
-
-Status MemoryMetaStore::list_replica_groups(
-    std::vector<ReplicaGroupPtr>& out) const {
-    out.clear();
-    out.reserve(replica_groups_.size());
-    for (const auto& [_, group] : replica_groups_) {
-        UNUSED(_);
-        out.push_back(group);
-    }
-    return Status::OK();
-}
 
 PersistentMetaStore::PersistentMetaStore(std::filesystem::path data_dir)
     : memory_store_(std::make_unique<MemoryMetaStore>()),
@@ -240,8 +49,7 @@ Status PersistentMetaStore::commit_memory_snapshot(
     RETURN_IF_NULLPTR(next_memory_store, "next_memory_store is nullptr");
 
     SdmPersistedRecord record;
-    RETURN_IF_INVALID_STATUS(
-        build_record_from_store(*next_memory_store, record))
+    RETURN_IF_INVALID_STATUS(build_record_from_store(*next_memory_store, record))
     RETURN_IF_INVALID_STATUS(persist_record(record))
 
     memory_store_ = std::move(next_memory_store);
@@ -304,25 +112,12 @@ Status PersistentMetaStore::build_record_from_store(
     return Status::OK();
 }
 
-Status PersistentMetaStore::build_record(SdmPersistedRecord& record) const {
-    return build_record_from_store(*memory_store_, record);
-}
-
 Status PersistentMetaStore::persist_record(const SdmPersistedRecord& record) {
     return persist_engine_->save_sdm_meta(record);
 }
 
-Status PersistentMetaStore::persist() {
-    SdmPersistedRecord record;
-    RETURN_IF_INVALID_STATUS(build_record(record))
-    return persist_record(record);
-}
-
-// 这个函数没有上锁的意思，只是说去做COW保证写操作不会有问题而已
 Status PersistentMetaStore::commit_with(
     const std::function<Status(ISdmMetaStore&)>& mutate) {
-    // 如果是先走内存后走持久化，或者说反过来的话，然后后者的操作失败了，需要进行回滚，处理起来比较麻烦
-    // 所以现在内存上拷贝然后搞一下，如果持久化成功了，再修改这个内存上的内容
     std::unique_ptr<ISdmMetaStore> next_memory_store =
         memory_store_->clone_memory_snapshot();
     RETURN_IF_INVALID_STATUS(mutate(*next_memory_store))
@@ -352,19 +147,6 @@ Status PersistentMetaStore::delete_table(TableID table_id) {
 
 Status PersistentMetaStore::list_tables(std::vector<TablePtr>& out) const {
     return memory_store_->list_tables(out);
-}
-
-Status PersistentMetaStore::upsert_node(const Node& node) {
-    return memory_store_->upsert_node(node);
-}
-
-Status PersistentMetaStore::get_node(const NodeID& node_id,
-                                     NodePtr& out) const {
-    return memory_store_->get_node(node_id, out);
-}
-
-Status PersistentMetaStore::list_nodes(std::vector<NodePtr>& out) const {
-    return memory_store_->list_nodes(out);
 }
 
 Status PersistentMetaStore::upsert_replica(const Replica& replica) {

@@ -80,7 +80,7 @@ void put_ready_table(SdmStore& store) {
 
 // 检测 place_table 会把建表参数转换为 CREATING 的 Table desired state。
 TEST(TableServiceTest, PlaceTableConvertsParamToDesiredTableState) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     TableService service(&store);
     PlaceTableParam param = make_place_table_param();
@@ -107,7 +107,7 @@ TEST(TableServiceTest, PlaceTableConvertsParamToDesiredTableState) {
 
 // 检测 place_table 支持 scale-to-zero 建表。
 TEST(TableServiceTest, PlaceTableAcceptsZeroReplicaCount) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     TableService service(&store);
     PlaceTableParam param = make_place_table_param();
@@ -126,7 +126,7 @@ TEST(TableServiceTest, PlaceTableAcceptsZeroReplicaCount) {
 
 // 检测相同 operation_id 的 place_table 重试会被当成幂等成功。
 TEST(TableServiceTest, PlaceTableTreatsSameOperationIdRetryAsIdempotent) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     TableService service(&store);
     PlaceTableParam param = make_place_table_param();
@@ -139,7 +139,7 @@ TEST(TableServiceTest, PlaceTableTreatsSameOperationIdRetryAsIdempotent) {
 
 // 检测相同 table_id 但不同 operation_id 的建表请求会返回冲突。
 TEST(TableServiceTest, PlaceTableRejectsConflictingOperationId) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     TableService service(&store);
     PlaceTableParam param = make_place_table_param();
@@ -154,7 +154,7 @@ TEST(TableServiceTest, PlaceTableRejectsConflictingOperationId) {
 
 // 检测非法建表参数不会写入 SdmStore。
 TEST(TableServiceTest, PlaceTableRejectsInvalidParamBeforePersist) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     TableService service(&store);
     PlaceTableParam param = make_place_table_param();
@@ -170,7 +170,7 @@ TEST(TableServiceTest, PlaceTableRejectsInvalidParamBeforePersist) {
 
 // 检测 READY 表执行 drop_table 后会被标记为 ABSENT/DELETING。
 TEST(TableServiceTest, DropReadyTableMarksDesiredAbsent) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_ready_table(store);
     TableService service(&store);
@@ -190,7 +190,7 @@ TEST(TableServiceTest, DropReadyTableMarksDesiredAbsent) {
 // 检测 drop_table 是 ensure-absent 语义：不存在、同 operation_id 重试、
 // 不同 operation_id 命中已 ABSENT 的表，都保持幂等成功。
 TEST(TableServiceTest, DropTableHandlesAlreadyAbsentAsIdempotent) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     TableService service(&store);
 
@@ -208,7 +208,7 @@ TEST(TableServiceTest, DropTableHandlesAlreadyAbsentAsIdempotent) {
 
 // 检测 drop_table 对非 READY 的 PRESENT 表会返回冲突。
 TEST(TableServiceTest, DropTableRejectsInvalidPresentState) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     TableService service(&store);
     ASSERT_TRUE(service.place_table(make_place_table_param()).ok());
@@ -219,7 +219,7 @@ TEST(TableServiceTest, DropTableRejectsInvalidPresentState) {
 
 // 检测 READY 表执行 alter replica_count 后会更新副本数并进入 RESIZING。
 TEST(TableServiceTest, AlterReadyTableUpdatesReplicaCountAndMarksResizing) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_ready_table(store);
     TableService service(&store);
@@ -239,7 +239,7 @@ TEST(TableServiceTest, AlterReadyTableUpdatesReplicaCountAndMarksResizing) {
 
 // 检测 READY 表可以 alter replica_count 到 0。
 TEST(TableServiceTest, AlterReadyTableAllowsZeroReplicaCount) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_ready_table(store);
     TableService service(&store);
@@ -256,7 +256,7 @@ TEST(TableServiceTest, AlterReadyTableAllowsZeroReplicaCount) {
 
 // 检测相同 operation_id 的 alter replica_count 重试会被当成幂等成功。
 TEST(TableServiceTest, AlterReplicaCountRetryIsIdempotent) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_ready_table(store);
     TableService service(&store);
@@ -270,7 +270,7 @@ TEST(TableServiceTest, AlterReplicaCountRetryIsIdempotent) {
 
 // 检测 RESIZING 表在 shard 尚未 ready 前会继续保持 RESIZING。
 TEST(TableServiceTest, ResizingTableKeepsResizingUntilShardsReady) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_ready_table(store);
     TableService service(&store);
@@ -287,7 +287,7 @@ TEST(TableServiceTest, ResizingTableKeepsResizingUntilShardsReady) {
 
 // 检测非 READY 表执行 alter replica_count 会返回错误。
 TEST(TableServiceTest, AlterReplicaCountRejectsNonReadyTable) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     TableService service(&store);
     ASSERT_TRUE(service.place_table(make_place_table_param()).ok());
@@ -299,7 +299,7 @@ TEST(TableServiceTest, AlterReplicaCountRejectsNonReadyTable) {
 
 // 检测 get_table_status 可以查询表状态，并校验 operation_id。
 TEST(TableServiceTest, GetTableStatusReturnsStoredTableAndChecksOperationId) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     TableService service(&store);
     PlaceTableParam param = make_place_table_param();

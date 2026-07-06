@@ -184,6 +184,10 @@ add_adviskv_sdm_gtest(memory_meta_store_test
     ${CMAKE_SOURCE_DIR}/test/sdm/store/memory_meta_store_test.cpp
 )
 
+add_adviskv_sdm_gtest(runtime_store_test
+    ${CMAKE_SOURCE_DIR}/test/sdm/store/runtime_store_test.cpp
+)
+
 add_adviskv_sdm_gtest(persistent_meta_store_test
     ${CMAKE_SOURCE_DIR}/test/sdm/store/persistent_meta_store_test.cpp
 )

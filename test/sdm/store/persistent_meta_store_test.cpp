@@ -21,14 +21,6 @@ Table make_table(TableID table_id, const std::string& table_name) {
                  state};
 }
 
-Node make_node(const NodeID& id) {
-    return Node{id,
-                NodeMeta{"pool-a", "dc-a"},
-                NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", 18080},
-                          200},
-                NodeDerived{}};
-}
-
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
     ReplicaState state{};
     state.desired = ReplicaDesired::PRESENT;
@@ -100,11 +92,6 @@ TEST(PersistentMetaStoreTest, CommitWithPublishesMemoryAfterPersistSuccess) {
     ASSERT_NE(stored_table, nullptr);
     EXPECT_EQ(stored_table->spec.table_name, "orders");
 
-    ASSERT_TRUE(store.upsert_node(make_node("node-a")).ok());
-    NodePtr stored_node;
-    ASSERT_TRUE(store.get_node("node-a", stored_node).ok());
-    ASSERT_NE(stored_node, nullptr);
-    EXPECT_EQ(fake->save_count, 1);
     ASSERT_TRUE(
         store.upsert_replica(make_replica(ReplicaID{1001, 0, 0}, "node-a"))
             .ok());

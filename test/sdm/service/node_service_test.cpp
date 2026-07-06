@@ -21,7 +21,7 @@ RegisterNodeParam make_register_node_param() {
 
 // 检测 register_node 会把合法节点元信息写入 store，并初始化为 ONLINE。
 TEST(NodeServiceTest, RegisterNodeStoresValidNodeMeta) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     NodeService service(&store);
 
@@ -42,7 +42,7 @@ TEST(NodeServiceTest, RegisterNodeStoresValidNodeMeta) {
 
 // 检测重复注册同一个 node_id 时，会覆盖节点元信息和心跳状态。
 TEST(NodeServiceTest, RegisterNodeUpdatesExistingNode) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     NodeService service(&store);
     ASSERT_TRUE(service.register_node(make_register_node_param()).ok());
@@ -69,7 +69,7 @@ TEST(NodeServiceTest, RegisterNodeUpdatesExistingNode) {
 
 // 检测 register_node 会拒绝缺少 node_id、ip 或非法端口的参数。
 TEST(NodeServiceTest, RegisterNodeRejectsInvalidParams) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     NodeService service(&store);
 

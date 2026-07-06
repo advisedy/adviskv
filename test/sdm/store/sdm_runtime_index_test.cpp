@@ -38,18 +38,6 @@ Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
                    state};
 }
 
-ShardRoute make_route(const ShardID& shard_id) {
-    return ShardRoute{shard_id,
-                      {RouteEntry{ReplicaID{shard_id.table_id,
-                                            shard_id.shard_index, 0},
-                                  "node-a", "127.0.0.1", 18080,
-                                  ReplicaRole::LEADER, 7},
-                       RouteEntry{ReplicaID{shard_id.table_id,
-                                            shard_id.shard_index, 1},
-                                  "node-b", "127.0.0.2", 18081,
-                                  ReplicaRole::FOLLOWER, 7}}};
-}
-
 std::vector<NodeID> sorted_nodes(std::vector<NodeID> nodes) {
     std::sort(nodes.begin(), nodes.end());
     return nodes;
@@ -120,23 +108,8 @@ TEST(SdmRuntimeIndexTest, NormalIndexFlowWorks) {
     ASSERT_TRUE(index.list_replicas_by_node("node-b", replicas).ok());
     EXPECT_EQ(sorted_replicas(replicas), std::vector<ReplicaID>({replica_id}));
 
-    ShardID shard_id{1001, 0};
-    ShardRoute route = make_route(shard_id);
-    ASSERT_TRUE(index.put_shard_route(route).ok());
-    ShardRoutePtr loaded_route;
-    ASSERT_TRUE(index.get_shard_route(shard_id, loaded_route).ok());
-    ASSERT_NE(loaded_route, nullptr);
-    ASSERT_EQ(loaded_route->replicas.size(), 2U);
-
-    ASSERT_TRUE(
-        index.del_shard_route_entry(shard_id, ReplicaID{1001, 0, 1}).ok());
-    ASSERT_TRUE(index.get_shard_route(shard_id, loaded_route).ok());
-    ASSERT_NE(loaded_route, nullptr);
-    ASSERT_EQ(loaded_route->replicas.size(), 1U);
-    EXPECT_EQ(loaded_route->replicas[0].replica_id, (ReplicaID{1001, 0, 0}));
-
     ASSERT_TRUE(index.on_replica_delete(moved_replica).ok());
-    ASSERT_TRUE(index.list_replicas_by_shard(shard_id, replicas).ok());
+    ASSERT_TRUE(index.list_replicas_by_shard(ShardID{1001, 0}, replicas).ok());
     EXPECT_TRUE(replicas.empty());
     ASSERT_TRUE(index.on_node_delete(migrated_node_a).ok());
     ASSERT_TRUE(index.list_nodes_by_resource_pool("pool-b", nodes).ok());
@@ -145,9 +118,6 @@ TEST(SdmRuntimeIndexTest, NormalIndexFlowWorks) {
     EXPECT_EQ(
         index.find_table_by_name("commerce_v2", "orders_v2", table_id).code(),
         StatusCode::TABLE_NOT_FOUND);
-    ASSERT_TRUE(index.delete_shard_route(shard_id).ok());
-    ASSERT_TRUE(index.get_shard_route(shard_id, loaded_route).ok());
-    EXPECT_EQ(loaded_route, nullptr);
 }
 
 }  // namespace adviskv::sdm

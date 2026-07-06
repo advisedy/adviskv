@@ -20,9 +20,6 @@ enum class SdmMetaStoreType {
     X(Status get_table(TableID table_id, TablePtr& out) const)                \
     X(Status delete_table(TableID table_id))                                  \
     X(Status list_tables(std::vector<TablePtr>& out) const)                   \
-    X(Status upsert_node(const Node& node))                                   \
-    X(Status get_node(const NodeID& node_id, NodePtr& out) const)             \
-    X(Status list_nodes(std::vector<NodePtr>& out) const)                     \
     X(Status upsert_replica(const Replica& replica))                          \
     X(Status get_replica(const ReplicaID& key, ReplicaPtr& out) const)        \
     X(Status delete_replica(const ReplicaID& key))                            \

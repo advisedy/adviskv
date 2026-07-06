@@ -165,7 +165,7 @@ void report_replica_heartbeat(ServiceHarness& services, const NodeID& node_id, i
 
 // 检测建表流程：创建 Table → reconcile 生成 Replica → 标记 READY → 路由生成 → Table 到达 READY。
 TEST(TableServiceReconcileTest, CreateTableMaterializesReplicasAndReachesReady) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
 
@@ -187,7 +187,7 @@ TEST(TableServiceReconcileTest, CreateTableMaterializesReplicasAndReachesReady) 
 
 // 检测 replica 创建时继承 table spec 中的 engine_type。
 TEST(TableServiceReconcileTest, CreateTableMaterializesReplicaEngineType) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
 
@@ -209,7 +209,7 @@ TEST(TableServiceReconcileTest, CreateTableMaterializesReplicaEngineType) {
 
 // 检测 scale-to-zero 建表可以收敛为 READY，但不会发布可写路由。
 TEST(TableServiceReconcileTest, ZeroReplicaTableReachesReadyWithoutRoute) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     FakeNodeSelector selector(&store);
     ServiceHarness services(&store, &selector);
@@ -245,7 +245,7 @@ TEST(TableServiceReconcileTest, ZeroReplicaTableReachesReadyWithoutRoute) {
 
 // 检测 scale-to-zero 表可以后续扩容并恢复可写路由。
 TEST(TableServiceReconcileTest, ZeroReplicaTableCanExpandAndPublishRoute) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
 
@@ -284,7 +284,7 @@ TEST(TableServiceReconcileTest, ZeroReplicaTableCanExpandAndPublishRoute) {
 
 // 检测节点选择器失败时，Table 停留在 CREATING，下一轮选择器恢复后可以继续。
 TEST(TableServiceReconcileTest, CreateTableSelectorErrorKeepsTableCreating) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
 
@@ -305,7 +305,7 @@ TEST(TableServiceReconcileTest, CreateTableSelectorErrorKeepsTableCreating) {
 
 // 检测可用节点不足时，Table 停留在 CREATING，不会创建 Replica。
 TEST(TableServiceReconcileTest, CreateTableNotEnoughNodesKeepsCreating) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     ASSERT_TRUE(store_test::put_node(store, make_node("node-a", 18080)).ok());
 
@@ -322,7 +322,7 @@ TEST(TableServiceReconcileTest, CreateTableNotEnoughNodesKeepsCreating) {
 
 // 检测 Table 必须等待 ReplicaGroup 将所有 Replica 推进到 READY+VOTER 后才能变成 READY。
 TEST(TableServiceReconcileTest, TableWaitsForReplicaGroupToMakeReplicasReady) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
 
@@ -358,7 +358,7 @@ TEST(TableServiceReconcileTest, TableWaitsForReplicaGroupToMakeReplicasReady) {
 
 // 检测 Table 可以在 group 还处于 BOOTSTRAP 模式时就变成 READY（group 模式切换在下一轮 reconcile 才发生）。
 TEST(TableServiceReconcileTest, TableCanBecomeReadyWhileGroupIsBootstrapMode) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
 
@@ -386,7 +386,7 @@ TEST(TableServiceReconcileTest, TableCanBecomeReadyWhileGroupIsBootstrapMode) {
 // 检测坏副本替换流程：LOST 副本触发补新副本 → 新副本 READY+NON_MEMBER → 心跳发 ADD_MEMBER → 变 VOTER → 心跳发
 // REMOVE_MEMBER 删坏副本。
 TEST(TableServiceReconcileTest, ReplicaGroupReplacesBadMemberAfterBackfill) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
     ASSERT_TRUE(store_test::put_node(store, make_node("node-c", 18082)).ok());
@@ -509,7 +509,7 @@ TEST(TableServiceReconcileTest, ReplicaGroupReplacesBadMemberAfterBackfill) {
 // 检测 3 副本中 1 个节点掉线后，可以补新副本，并通过 leader 上报的
 // full membership 把 LOST 老副本从 desired_members 移除。
 TEST(TableServiceReconcileTest, LostReplicaIsReplacedAfterLeaderReportsMembershipWithoutIt) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
     ASSERT_TRUE(store_test::put_node(store, make_node("node-c", 18082)).ok());
@@ -644,7 +644,7 @@ TEST(TableServiceReconcileTest, LostReplicaIsReplacedAfterLeaderReportsMembershi
 
 // 检测 READY 表发生内部副本替换时仍保持 READY，并且外部 alter 仍可进入 RESIZING。
 TEST(TableServiceReconcileTest, ReplacementKeepsTableReadyAndAllowsAlter) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
     ASSERT_TRUE(store_test::put_node(store, make_node("node-c", 18082)).ok());
@@ -679,7 +679,7 @@ TEST(TableServiceReconcileTest, ReplacementKeepsTableReadyAndAllowsAlter) {
 
 // 检测缩容流程：alter 减少副本数 → victim 变成 NON_MEMBER → reconciler 将其从 desired_members 移出并标 DELETING。
 TEST(TableServiceReconcileTest, ReplicaGroupShrinksAfterObservedMemberRemoved) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
     ASSERT_TRUE(store_test::put_node(store, make_node("node-c", 18082)).ok());
@@ -746,7 +746,7 @@ TEST(TableServiceReconcileTest, ReplicaGroupShrinksAfterObservedMemberRemoved) {
 
 // 检测 READY 表可以缩到 0 副本，清理路由后重新进入 READY。
 TEST(TableServiceReconcileTest, ReadyTableCanShrinkToZeroWithoutRoute) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
 
@@ -801,7 +801,7 @@ TEST(TableServiceReconcileTest, ReadyTableCanShrinkToZeroWithoutRoute) {
 // 检测 Replica 出现 ERROR 时，Table 不会被标记为 FAILED，而是继续等待
 // ReplicaGroupMembershipReconciler 替换坏副本。
 TEST(TableServiceReconcileTest, ReplicaErrorKeepsTableWaiting) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
 
@@ -825,7 +825,7 @@ TEST(TableServiceReconcileTest, ReplicaErrorKeepsTableWaiting) {
 
 // 检测路由中有多个 leader 时，Table 不会变成 READY。
 TEST(TableServiceReconcileTest, TableDoesNotBecomeReadyWhenRouteHasMultipleLeaders) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
 
@@ -848,7 +848,7 @@ TEST(TableServiceReconcileTest, TableDoesNotBecomeReadyWhenRouteHasMultipleLeade
 
 // 检测 leader 的 endpoint 无效时，Table 不会变成 READY。
 TEST(TableServiceReconcileTest, TableDoesNotBecomeReadyWhenLeaderEndpointInvalid) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
 
@@ -871,7 +871,7 @@ TEST(TableServiceReconcileTest, TableDoesNotBecomeReadyWhenLeaderEndpointInvalid
 
 // 检测 leader 丢失后路由被删除，心跳恢复新 leader 后路由重新发布。
 TEST(TableServiceReconcileTest, RouteIsRepublishedAfterHeartbeatRecoversLeader) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
 
@@ -925,7 +925,7 @@ TEST(TableServiceReconcileTest, RouteIsRepublishedAfterHeartbeatRecoversLeader) 
 
 // 检测删表流程：标记 ABSENT → 清理 ReplicaGroup → 删除路由 → Replica 物理删除 → Table 变 DELETED。
 TEST(TableServiceReconcileTest, DropTableWaitsForReplicaGroupCleanup) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
 
@@ -986,7 +986,7 @@ TEST(TableServiceReconcileTest, DropTableWaitsForReplicaGroupCleanup) {
 
 // 检测 FAILED 状态的 Table 不会被 reconcile 重试推进。
 TEST(TableServiceReconcileTest, FailedDropTableWillNotRetry) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_default_nodes(store);
 

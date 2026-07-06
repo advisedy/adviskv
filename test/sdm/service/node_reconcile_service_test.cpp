@@ -58,7 +58,7 @@ void run_node_and_replica_reconcile(NodeService& node_ctrl,
 
 // 检测节点不存在时，reconcile 不会错误地将 replica 标为 LOST。
 TEST(NodeServiceReconcileTest, MissingNodeDoesNotMarkReplicaLost) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     ASSERT_TRUE(store_test::put_table(store, make_table()).ok());
     ASSERT_TRUE(
@@ -78,7 +78,7 @@ TEST(NodeServiceReconcileTest, MissingNodeDoesNotMarkReplicaLost) {
 
 // 检测节点从 ONLINE 到 SUSPECT 到 OFFLINE 的完整过程，以及 OFFLINE 时其上的 replica 是否被标为 LOST。
 TEST(NodeServiceReconcileTest, OnlineNodeBecomesSuspectThenOfflineAndReplicasLost) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     ASSERT_TRUE(
         store_test::put_node(
@@ -127,7 +127,7 @@ TEST(NodeServiceReconcileTest, OnlineNodeBecomesSuspectThenOfflineAndReplicasLos
 
 // 检测 SUSPECT 节点恢复心跳后变回 ONLINE，其上的 LOST replica 被标回 CREATING。
 TEST(NodeServiceReconcileTest, SuspectNodeBecomesOnlineAndReplicasUpdated) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     ASSERT_TRUE(
         store_test::put_node(
@@ -162,7 +162,7 @@ TEST(NodeServiceReconcileTest, OfflineNodeWithFreshHeartbeatBecomesOnline) {
     node.state.status = NodeStatus::OFFLINE;
     node.state.last_heartbeat_ts = func::get_current_ts_ms();
 
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     ASSERT_EQ(store_test::put_node(store, node).ok(), true);
     NodeService ctrl(&store);
@@ -176,7 +176,7 @@ TEST(NodeServiceReconcileTest, OfflineNodeWithFreshHeartbeatBecomesOnline) {
 
 // 检测 reconcile 时会重新读取最新的节点状态，避免用过期数据覆盖。
 TEST(NodeServiceReconcileTest, CheckReloadsNodeBeforeWritingStatus) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     Node stale = make_heartbeat_node(
         "node-a", NodeStatus::ONLINE,
@@ -212,7 +212,7 @@ TEST(NodeServiceReconcileTest, CheckReloadsNodeBeforeWritingStatus) {
 
 // 检测启动宽限期内，心跳过期的节点不会被标为 SUSPECT/OFFLINE。
 TEST(NodeServiceReconcileTest, StartupGraceKeepsStaleOnlineNodesOnline) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     ASSERT_TRUE(
         store_test::put_node(
@@ -268,7 +268,7 @@ TEST(NodeServiceReconcileTest, StartupGraceKeepsStaleOnlineNodesOnline) {
 
 // 检测启动宽限期内，OFFLINE/SUSPECT 节点收到新心跳后可以恢复为 ONLINE。
 TEST(NodeServiceReconcileTest, StartupGraceAllowsOfflineNodesWithNewHeartbeatRecover) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     ASSERT_TRUE(
         store_test::put_node(

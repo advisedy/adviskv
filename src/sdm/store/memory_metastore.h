@@ -16,7 +16,6 @@ class MemoryMetaStore : public ISdmMetaStore {
 
    protected:
     std::unordered_map<TableID, TablePtr> tables_;
-    std::unordered_map<NodeID, NodePtr> nodes_;
     std::unordered_map<ReplicaID, ReplicaPtr, ReplicaIDHash> replicas_;
     std::unordered_map<std::string, ResourcePoolPtr> resource_pools_;
     std::unordered_map<ShardID, ReplicaGroupPtr, ShardIDHash> replica_groups_;

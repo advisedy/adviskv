@@ -9,7 +9,9 @@ set(SDM_LIB_SOURCES
 
     ${CMAKE_CURRENT_SOURCE_DIR}/selector/node_selector/node_selector.cpp
 
-    ${CMAKE_CURRENT_SOURCE_DIR}/store/i_sdm_metastore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/store/memory_metastore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/store/persistent_metastore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/store/runtime_store.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/store/sdm_store.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/store/sdm_store_txn.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/store/runtime_index.cpp

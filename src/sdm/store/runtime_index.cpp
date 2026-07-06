@@ -4,7 +4,6 @@
 #include <memory>
 
 #include "common/define.h"
-#include "common/func.h"
 #include "common/status.h"
 #include "sdm/model/model.h"
 namespace adviskv::sdm {
@@ -68,16 +67,6 @@ SdmRuntimeIndex& SdmRuntimeIndex::operator=(const SdmRuntimeIndex& other) {
     node_replicas_index_ = other.node_replicas_index_;
     node_pool_index_ = other.node_pool_index_;
 
-    shard_route_cache_.clear();
-    shard_route_cache_.reserve(other.shard_route_cache_.size());
-    for (const auto& [shard_id, route] : other.shard_route_cache_) {
-        if (route != nullptr) {
-            shard_route_cache_[shard_id] = std::make_shared<ShardRoute>(*route);
-        } else {
-            shard_route_cache_[shard_id] = nullptr;
-        }
-    }
-
     return *this;
 }
 
@@ -87,7 +76,6 @@ void SdmRuntimeIndex::clear() {
     shard_replicas_index_.clear();
     node_replicas_index_.clear();
     node_pool_index_.clear();
-    shard_route_cache_.clear();
 }
 
 Status SdmRuntimeIndex::on_table_upsert(const Table* old_table,
@@ -227,43 +215,6 @@ Status SdmRuntimeIndex::list_replicas_by_node(
         return Status::OK();
     }
     out.insert(out.end(), it->second.begin(), it->second.end());
-    return Status::OK();
-}
-
-Status SdmRuntimeIndex::get_shard_route(const ShardID& shard_id,
-                                        ShardRoutePtr& out) const {
-    auto it = shard_route_cache_.find(shard_id);
-    if (it == shard_route_cache_.end()) {
-        out.reset();
-        return Status::OK();
-    }
-    out = it->second;
-    return Status::OK();
-}
-
-Status SdmRuntimeIndex::put_shard_route(const ShardRoute& route) {
-    shard_route_cache_[route.shard_id] = std::make_shared<ShardRoute>(route);
-    return Status::OK();
-}
-
-Status SdmRuntimeIndex::delete_shard_route(const ShardID& shard_id) {
-    shard_route_cache_.erase(shard_id);
-    return Status::OK();
-}
-
-Status SdmRuntimeIndex::del_shard_route_entry(const ShardID& shard_id,
-                                              const ReplicaKey& replica_id) {
-    auto it = shard_route_cache_.find(shard_id);
-    if (it == shard_route_cache_.end() || !(it->second)) {
-        return Status::OK();
-    }
-
-    auto& replicas = it->second->replicas;
-    func::ad_erase_if(replicas, [&replica_id](const RouteEntry& entry) {
-        return entry.replica_id.table_id == replica_id.table_id &&
-               entry.replica_id.shard_index == replica_id.shard_index &&
-               entry.replica_id.replica_seq == replica_id.replica_seq;
-    });
     return Status::OK();
 }
 

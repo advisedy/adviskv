@@ -21,15 +21,6 @@ Table make_table(TableID table_id, const std::string& table_name,
                  state};
 }
 
-Node make_node(const NodeID& id, const std::string& resource_pool,
-               int32_t port = 18080) {
-    return Node{id,
-                NodeMeta{resource_pool, "dc-a"},
-                NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", port},
-                          123456},
-                NodeDerived{3, 1}};
-}
-
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id,
                      ReplicaRole role = ReplicaRole::FOLLOWER) {
     ReplicaState state{};
@@ -48,16 +39,6 @@ std::vector<TableID> sorted_table_ids(const std::vector<TablePtr>& tables) {
     ids.reserve(tables.size());
     for (const auto& table : tables) {
         ids.push_back(table->table_id);
-    }
-    std::sort(ids.begin(), ids.end());
-    return ids;
-}
-
-std::vector<NodeID> sorted_node_ids(const std::vector<NodePtr>& nodes) {
-    std::vector<NodeID> ids;
-    ids.reserve(nodes.size());
-    for (const auto& node : nodes) {
-        ids.push_back(node->id);
     }
     std::sort(ids.begin(), ids.end());
     return ids;
@@ -129,38 +110,6 @@ TEST(MemoryMetaStoreTest, TableUpsertGetListAndDeleteWork) {
     ASSERT_TRUE(store.list_tables(tables).ok());
     EXPECT_EQ(sorted_table_ids(tables),
               std::vector<TableID>({table_b.table_id}));
-}
-
-// 验证Node这边的写入、覆盖、查询和列表能力，缺失时也别乱返回脏指针。
-TEST(MemoryMetaStoreTest, NodeUpsertGetAndListWork) {
-    MemoryMetaStore store;
-    Node node_a = make_node("node-a", "pool-a");
-    Node node_b = make_node("node-b", "pool-b", 18081);
-
-    ASSERT_TRUE(store.upsert_node(node_a).ok());
-    ASSERT_TRUE(store.upsert_node(node_b).ok());
-
-    NodePtr out;
-    ASSERT_TRUE(store.get_node(node_a.id, out).ok());
-    ASSERT_TRUE(out != nullptr);
-    EXPECT_EQ(out->meta.resource_pool, "pool-a");
-    EXPECT_EQ(out->state.endpoint.port, 18080);
-    EXPECT_EQ(out->derived.owned_replica_count, 3);
-
-    Node updated = make_node(node_a.id, "pool-c", 19080);
-    ASSERT_TRUE(store.upsert_node(updated).ok());
-    ASSERT_TRUE(store.get_node(node_a.id, out).ok());
-    ASSERT_TRUE(out != nullptr);
-    EXPECT_EQ(out->meta.resource_pool, "pool-c");
-    EXPECT_EQ(out->state.endpoint.port, 19080);
-
-    std::vector<NodePtr> nodes;
-    ASSERT_TRUE(store.list_nodes(nodes).ok());
-    EXPECT_EQ(sorted_node_ids(nodes),
-              std::vector<NodeID>({"node-a", "node-b"}));
-
-    ASSERT_TRUE(store.get_node("missing-node", out).ok());
-    EXPECT_EQ(out, nullptr);
 }
 
 // 验证Replica单个写入、批量写入、覆盖、查询、列表和删除这些基本路径。
@@ -243,7 +192,6 @@ TEST(MemoryMetaStoreTest, CloneMemorySnapshotCopiesCurrentDataIndependently) {
     ReplicaID replica_id{1001, 0, 0};
 
     ASSERT_TRUE(store.upsert_table(make_table(table_id, "orders")).ok());
-    ASSERT_TRUE(store.upsert_node(make_node(node_id, "pool-a")).ok());
     ASSERT_TRUE(store.upsert_replica(make_replica(replica_id, node_id)).ok());
     ASSERT_TRUE(
         store.upsert_resource_pool(ResourcePool{"pool-a"}).ok());
@@ -252,7 +200,6 @@ TEST(MemoryMetaStoreTest, CloneMemorySnapshotCopiesCurrentDataIndependently) {
     ASSERT_TRUE(snapshot != nullptr);
 
     ASSERT_TRUE(store.delete_table(table_id).ok());
-    ASSERT_TRUE(store.upsert_node(make_node(node_id, "pool-b", 19080)).ok());
     ASSERT_TRUE(store.delete_replica(replica_id).ok());
     ASSERT_TRUE(store.delete_resource_pool("pool-a").ok());
 
@@ -260,12 +207,6 @@ TEST(MemoryMetaStoreTest, CloneMemorySnapshotCopiesCurrentDataIndependently) {
     ASSERT_TRUE(snapshot->get_table(table_id, table).ok());
     ASSERT_TRUE(table != nullptr);
     EXPECT_EQ(table->spec.table_name, "orders");
-
-    NodePtr node;
-    ASSERT_TRUE(snapshot->get_node(node_id, node).ok());
-    ASSERT_TRUE(node != nullptr);
-    EXPECT_EQ(node->meta.resource_pool, "pool-a");
-    EXPECT_EQ(node->state.endpoint.port, 18080);
 
     ReplicaPtr replica;
     ASSERT_TRUE(snapshot->get_replica(replica_id, replica).ok());

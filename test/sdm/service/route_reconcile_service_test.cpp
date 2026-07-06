@@ -71,7 +71,7 @@ ShardID test_shard_id() { return ShardID{TEST_TABLE_ID, TEST_SHARD_INDEX}; }
 
 // 检测没有 leader 时，路由会被删除并返回 ROUTE_NOT_FOUND。
 TEST(RouteServiceReconcileTest, DeleteShardRouteWhenLeaderCountLessThanOne) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_test_table(store);
     put_nodes(store, 2);
@@ -107,7 +107,7 @@ TEST(RouteServiceReconcileTest, DeleteShardRouteWhenLeaderCountLessThanOne) {
 
 // 检测恰好一个 leader 时，路由会被正确写入，leader 在前、follower 按 seq 排序。
 TEST(RouteServiceReconcileTest, PutShardRouteWhenLeaderCountEqualsOne) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_test_table(store);
     put_nodes(store, 3);
@@ -143,7 +143,7 @@ TEST(RouteServiceReconcileTest, PutShardRouteWhenLeaderCountEqualsOne) {
 
 // 检测多个 leader 拥有相同最大 term 时，路由被删除（无法确定谁是真正的 leader）。
 TEST(RouteServiceReconcileTest, ReturnRouteNotReadyWhenLeadersShareMaxTerm) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_test_table(store);
     put_nodes(store, 3);
@@ -181,7 +181,7 @@ TEST(RouteServiceReconcileTest, ReturnRouteNotReadyWhenLeadersShareMaxTerm) {
 
 // 检测多个 leader 的 term 不同时，选择最大 term 的 leader 作为主路由，其余降级为 follower。
 TEST(RouteServiceReconcileTest, MultipleLeadersWithDifferentTermsChooseMaxTermLeader) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_test_table(store);
     put_nodes(store, 4);
@@ -226,7 +226,7 @@ TEST(RouteServiceReconcileTest, MultipleLeadersWithDifferentTermsChooseMaxTermLe
 
 // 检测 leader 切换后，旧路由被删除、新路由被重新发布。
 TEST(RouteServiceReconcileTest, DeleteStaleRouteAndRepublishAfterLeaderRecovery) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_test_table(store);
     put_nodes(store, 2);
@@ -296,7 +296,7 @@ TEST(RouteServiceReconcileTest, DeleteStaleRouteAndRepublishAfterLeaderRecovery)
 
 // 检测 reconcile 时会重新读取最新的 table 状态，不因传入的过期 table 对象而误建路由。
 TEST(RouteServiceReconcileTest, CheckShardRouteReloadsCurrentTableState) {
-    SdmStore store{SdmMetaStoreType::MEMORY};
+    SdmStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     Table stale_table = make_table();
     put_test_table(store);

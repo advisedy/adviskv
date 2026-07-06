@@ -28,9 +28,7 @@ class PersistentMetaStore : public ISdmMetaStore {
     Status load();
     Status build_record_from_store(const ISdmMetaStore& store,
                                    SdmPersistedRecord& record) const;
-    Status build_record(SdmPersistedRecord& record) const;
     Status persist_record(const SdmPersistedRecord& record);
-    Status persist();
     Status commit_with(const std::function<Status(ISdmMetaStore&)>& mutate);
 
     std::unique_ptr<ISdmMetaStore> memory_store_;
