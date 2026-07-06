@@ -58,7 +58,7 @@ inline bool encode_pb_expected_replica(const ExpectedReplica& in, sdm_rpc::Expec
     if (!encode_pb_replica_id(in.replica_id, *out.mutable_replica_id())) {
         return false;
     }
-    pb::EngineType engine_type = pb::ENGINE_TYPE_UNSPECIFIED;
+    pb::EngineType engine_type;
     if (!encode_pb_engine_type(in.engine_type, engine_type)) {
         return false;
     }

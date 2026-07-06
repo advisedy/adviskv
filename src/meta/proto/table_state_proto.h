@@ -2,7 +2,7 @@
 
 #include "common.pb.h"
 #include "common/define.h"
-#include "meta/model/meta_types.h"
+#include "meta/model/model.h"
 
 namespace adviskv::meta {
 
@@ -26,7 +26,6 @@ inline bool decode_pb_meta_table_state(pb::MetaTableState in, TableState& out) {
         case pb::MetaTableState::META_TABLE_STATE_ALTERING:
             out = TableState::ALTERING;
             return true;
-        case pb::MetaTableState::META_TABLE_STATE_UNSPECIFIED:
         default:
             return false;
     }

@@ -4,7 +4,7 @@
 #include <optional>
 
 #include "common/model/type.h"
-#include "storage/model/param.h"
+#include "storage/model/model.h"
 #include "storage/raft/raft_apply.h"
 #include "storage/raft/raft_log.h"
 #include "storage/raft/raft_membership.h"

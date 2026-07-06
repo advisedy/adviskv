@@ -3,7 +3,7 @@
 #include <optional>
 
 #include "common/status.h"
-#include "storage/model/param.h"
+#include "storage/model/model.h"
 #include "storage/replica/replica.h"
 
 namespace adviskv::storage {

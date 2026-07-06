@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "common/model/type.h"
-#include "storage/model/param.h"
+#include "storage/model/model.h"
 #include "storage/raft/raft_membership.h"
 
 namespace adviskv::storage {

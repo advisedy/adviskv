@@ -3,7 +3,7 @@
 #include <memory>
 
 #include "common/status.h"
-#include "storage/model/param.h"
+#include "storage/model/model.h"
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/iraft_rpc_transport.h"
 

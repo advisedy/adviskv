@@ -2,7 +2,7 @@
 
 #include "common/proto/proto.h"
 #include "storage.pb.h"
-#include "storage/model/param.h"
+#include "storage/model/model.h"
 
 namespace adviskv::storage {
 

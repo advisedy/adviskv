@@ -93,7 +93,7 @@ function(add_adviskv_meta_gtest target_name)
 endfunction()
 
 add_adviskv_common_gtest(metrics_test
-    ${CMAKE_SOURCE_DIR}/test/common/metrics_test.cpp
+    ${CMAKE_SOURCE_DIR}/test/common/metrics/metrics_test.cpp
 )
 
 add_adviskv_storage_gtest(map_engine_test
@@ -113,7 +113,7 @@ add_adviskv_storage_gtest(replica_meta_persist_engine_test
 )
 
 add_adviskv_storage_gtest(kv_state_machine_test
-    ${CMAKE_SOURCE_DIR}/test/storage/state_machine/kv_state_machine_test.cpp
+    ${CMAKE_SOURCE_DIR}/test/storage/raft/state_machine/kv_state_machine_test.cpp
 )
 
 add_adviskv_storage_gtest(replica_test
@@ -133,7 +133,7 @@ add_adviskv_storage_gtest(node_agent_test
 )
 
 add_adviskv_storage_gtest(raft_node_test
-    ${CMAKE_SOURCE_DIR}/test/storage/raft/raft_node_test.cpp
+    ${CMAKE_SOURCE_DIR}/test/storage/raft/core/raft_node_test.cpp
 )
 
 add_adviskv_storage_gtest(raft_sender_test
@@ -141,7 +141,7 @@ add_adviskv_storage_gtest(raft_sender_test
 )
 
 add_adviskv_storage_gtest(raft_cluster_test
-    ${CMAKE_SOURCE_DIR}/test/storage/raft/raft_cluster_test.cpp
+    ${CMAKE_SOURCE_DIR}/test/storage/raft/core/raft_cluster_test.cpp
 )
 
 add_adviskv_sdm_gtest(node_service_test
@@ -173,19 +173,19 @@ add_adviskv_sdm_gtest(table_reconcile_service_test
 )
 
 add_adviskv_sdm_gtest(sdm_runtime_index_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/model/sdm_runtime_index_test.cpp
+    ${CMAKE_SOURCE_DIR}/test/sdm/store/sdm_runtime_index_test.cpp
 )
 
 add_adviskv_sdm_gtest(node_selector_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/selector/node_selector_test.cpp
+    ${CMAKE_SOURCE_DIR}/test/sdm/selector/node_selector/node_selector_test.cpp
 )
 
 add_adviskv_sdm_gtest(memory_meta_store_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/model/memory_meta_store_test.cpp
+    ${CMAKE_SOURCE_DIR}/test/sdm/store/memory_meta_store_test.cpp
 )
 
 add_adviskv_sdm_gtest(persistent_meta_store_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/model/persistent_meta_store_test.cpp
+    ${CMAKE_SOURCE_DIR}/test/sdm/store/persistent_meta_store_test.cpp
 )
 
 add_adviskv_sdm_gtest(sdm_persist_engine_test
@@ -193,7 +193,7 @@ add_adviskv_sdm_gtest(sdm_persist_engine_test
 )
 
 add_adviskv_sdm_gtest(sdm_store_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/model/sdm_store_test.cpp
+    ${CMAKE_SOURCE_DIR}/test/sdm/store/sdm_store_test.cpp
 )
 
 add_adviskv_meta_gtest(meta_persist_engine_test
@@ -205,7 +205,7 @@ add_adviskv_meta_gtest(catalog_manager_test
 )
 
 add_adviskv_meta_gtest(ddl_service_test
-    ${CMAKE_SOURCE_DIR}/test/meta/ddl_service/ddl_service_test.cpp
+    ${CMAKE_SOURCE_DIR}/test/meta/service/ddl_service_test.cpp
 )
 
 add_adviskv_meta_gtest(table_ddl_reconciler_test

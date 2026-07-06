@@ -8,7 +8,7 @@
 #include "common/status.h"
 #include "common/model/type.h"
 #include "meta.grpc.pb.h"
-#include "meta/model/meta_types.h"
+#include "meta/model/model.h"
 
 namespace adviskv::cli {
 

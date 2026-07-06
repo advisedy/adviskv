@@ -12,14 +12,13 @@
 #include "common/proto/proto.h"
 #include "common/status.h"
 #include "sdm.pb.h"
-#include "sdm/model/param.h"
 #include "sdm/model/model.h"
+#include "sdm/model/param.h"
 #include "sdm/service/service_manager.h"
 
 namespace adviskv::sdm {
 
-SdmServiceImpl::SdmServiceImpl(ServiceManager* service_manager) : service_manager_(service_manager) {
-}
+SdmServiceImpl::SdmServiceImpl(ServiceManager* service_manager) : service_manager_(service_manager) {}
 
 grpc::Status SdmServiceImpl::PlaceTable(grpc::ServerContext* context, const rpc::PlaceTableRequest* request,
                                         rpc::PlaceTableResponse* response) {
@@ -84,18 +83,14 @@ grpc::Status SdmServiceImpl::GetTableStatus(grpc::ServerContext* context, const 
     Status status = service_manager_->get_table_status(param, &table);
     fill_base_rsp(response, status);
     if (status.ok()) {
-        pb::SdmTableDesired desired_pb =
-            pb::SdmTableDesired::SDM_TABLE_DESIRED_UNSPECIFIED;
-        pb::SdmTablePhase phase_pb =
-            pb::SdmTablePhase::SDM_TABLE_PHASE_UNSPECIFIED;
+        pb::SdmTableDesired desired_pb;
+        pb::SdmTablePhase phase_pb;
         if (!encode_pb_sdm_table_desired(table.state.desired, desired_pb)) {
-            fill_base_rsp(response,
-                          Status{StatusCode::ERROR, "table desired is not valid"});
+            fill_base_rsp(response, Status{StatusCode::ERROR, "table desired is not valid"});
             return grpc::Status::OK;
         }
         if (!encode_pb_sdm_table_phase(table.state.phase, phase_pb)) {
-            fill_base_rsp(response,
-                          Status{StatusCode::ERROR, "table phase is not valid"});
+            fill_base_rsp(response, Status{StatusCode::ERROR, "table phase is not valid"});
             return grpc::Status::OK;
         }
         response->set_table_id(table.table_id);
@@ -126,12 +121,8 @@ grpc::Status SdmServiceImpl::Heartbeat(grpc::ServerContext* context, const rpc::
         }
 
         HeartBeatReplicaInfo one;
-        if (!decode_pb_replica_id(replica_info_pb.replica_id(),
-                                  one.replica_id)) {
-            fill_base_rsp(
-                response,
-                Status{StatusCode::INVALID_ARGUMENT,
-                       "replica id is not valid"});
+        if (!decode_pb_replica_id(replica_info_pb.replica_id(), one.replica_id)) {
+            fill_base_rsp(response, Status{StatusCode::INVALID_ARGUMENT, "replica id is not valid"});
             return grpc::Status::OK;
         }
         one.role = role;
@@ -167,9 +158,7 @@ grpc::Status SdmServiceImpl::Heartbeat(grpc::ServerContext* context, const rpc::
         for (const ExpectedReplica& expect : result.expects) {
             auto* expect_pb = response->add_expects();
             if (!encode_pb_expected_replica(expect, *expect_pb)) {
-                fill_base_rsp(response,
-                              Status{StatusCode::ERROR,
-                                     "expected replica is not valid"});
+                fill_base_rsp(response, Status{StatusCode::ERROR, "expected replica is not valid"});
                 return grpc::Status::OK;
             }
         }
@@ -213,11 +202,9 @@ grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context, const rpc::G
         response->set_table_id(route.shard_id.table_id);
         response->set_shard_id(route.shard_id.shard_index);
         for (const auto& replica : route.replicas) {
-            pb::RaftRole role_pb = pb::RaftRole::RAFT_ROLE_UNSPECIFIED;
+            pb::RaftRole role_pb;
             if (!encode_pb_raft_role(replica.role, role_pb)) {
-                fill_base_rsp(response,
-                              Status{StatusCode::ERROR,
-                                     "route replica role is not valid"});
+                fill_base_rsp(response, Status{StatusCode::ERROR, "route replica role is not valid"});
                 return grpc::Status::OK;
             }
             auto* route_replica = response->add_replicas();

@@ -9,15 +9,14 @@
 #include "common/define.h"
 #include "common/proto/proto.h"
 #include "common/status.h"
-#include "meta/model/meta_types.h"
+#include "meta/model/param.h"
+#include "meta/model/model.h"
 #include "meta/proto/table_state_proto.h"
-#include "meta/model/ddl_params.h"
 #include "meta/service/ddl_service.h"
 
 namespace adviskv::meta {
 
-MetaServiceImpl::MetaServiceImpl(DdlService* ddl_service) : ddl_service_(ddl_service) {
-}
+MetaServiceImpl::MetaServiceImpl(DdlService* ddl_service) : ddl_service_(ddl_service) {}
 
 grpc::Status MetaServiceImpl::CreateDB(grpc::ServerContext* context, const rpc::CreateDBRequest* request,
                                        rpc::CreateDBResponse* response) {
@@ -69,11 +68,9 @@ grpc::Status MetaServiceImpl::CreateTable(grpc::ServerContext* context, const rp
     if (status.fail()) {
         return grpc::Status::OK;
     }
-    pb::MetaTableState table_state_pb =
-        pb::MetaTableState::META_TABLE_STATE_UNSPECIFIED;
+    pb::MetaTableState table_state_pb;
     if (!encode_pb_meta_table_state(table_meta.state, table_state_pb)) {
-        fill_base_rsp(response,
-                      Status{StatusCode::ERROR, "table_state is not valid"});
+        fill_base_rsp(response, Status{StatusCode::ERROR, "table_state is not valid"});
         return grpc::Status::OK;
     }
     response->set_table_id(table_meta.table_id);
@@ -95,11 +92,9 @@ grpc::Status MetaServiceImpl::DropTable(grpc::ServerContext* context, const rpc:
     if (status.fail()) {
         return grpc::Status::OK;
     }
-    pb::MetaTableState table_state_pb =
-        pb::MetaTableState::META_TABLE_STATE_UNSPECIFIED;
+    pb::MetaTableState table_state_pb;
     if (!encode_pb_meta_table_state(table_meta.state, table_state_pb)) {
-        fill_base_rsp(response,
-                      Status{StatusCode::ERROR, "table_state is not valid"});
+        fill_base_rsp(response, Status{StatusCode::ERROR, "table_state is not valid"});
         return grpc::Status::OK;
     }
     response->set_table_id(table_meta.table_id);
@@ -123,11 +118,9 @@ grpc::Status MetaServiceImpl::AlterTableReplicaCount(grpc::ServerContext* contex
     if (status.fail()) {
         return grpc::Status::OK;
     }
-    pb::MetaTableState table_state_pb =
-        pb::MetaTableState::META_TABLE_STATE_UNSPECIFIED;
+    pb::MetaTableState table_state_pb;
     if (!encode_pb_meta_table_state(table_meta.state, table_state_pb)) {
-        fill_base_rsp(response,
-                      Status{StatusCode::ERROR, "table_state is not valid"});
+        fill_base_rsp(response, Status{StatusCode::ERROR, "table_state is not valid"});
         return grpc::Status::OK;
     }
     response->set_table_id(table_meta.table_id);
@@ -152,17 +145,14 @@ grpc::Status MetaServiceImpl::GetTable(grpc::ServerContext* context, const rpc::
     if (status.fail()) {
         return grpc::Status::OK;
     }
-    pb::MetaTableState table_state_pb =
-        pb::MetaTableState::META_TABLE_STATE_UNSPECIFIED;
-    pb::EngineType engine_type_pb = pb::ENGINE_TYPE_UNSPECIFIED;
+    pb::MetaTableState table_state_pb;
+    pb::EngineType engine_type_pb;
     if (!encode_pb_meta_table_state(table_meta.state, table_state_pb)) {
-        fill_base_rsp(response,
-                      Status{StatusCode::ERROR, "table_state is not valid"});
+        fill_base_rsp(response, Status{StatusCode::ERROR, "table_state is not valid"});
         return grpc::Status::OK;
     }
     if (!encode_pb_engine_type(table_meta.engine_type, engine_type_pb)) {
-        fill_base_rsp(response,
-                      Status{StatusCode::ERROR, "engine_type is not valid"});
+        fill_base_rsp(response, Status{StatusCode::ERROR, "engine_type is not valid"});
         return grpc::Status::OK;
     }
     response->set_db_id(table_meta.db_id);

@@ -10,7 +10,7 @@
 #include "common/model/type.h"
 #include "common/status.h"
 #include "sdm/store/sdm_store.h"
-#include "sdm/sdm_store_test_helper.h"
+#include "sdm/store/sdm_store_test_helper.h"
 #include "sdm/selector/node_selector/node_selector.h"
 #include "sdm/service/node_service.h"
 #include "sdm/service/replica_group_service.h"

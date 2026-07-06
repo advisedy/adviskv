@@ -5,7 +5,7 @@
 
 #include "common/model/type.h"
 #include "storage/engine/kv_engine.h"
-#include "storage/model/param.h"
+#include "storage/model/model.h"
 #include "storage/raft/state_machine/state_machine.h"
 namespace adviskv::storage {
 

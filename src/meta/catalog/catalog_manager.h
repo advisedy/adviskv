@@ -12,8 +12,8 @@
 #include "common/id_allocator.h"
 #include "common/status.h"
 #include "common/model/type.h"
-#include "meta/model/meta_types.h"
-#include "meta/model/ddl_params.h"
+#include "meta/model/model.h"
+#include "meta/model/param.h"
 // #include "meta/persist/i_meta_persist_engine.h"
 
 namespace adviskv::meta {

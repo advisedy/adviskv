@@ -6,7 +6,7 @@
 
 #include "common/log.h"
 #include "common/metrics/metrics.h"
-#include "storage/model/param.h"
+#include "storage/model/model.h"
 #include "storage/raft/raft_log.h"
 
 namespace adviskv::storage {

@@ -7,7 +7,7 @@
 
 #include "common/status.h"
 #include "meta/catalog/catalog_manager.h"
-#include "meta/model/meta_types.h"
+#include "meta/model/model.h"
 
 namespace adviskv::meta {
 namespace {

@@ -20,7 +20,6 @@ inline bool decode_pb_storage_replica_status(pb::StorageReplicaStatus in,
         case pb::StorageReplicaStatus::STORAGE_REPLICA_STATUS_FAULTED:
             out = StorageReplicaStatus::FAULTED;
             return true;
-        case pb::StorageReplicaStatus::STORAGE_REPLICA_STATUS_UNSPECIFIED:
         default:
             return false;
     }

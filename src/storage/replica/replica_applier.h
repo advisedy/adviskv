@@ -1,7 +1,7 @@
 #pragma once
 
 #include "common/status.h"
-#include "storage/model/param.h"
+#include "storage/model/model.h"
 #include "storage/raft/core/raft_core.h"
 #include "storage/raft/state_machine/state_machine.h"
 #include "storage/replica/replica.h"

@@ -8,7 +8,7 @@
 #include "common/status.h"
 #include "common/thread_pool.h"
 #include "common/model/type.h"
-#include "storage/model/param.h"
+#include "storage/model/model.h"
 #include "storage/raft/raft_sender.h"
 #include "storage/replica/replica_loop.h"
 

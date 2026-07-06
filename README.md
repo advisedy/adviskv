@@ -1,4 +1,3 @@
-# AdvisKV
 
 <p align="center">
   <img src="docs/assets/adviskv.jpeg" alt="AdvisKV banner" width="960" />

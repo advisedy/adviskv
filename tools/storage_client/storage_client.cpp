@@ -41,7 +41,7 @@ Status StorageClient::create_replica(const CreateReplicaParam& param) {
 
     rpc::CreateReplicaRequest request;
     encode_pb_replica_id(param.replica_id, *request.mutable_replica_id());
-    pb::EngineType engine_type_pb = pb::ENGINE_TYPE_UNSPECIFIED;
+    pb::EngineType engine_type_pb;
     RETURN_IF_INVALID_CONDITION(
         encode_pb_engine_type(param.engine_type, engine_type_pb),
         "engine_type is not valid")

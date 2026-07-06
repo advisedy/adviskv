@@ -2,7 +2,7 @@
 
 #include "common/status.h"
 #include "meta/catalog/catalog_manager.h"
-#include "meta/model/ddl_params.h"
+#include "meta/model/param.h"
 #include "meta/service/sdm_client.h"
 
 namespace adviskv::meta {

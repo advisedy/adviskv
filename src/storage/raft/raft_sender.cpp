@@ -4,7 +4,7 @@
 #include "common/log.h"
 #include "common/metrics/metrics.h"
 #include "common/status.h"
-#include "storage/model/param.h"
+#include "storage/model/model.h"
 #include "storage/raft/grpc_raft_rpc_transport.h"
 
 namespace adviskv::storage {

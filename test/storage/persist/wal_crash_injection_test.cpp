@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <string>
 
-#include "storage/model/param.h"
+#include "storage/model/model.h"
 #include "storage/persist/persist_engine.h"
 #include "test/test_env.h"
 

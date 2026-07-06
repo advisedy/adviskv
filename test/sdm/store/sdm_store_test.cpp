@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "sdm/sdm_store_test_helper.h"
+#include "sdm/store/sdm_store_test_helper.h"
 #include "test_env.h"
 
 namespace fs = std::filesystem;

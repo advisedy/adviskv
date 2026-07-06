@@ -73,7 +73,7 @@ Status DirectMetaClient::create_table(const std::string& db_name, const std::str
     request.set_shard_count(shard_count);
     request.set_replica_count(replica_count);
     request.set_resource_pool(resource);
-    pb::EngineType engine_type_pb = pb::ENGINE_TYPE_UNSPECIFIED;
+    pb::EngineType engine_type_pb;
     RETURN_IF_INVALID_CONDITION(encode_pb_engine_type(engine_type, engine_type_pb), "engine_type is not valid")
     request.set_engine_type(engine_type_pb);
 

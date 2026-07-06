@@ -9,7 +9,7 @@
 #include "common/model/type.h"
 #include "common/proto/proto.h"
 #include "common/status.h"
-#include "meta/model/meta_types.h"
+#include "meta/model/model.h"
 #include "sdm.grpc.pb.h"
 
 namespace adviskv::meta {

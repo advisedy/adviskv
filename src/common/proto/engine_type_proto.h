@@ -13,7 +13,6 @@ inline bool decode_pb_engine_type(pb::EngineType in, EngineType& out) {
         case pb::ENGINE_TYPE_ROCKSDB:
             out = EngineType::ROCKSDB;
             return true;
-        case pb::ENGINE_TYPE_UNSPECIFIED:
         default:
             return false;
     }

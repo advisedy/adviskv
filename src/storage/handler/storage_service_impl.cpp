@@ -347,9 +347,8 @@ grpc::Status StorageServiceImpl::GetReplicaInfo(
 
     response->set_exists(true);
     auto* info = response->mutable_replica();
-    pb::RaftRole role_pb = pb::RaftRole::RAFT_ROLE_UNSPECIFIED;
-    pb::StorageReplicaStatus status_pb =
-        pb::StorageReplicaStatus::STORAGE_REPLICA_STATUS_UNSPECIFIED;
+    pb::RaftRole role_pb;
+    pb::StorageReplicaStatus status_pb;
     if (Status encode_status =
             encode_raft_role_or_error(replica->get_role(), role_pb);
         encode_status.fail()) {
@@ -558,9 +557,8 @@ grpc::Status StorageServiceImpl::TestGetReplicaState(
     }
     fill_base_rsp(response, status);
     response->set_exists(true);
-    pb::RaftRole role_pb = pb::RaftRole::RAFT_ROLE_UNSPECIFIED;
-    pb::StorageReplicaStatus status_pb =
-        pb::StorageReplicaStatus::STORAGE_REPLICA_STATUS_UNSPECIFIED;
+    pb::RaftRole role_pb;
+    pb::StorageReplicaStatus status_pb;
     if (Status encode_status =
             encode_raft_role_or_error(replica->get_role(), role_pb);
         encode_status.fail()) {

@@ -16,7 +16,6 @@ inline bool decode_pb_raft_role(pb::RaftRole in, ReplicaRole& out) {
         case pb::RaftRole::RAFT_ROLE_CANDIDATE:
             out = ReplicaRole::CANDIDATE;
             return true;
-        case pb::RaftRole::RAFT_ROLE_UNSPECIFIED:
         default:
             return false;
     }

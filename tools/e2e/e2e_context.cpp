@@ -8,7 +8,7 @@
 #include <utility>
 
 #include "e2e_assert.h"
-#include "meta/model/meta_types.h"
+#include "meta/model/model.h"
 #include "sdk/model.h"
 
 namespace adviskv::e2e {

@@ -287,7 +287,7 @@ protected:
         sdm_rpc::ExpectedReplica expected;
         expected.set_type(type);
         encode_pb_replica_id(replica_id, *expected.mutable_replica_id());
-        pb::EngineType engine_type_pb = pb::ENGINE_TYPE_UNSPECIFIED;
+        pb::EngineType engine_type_pb;
         EXPECT_TRUE(encode_pb_engine_type(EngineType::MAP, engine_type_pb));
         expected.set_engine_type(engine_type_pb);
         encode_pb_peer_member(PeerMember{"node-1", replica_id, endpoint}, *expected.add_initial_members());

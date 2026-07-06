@@ -5,9 +5,9 @@
 #include <grpcpp/support/status.h>
 
 #include "common/define.h"
+#include "common/model/type.h"
 #include "common/proto/proto.h"
 #include "common/status.h"
-#include "common/model/type.h"
 #include "sdm.pb.h"
 
 namespace adviskv::meta {
@@ -22,10 +22,9 @@ Status SdmClient::call_place_table(const TableMeta& table_meta) {
     request.set_replica_count(table_meta.replica_count);
     request.set_resource_pool(table_meta.resource_pool);
     request.set_operation_id(table_meta.operation_id);
-    pb::EngineType engine_type_pb = pb::ENGINE_TYPE_UNSPECIFIED;
-    RETURN_IF_INVALID_CONDITION(
-        encode_pb_engine_type(table_meta.engine_type, engine_type_pb),
-        "table engine_type is not valid")
+    pb::EngineType engine_type_pb;
+    RETURN_IF_INVALID_CONDITION(encode_pb_engine_type(table_meta.engine_type, engine_type_pb),
+                                "table engine_type is not valid")
     request.set_engine_type(engine_type_pb);
     sdm_rpc::PlaceTableResponse response;
     grpc::ClientContext context;
@@ -58,8 +57,7 @@ Status SdmClient::get_table_status(const TableMeta& table_meta, SdmTableStatus* 
 
     RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
 
-    if (!table_status)
-        return Status::OK();
+    if (!table_status) return Status::OK();
 
     table_status->table_id = response.table_id();
     RETURN_IF_INVALID_CONDITION(decode_pb_sdm_table_desired(response.desired(), table_status->desired),

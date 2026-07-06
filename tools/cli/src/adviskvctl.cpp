@@ -18,7 +18,7 @@
 #include "common/path_util.h"
 #include "common/stable_hash.h"
 #include "direct_meta_client.h"
-#include "meta/model/meta_types.h"
+#include "meta/model/model.h"
 #include "sdk/client.h"
 #include "sdk/sdm_route_client.h"
 namespace {

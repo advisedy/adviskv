@@ -274,9 +274,8 @@ sdm_rpc::HeartbeatRequest NodeAgent::make_heartbeat_request() const {
         }
         ReplicaID replica_id = replica->get_replica_id();
         ReplicaRole role = replica->get_role();
-        pb::RaftRole role_pb = pb::RaftRole::RAFT_ROLE_UNSPECIFIED;
-        pb::StorageReplicaStatus status_pb =
-            pb::StorageReplicaStatus::STORAGE_REPLICA_STATUS_UNSPECIFIED;
+        pb::RaftRole role_pb;
+        pb::StorageReplicaStatus status_pb;
         pb::RaftMemberType member_type_pb =
             pb::RaftMemberType::RAFT_MEMBER_TYPE_NON_MEMBER;
         if (!encode_pb_raft_role(role, role_pb)) {

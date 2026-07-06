@@ -15,7 +15,6 @@ inline bool decode_pb_sdm_table_desired(pb::SdmTableDesired in,
         case pb::SdmTableDesired::SDM_TABLE_DESIRED_ABSENT:
             out = SdmTableDesired::ABSENT;
             return true;
-        case pb::SdmTableDesired::SDM_TABLE_DESIRED_UNSPECIFIED:
         default:
             return false;
     }
@@ -56,7 +55,6 @@ inline bool decode_pb_sdm_table_phase(pb::SdmTablePhase in,
         case pb::SdmTablePhase::SDM_TABLE_PHASE_RESIZING:
             out = SdmTablePhase::RESIZING;
             return true;
-        case pb::SdmTablePhase::SDM_TABLE_PHASE_UNSPECIFIED:
         default:
             return false;
     }
