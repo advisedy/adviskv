@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-#include "common/type.h"
+#include "common/model/type.h"
 
 namespace adviskv {
 

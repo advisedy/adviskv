@@ -10,13 +10,13 @@
 #include <fmt/format.h>
 
 #include "common/define.h"
-#include "common/model/raft_member.h"
-#include "common/model/raft_member_type.h"
+#include "common/model/type.h"
 #include "common/optional.h"
 #include "common/status.h"
-#include "common/type.h"
 
 namespace adviskv::storage {
+
+using ReplicaStatus = ::adviskv::StorageReplicaStatus;
 
 using LogIndex = int64_t;
 
@@ -54,9 +54,7 @@ struct ProposeParam {
         return ProposeParam{WriteProposal{op, std::move(key), std::move(value)}};
     }
 
-    static ProposeParam noop() {
-        return ProposeParam{NoopProposal{}};
-    }
+    static ProposeParam noop() { return ProposeParam{NoopProposal{}}; }
 
     static ProposeParam add_learner(PeerMember member) {
         return ProposeParam{ConfigChangeProposal{WriteOpType::ADD_LEARNER, std::move(member), ReplicaID{}}};
@@ -81,10 +79,8 @@ struct RaftMeta {
     }
 
     bool operator==(const RaftMeta& other) const {
-        if (!(current_term == other.current_term))
-            return false;
-        if (!(voted_for == other.voted_for))
-            return false;
+        if (!(current_term == other.current_term)) return false;
+        if (!(voted_for == other.voted_for)) return false;
         return true;
     }
     DEFINE_OPERATOR_NOT_EQUAL(RaftMeta)
@@ -101,8 +97,7 @@ struct LogEntry {
 
     LogEntry() = default;
     LogEntry(Term term, LogIndex index, WriteOpType op_type, Key key, Value value)
-            : term(term), index(index), op_type(op_type), key(std::move(key)), value(std::move(value)) {
-    }
+            : term(term), index(index), op_type(op_type), key(std::move(key)), value(std::move(value)) {}
 
     bool operator==(const LogEntry& other) const {
         return term == other.term and index == other.index and op_type == other.op_type and key == other.key and
@@ -124,23 +119,17 @@ struct PutParam {
     const Key& key;
     const Value& value;
 
-    Status validate() const {
-        return Status::OK();
-    }
+    Status validate() const { return Status::OK(); }
 };
 
 struct GetParam {
     const Key& key;
-    Status validate() const {
-        return Status::OK();
-    }
+    Status validate() const { return Status::OK(); }
 };
 
 struct DelParam {
     const Key& key;
-    Status validate() const {
-        return Status::OK();
-    }
+    Status validate() const { return Status::OK(); }
 };
 
 struct ReplicaRuntimeOptions {
@@ -162,16 +151,11 @@ struct ReplicaInitParam {
     ReplicaRuntimeOptions runtime;
 
     bool operator==(const ReplicaInitParam& other) const {
-        if (!(replica_id == other.replica_id))
-            return false;
-        if (!(engine_type == other.engine_type))
-            return false;
-        if (!(local_endpoint == other.local_endpoint))
-            return false;
-        if (!(members == other.members))
-            return false;
-        if (!(runtime == other.runtime))
-            return false;
+        if (!(replica_id == other.replica_id)) return false;
+        if (!(engine_type == other.engine_type)) return false;
+        if (!(local_endpoint == other.local_endpoint)) return false;
+        if (!(members == other.members)) return false;
+        if (!(runtime == other.runtime)) return false;
         return true;
     }
 
@@ -287,8 +271,7 @@ struct RaftEffects {
         if (!entries_to_append.empty()) {
             result += ", append=[";
             for (size_t i = 0; i < entries_to_append.size(); i++) {
-                if (i > 0)
-                    result += ", ";
+                if (i > 0) result += ", ";
                 result += entries_to_append[i].to_string();
             }
             result += "]";
@@ -297,8 +280,7 @@ struct RaftEffects {
         if (entries_to_rewrite.has_value() && !entries_to_rewrite->empty()) {
             result += ", rewrite=[";
             for (size_t i = 0; i < entries_to_rewrite->size(); i++) {
-                if (i > 0)
-                    result += ", ";
+                if (i > 0) result += ", ";
                 result += (*entries_to_rewrite)[i].to_string();
             }
             result += "]";
@@ -307,8 +289,7 @@ struct RaftEffects {
         if (!messages.empty()) {
             result += ", messages=[";
             for (size_t i = 0; i < messages.size(); i++) {
-                if (i > 0)
-                    result += ", ";
+                if (i > 0) result += ", ";
                 result += messages[i].to_string();
             }
             result += "]";

@@ -3,9 +3,8 @@
 #include <functional>
 #include <string_view>
 
-#include "common/common.h"
 #include "common/status.h"
-#include "common/type.h"
+#include "common/model/type.h"
 
 namespace adviskv::storage {
 

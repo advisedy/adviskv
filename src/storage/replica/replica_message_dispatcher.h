@@ -7,7 +7,7 @@
 #include "common/define.h"
 #include "common/status.h"
 #include "common/thread_pool.h"
-#include "common/type.h"
+#include "common/model/type.h"
 #include "storage/model/param.h"
 #include "storage/raft/raft_sender.h"
 #include "storage/replica/replica_loop.h"

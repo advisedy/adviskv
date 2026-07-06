@@ -3,8 +3,8 @@
 #include <memory>
 #include <string>
 
-#include "common/proto/rpc_alias.h"
-#include "common/type.h"
+#include "common/proto/proto.h"
+#include "common/model/type.h"
 #include "e2e_options.h"
 #include "meta.grpc.pb.h"
 #include "sdk/model.h"

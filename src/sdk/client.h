@@ -3,7 +3,7 @@
 #include <string>
 
 #include "common/status.h"
-#include "common/type.h"
+#include "common/model/type.h"
 #include "sdk/config.h"
 #include "sdk/model.h"
 #include "sdk/sdm_route_client.h"

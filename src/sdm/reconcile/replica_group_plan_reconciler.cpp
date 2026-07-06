@@ -3,9 +3,9 @@
 #include "common/id_allocator.h"
 #include "common/log.h"
 #include "common/status.h"
-#include "sdm/model/sdm_store.h"
-#include "sdm/model/sdm_store_txn.h"
-#include "sdm/model/table_status.h"
+#include "sdm/store/sdm_store.h"
+#include "sdm/store/sdm_store_txn.h"
+// #include "sdm/model/table_status.h"
 
 namespace adviskv::sdm {
 

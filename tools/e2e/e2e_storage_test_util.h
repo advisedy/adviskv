@@ -5,8 +5,7 @@
 #include <vector>
 
 #include "common.pb.h"
-#include "common/model/storage_replica_status.h"
-#include "common/type.h"
+#include "common/model/type.h"
 #include "e2e_options.h"
 #include "sdk/model.h"
 

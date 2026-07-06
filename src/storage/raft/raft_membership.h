@@ -2,9 +2,8 @@
 
 #include <vector>
 
-#include "common/model/raft_member_type.h"
+#include "common/model/type.h"
 #include "common/status.h"
-#include "common/type.h"
 #include "storage/model/param.h"
 
 namespace adviskv::storage {

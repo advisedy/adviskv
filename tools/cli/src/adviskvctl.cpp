@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -12,17 +14,17 @@
 #include <fmt/format.h>
 
 #include "common/confmgr.h"
-#include "common/model/replica_role.h"
+#include "common/model/type.h"
 #include "common/path_util.h"
 #include "common/stable_hash.h"
 #include "direct_meta_client.h"
-#include "meta/catalog/meta_types.h"
+#include "meta/model/meta_types.h"
 #include "sdk/client.h"
 #include "sdk/sdm_route_client.h"
-#include "common/type.h"
 namespace {
 
 using adviskv::DatabaseID;
+using adviskv::EngineType;
 using adviskv::ShardIndex;
 using adviskv::Status;
 using adviskv::TableID;
@@ -47,7 +49,7 @@ void print_help() {
             "DDL commands:\n"
             "  create_db <db> <zone>\n"
             "  drop_db <db>\n"
-            "  create_table <db> <table> <shards> <replicas> <resource_pool>\n"
+            "  create_table <db> <table> <shards> <replicas> <resource_pool> [engine_type]\n"
             "  alter_table <db> <table> <replicas>\n"
             "  get_table <db> <table>\n"
             "  wait_table <db> <table> [timeout_ms]\n"
@@ -97,6 +99,38 @@ bool parse_i32(const std::string& value, int32_t* out) {
     } catch (...) {
         return false;
     }
+}
+
+bool parse_engine_type(const std::string& value, EngineType* out) {
+    if (out == nullptr)
+        return false;
+
+    std::string normalized = value;
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+
+    if (normalized == "map") {
+        *out = EngineType::MAP;
+        return true;
+    }
+    if (normalized == "rocksdb") {
+        *out = EngineType::ROCKSDB;
+        return true;
+    }
+
+    int32_t parsed = 0;
+    if (parse_i32(value, &parsed)) {
+        EngineType engine_type = static_cast<EngineType>(parsed);
+        switch (engine_type) {
+            case EngineType::MAP:
+            case EngineType::ROCKSDB:
+                *out = engine_type;
+                return true;
+            default:
+                return false;
+        }
+    }
+    return false;
 }
 
 void print_status(const Status& status) {
@@ -273,10 +307,10 @@ private:
     }
 
     void create_table(const std::vector<std::string>& tokens) const {
-        if (tokens.size() != 6) {
+        if (tokens.size() != 6 && tokens.size() != 7) {
             fmt::print(
                     "usage: create_table <db> <table> <shards> <replicas> "
-                    "<resource_pool>\n");
+                    "<resource_pool> [engine_type]\n");
             return;
         }
         int32_t shards = 0;
@@ -285,10 +319,16 @@ private:
             fmt::print("shards and replicas should be integers\n");
             return;
         }
+        EngineType engine_type = EngineType::MAP;
+        if (tokens.size() == 7 && !parse_engine_type(tokens[6], &engine_type)) {
+            fmt::print("engine_type should be map, rocksdb, 0, or 1\n");
+            return;
+        }
         TableID table_id = -1;
-        Status status = meta_client_.create_table(tokens[1], tokens[2], shards, replicas, &table_id, tokens[5]);
+        Status status =
+                meta_client_.create_table(tokens[1], tokens[2], shards, replicas, &table_id, tokens[5], engine_type);
         if (status.ok()) {
-            fmt::print("OK table_id={}\n", table_id);
+            fmt::print("OK table_id={} engine_type={}\n", table_id, static_cast<int>(engine_type));
         } else {
             print_status(status);
         }
@@ -325,9 +365,10 @@ private:
     void print_table(const TableInfo& table_info) const {
         fmt::print(
                 "OK db_id={} table_id={} shard_count={} replica_count={} "
-                "table_state={} last_error_msg={}\n",
+                "engine_type={} table_state={} last_error_msg={}\n",
                 table_info.db_id, table_info.table_id, table_info.shard_count, table_info.replica_count,
-                table_state_to_string(table_info.table_state), table_info.last_error_msg);
+                static_cast<int>(table_info.engine_type), table_state_to_string(table_info.table_state),
+                table_info.last_error_msg);
     }
 
     void get_table(const std::vector<std::string>& tokens) const {
@@ -491,8 +532,8 @@ private:
             fmt::print("invalid demo action\n");
             return;
         }
-        std::string command =
-                "cd " + adviskv::project_root_dir().string() + " && python3 scripts/internal/local_cluster.py " + action;
+        std::string command = "cd " + adviskv::project_root_dir().string() +
+                              " && python3 scripts/internal/local_cluster.py " + action;
         if (tokens.size() == 3) {
             if (!valid_demo_token(tokens[2])) {
                 fmt::print("invalid service name\n");

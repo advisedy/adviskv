@@ -8,8 +8,8 @@
 #include "common/func.h"
 #include "common/log.h"
 #include "common/status.h"
-#include "sdm/model/sdm_store.h"
-#include "sdm/model/sdm_store_txn.h"
+#include "sdm/store/sdm_store.h"
+#include "sdm/store/sdm_store_txn.h"
 
 namespace adviskv::sdm {
 

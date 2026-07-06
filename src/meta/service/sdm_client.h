@@ -6,10 +6,10 @@
 #include <memory>
 #include <string>
 
-#include "common/model/sdm_table_status.h"
-#include "common/proto/rpc_alias.h"
+#include "common/model/type.h"
+#include "common/proto/proto.h"
 #include "common/status.h"
-#include "meta/catalog/meta_types.h"
+#include "meta/model/meta_types.h"
 #include "sdm.grpc.pb.h"
 
 namespace adviskv::meta {

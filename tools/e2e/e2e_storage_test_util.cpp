@@ -8,8 +8,7 @@
 #include <thread>
 
 #include "common/define.h"
-#include "common/proto/raft_role_proto.h"
-#include "common/proto/storage_replica_status_proto.h"
+#include "common/proto/proto.h"
 #include "e2e_assert.h"
 #include "e2e_route_util.h"
 #include "storage.grpc.pb.h"

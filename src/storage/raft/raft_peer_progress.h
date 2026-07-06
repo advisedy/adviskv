@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "common/type.h"
+#include "common/model/type.h"
 #include "storage/model/param.h"
 #include "storage/raft/raft_membership.h"
 

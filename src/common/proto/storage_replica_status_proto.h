@@ -46,12 +46,4 @@ inline bool encode_pb_storage_replica_status(StorageReplicaStatus in,
     }
 }
 
-inline pb::StorageReplicaStatus to_pb_storage_replica_status(
-    StorageReplicaStatus status) {
-    pb::StorageReplicaStatus out =
-        pb::StorageReplicaStatus::STORAGE_REPLICA_STATUS_UNSPECIFIED;
-    (void)encode_pb_storage_replica_status(status, out);
-    return out;
-}
-
 }  // namespace adviskv

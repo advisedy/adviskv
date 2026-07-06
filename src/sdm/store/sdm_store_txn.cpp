@@ -1,6 +1,6 @@
-#include "sdm/model/sdm_store_txn.h"
+#include "sdm/store/sdm_store_txn.h"
 
-#include "sdm/model/sdm_store.h"
+#include "sdm/store/sdm_store.h"
 
 namespace adviskv::sdm {
 

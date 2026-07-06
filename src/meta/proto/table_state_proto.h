@@ -2,7 +2,7 @@
 
 #include "common.pb.h"
 #include "common/define.h"
-#include "meta/catalog/meta_types.h"
+#include "meta/model/meta_types.h"
 
 namespace adviskv::meta {
 
@@ -55,12 +55,6 @@ inline bool encode_pb_meta_table_state(TableState in, pb::MetaTableState& out) {
         default:
             return false;
     }
-}
-
-inline pb::MetaTableState to_pb_meta_table_state(TableState state) {
-    pb::MetaTableState out = pb::MetaTableState::META_TABLE_STATE_UNSPECIFIED;
-    IGNORE_RESULT(encode_pb_meta_table_state(state, out));
-    return out;
 }
 
 }  // namespace adviskv::meta

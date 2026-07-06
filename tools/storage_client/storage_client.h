@@ -6,10 +6,9 @@
 #include <string>
 #include <unordered_map>
 
-#include "common/model/storage_replica_status.h"
+#include "common/model/type.h"
 #include "common/status.h"
-#include "common/type.h"
-#include "sdm/model/service_param.h"
+#include "sdm/model/param.h"
 #include "storage.grpc.pb.h"
 
 namespace adviskv::tools {

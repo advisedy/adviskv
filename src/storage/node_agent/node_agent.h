@@ -10,11 +10,10 @@
 
 #include "common/background_task.h"
 #include "common/define.h"
-#include "common/model/expected_replica.h"
+#include "common/model/type.h"
 #include "common/optional.h"
-#include "common/proto/rpc_alias.h"
+#include "common/proto/proto.h"
 #include "common/status.h"
-#include "common/type.h"
 #include "sdm.grpc.pb.h"
 #include "storage/replica/replica.h"
 

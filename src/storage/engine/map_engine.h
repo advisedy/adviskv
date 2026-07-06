@@ -4,7 +4,7 @@
 #include <map>
 #include <shared_mutex>
 
-#include "common/type.h"
+#include "common/model/type.h"
 #include "storage/engine/kv_engine.h"
 
 namespace adviskv::storage {

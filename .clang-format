@@ -16,8 +16,8 @@ ConstructorInitializerIndentWidth: 8
 ConstructorInitializerAllOnOneLineOrOnePerLine: true
 # short block
 AllowShortBlocksOnASingleLine: false
-AllowShortFunctionsOnASingleLine: false
-AllowShortIfStatementsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: true
+AllowShortIfStatementsOnASingleLine: true
 AllowShortLoopsOnASingleLine: false
 Cpp11BracedListStyle: true
 # other

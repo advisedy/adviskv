@@ -10,7 +10,7 @@
 #include <utility>
 
 #include "common/log.h"
-#include "common/type.h"
+#include "common/model/type.h"
 #include "e2e_assert.h"
 #include "sdk/config.h"
 #include "sdk/log.h"

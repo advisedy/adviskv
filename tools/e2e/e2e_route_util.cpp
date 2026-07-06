@@ -5,7 +5,7 @@
 #include <chrono>
 #include <utility>
 
-#include "common/proto/raft_role_proto.h"
+#include "common/proto/proto.h"
 #include "e2e_assert.h"
 
 namespace adviskv::e2e {

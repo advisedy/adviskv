@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "sdm/model/i_sdm_metastore.h"
+#include "sdm/store/memory_metastore.h"
 
 namespace adviskv::sdm {
 namespace {

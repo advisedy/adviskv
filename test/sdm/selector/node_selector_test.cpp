@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "common/status.h"
-#include "sdm/model/sdm_store.h"
+#include "sdm/store/sdm_store.h"
 #include "sdm/sdm_store_test_helper.h"
 
 namespace adviskv::sdm {

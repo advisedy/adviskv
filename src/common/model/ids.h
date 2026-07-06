@@ -1,44 +1,14 @@
 #pragma once
 
-#include <cstdint>
+#include <cstddef>
 #include <functional>
-#include <string>
-#include <string_view>
-#include <utility>
 
 #include <fmt/format.h>
 
 #include "common/define.h"
-#include "common/model/replica_role.h"
+#include "common/types.h"
 
 namespace adviskv {
-
-using int64 = int64_t;
-using int32 = int32_t;
-using int8 = int8_t;
-using uint64 = uint64_t;
-using uint32 = uint32_t;
-using uint8 = uint8_t;
-
-using Key = std::string;
-using Value = std::string;
-using KeyView = std::string_view;
-using ValueView = std::string_view;
-
-using KV = std::pair<Key, Value>;
-
-using DatabaseID = int32_t;
-using TableID = int32_t;
-using ShardIndex = int32_t;
-using ReplicaIndex = int32_t;
-using ReplicaSeq = int32_t;
-using NodeID = std::string;
-
-using Term = int64;
-
-using Milliseconds = std::chrono::milliseconds;
-using Microseconds = std::chrono::microseconds;
-using Seconds = std::chrono::seconds;
 
 struct ShardID {
     TableID table_id{-1};
@@ -51,6 +21,7 @@ struct ShardID {
     std::string to_string() const {
         return fmt::format("{}:{}", table_id, shard_index);
     }
+
     bool operator==(const ShardID& other) const {
         return table_id == other.table_id && shard_index == other.shard_index;
     }
@@ -103,50 +74,4 @@ struct ReplicaIDHash {
     }
 };
 
-enum class EngineType : int8 {
-    MAP = 0,
-    ROCKSDB = 1,
-};
-
-struct Endpoint {
-    std::string ip;
-    int32_t port{0};
-
-    Endpoint() = default;
-    Endpoint(std::string ip, int32_t port) : ip(std::move(ip)), port(port) {
-    }
-
-    std::string to_string() const {
-        return fmt::format("{}:{}", ip, port);
-    }
-
-    bool operator==(const Endpoint& other) const {
-        return ip == other.ip and port == other.port;
-    }
-
-    DEFINE_OPERATOR_NOT_EQUAL(Endpoint)
-};
-
-struct PeerMember {
-    NodeID node_id;
-    ReplicaID replica_id;
-    Endpoint endpoint;
-
-    bool operator==(const PeerMember& other) const {
-        if (node_id != other.node_id)
-            return false;
-        if (!(replica_id == other.replica_id))
-            return false;
-        if (!(endpoint == other.endpoint))
-            return false;
-        return true;
-    }
-
-    DEFINE_OPERATOR_NOT_EQUAL(PeerMember)
-
-    std::string to_string() const {
-        return fmt::format("node_id:{}, replica_id:{}, endpoint:{}", node_id, replica_id.to_string(),
-                           endpoint.to_string());
-    }
-};
 }  // namespace adviskv

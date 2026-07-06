@@ -7,11 +7,9 @@
 
 #include "common.pb.h"
 #include "common/define.h"
-#include "common/proto/replica_id_proto.h"
-#include "common/proto/raft_role_proto.h"
-#include "common/proto/storage_replica_status_proto.h"
+#include "common/proto/proto.h"
 #include "common/status.h"
-#include "sdm/model/store.h"
+#include "sdm/model/model.h"
 
 namespace adviskv::tools {
 
@@ -43,7 +41,11 @@ Status StorageClient::create_replica(const CreateReplicaParam& param) {
 
     rpc::CreateReplicaRequest request;
     encode_pb_replica_id(param.replica_id, *request.mutable_replica_id());
-    request.set_engine_type(static_cast<int32_t>(param.engine_type));
+    pb::EngineType engine_type_pb = pb::ENGINE_TYPE_UNSPECIFIED;
+    RETURN_IF_INVALID_CONDITION(
+        encode_pb_engine_type(param.engine_type, engine_type_pb),
+        "engine_type is not valid")
+    request.set_engine_type(engine_type_pb);
     for (const PeerMember& member : param.members) {
         encode_pb_peer_member(member, *request.add_initial_members());
     }

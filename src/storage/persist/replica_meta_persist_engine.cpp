@@ -53,6 +53,13 @@ class ReplicaMetaCodec {
         int32 engine_type{0};
         RETURN_IF_INVALID_READ(buf, engine_type)
         meta.init_param.engine_type = static_cast<EngineType>(engine_type);
+        switch (meta.init_param.engine_type) {
+            case EngineType::MAP:
+            case EngineType::ROCKSDB:
+                break;
+            default:
+                return Status::ERROR("invalid replica meta engine_type");
+        }
         RETURN_IF_INVALID_READ(buf, meta.init_param.local_endpoint.ip)
         RETURN_IF_INVALID_READ(buf, meta.init_param.local_endpoint.port)
 

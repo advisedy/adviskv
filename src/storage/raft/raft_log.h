@@ -4,7 +4,7 @@
 #include <optional>
 #include <vector>
 
-#include "common/type.h"
+#include "common/model/type.h"
 #include "storage/model/param.h"
 
 namespace adviskv::storage {

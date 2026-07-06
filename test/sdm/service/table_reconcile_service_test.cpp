@@ -1,7 +1,3 @@
-#include "sdm/service/replica_group_service.h"
-
-#include <gtest/gtest.h>
-
 #include <algorithm>
 #include <deque>
 #include <memory>
@@ -9,9 +5,11 @@
 #include <string>
 #include <vector>
 
-#include "common/model/storage_replica_status.h"
+#include <gtest/gtest.h>
+
+#include "common/model/type.h"
 #include "common/status.h"
-#include "sdm/model/sdm_store.h"
+#include "sdm/store/sdm_store.h"
 #include "sdm/sdm_store_test_helper.h"
 #include "sdm/selector/node_selector/node_selector.h"
 #include "sdm/service/node_service.h"
@@ -23,11 +21,11 @@ namespace adviskv::sdm {
 namespace {
 
 class FakeNodeSelector : public NodeSelector {
-   public:
-    explicit FakeNodeSelector(SdmStore* store) : default_selector(store) {}
+public:
+    explicit FakeNodeSelector(SdmStore* store) : default_selector(store) {
+    }
 
-    Status select_table_nodes(const PlaceNodesParam& param,
-                              TablePlacementResult& res) const override {
+    Status select_table_nodes(const PlaceNodesParam& param, TablePlacementResult& res) const override {
         if (!statuses.empty()) {
             Status status = statuses.front();
             statuses.pop_front();
@@ -42,10 +40,8 @@ class FakeNodeSelector : public NodeSelector {
 
 struct ServiceHarness {
     ServiceHarness(SdmStore* store, NodeSelector* selector)
-        : table(store),
-          node(store),
-          replica_group(store, selector),
-          route(store) {}
+            : table(store), node(store), replica_group(store, selector), route(store) {
+    }
 
     TableService table;
     NodeService node;
@@ -54,14 +50,12 @@ struct ServiceHarness {
 };
 
 Node make_node(const NodeID& id, int32_t port) {
-    return Node{id, NodeMeta{"pool-a", "dc-a"},
-                NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", port}, 1},
+    return Node{id, NodeMeta{"pool-a", "dc-a"}, NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", port}, 1},
                 NodeDerived{}};
 }
 
 PlaceTableParam make_place_table_param() {
-    return PlaceTableParam{11, 1001, "commerce", "orders",
-                           2,  1,    "pool-a",   "create-1001"};
+    return PlaceTableParam{11, 1001, "commerce", "orders", 2, 1, "pool-a", "create-1001"};
 }
 
 void put_default_nodes(SdmStore& store) {
@@ -90,9 +84,7 @@ Table get_table_or_die(SdmStore& store) {
 
 std::vector<Replica> list_replicas_or_die(SdmStore& store) {
     std::vector<Replica> replicas;
-    EXPECT_TRUE(
-        store_test::list_replicas_by_shard(store, ShardID{1001, 0}, replicas)
-            .ok());
+    EXPECT_TRUE(store_test::list_replicas_by_shard(store, ShardID{1001, 0}, replicas).ok());
     return replicas;
 }
 
@@ -101,12 +93,10 @@ void make_replicas_ready(SdmStore& store) {
     for (Replica& replica : replicas) {
         replica.state.phase = ReplicaPhase::READY;
         replica.state.observed_storage_status = StorageReplicaStatus::READY;
-        replica.state.observed_raft_role = replica.replica_id.replica_seq == 0
-                                               ? ReplicaRole::LEADER
-                                               : ReplicaRole::FOLLOWER;
+        replica.state.observed_raft_role =
+                replica.replica_id.replica_seq == 0 ? ReplicaRole::LEADER : ReplicaRole::FOLLOWER;
         replica.state.observed_member_type = RaftMemberType::VOTER;
-        replica.state.observed_endpoint =
-            Endpoint{"127.0.0.1", 18080 + replica.replica_id.replica_seq};
+        replica.state.observed_endpoint = Endpoint{"127.0.0.1", 18080 + replica.replica_id.replica_seq};
         replica.state.term = 1;
         ASSERT_TRUE(store_test::put_replica(store, replica).ok());
     }
@@ -131,8 +121,7 @@ void mark_table_absent(SdmStore& store) {
     ASSERT_TRUE(store_test::put_table(store, table).ok());
 }
 
-void expect_table_phase_and_msg(SdmStore& store, TablePhase phase,
-                                const std::string& msg) {
+void expect_table_phase_and_msg(SdmStore& store, TablePhase phase, const std::string& msg) {
     Table table = get_table_or_die(store);
     EXPECT_EQ(table.state.phase, phase);
     if (!msg.empty()) {
@@ -151,12 +140,9 @@ GetRouteParam make_get_route_param(const Key& key = "user-123") {
     return GetRouteParam{"commerce", "orders", key};
 }
 
-void report_replica_heartbeat(ServiceHarness& services, const NodeID& node_id,
-                              int32_t port, ReplicaIndex replica_index,
-                              ReplicaRole role, StorageReplicaStatus status,
-                              Term term,
-                              RaftMemberType member_type =
-                                  RaftMemberType::VOTER) {
+void report_replica_heartbeat(ServiceHarness& services, const NodeID& node_id, int32_t port, ReplicaIndex replica_index,
+                              ReplicaRole role, StorageReplicaStatus status, Term term,
+                              RaftMemberType member_type = RaftMemberType::VOTER) {
     HeartBeatParam param;
     param.node_id = node_id;
     param.ip = "127.0.0.1";
@@ -165,12 +151,12 @@ void report_replica_heartbeat(ServiceHarness& services, const NodeID& node_id,
     param.dc = "dc-a";
     param.last_heartbeat_ts = 1000 + replica_index + term;
     param.replica_list.push_back(HeartBeatReplicaInfo{
-        ReplicaID{1001, 0, replica_index},
-        role,
-        status,
-        term,
-        member_type,
-        {},
+            ReplicaID{1001, 0, replica_index},
+            role,
+            status,
+            term,
+            member_type,
+            {},
     });
     ASSERT_TRUE(services.node.heartbeat(param).ok());
 }
@@ -199,6 +185,28 @@ TEST(TableServiceReconcileTest, CreateTableMaterializesReplicasAndReachesReady) 
     EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::READY);
 }
 
+// 检测 replica 创建时继承 table spec 中的 engine_type。
+TEST(TableServiceReconcileTest, CreateTableMaterializesReplicaEngineType) {
+    SdmStore store{SdmMetaStoreType::MEMORY};
+    ASSERT_TRUE(store.init().ok());
+    put_default_nodes(store);
+
+    FakeNodeSelector selector(&store);
+    ServiceHarness services(&store, &selector);
+    PlaceTableParam param = make_place_table_param();
+    param.engine_type = EngineType::ROCKSDB;
+    ASSERT_TRUE(services.table.place_table(param).ok());
+
+    ASSERT_TRUE(services.table.reconcile_all().ok());
+    ASSERT_TRUE(services.replica_group.reconcile_all().ok());
+
+    std::vector<Replica> replicas = list_replicas_or_die(store);
+    ASSERT_EQ(replicas.size(), 2U);
+    for (const Replica& replica : replicas) {
+        EXPECT_EQ(replica.spec.engine_type, EngineType::ROCKSDB);
+    }
+}
+
 // 检测 scale-to-zero 建表可以收敛为 READY，但不会发布可写路由。
 TEST(TableServiceReconcileTest, ZeroReplicaTableReachesReadyWithoutRoute) {
     SdmStore store{SdmMetaStoreType::MEMORY};
@@ -222,20 +230,17 @@ TEST(TableServiceReconcileTest, ZeroReplicaTableReachesReadyWithoutRoute) {
     EXPECT_TRUE(list_replicas_or_die(store).empty());
 
     ReplicaGroupOr group;
-    ASSERT_TRUE(
-        store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
     ASSERT_FALSE(group.is_empty());
     EXPECT_EQ(group->mode, ReplicaGroupMode::BOOTSTRAP);
     EXPECT_EQ(group->target_replica_count, 0);
     EXPECT_TRUE(group->desired_members.empty());
 
     ShardRouteOr route;
-    ASSERT_TRUE(
-        store_test::get_shard_route(store, ShardID{1001, 0}, route).ok());
+    ASSERT_TRUE(store_test::get_shard_route(store, ShardID{1001, 0}, route).ok());
     EXPECT_TRUE(route.is_empty());
 
-    EXPECT_EQ(services.route.get_route(make_get_route_param(), nullptr).code(),
-              StatusCode::ROUTE_NOT_FOUND);
+    EXPECT_EQ(services.route.get_route(make_get_route_param(), nullptr).code(), StatusCode::ROUTE_NOT_FOUND);
 }
 
 // 检测 scale-to-zero 表可以后续扩容并恢复可写路由。
@@ -255,8 +260,8 @@ TEST(TableServiceReconcileTest, ZeroReplicaTableCanExpandAndPublishRoute) {
     ASSERT_TRUE(services.table.reconcile_all().ok());
     ASSERT_EQ(get_table_or_die(store).state.phase, TablePhase::READY);
 
-    Status alter_status = services.table.alter_table_replica_count(
-        AlterReplicaCountParam{1001, 2, "expand-zero-replica"});
+    Status alter_status =
+            services.table.alter_table_replica_count(AlterReplicaCountParam{1001, 2, "expand-zero-replica"});
     ASSERT_TRUE(alter_status.ok()) << alter_status.to_string();
     EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::RESIZING);
 
@@ -333,8 +338,7 @@ TEST(TableServiceReconcileTest, TableWaitsForReplicaGroupToMakeReplicasReady) {
     EXPECT_EQ(replicas[0].state.phase, ReplicaPhase::CREATING);
     EXPECT_EQ(replicas[1].state.phase, ReplicaPhase::CREATING);
     ReplicaGroupOr group;
-    ASSERT_TRUE(
-        store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
     ASSERT_FALSE(group.is_empty());
     EXPECT_EQ(group->mode, ReplicaGroupMode::BOOTSTRAP);
     expect_table_phase_and_msg(store, TablePhase::CREATING, "");
@@ -346,8 +350,7 @@ TEST(TableServiceReconcileTest, TableWaitsForReplicaGroupToMakeReplicasReady) {
     ASSERT_TRUE(services.replica_group.reconcile_all().ok());
     ASSERT_TRUE(services.route.reconcile_all().ok());
     ASSERT_TRUE(services.table.reconcile_all().ok());
-    ASSERT_TRUE(
-        store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
     ASSERT_FALSE(group.is_empty());
     EXPECT_EQ(group->mode, ReplicaGroupMode::RAFT_RECONFIG);
     EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::READY);
@@ -369,20 +372,19 @@ TEST(TableServiceReconcileTest, TableCanBecomeReadyWhileGroupIsBootstrapMode) {
     ASSERT_TRUE(services.table.reconcile_all().ok());
 
     ReplicaGroupOr group;
-    ASSERT_TRUE(
-        store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
     ASSERT_FALSE(group.is_empty());
     EXPECT_EQ(group->mode, ReplicaGroupMode::BOOTSTRAP);
     EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::READY);
 
     ASSERT_TRUE(services.replica_group.reconcile_all().ok());
-    ASSERT_TRUE(
-        store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
     ASSERT_FALSE(group.is_empty());
     EXPECT_EQ(group->mode, ReplicaGroupMode::RAFT_RECONFIG);
 }
 
-// 检测坏副本替换流程：LOST 副本触发补新副本 → 新副本 READY+NON_MEMBER → 心跳发 ADD_MEMBER → 变 VOTER → 心跳发 REMOVE_MEMBER 删坏副本。
+// 检测坏副本替换流程：LOST 副本触发补新副本 → 新副本 READY+NON_MEMBER → 心跳发 ADD_MEMBER → 变 VOTER → 心跳发
+// REMOVE_MEMBER 删坏副本。
 TEST(TableServiceReconcileTest, ReplicaGroupReplacesBadMemberAfterBackfill) {
     SdmStore store{SdmMetaStoreType::MEMORY};
     ASSERT_TRUE(store.init().ok());
@@ -405,8 +407,7 @@ TEST(TableServiceReconcileTest, ReplicaGroupReplacesBadMemberAfterBackfill) {
     ASSERT_TRUE(services.replica_group.reconcile_all().ok());
 
     ReplicaGroupOr group;
-    ASSERT_TRUE(
-        store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
     ASSERT_FALSE(group.is_empty());
     EXPECT_EQ(group->target_replica_count, 2);
     EXPECT_EQ(group->desired_members.size(), 3U);
@@ -423,13 +424,10 @@ TEST(TableServiceReconcileTest, ReplicaGroupReplacesBadMemberAfterBackfill) {
 
     ASSERT_TRUE(services.replica_group.reconcile_all().ok());
 
-    ASSERT_TRUE(
-        store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
     ASSERT_FALSE(group.is_empty());
     EXPECT_EQ(group->desired_members.size(), 3U);
-    EXPECT_NE(std::find(group->desired_members.begin(),
-                        group->desired_members.end(),
-                        bad_id),
+    EXPECT_NE(std::find(group->desired_members.begin(), group->desired_members.end(), bad_id),
               group->desired_members.end());
 
     ReplicaOr bad_replica;
@@ -439,16 +437,12 @@ TEST(TableServiceReconcileTest, ReplicaGroupReplacesBadMemberAfterBackfill) {
     EXPECT_EQ(bad_replica->state.phase, ReplicaPhase::LOST);
 
     ReplicaOr replacement_replica;
-    ASSERT_TRUE(
-        store_test::get_replica(store, replacement_id, replacement_replica)
-            .ok());
+    ASSERT_TRUE(store_test::get_replica(store, replacement_id, replacement_replica).ok());
     ASSERT_FALSE(replacement_replica.is_empty());
     replacement_replica->state.phase = ReplicaPhase::READY;
-    replacement_replica->state.observed_storage_status =
-        StorageReplicaStatus::READY;
+    replacement_replica->state.observed_storage_status = StorageReplicaStatus::READY;
     replacement_replica->state.observed_raft_role = ReplicaRole::FOLLOWER;
-    replacement_replica->state.observed_member_type =
-        RaftMemberType::NON_MEMBER;
+    replacement_replica->state.observed_member_type = RaftMemberType::NON_MEMBER;
     replacement_replica->state.term = 2;
     ASSERT_TRUE(store_test::put_replica(store, replacement_replica.value()).ok());
 
@@ -460,67 +454,50 @@ TEST(TableServiceReconcileTest, ReplicaGroupReplacesBadMemberAfterBackfill) {
     param.dc = "dc-a";
     param.last_heartbeat_ts = 3000;
     param.replica_list.push_back(HeartBeatReplicaInfo{
-        leader_id,
-        ReplicaRole::LEADER,
-        StorageReplicaStatus::READY,
-        1,
-        RaftMemberType::VOTER,
-        {},
+            leader_id,
+            ReplicaRole::LEADER,
+            StorageReplicaStatus::READY,
+            1,
+            RaftMemberType::VOTER,
+            {},
     });
 
     HeartBeatResult result;
-    ASSERT_TRUE(services.replica_group.build_heartbeat_result(param, result)
-                    .ok());
-    auto add_it = std::find_if(
-        result.expects.begin(), result.expects.end(),
-        [&](const ExpectedReplica& expect) {
-            return expect.type == ExpectedReplicaType::ADD_MEMBER &&
-                   expect.replica_id == replacement_id;
-        });
+    ASSERT_TRUE(services.replica_group.build_heartbeat_result(param, result).ok());
+    auto add_it = std::find_if(result.expects.begin(), result.expects.end(), [&](const ExpectedReplica& expect) {
+        return expect.type == ExpectedReplicaType::ADD_MEMBER && expect.replica_id == replacement_id;
+    });
     EXPECT_NE(add_it, result.expects.end());
-    auto remove_it = std::find_if(
-        result.expects.begin(), result.expects.end(),
-        [&](const ExpectedReplica& expect) {
-            return expect.type == ExpectedReplicaType::REMOVE_MEMBER &&
-                   expect.replica_id == bad_id;
-        });
+    auto remove_it = std::find_if(result.expects.begin(), result.expects.end(), [&](const ExpectedReplica& expect) {
+        return expect.type == ExpectedReplicaType::REMOVE_MEMBER && expect.replica_id == bad_id;
+    });
     EXPECT_EQ(remove_it, result.expects.end());
 
     replacement_replica->state.observed_member_type = RaftMemberType::VOTER;
     ASSERT_TRUE(store_test::put_replica(store, replacement_replica.value()).ok());
 
     result.expects.clear();
-    ASSERT_TRUE(services.replica_group.build_heartbeat_result(param, result)
-                    .ok());
-    remove_it = std::find_if(
-        result.expects.begin(), result.expects.end(),
-        [&](const ExpectedReplica& expect) {
-            return expect.type == ExpectedReplicaType::REMOVE_MEMBER &&
-                   expect.replica_id == bad_id;
-        });
+    ASSERT_TRUE(services.replica_group.build_heartbeat_result(param, result).ok());
+    remove_it = std::find_if(result.expects.begin(), result.expects.end(), [&](const ExpectedReplica& expect) {
+        return expect.type == ExpectedReplicaType::REMOVE_MEMBER && expect.replica_id == bad_id;
+    });
     EXPECT_NE(remove_it, result.expects.end());
 
     param.replica_list[0].full_membership = {
-        RaftMember{PeerMember{"node-a", leader_id, Endpoint{"127.0.0.1", 18080}},
-                            RaftMemberType::VOTER},
-        RaftMember{PeerMember{replacement_replica->spec.assign_node_id, replacement_id,
-                                       replacement_replica->state.observed_endpoint},
-                            RaftMemberType::VOTER},
+            RaftMember{PeerMember{"node-a", leader_id, Endpoint{"127.0.0.1", 18080}}, RaftMemberType::VOTER},
+            RaftMember{PeerMember{replacement_replica->spec.assign_node_id, replacement_id,
+                                  replacement_replica->state.observed_endpoint},
+                       RaftMemberType::VOTER},
     };
     ASSERT_TRUE(services.node.heartbeat(param).ok());
 
     ASSERT_TRUE(services.replica_group.reconcile_all().ok());
-    ASSERT_TRUE(
-        store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
     ASSERT_FALSE(group.is_empty());
     EXPECT_EQ(group->desired_members.size(), 2U);
-    EXPECT_EQ(std::find(group->desired_members.begin(),
-                        group->desired_members.end(),
-                        bad_id),
+    EXPECT_EQ(std::find(group->desired_members.begin(), group->desired_members.end(), bad_id),
               group->desired_members.end());
-    EXPECT_NE(std::find(group->desired_members.begin(),
-                        group->desired_members.end(),
-                        replacement_id),
+    EXPECT_NE(std::find(group->desired_members.begin(), group->desired_members.end(), replacement_id),
               group->desired_members.end());
 
     ASSERT_TRUE(store_test::get_replica(store, bad_id, bad_replica).ok());
@@ -595,22 +572,19 @@ TEST(TableServiceReconcileTest, LostReplicaIsReplacedAfterLeaderReportsMembershi
     hb.dc = "dc-a";
     hb.last_heartbeat_ts = 5000;
     hb.replica_list.push_back(HeartBeatReplicaInfo{
-        leader_id,
-        ReplicaRole::LEADER,
-        StorageReplicaStatus::READY,
-        2,
-        RaftMemberType::VOTER,
-        {},
+            leader_id,
+            ReplicaRole::LEADER,
+            StorageReplicaStatus::READY,
+            2,
+            RaftMemberType::VOTER,
+            {},
     });
 
     HeartBeatResult result;
     ASSERT_TRUE(services.replica_group.build_heartbeat_result(hb, result).ok());
-    auto add_it = std::find_if(
-        result.expects.begin(), result.expects.end(),
-        [&](const ExpectedReplica& expect) {
-            return expect.type == ExpectedReplicaType::ADD_MEMBER &&
-                   expect.replica_id == replacement_id;
-        });
+    auto add_it = std::find_if(result.expects.begin(), result.expects.end(), [&](const ExpectedReplica& expect) {
+        return expect.type == ExpectedReplicaType::ADD_MEMBER && expect.replica_id == replacement_id;
+    });
     ASSERT_NE(add_it, result.expects.end());
 
     replacement->state.observed_member_type = RaftMemberType::VOTER;
@@ -618,27 +592,24 @@ TEST(TableServiceReconcileTest, LostReplicaIsReplacedAfterLeaderReportsMembershi
 
     result.expects.clear();
     ASSERT_TRUE(services.replica_group.build_heartbeat_result(hb, result).ok());
-    auto remove_it = std::find_if(
-        result.expects.begin(), result.expects.end(),
-        [&](const ExpectedReplica& expect) {
-            return expect.type == ExpectedReplicaType::REMOVE_MEMBER &&
-                   expect.replica_id == bad_id;
-        });
+    auto remove_it = std::find_if(result.expects.begin(), result.expects.end(), [&](const ExpectedReplica& expect) {
+        return expect.type == ExpectedReplicaType::REMOVE_MEMBER && expect.replica_id == bad_id;
+    });
     ASSERT_NE(remove_it, result.expects.end());
 
     ReplicaOr healthy_follower;
     ASSERT_TRUE(store_test::get_replica(store, healthy_follower_id, healthy_follower).ok());
     ASSERT_FALSE(healthy_follower.is_empty());
     hb.replica_list[0].full_membership = {
-        RaftMember{PeerMember{original_replicas[0].spec.assign_node_id, leader_id,
-                              original_replicas[0].state.observed_endpoint},
-                   RaftMemberType::VOTER},
-        RaftMember{PeerMember{healthy_follower->spec.assign_node_id, healthy_follower_id,
-                              healthy_follower->state.observed_endpoint},
-                   RaftMemberType::VOTER},
-        RaftMember{PeerMember{replacement->spec.assign_node_id, replacement_id,
-                              replacement->state.observed_endpoint},
-                   RaftMemberType::VOTER},
+            RaftMember{PeerMember{original_replicas[0].spec.assign_node_id, leader_id,
+                                  original_replicas[0].state.observed_endpoint},
+                       RaftMemberType::VOTER},
+            RaftMember{PeerMember{healthy_follower->spec.assign_node_id, healthy_follower_id,
+                                  healthy_follower->state.observed_endpoint},
+                       RaftMemberType::VOTER},
+            RaftMember{
+                    PeerMember{replacement->spec.assign_node_id, replacement_id, replacement->state.observed_endpoint},
+                    RaftMemberType::VOTER},
     };
     ASSERT_TRUE(services.node.heartbeat(hb).ok());
 
@@ -693,15 +664,14 @@ TEST(TableServiceReconcileTest, ReplacementKeepsTableReadyAndAllowsAlter) {
     ASSERT_TRUE(services.replica_group.reconcile_all().ok());
     EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::READY);
 
-    Status alter_status = services.table.alter_table_replica_count(
-        AlterReplicaCountParam{1001, 3, "expand-during-replacement"});
+    Status alter_status =
+            services.table.alter_table_replica_count(AlterReplicaCountParam{1001, 3, "expand-during-replacement"});
     ASSERT_TRUE(alter_status.ok()) << alter_status.to_string();
     EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::RESIZING);
 
     ASSERT_TRUE(services.replica_group.reconcile_all().ok());
     ReplicaGroupOr group;
-    ASSERT_TRUE(
-        store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
     ASSERT_FALSE(group.is_empty());
     EXPECT_EQ(group->target_replica_count, 3);
     EXPECT_EQ(group->desired_members.size(), 4U);
@@ -721,14 +691,11 @@ TEST(TableServiceReconcileTest, ReplicaGroupShrinksAfterObservedMemberRemoved) {
     ASSERT_TRUE(services.table.place_table(param).ok());
     reconcile_table_to_ready(services, store);
 
-    ASSERT_TRUE(services.table.alter_table_replica_count(
-                            AlterReplicaCountParam{1001, 2, "shrink-1001"})
-                    .ok());
+    ASSERT_TRUE(services.table.alter_table_replica_count(AlterReplicaCountParam{1001, 2, "shrink-1001"}).ok());
     ASSERT_TRUE(services.replica_group.reconcile_all().ok());
 
     ReplicaGroupOr group;
-    ASSERT_TRUE(
-        store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
     ASSERT_FALSE(group.is_empty());
     ASSERT_EQ(group->desired_members.size(), 3U);
     EXPECT_EQ(group->target_replica_count, 2);
@@ -749,32 +716,26 @@ TEST(TableServiceReconcileTest, ReplicaGroupShrinksAfterObservedMemberRemoved) {
     hb.dc = "dc-a";
     hb.last_heartbeat_ts = 4000;
     hb.replica_list.push_back(HeartBeatReplicaInfo{
-        leader_id,
-        ReplicaRole::LEADER,
-        StorageReplicaStatus::READY,
-        1,
-        RaftMemberType::VOTER,
-        {},
+            leader_id,
+            ReplicaRole::LEADER,
+            StorageReplicaStatus::READY,
+            1,
+            RaftMemberType::VOTER,
+            {},
     });
 
     HeartBeatResult result;
     ASSERT_TRUE(services.replica_group.build_heartbeat_result(hb, result).ok());
-    auto add_victim_it = std::find_if(
-        result.expects.begin(), result.expects.end(),
-        [&](const ExpectedReplica& expect) {
-            return expect.type == ExpectedReplicaType::ADD_MEMBER &&
-                   expect.replica_id == victim_id;
-        });
+    auto add_victim_it = std::find_if(result.expects.begin(), result.expects.end(), [&](const ExpectedReplica& expect) {
+        return expect.type == ExpectedReplicaType::ADD_MEMBER && expect.replica_id == victim_id;
+    });
     EXPECT_EQ(add_victim_it, result.expects.end());
 
     ASSERT_TRUE(services.replica_group.reconcile_all().ok());
-    ASSERT_TRUE(
-        store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
     ASSERT_FALSE(group.is_empty());
     EXPECT_EQ(group->desired_members.size(), 2U);
-    EXPECT_EQ(std::find(group->desired_members.begin(),
-                        group->desired_members.end(),
-                        victim_id),
+    EXPECT_EQ(std::find(group->desired_members.begin(), group->desired_members.end(), victim_id),
               group->desired_members.end());
 
     ASSERT_TRUE(store_test::get_replica(store, victim_id, victim).ok());
@@ -794,8 +755,7 @@ TEST(TableServiceReconcileTest, ReadyTableCanShrinkToZeroWithoutRoute) {
     place_default_table(services);
     reconcile_table_to_ready(services, store);
 
-    Status alter_status = services.table.alter_table_replica_count(
-        AlterReplicaCountParam{1001, 0, "shrink-to-zero"});
+    Status alter_status = services.table.alter_table_replica_count(AlterReplicaCountParam{1001, 0, "shrink-to-zero"});
     ASSERT_TRUE(alter_status.ok()) << alter_status.to_string();
     EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::RESIZING);
 
@@ -812,8 +772,7 @@ TEST(TableServiceReconcileTest, ReadyTableCanShrinkToZeroWithoutRoute) {
     }
 
     ShardRouteOr route;
-    ASSERT_TRUE(
-        store_test::get_shard_route(store, ShardID{1001, 0}, route).ok());
+    ASSERT_TRUE(store_test::get_shard_route(store, ShardID{1001, 0}, route).ok());
     EXPECT_TRUE(route.is_empty());
 
     for (Replica& replica : replicas) {
@@ -831,14 +790,12 @@ TEST(TableServiceReconcileTest, ReadyTableCanShrinkToZeroWithoutRoute) {
     EXPECT_TRUE(list_replicas_or_die(store).empty());
 
     ReplicaGroupOr group;
-    ASSERT_TRUE(
-        store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
     ASSERT_FALSE(group.is_empty());
     EXPECT_EQ(group->mode, ReplicaGroupMode::BOOTSTRAP);
     EXPECT_EQ(group->target_replica_count, 0);
     EXPECT_TRUE(group->desired_members.empty());
-    EXPECT_EQ(services.route.get_route(make_get_route_param(), nullptr).code(),
-              StatusCode::ROUTE_NOT_FOUND);
+    EXPECT_EQ(services.route.get_route(make_get_route_param(), nullptr).code(), StatusCode::ROUTE_NOT_FOUND);
 }
 
 // 检测 Replica 出现 ERROR 时，Table 不会被标记为 FAILED，而是继续等待
@@ -882,10 +839,8 @@ TEST(TableServiceReconcileTest, TableDoesNotBecomeReadyWhenRouteHasMultipleLeade
     ASSERT_TRUE(services.replica_group.reconcile_all().ok());
     ASSERT_TRUE(services.table.reconcile_all().ok());
 
-    put_route(store, {RouteEntry{ReplicaID{1001, 0, 0}, "node-a", "127.0.0.1",
-                                 18080, ReplicaRole::LEADER, 5},
-                      RouteEntry{ReplicaID{1001, 0, 1}, "node-b", "127.0.0.1",
-                                 18081, ReplicaRole::LEADER, 4}});
+    put_route(store, {RouteEntry{ReplicaID{1001, 0, 0}, "node-a", "127.0.0.1", 18080, ReplicaRole::LEADER, 5},
+                      RouteEntry{ReplicaID{1001, 0, 1}, "node-b", "127.0.0.1", 18081, ReplicaRole::LEADER, 4}});
 
     ASSERT_TRUE(services.table.reconcile_all().ok());
     EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::CREATING);
@@ -907,10 +862,8 @@ TEST(TableServiceReconcileTest, TableDoesNotBecomeReadyWhenLeaderEndpointInvalid
     ASSERT_TRUE(services.replica_group.reconcile_all().ok());
     ASSERT_TRUE(services.table.reconcile_all().ok());
 
-    put_route(store, {RouteEntry{ReplicaID{1001, 0, 0}, "node-a", "", 0,
-                                 ReplicaRole::LEADER, 5},
-                      RouteEntry{ReplicaID{1001, 0, 1}, "node-b", "127.0.0.1",
-                                 18081, ReplicaRole::FOLLOWER, 5}});
+    put_route(store, {RouteEntry{ReplicaID{1001, 0, 0}, "node-a", "", 0, ReplicaRole::LEADER, 5},
+                      RouteEntry{ReplicaID{1001, 0, 1}, "node-b", "127.0.0.1", 18081, ReplicaRole::FOLLOWER, 5}});
 
     ASSERT_TRUE(services.table.reconcile_all().ok());
     EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::CREATING);
@@ -945,17 +898,13 @@ TEST(TableServiceReconcileTest, RouteIsRepublishedAfterHeartbeatRecoversLeader) 
     ASSERT_TRUE(services.route.reconcile_all().ok());
 
     ShardRouteOr route_after_loss;
-    ASSERT_TRUE(
-        store_test::get_shard_route(store, ShardID{1001, 0}, route_after_loss)
-            .ok());
+    ASSERT_TRUE(store_test::get_shard_route(store, ShardID{1001, 0}, route_after_loss).ok());
     EXPECT_TRUE(route_after_loss.is_empty());
     status = route_service.get_route(make_get_route_param(), &route);
     EXPECT_EQ(status.code(), StatusCode::ROUTE_NOT_FOUND);
 
-    report_replica_heartbeat(services, "node-a", 18080, 0, ReplicaRole::LEADER,
-                             StorageReplicaStatus::READY, 11);
-    report_replica_heartbeat(services, "node-b", 18081, 1, ReplicaRole::FOLLOWER,
-                             StorageReplicaStatus::READY, 11);
+    report_replica_heartbeat(services, "node-a", 18080, 0, ReplicaRole::LEADER, StorageReplicaStatus::READY, 11);
+    report_replica_heartbeat(services, "node-b", 18081, 1, ReplicaRole::FOLLOWER, StorageReplicaStatus::READY, 11);
 
     ASSERT_TRUE(services.route.reconcile_all().ok());
 
@@ -985,9 +934,7 @@ TEST(TableServiceReconcileTest, DropTableWaitsForReplicaGroupCleanup) {
     place_default_table(services);
     reconcile_table_to_ready(services, store);
     ShardRouteOr route_before;
-    ASSERT_TRUE(
-        store_test::get_shard_route(store, ShardID{1001, 0}, route_before)
-            .ok());
+    ASSERT_TRUE(store_test::get_shard_route(store, ShardID{1001, 0}, route_before).ok());
     ASSERT_FALSE(route_before.is_empty());
 
     mark_table_absent(store);
@@ -1008,16 +955,14 @@ TEST(TableServiceReconcileTest, DropTableWaitsForReplicaGroupCleanup) {
     }
 
     ReplicaGroupOr group;
-    ASSERT_TRUE(
-        store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
     ASSERT_FALSE(group.is_empty());
     EXPECT_EQ(group->mode, ReplicaGroupMode::RAFT_RECONFIG);
     EXPECT_EQ(group->target_replica_count, 0);
     EXPECT_TRUE(group->desired_members.empty());
 
     ShardRouteOr route;
-    ASSERT_TRUE(
-        store_test::get_shard_route(store, ShardID{1001, 0}, route).ok());
+    ASSERT_TRUE(store_test::get_shard_route(store, ShardID{1001, 0}, route).ok());
     EXPECT_TRUE(route.is_empty());
 
     for (Replica& replica : replicas) {
@@ -1033,11 +978,9 @@ TEST(TableServiceReconcileTest, DropTableWaitsForReplicaGroupCleanup) {
     EXPECT_EQ(table.state.desired, TableDesired::ABSENT);
     EXPECT_EQ(table.state.phase, TablePhase::DELETED);
     EXPECT_TRUE(list_replicas_or_die(store).empty());
-    ASSERT_TRUE(
-        store_test::get_shard_route(store, ShardID{1001, 0}, route).ok());
+    ASSERT_TRUE(store_test::get_shard_route(store, ShardID{1001, 0}, route).ok());
     EXPECT_TRUE(route.is_empty());
-    ASSERT_TRUE(
-        store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
+    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
     EXPECT_TRUE(group.is_empty());
 }
 

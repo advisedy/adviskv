@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "common/type.h"
+#include "common/model/type.h"
 #include "e2e_context.h"
 #include "sdk/model.h"
 

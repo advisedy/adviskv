@@ -1,4 +1,4 @@
-#include "sdm/model/sdm_runtime_index.h"
+#include "sdm/store/runtime_index.h"
 
 #include <gtest/gtest.h>
 

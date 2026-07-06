@@ -1,12 +1,12 @@
 #include "meta/persist/meta_persist_engine.h"
 
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
-
 #include <cerrno>
 #include <cstring>
 #include <filesystem>
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "common/defer.h"
 #include "common/define.h"
@@ -19,7 +19,7 @@ namespace {
 static constexpr int64 kMaxMetaPayloadBytes = 64 * 1024 * 1024;
 
 class MetaRecordCodec {
-   public:
+public:
     using ObjectType = PersistedMetaRecord;
     using LenType = int64;
 
@@ -52,6 +52,7 @@ class MetaRecordCodec {
             buf.write(table_meta.last_error_msg);
             buf.write(table_meta.create_ts);
             buf.write(table_meta.update_ts);
+            buf.write(static_cast<int32>(table_meta.engine_type));
         }
     }
 
@@ -94,8 +95,17 @@ class MetaRecordCodec {
             RETURN_IF_INVALID_READ(buf, table_meta.last_error_msg)
             RETURN_IF_INVALID_READ(buf, table_meta.create_ts)
             RETURN_IF_INVALID_READ(buf, table_meta.update_ts)
-            record.table_id2table_meta[table_meta.table_id] =
-                std::move(table_meta);
+            int32 engine_type{0};
+            RETURN_IF_INVALID_READ(buf, engine_type)
+            table_meta.engine_type = static_cast<EngineType>(engine_type);
+            switch (table_meta.engine_type) {
+                case EngineType::MAP:
+                case EngineType::ROCKSDB:
+                    break;
+                default:
+                    return Status::ERROR("invalid table_meta engine_type");
+            }
+            record.table_id2table_meta[table_meta.table_id] = std::move(table_meta);
         }
         return Status::OK();
     }
@@ -103,8 +113,7 @@ class MetaRecordCodec {
 
 }  // namespace
 
-MetaPersistEngine::MetaPersistEngine(const std::string& data_dir)
-    : data_dir_(data_dir) {}
+MetaPersistEngine::MetaPersistEngine(const std::string& data_dir) : data_dir_(data_dir) {}
 
 MetaPersistEngine::~MetaPersistEngine() { close(); }
 
@@ -115,24 +124,18 @@ Status MetaPersistEngine::init() {
     std::error_code ec;
     std::filesystem::create_directories(data_dir_, ec);
     if (ec) {
-        return Status::ERROR(
-            fmt::format("failed to create meta data dir: {}, error: {}",
-                        data_dir_, ec.message()));
+        return Status::ERROR(fmt::format("failed to create meta data dir: {}, error: {}", data_dir_, ec.message()));
     }
-    LOG_DEBUG("meta persist engine init, data_dir_={}, meta_data_path_={}",
-              data_dir_, meta_data_path_);
+    LOG_DEBUG("meta persist engine init, data_dir_={}, meta_data_path_={}", data_dir_, meta_data_path_);
     return Status::OK();
 }
 
 Status MetaPersistEngine::close() { return Status::OK(); }
 
 Status MetaPersistEngine::save_meta(const PersistedMetaRecord& record) {
-    int fd =
-        ::open(meta_data_tmp_path_.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int fd = ::open(meta_data_tmp_path_.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd < 0) {
-        return Status{StatusCode::ERROR,
-                      fmt::format("failed to open meta tmp file: {}",
-                                  meta_data_tmp_path_)};
+        return Status{StatusCode::ERROR, fmt::format("failed to open meta tmp file: {}", meta_data_tmp_path_)};
     }
     auto fd_guard = Defer([&fd]() {
         if (fd != -1) {
@@ -141,8 +144,7 @@ Status MetaPersistEngine::save_meta(const PersistedMetaRecord& record) {
         }
     });
 
-    RETURN_IF_INVALID_STATUS(
-        FramedRecord<MetaRecordCodec>::encode_to_fd(fd, record))
+    RETURN_IF_INVALID_STATUS(FramedRecord<MetaRecordCodec>::encode_to_fd(fd, record))
 
     if (::fsync(fd) != 0) {
         return Status::ERROR("failed to fsync meta tmp file");
@@ -154,17 +156,14 @@ Status MetaPersistEngine::save_meta(const PersistedMetaRecord& record) {
     fd = -1;
 
     if (::rename(meta_data_tmp_path_.c_str(), meta_data_path_.c_str()) != 0) {
-        return Status{StatusCode::ERROR,
-                      fmt::format("failed to rename meta data file: {}",
-                                  meta_data_path_)};
+        return Status{StatusCode::ERROR, fmt::format("failed to rename meta data file: {}", meta_data_path_)};
     }
 
     RETURN_IF_INVALID_STATUS(func::fsync_dir(data_dir_))
     LOG_DEBUG(
-        "meta persist engine save_meta success, db_count={}, "
-        "table_count={}, next_db_id={}, next_table_id={}",
-        record.db_meta_map.size(), record.table_id2table_meta.size(),
-        record.next_db_id, record.next_table_id);
+            "meta persist engine save_meta success, db_count={}, "
+            "table_count={}, next_db_id={}, next_table_id={}",
+            record.db_meta_map.size(), record.table_id2table_meta.size(), record.next_db_id, record.next_table_id);
     return Status::OK();
 }
 
@@ -177,9 +176,7 @@ Status MetaPersistEngine::load_meta(PersistedMetaRecord& record) {
             LOG_DEBUG("meta data file not found, starting with empty meta");
             return Status::OK();
         }
-        return Status{
-            StatusCode::ERROR,
-            fmt::format("failed to open meta data file: {}", meta_data_path_)};
+        return Status{StatusCode::ERROR, fmt::format("failed to open meta data file: {}", meta_data_path_)};
     }
     auto fd_guard = Defer([fd]() { ::close(fd); });
 
@@ -190,10 +187,9 @@ Status MetaPersistEngine::load_meta(PersistedMetaRecord& record) {
     RETURN_IF_INVALID_STATUS(status)
 
     LOG_DEBUG(
-        "meta persist engine load_meta success, db_count={}, "
-        "table_count={}, next_db_id={}, next_table_id={}",
-        record.db_meta_map.size(), record.table_id2table_meta.size(),
-        record.next_db_id, record.next_table_id);
+            "meta persist engine load_meta success, db_count={}, "
+            "table_count={}, next_db_id={}, next_table_id={}",
+            record.db_meta_map.size(), record.table_id2table_meta.size(), record.next_db_id, record.next_table_id);
     return Status::OK();
 }
 

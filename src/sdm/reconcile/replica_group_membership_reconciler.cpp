@@ -9,13 +9,12 @@
 #include "common/func.h"
 #include "common/id_allocator.h"
 #include "common/log.h"
-#include "common/model/raft_member_type.h"
+#include "common/model/type.h"
 #include "common/status.h"
-#include "common/type.h"
-#include "sdm/model/sdm_store.h"
-#include "sdm/model/sdm_store_txn.h"
-#include "sdm/model/service_param.h"
-#include "sdm/model/store.h"
+#include "sdm/store/sdm_store.h"
+#include "sdm/store/sdm_store_txn.h"
+#include "sdm/model/param.h"
+#include "sdm/model/model.h"
 #include "sdm/selector/node_selector/node_selector.h"
 #include "sdm/service/replica_group_service.h"
 
@@ -118,8 +117,6 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
             RETURN_IF_INVALID_STATUS(txn.get_replica(remove_victim.value(), victim_or))
             remove_victim_is_non_member =
                     !victim_or.is_empty() && victim_or->state.observed_member_type == RaftMemberType::NON_MEMBER;
-            // TODO111
-            // 话说，就对于删除Replica那个操作来说，如果有些就是Replica它是Lost的状态，那这些该怎么办呢？
         }
         return Status::OK();
     }))
@@ -245,6 +242,7 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
     RETURN_IF_INVALID_CONDITION(count_to_add > 0, "count_to_add must be > 0")
 
     std::string resource_pool;
+    EngineType engine_type{EngineType::MAP};
     bool should_add = true;
     std::unordered_set<NodeID> occupied_node_ids;
     {
@@ -276,6 +274,7 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
         if (!should_add)
             return Status::OK();
         resource_pool = table_or->spec.resource_pool;
+        engine_type = table_or->spec.engine_type;
     }
 
     TablePlacementResult placement;
@@ -308,7 +307,7 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
             replica.replica_id = rid;
             replica.spec.dc = nodes[i].meta.dc;
             replica.spec.assign_node_id = nodes[i].id;
-            replica.spec.engine_type = EngineType::MAP;  // TODO111 发现这个EngineType应该是TableSpec的事情吧
+            replica.spec.engine_type = engine_type;
             replica.state.desired = ReplicaDesired::PRESENT;
             replica.state.phase = ReplicaPhase::CREATING;
             replica.state.observed_raft_role = ReplicaRole::FOLLOWER;

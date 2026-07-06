@@ -7,7 +7,7 @@
 
 #include "common/status.h"
 #include "common/tick_trigger.h"
-#include "common/type.h"
+#include "common/model/type.h"
 #include "storage/model/param.h"
 #include "storage/raft/raft_apply.h"
 #include "storage/raft/raft_election.h"

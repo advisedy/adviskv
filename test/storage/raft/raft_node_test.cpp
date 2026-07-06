@@ -3,7 +3,7 @@
 #include <gtest/gtest.h>
 
 #include "common/status.h"
-#include "common/type.h"
+#include "common/model/type.h"
 #include "storage/model/param.h"
 #include "storage/persist/persist_engine.h"
 #include "test_env.h"

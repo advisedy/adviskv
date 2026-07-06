@@ -3,8 +3,9 @@
 #include <fmt/format.h>
 
 #include "common/define.h"
+#include "common/model/peer_member.h"
 #include "common/model/raft_member_type.h"
-#include "common/type.h"
+#include "common/types.h"
 
 namespace adviskv {
 

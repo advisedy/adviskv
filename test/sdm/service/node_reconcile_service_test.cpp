@@ -3,9 +3,9 @@
 #include <gtest/gtest.h>
 
 #include "common/func.h"
-#include "common/type.h"
+#include "common/model/type.h"
 #include "sdm/service/replica_group_service.h"
-#include "sdm/model/sdm_store.h"
+#include "sdm/store/sdm_store.h"
 #include "sdm/sdm_store_test_helper.h"
 
 namespace adviskv::sdm {

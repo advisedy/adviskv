@@ -6,11 +6,11 @@
 #include <string>
 
 #include "common/status.h"
-#include "common/type.h"
-#include "sdm/model/i_sdm_metastore.h"
-#include "sdm/model/sdm_runtime_index.h"
-#include "sdm/model/sdm_store_txn.h"
-#include "sdm/model/store.h"
+#include "common/model/type.h"
+#include "sdm/store/i_sdm_metastore.h"
+#include "sdm/store/runtime_index.h"
+#include "sdm/store/sdm_store_txn.h"
+#include "sdm/model/model.h"
 
 namespace adviskv::sdm {
 

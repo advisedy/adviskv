@@ -13,7 +13,7 @@
 #include "common/log.h"
 #include "common/path_util.h"
 #include "common/status.h"
-#include "common/type.h"
+#include "common/model/type.h"
 #include "meta/background/table_ddl_reconciler.h"
 #include "meta/catalog/catalog_manager.h"
 #include "meta/handler/meta_service_impl.h"

@@ -4,19 +4,11 @@
 #include <string>
 
 #include "common/define.h"
-#include "common/status.h"
-#include "common/type.h"
+#include "common/model/type.h"
 
 namespace adviskv::meta {
 
-enum class TableState : int32 {
-    ADDING = 1,
-    NORMAL = 2,
-    FAILED = 3,
-    DROPPING = 4,
-    DELETED = 5,
-    ALTERING = 6
-};
+enum class TableState : int32_t { ADDING = 1, NORMAL = 2, FAILED = 3, DROPPING = 4, DELETED = 5, ALTERING = 6 };
 
 struct DBMeta {
     DatabaseID db_id;
@@ -46,6 +38,7 @@ struct TableMeta {
     std::string last_error_msg;
     int64_t create_ts{0};
     int64_t update_ts{0};
+    EngineType engine_type{EngineType::MAP};
 
     bool operator==(const TableMeta& other) const {
         if (table_id != other.table_id) return false;
@@ -60,6 +53,7 @@ struct TableMeta {
         if (last_error_msg != other.last_error_msg) return false;
         if (create_ts != other.create_ts) return false;
         if (update_ts != other.update_ts) return false;
+        if (engine_type != other.engine_type) return false;
         return true;
     }
 

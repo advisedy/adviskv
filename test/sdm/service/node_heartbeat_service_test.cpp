@@ -1,21 +1,20 @@
-#include "sdm/service/node_service.h"
-
-#include <gtest/gtest.h>
 #include <memory>
 #include <vector>
 
-#include "common/model/storage_replica_status.h"
+#include <gtest/gtest.h>
+
+#include "common/model/type.h"
 #include "common/status.h"
-#include "sdm/model/sdm_store.h"
-#include "sdm/service/replica_group_service.h"
+#include "sdm/store/sdm_store.h"
 #include "sdm/sdm_store_test_helper.h"
+#include "sdm/service/node_service.h"
+#include "sdm/service/replica_group_service.h"
 
 namespace adviskv::sdm {
 namespace {
 
 Node make_node(const NodeID& id, int32_t port = 18080) {
-    return Node{id, NodeMeta{"pool-a", "dc-a"},
-                NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", port}, 1},
+    return Node{id, NodeMeta{"pool-a", "dc-a"}, NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", port}, 1},
                 NodeDerived{}};
 }
 
@@ -27,30 +26,30 @@ Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
     state.observed_member_type = RaftMemberType::NON_MEMBER;
     state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
     state.term = 1;
-    return Replica{replica_id,
-                   ReplicaSpec{"dc-a", node_id, EngineType::MAP}, state};
+    return Replica{replica_id, ReplicaSpec{"dc-a", node_id, EngineType::MAP}, state};
 }
 
 HeartBeatParam make_heartbeat_param() {
     return HeartBeatParam{
-        "node-a",
-        "10.0.0.1",
-        19090,
-        "pool-a",
-        "dc-a",
-        {HeartBeatReplicaInfo{ReplicaID{1001, 0, 0}, ReplicaRole::LEADER,
-                              StorageReplicaStatus::READY, 7,
-                              RaftMemberType::VOTER, {}}},
-        987654,
+            "node-a",
+            "10.0.0.1",
+            19090,
+            "pool-a",
+            "dc-a",
+            {HeartBeatReplicaInfo{ReplicaID{1001, 0, 0},
+                                  ReplicaRole::LEADER,
+                                  StorageReplicaStatus::READY,
+                                  7,
+                                  RaftMemberType::VOTER,
+                                  {}}},
+            987654,
     };
 }
 
-RaftMember make_heartbeat_member(const ReplicaID& rid,
-                                          const NodeID& node_id,
-                                          RaftMemberType member_type) {
+RaftMember make_heartbeat_member(const ReplicaID& rid, const NodeID& node_id, RaftMemberType member_type) {
     return RaftMember{
-        PeerMember{node_id, rid, Endpoint{"127.0.0.1", 18080 + rid.replica_seq}},
-        member_type,
+            PeerMember{node_id, rid, Endpoint{"127.0.0.1", 18080 + rid.replica_seq}},
+            member_type,
     };
 }
 
@@ -75,9 +74,7 @@ TEST(NodeHeartbeatServiceTest, HeartbeatUpdatesNodeAndAssignedReplicas) {
     SdmStore store{SdmMetaStoreType::MEMORY};
     ASSERT_TRUE(store.init().ok());
     ASSERT_TRUE(store_test::put_node(store, make_node("node-a")).ok());
-    ASSERT_TRUE(store_test::put_replica(
-                    store, make_replica(ReplicaID{1001, 0, 0}, "node-a"))
-                    .ok());
+    ASSERT_TRUE(store_test::put_replica(store, make_replica(ReplicaID{1001, 0, 0}, "node-a")).ok());
     NodeService service(&store);
     ReplicaGroupService replica_group_service(&store);
 
@@ -93,8 +90,7 @@ TEST(NodeHeartbeatServiceTest, HeartbeatUpdatesNodeAndAssignedReplicas) {
     EXPECT_EQ(node->state.last_heartbeat_ts, 987654);
 
     ReplicaOr replica;
-    ASSERT_TRUE(
-        store_test::get_replica(store, ReplicaID{1001, 0, 0}, replica).ok());
+    ASSERT_TRUE(store_test::get_replica(store, ReplicaID{1001, 0, 0}, replica).ok());
     ASSERT_FALSE(replica.is_empty());
     EXPECT_EQ(replica->state.phase, ReplicaPhase::READY);
     EXPECT_EQ(replica->state.observed_raft_role, ReplicaRole::LEADER);
@@ -116,14 +112,13 @@ TEST(NodeHeartbeatServiceTest, LeaderMembershipProjectsObservedMemberTypes) {
     NodeService service(&store);
     HeartBeatParam param = make_heartbeat_param();
     param.node_id = "node-0";
-    param.replica_list = {HeartBeatReplicaInfo{
-        r0,
-        ReplicaRole::LEADER,
-        StorageReplicaStatus::READY,
-        7,
-        RaftMemberType::VOTER,
-        {make_heartbeat_member(r0, "node-0", RaftMemberType::VOTER),
-         make_heartbeat_member(r1, "node-1", RaftMemberType::LEARNER)}}};
+    param.replica_list = {HeartBeatReplicaInfo{r0,
+                                               ReplicaRole::LEADER,
+                                               StorageReplicaStatus::READY,
+                                               7,
+                                               RaftMemberType::VOTER,
+                                               {make_heartbeat_member(r0, "node-0", RaftMemberType::VOTER),
+                                                make_heartbeat_member(r1, "node-1", RaftMemberType::LEARNER)}}};
 
     ASSERT_TRUE(service.heartbeat(param).ok());
 
@@ -164,9 +159,8 @@ TEST(NodeHeartbeatServiceTest, LeaderEmptyMembershipDoesNotProject) {
     NodeService service(&store);
     HeartBeatParam param = make_heartbeat_param();
     param.node_id = "node-0";
-    param.replica_list = {HeartBeatReplicaInfo{r0, ReplicaRole::LEADER,
-                                               StorageReplicaStatus::READY, 6,
-                                               RaftMemberType::VOTER, {}}};
+    param.replica_list = {
+            HeartBeatReplicaInfo{r0, ReplicaRole::LEADER, StorageReplicaStatus::READY, 6, RaftMemberType::VOTER, {}}};
 
     ASSERT_TRUE(service.heartbeat(param).ok());
 
@@ -197,13 +191,12 @@ TEST(NodeHeartbeatServiceTest, SameTermDifferentLeaderMembershipRejected) {
     NodeService service(&store);
     HeartBeatParam param = make_heartbeat_param();
     param.node_id = "node-1";
-    param.replica_list = {HeartBeatReplicaInfo{
-        r1,
-        ReplicaRole::LEADER,
-        StorageReplicaStatus::READY,
-        7,
-        RaftMemberType::VOTER,
-        {make_heartbeat_member(r1, "node-1", RaftMemberType::VOTER)}}};
+    param.replica_list = {HeartBeatReplicaInfo{r1,
+                                               ReplicaRole::LEADER,
+                                               StorageReplicaStatus::READY,
+                                               7,
+                                               RaftMemberType::VOTER,
+                                               {make_heartbeat_member(r1, "node-1", RaftMemberType::VOTER)}}};
 
     ASSERT_TRUE(service.heartbeat(param).ok());
 
@@ -221,35 +214,32 @@ TEST(NodeHeartbeatServiceTest, HeartbeatIgnoresMissingAndOtherNodeReplicas) {
     SdmStore store{SdmMetaStoreType::MEMORY};
     ASSERT_TRUE(store.init().ok());
     ASSERT_TRUE(store_test::put_node(store, make_node("node-a")).ok());
-    ASSERT_TRUE(store_test::put_replica(
-                    store, make_replica(ReplicaID{1001, 0, 1}, "node-b"))
-                    .ok());
+    ASSERT_TRUE(store_test::put_replica(store, make_replica(ReplicaID{1001, 0, 1}, "node-b")).ok());
     NodeService service(&store);
 
     HeartBeatParam param = make_heartbeat_param();
     param.replica_list.push_back(HeartBeatReplicaInfo{
-        ReplicaID{1001, 0, 1},
-        ReplicaRole::LEADER,
-        StorageReplicaStatus::READY,
-        9,
-        RaftMemberType::VOTER,
-        {},
+            ReplicaID{1001, 0, 1},
+            ReplicaRole::LEADER,
+            StorageReplicaStatus::READY,
+            9,
+            RaftMemberType::VOTER,
+            {},
     });
     param.replica_list.push_back(HeartBeatReplicaInfo{
-        ReplicaID{9999, 0, 0},
-        ReplicaRole::LEADER,
-        StorageReplicaStatus::READY,
-        9,
-        RaftMemberType::VOTER,
-        {},
+            ReplicaID{9999, 0, 0},
+            ReplicaRole::LEADER,
+            StorageReplicaStatus::READY,
+            9,
+            RaftMemberType::VOTER,
+            {},
     });
 
     Status status = service.heartbeat(param);
 
     ASSERT_TRUE(status.ok()) << status.msg();
     ReplicaOr other;
-    ASSERT_TRUE(
-        store_test::get_replica(store, ReplicaID{1001, 0, 1}, other).ok());
+    ASSERT_TRUE(store_test::get_replica(store, ReplicaID{1001, 0, 1}, other).ok());
     ASSERT_FALSE(other.is_empty());
     EXPECT_EQ(other->state.phase, ReplicaPhase::CREATING);
     EXPECT_EQ(other->state.observed_raft_role, ReplicaRole::FOLLOWER);
@@ -276,8 +266,7 @@ TEST(NodeHeartbeatServiceTest, HeartbeatMarksDeletingReplicaDeletedWhenMissing) 
 
     ASSERT_TRUE(status.ok()) << status.msg();
     ReplicaOr stored;
-    ASSERT_TRUE(
-        store_test::get_replica(store, ReplicaID{1001, 0, 0}, stored).ok());
+    ASSERT_TRUE(store_test::get_replica(store, ReplicaID{1001, 0, 0}, stored).ok());
     ASSERT_FALSE(stored.is_empty());
     EXPECT_EQ(stored->state.desired, ReplicaDesired::ABSENT);
     EXPECT_EQ(stored->state.phase, ReplicaPhase::DELETING);
@@ -285,8 +274,7 @@ TEST(NodeHeartbeatServiceTest, HeartbeatMarksDeletingReplicaDeletedWhenMissing) 
 
     ReplicaGroupService replica_group_service(&store);
     ASSERT_TRUE(replica_group_service.reconcile_all().ok());
-    ASSERT_TRUE(
-        store_test::get_replica(store, ReplicaID{1001, 0, 0}, stored).ok());
+    ASSERT_TRUE(store_test::get_replica(store, ReplicaID{1001, 0, 0}, stored).ok());
     ASSERT_FALSE(stored.is_empty());
     EXPECT_EQ(stored->state.phase, ReplicaPhase::DELETED);
 }
@@ -298,6 +286,7 @@ TEST(NodeHeartbeatServiceTest, ReplicaGroupServiceBuildsHeartbeatExpectations) {
     ASSERT_TRUE(store_test::put_node(store, make_node("node-a")).ok());
 
     Replica replica = make_replica(ReplicaID{1001, 0, 0}, "node-a");
+    replica.spec.engine_type = EngineType::ROCKSDB;
     ASSERT_TRUE(store_test::put_replica(store, replica).ok());
 
     ReplicaGroup group;
@@ -308,24 +297,23 @@ TEST(NodeHeartbeatServiceTest, ReplicaGroupServiceBuildsHeartbeatExpectations) {
     ASSERT_TRUE(store_test::put_replica_group(store, group).ok());
 
     std::vector<PeerMember> expected_members = {
-        PeerMember{"node-a", replica.replica_id, Endpoint{"127.0.0.1", 18080}},
+            PeerMember{"node-a", replica.replica_id, Endpoint{"127.0.0.1", 18080}},
     };
 
     HeartBeatParam param = make_heartbeat_param();
     param.replica_list.clear();
     param.replica_list.push_back(HeartBeatReplicaInfo{
-        ReplicaID{9999, 0, 0},
-        ReplicaRole::FOLLOWER,
-        StorageReplicaStatus::READY,
-        1,
-        RaftMemberType::VOTER,
-        {},
+            ReplicaID{9999, 0, 0},
+            ReplicaRole::FOLLOWER,
+            StorageReplicaStatus::READY,
+            1,
+            RaftMemberType::VOTER,
+            {},
     });
 
     ReplicaGroupService replica_group_service(&store);
     HeartBeatResult result;
-    Status status =
-        replica_group_service.build_heartbeat_result(param, result);
+    Status status = replica_group_service.build_heartbeat_result(param, result);
 
     ASSERT_TRUE(status.ok()) << status.to_string();
     ASSERT_EQ(result.expects.size(), 2U);
@@ -342,7 +330,7 @@ TEST(NodeHeartbeatServiceTest, ReplicaGroupServiceBuildsHeartbeatExpectations) {
     }
     ASSERT_NE(present, nullptr);
     EXPECT_EQ(present->type, ExpectedReplicaType::PRESENT);
-    EXPECT_EQ(present->engine_type, EngineType::MAP);
+    EXPECT_EQ(present->engine_type, EngineType::ROCKSDB);
     EXPECT_EQ(present->initial_members, expected_members);
 
     ASSERT_NE(absent, nullptr);

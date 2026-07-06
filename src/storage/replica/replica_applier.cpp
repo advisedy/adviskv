@@ -3,7 +3,7 @@
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
-#include "common/type.h"
+#include "common/model/type.h"
 
 namespace adviskv::storage {
 

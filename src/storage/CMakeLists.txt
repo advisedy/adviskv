@@ -26,7 +26,7 @@ set(STORAGE_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/map_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/persist/persist_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/persist/replica_meta_persist_engine.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/handler/storage_service.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/handler/storage_service_impl.cpp
 )
 
 add_executable(storage

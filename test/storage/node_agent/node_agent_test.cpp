@@ -12,7 +12,7 @@
 #include <grpcpp/server_builder.h>
 #include <gtest/gtest.h>
 
-#include "common/proto/replica_id_proto.h"
+#include "common/proto/proto.h"
 #include "sdm.grpc.pb.h"
 #include "storage/model/param.h"
 #include "storage/replica/replica_manager.h"
@@ -287,7 +287,9 @@ protected:
         sdm_rpc::ExpectedReplica expected;
         expected.set_type(type);
         encode_pb_replica_id(replica_id, *expected.mutable_replica_id());
-        expected.set_engine_type(static_cast<int32>(EngineType::MAP));
+        pb::EngineType engine_type_pb = pb::ENGINE_TYPE_UNSPECIFIED;
+        EXPECT_TRUE(encode_pb_engine_type(EngineType::MAP, engine_type_pb));
+        expected.set_engine_type(engine_type_pb);
         encode_pb_peer_member(PeerMember{"node-1", replica_id, endpoint}, *expected.add_initial_members());
         return expected;
     }

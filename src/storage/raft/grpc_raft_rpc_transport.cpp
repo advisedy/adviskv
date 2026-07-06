@@ -5,7 +5,7 @@
 
 #include <chrono>
 
-#include "common/proto/replica_id_proto.h"
+#include "common/proto/proto.h"
 #include "storage/proto/storage_model_proto.h"
 
 namespace adviskv::storage {

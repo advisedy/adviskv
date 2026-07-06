@@ -39,10 +39,4 @@ inline bool encode_pb_raft_member_type(RaftMemberType in,
     }
 }
 
-inline pb::RaftMemberType to_pb_raft_member_type(RaftMemberType type) {
-    pb::RaftMemberType out = pb::RaftMemberType::RAFT_MEMBER_TYPE_NON_MEMBER;
-    (void)encode_pb_raft_member_type(type, out);
-    return out;
-}
-
 }  // namespace adviskv

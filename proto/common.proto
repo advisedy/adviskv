@@ -20,6 +20,12 @@ enum RaftMemberType {
   RAFT_MEMBER_TYPE_LEARNER = 2;
 }
 
+enum EngineType {
+  ENGINE_TYPE_UNSPECIFIED = 0;
+  ENGINE_TYPE_MAP = 1;
+  ENGINE_TYPE_ROCKSDB = 2;
+}
+
 
 
 enum MetaTableState {

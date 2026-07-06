@@ -8,12 +8,11 @@
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
-#include "common/model/raft_member_type.h"
+#include "common/model/type.h"
 #include "common/stable_hash.h"
 #include "common/status.h"
-#include "common/type.h"
-#include "sdm/model/sdm_store.h"
-#include "sdm/model/sdm_store_txn.h"
+#include "sdm/store/sdm_store.h"
+#include "sdm/store/sdm_store_txn.h"
 
 namespace adviskv::sdm {
 
@@ -75,9 +74,6 @@ ShardID RouteService::calc_shard_id(const Table& table, Key key) const {
     return ShardID{table.table_id, stable_shard_index(key, table.spec.shard_count)};
 }
 
-// TODO：
-// 现在RouteService，貌似和Table也还有依赖关系，我在想要不要以后改成Shard那种，让他主要是和Shard有关联呢？
-// 倒不如说，replicaGroup本身就有点shard的意思在了。
 
 Status RouteService::reconcile_all() {
     RETURN_IF_NULLPTR(store_, "store is nullptr")

@@ -15,7 +15,7 @@
 #include "common/define.h"
 #include "common/serial_task_runner.h"
 #include "common/status.h"
-#include "common/type.h"
+#include "common/model/type.h"
 #include "storage/model/param.h"
 #include "storage/replica/replica.h"
 

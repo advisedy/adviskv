@@ -9,7 +9,7 @@
 
 #include "common/log.h"
 #include "common/status.h"
-#include "common/type.h"
+#include "common/model/type.h"
 
 namespace adviskv::storage {
 

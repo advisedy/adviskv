@@ -11,12 +11,10 @@
 
 #include "common/define.h"
 #include "common/log.h"
-#include "common/model/raft_member_type.h"
+#include "common/model/type.h"
 #include "common/oper_gate.h"
 #include "common/status.h"
-#include "common/type.h"
 #include "storage/model/param.h"
-#include "storage/model/replica_status.h"
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/core/raft_core.h"
 #include "storage/raft/state_machine/state_machine.h"

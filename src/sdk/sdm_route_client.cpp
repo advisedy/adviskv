@@ -7,8 +7,7 @@
 #include <chrono>
 
 #include "common/define.h"
-#include "common/proto/replica_id_proto.h"
-#include "common/proto/raft_role_proto.h"
+#include "common/proto/proto.h"
 #include "sdk/config.h"
 #include "sdk/log.h"
 #include "sdk/model.h"
@@ -70,7 +69,9 @@ Status SdmRouteClient::get_route(const Key& key, RouteInfo* route) const {
     route->replicas.reserve(response.replicas_size());
     for (const auto& replica : response.replicas()) {
         RouteReplica route_replica;
-        route_replica.replica_id = decode_pb_replica_id(replica.replica_id());
+        RETURN_IF_INVALID_CONDITION(
+            decode_pb_replica_id(replica.replica_id(), route_replica.replica_id),
+            "route replica id is not valid")
         route_replica.endpoint =
             Endpoint{replica.endpoint().ip(), replica.endpoint().port()};
         ReplicaRole role = ReplicaRole::FOLLOWER;

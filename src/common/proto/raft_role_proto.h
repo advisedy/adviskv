@@ -38,9 +38,4 @@ inline bool encode_pb_raft_role(ReplicaRole in, pb::RaftRole& out) {
     }
 }
 
-inline pb::RaftRole to_pb_raft_role(ReplicaRole role) {
-    pb::RaftRole out = pb::RaftRole::RAFT_ROLE_UNSPECIFIED;
-    (void)encode_pb_raft_role(role, out);
-    return out;
-}
 }  // namespace adviskv

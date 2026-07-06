@@ -5,9 +5,9 @@
 #include <grpcpp/support/status.h>
 
 #include "common/define.h"
-#include "common/proto/sdm_table_status_proto.h"
+#include "common/proto/proto.h"
 #include "common/status.h"
-#include "common/type.h"
+#include "common/model/type.h"
 #include "sdm.pb.h"
 
 namespace adviskv::meta {
@@ -22,6 +22,11 @@ Status SdmClient::call_place_table(const TableMeta& table_meta) {
     request.set_replica_count(table_meta.replica_count);
     request.set_resource_pool(table_meta.resource_pool);
     request.set_operation_id(table_meta.operation_id);
+    pb::EngineType engine_type_pb = pb::ENGINE_TYPE_UNSPECIFIED;
+    RETURN_IF_INVALID_CONDITION(
+        encode_pb_engine_type(table_meta.engine_type, engine_type_pb),
+        "table engine_type is not valid")
+    request.set_engine_type(engine_type_pb);
     sdm_rpc::PlaceTableResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + Milliseconds(timeout_ms_));

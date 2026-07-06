@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "common/type.h"
+#include "common/model/type.h"
 
 namespace adviskv::sdk {
 

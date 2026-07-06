@@ -1,7 +1,7 @@
 #pragma once
 
 #include "common/status.h"
-#include "meta/catalog/meta_types.h"
+#include "meta/model/meta_types.h"
 
 namespace adviskv::meta {
 

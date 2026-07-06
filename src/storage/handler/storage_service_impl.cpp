@@ -1,4 +1,4 @@
-#include "storage/handler/storage_service.h"
+#include "storage/handler/storage_service_impl.h"
 
 #include <fmt/format.h>
 #include <grpcpp/server_context.h>
@@ -12,11 +12,9 @@
 #include "common/log.h"
 #include "common/metrics/metrics.h"
 #include "common/path_util.h"
-#include "common/proto/replica_id_proto.h"
-#include "common/proto/raft_role_proto.h"
-#include "common/proto/storage_replica_status_proto.h"
+#include "common/proto/proto.h"
 #include "common/status.h"
-#include "common/type.h"
+#include "common/model/type.h"
 #include "storage.pb.h"
 #include "storage/model/param.h"
 #include "storage/proto/storage_model_proto.h"
@@ -59,6 +57,37 @@ Status check_test_api_enabled() {
     return Status::ERROR("enable_test_api is false");
 }
 
+Status decode_replica_id_or_invalid(const pb::ReplicaID& in,
+                                    ReplicaID& out) {
+    if (!decode_pb_replica_id(in, out)) {
+        return Status::INVALID_ARGUMENT("replica_id is not valid");
+    }
+    return Status::OK();
+}
+
+Status decode_peer_member_or_invalid(const pb::PeerMember& in,
+                                     PeerMember& out) {
+    if (!decode_pb_peer_member(in, out)) {
+        return Status::INVALID_ARGUMENT("peer member is not valid");
+    }
+    return Status::OK();
+}
+
+Status encode_raft_role_or_error(ReplicaRole in, pb::RaftRole& out) {
+    if (!encode_pb_raft_role(in, out)) {
+        return Status::ERROR("raft role is not valid");
+    }
+    return Status::OK();
+}
+
+Status encode_storage_status_or_error(StorageReplicaStatus in,
+                                      pb::StorageReplicaStatus& out) {
+    if (!encode_pb_storage_replica_status(in, out)) {
+        return Status::ERROR("storage replica status is not valid");
+    }
+    return Status::OK();
+}
+
 }  // namespace
 
 grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
@@ -79,7 +108,14 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context,
         fill_base_rsp(response, status);
         return grpc::Status::OK;
     }
-    ReplicaID replica_id = decode_pb_replica_id(request->replica_id());
+    ReplicaID replica_id;
+    if (Status decode_status =
+            decode_replica_id_or_invalid(request->replica_id(), replica_id);
+        decode_status.fail()) {
+        status = decode_status;
+        fill_base_rsp(response, status);
+        return grpc::Status::OK;
+    }
     ReplicaPtr&& replica = replica_manager_->get_replica_by_id(replica_id);
 
     if (!replica) {
@@ -116,7 +152,13 @@ grpc::Status StorageServiceImpl::Get(grpc::ServerContext* context,
                                        "replica manager not found"});
         return grpc::Status::OK;
     }
-    ReplicaID replica_id = decode_pb_replica_id(request->replica_id());
+    ReplicaID replica_id;
+    if (Status decode_status =
+            decode_replica_id_or_invalid(request->replica_id(), replica_id);
+        decode_status.fail()) {
+        fill_base_rsp(response, decode_status);
+        return grpc::Status::OK;
+    }
     ReplicaPtr&& replica = replica_manager_->get_replica_by_id(replica_id);
 
     if (!replica) {
@@ -166,7 +208,14 @@ grpc::Status StorageServiceImpl::Delete(grpc::ServerContext* context,
         return grpc::Status::OK;
     }
 
-    ReplicaID replica_id = decode_pb_replica_id(request->replica_id());
+    ReplicaID replica_id;
+    if (Status decode_status =
+            decode_replica_id_or_invalid(request->replica_id(), replica_id);
+        decode_status.fail()) {
+        status = decode_status;
+        fill_base_rsp(response, status);
+        return grpc::Status::OK;
+    }
     ReplicaPtr&& replica = replica_manager_->get_replica_by_id(replica_id);
     if (!replica) {
         status = Status{StatusCode::REPLICA_NOT_FOUND, "replica not found"};
@@ -207,11 +256,27 @@ grpc::Status StorageServiceImpl::CreateReplica(
     }
 
     ReplicaInitParam param;
-    param.replica_id = decode_pb_replica_id(request->replica_id());
-    param.engine_type = static_cast<EngineType>(request->engine_type());
+    if (Status decode_status =
+            decode_replica_id_or_invalid(request->replica_id(),
+                                         param.replica_id);
+        decode_status.fail()) {
+        fill_base_rsp(response, decode_status);
+        return grpc::Status::OK;
+    }
+    if (!decode_pb_engine_type(request->engine_type(), param.engine_type)) {
+        fill_base_rsp(response, Status{StatusCode::INVALID_ARGUMENT, "engine_type is not valid"});
+        return grpc::Status::OK;
+    }
     param.members.clear();
     for (const auto& member : request->initial_members()) {
-        param.members.push_back(decode_pb_peer_member(member));
+        PeerMember peer_member;
+        if (Status decode_status =
+                decode_peer_member_or_invalid(member, peer_member);
+            decode_status.fail()) {
+            fill_base_rsp(response, decode_status);
+            return grpc::Status::OK;
+        }
+        param.members.push_back(std::move(peer_member));
     }
     param.local_endpoint = Endpoint{CONF_GET_STR("ip"), CONF_GET_INT("port")};
 
@@ -237,7 +302,13 @@ grpc::Status StorageServiceImpl::DeleteReplica(
         return grpc::Status::OK;
     }
 
-    ReplicaID replica_id = decode_pb_replica_id(request->replica_id());
+    ReplicaID replica_id;
+    if (Status decode_status =
+            decode_replica_id_or_invalid(request->replica_id(), replica_id);
+        decode_status.fail()) {
+        fill_base_rsp(response, decode_status);
+        return grpc::Status::OK;
+    }
     Status status = replica_manager_->delete_replica(replica_id);
     fill_base_rsp(response, status);
     return grpc::Status::OK;
@@ -260,7 +331,13 @@ grpc::Status StorageServiceImpl::GetReplicaInfo(
         return grpc::Status::OK;
     }
 
-    ReplicaID replica_id = decode_pb_replica_id(request->replica_id());
+    ReplicaID replica_id;
+    if (Status decode_status =
+            decode_replica_id_or_invalid(request->replica_id(), replica_id);
+        decode_status.fail()) {
+        fill_base_rsp(response, decode_status);
+        return grpc::Status::OK;
+    }
     ReplicaPtr replica = replica_manager_->get_replica_by_id(replica_id);
     if (!replica) {
         response->set_exists(false);
@@ -270,11 +347,26 @@ grpc::Status StorageServiceImpl::GetReplicaInfo(
 
     response->set_exists(true);
     auto* info = response->mutable_replica();
+    pb::RaftRole role_pb = pb::RaftRole::RAFT_ROLE_UNSPECIFIED;
+    pb::StorageReplicaStatus status_pb =
+        pb::StorageReplicaStatus::STORAGE_REPLICA_STATUS_UNSPECIFIED;
+    if (Status encode_status =
+            encode_raft_role_or_error(replica->get_role(), role_pb);
+        encode_status.fail()) {
+        fill_base_rsp(response, encode_status);
+        return grpc::Status::OK;
+    }
+    if (Status encode_status = encode_storage_status_or_error(
+            replica->get_status(), status_pb);
+        encode_status.fail()) {
+        fill_base_rsp(response, encode_status);
+        return grpc::Status::OK;
+    }
     info->set_table_id(replica->get_replica_id().table_id);
     info->set_shard_id(replica->get_replica_id().shard_index);
     info->set_replica_seq(replica->get_replica_id().replica_seq);
-    info->set_role(to_pb_raft_role(replica->get_role()));
-    info->set_status(to_pb_storage_replica_status(replica->get_status()));
+    info->set_role(role_pb);
+    info->set_status(status_pb);
     info->set_term(replica->current_term());
     auto* endpoint = info->mutable_endpoint();
     endpoint->set_ip(CONF_GET_STR("ip"));
@@ -466,8 +558,23 @@ grpc::Status StorageServiceImpl::TestGetReplicaState(
     }
     fill_base_rsp(response, status);
     response->set_exists(true);
-    response->set_role(to_pb_raft_role(replica->get_role()));
-    response->set_status(to_pb_storage_replica_status(replica->get_status()));
+    pb::RaftRole role_pb = pb::RaftRole::RAFT_ROLE_UNSPECIFIED;
+    pb::StorageReplicaStatus status_pb =
+        pb::StorageReplicaStatus::STORAGE_REPLICA_STATUS_UNSPECIFIED;
+    if (Status encode_status =
+            encode_raft_role_or_error(replica->get_role(), role_pb);
+        encode_status.fail()) {
+        fill_base_rsp(response, encode_status);
+        return grpc::Status::OK;
+    }
+    if (Status encode_status = encode_storage_status_or_error(
+            replica->get_status(), status_pb);
+        encode_status.fail()) {
+        fill_base_rsp(response, encode_status);
+        return grpc::Status::OK;
+    }
+    response->set_role(role_pb);
+    response->set_status(status_pb);
     response->set_current_term(res.current_term);
     response->set_commit_index(res.commit_index);
     response->set_last_applied(res.last_applied);

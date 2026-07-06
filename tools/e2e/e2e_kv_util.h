@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-#include "common/type.h"
+#include "common/model/type.h"
 #include "e2e_options.h"
 #include "sdk/client.h"
 

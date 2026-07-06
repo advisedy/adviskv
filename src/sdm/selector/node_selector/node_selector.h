@@ -4,10 +4,10 @@
 #include <vector>
 
 #include "common/status.h"
-#include "common/type.h"
-#include "sdm/model/sdm_store.h"
-#include "sdm/model/service_param.h"
-#include "sdm/model/store.h"
+#include "common/model/type.h"
+#include "sdm/store/sdm_store.h"
+#include "sdm/model/param.h"
+#include "sdm/model/model.h"
 
 namespace adviskv::sdm {
 

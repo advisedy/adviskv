@@ -7,12 +7,9 @@
 #include <vector>
 
 #include "common/define.h"
-#include "common/model/expected_replica.h"
-#include "common/model/raft_member.h"
-#include "common/model/storage_replica_status.h"
+#include "common/model/type.h"
 #include "common/status.h"
-#include "common/type.h"
-#include "sdm/model/store.h"
+#include "sdm/model/model.h"
 namespace adviskv::sdm {
 
 // Placement Param
@@ -25,6 +22,7 @@ struct PlaceTableParam {
     int32_t shard_count;
     std::string resource_pool;
     std::string operation_id;
+    EngineType engine_type{EngineType::MAP};
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
         RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
@@ -32,6 +30,13 @@ struct PlaceTableParam {
         // replica_count 是可以等于0的
         RETURN_IF_INVALID_CONDITION(replica_count >= 0, "replica_count should be greater than or equal to 0")
         RETURN_IF_INVALID_CONDITION(shard_count > 0, "shard_count should be greater than 0")
+        switch (engine_type) {
+            case EngineType::MAP:
+            case EngineType::ROCKSDB:
+                break;
+            default:
+                return Status::INVALID_ARGUMENT("engine_type should be valid");
+        }
         return Status::OK();
     }
 };

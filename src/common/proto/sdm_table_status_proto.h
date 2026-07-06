@@ -35,13 +35,6 @@ inline bool encode_pb_sdm_table_desired(SdmTableDesired in,
     }
 }
 
-inline pb::SdmTableDesired to_pb_sdm_table_desired(SdmTableDesired desired) {
-    pb::SdmTableDesired out =
-        pb::SdmTableDesired::SDM_TABLE_DESIRED_UNSPECIFIED;
-    IGNORE_RESULT(encode_pb_sdm_table_desired(desired, out));
-    return out;
-}
-
 inline bool decode_pb_sdm_table_phase(pb::SdmTablePhase in,
                                       SdmTablePhase& out) {
     switch (in) {
@@ -93,12 +86,6 @@ inline bool encode_pb_sdm_table_phase(SdmTablePhase in,
         default:
             return false;
     }
-}
-
-inline pb::SdmTablePhase to_pb_sdm_table_phase(SdmTablePhase phase) {
-    pb::SdmTablePhase out = pb::SdmTablePhase::SDM_TABLE_PHASE_UNSPECIFIED;
-    IGNORE_RESULT(encode_pb_sdm_table_phase(phase, out));
-    return out;
 }
 
 }  // namespace adviskv

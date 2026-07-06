@@ -4,8 +4,11 @@
 #include <vector>
 
 #include "common/define.h"
+#include "common/model/engine_type.h"
+#include "common/model/ids.h"
+#include "common/model/peer_member.h"
 #include "common/status.h"
-#include "common/type.h"
+#include "common/types.h"
 
 namespace adviskv {
 

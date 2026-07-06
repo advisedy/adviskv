@@ -7,8 +7,8 @@
 
 #include "common/define.h"
 #include "common/status.h"
-#include "common/type.h"
-#include "sdm/model/store.h"
+#include "common/model/type.h"
+#include "sdm/model/model.h"
 
 namespace adviskv::sdm {
 

@@ -1,4 +1,4 @@
-#include "sdm/model/i_sdm_metastore.h"
+#include "sdm/store/memory_metastore.h"
 
 #include <memory>
 #include <utility>
@@ -7,8 +7,7 @@
 #include "common/log.h"
 #include "common/metrics/metrics.h"
 #include "common/status.h"
-#include "sdm/model/store.h"
-#include "sdm/persist/sdm_persist_engine.h"
+#include "sdm/store/persistent_metastore.h"
 
 namespace adviskv::sdm {
 

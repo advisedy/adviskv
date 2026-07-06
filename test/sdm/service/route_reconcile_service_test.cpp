@@ -6,7 +6,7 @@
 #include <memory>
 #include <vector>
 
-#include "sdm/model/sdm_store.h"
+#include "sdm/store/sdm_store.h"
 #include "sdm/sdm_store_test_helper.h"
 #include "sdm/selector/node_selector/node_selector.h"
 

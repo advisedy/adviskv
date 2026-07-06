@@ -1,10 +1,10 @@
 #include "sdm/persist/sdm_persist_engine.h"
 
-#include <gtest/gtest.h>
-
 #include <filesystem>
 #include <fstream>
 #include <string>
+
+#include <gtest/gtest.h>
 
 #include "common/status.h"
 #include "test_env.h"
@@ -14,10 +14,9 @@ namespace fs = std::filesystem;
 namespace adviskv::sdm {
 
 class SdmPersistEngineTest : public ::testing::Test {
-   protected:
+protected:
     void SetUp() override {
-        base_dir_ =
-            adviskv::test::make_unique_test_dir("sdm_persist", sequence_++);
+        base_dir_ = adviskv::test::make_unique_test_dir("sdm_persist", sequence_++);
         ASSERT_TRUE(fs::create_directories(base_dir_)) << base_dir_.string();
     }
 
@@ -26,7 +25,9 @@ class SdmPersistEngineTest : public ::testing::Test {
         fs::remove_all(base_dir_, ec);
     }
 
-    fs::path meta_path() const { return base_dir_ / "sdm_meta"; }
+    fs::path meta_path() const {
+        return base_dir_ / "sdm_meta";
+    }
 
     static SdmPersistedRecord make_minimal_record() {
         SdmPersistedRecord record;
@@ -36,9 +37,9 @@ class SdmPersistEngineTest : public ::testing::Test {
         table_state.update_ts = 100;
 
         record.tables[101] = Table{
-            101,
-            TableSpec{"users", 1, "app", 8, 3, "pool-a", "op-table"},
-            table_state,
+                101,
+                TableSpec{"users", 1, "app", 8, 3, "pool-a", "op-table"},
+                table_state,
         };
 
         ReplicaID replica_id{101, 2, 0};
@@ -52,13 +53,13 @@ class SdmPersistEngineTest : public ::testing::Test {
         replica_state.update_ts = 300;
         replica_state.term = 4;
         record.replicas[replica_id] = Replica{
-            replica_id,
-            ReplicaSpec{
-                "dc-a",
-                "node-1",
-                EngineType::MAP,
-            },
-            replica_state,
+                replica_id,
+                ReplicaSpec{
+                        "dc-a",
+                        "node-1",
+                        EngineType::MAP,
+                },
+                replica_state,
         };
 
         record.resource_pools["pool-a"] = ResourcePool{"pool-a"};
@@ -75,9 +76,9 @@ class SdmPersistEngineTest : public ::testing::Test {
         table_state.update_ts = 1000;
 
         record.tables[202] = Table{
-            202,
-            TableSpec{"orders", 2, "billing", 16, 5, "pool-b", "op-table-2"},
-            table_state,
+                202,
+                TableSpec{"orders", 2, "billing", 16, 5, "pool-b", "op-table-2", EngineType::ROCKSDB},
+                table_state,
         };
 
         ReplicaID leader_id{202, 3, 0};
@@ -94,13 +95,13 @@ class SdmPersistEngineTest : public ::testing::Test {
         replica_state.update_ts = 3000;
         replica_state.term = 11;
         record.replicas[leader_id] = Replica{
-            leader_id,
-            ReplicaSpec{
-                "dc-b",
-                "node-2",
-                EngineType::ROCKSDB,
-            },
-            replica_state,
+                leader_id,
+                ReplicaSpec{
+                        "dc-b",
+                        "node-2",
+                        EngineType::ROCKSDB,
+                },
+                replica_state,
         };
 
         record.resource_pools["pool-b"] = ResourcePool{"pool-b"};
@@ -119,32 +120,25 @@ class SdmPersistEngineTest : public ::testing::Test {
         return record;
     }
 
-    static void expect_record_equal(const SdmPersistedRecord& actual,
-                                    const SdmPersistedRecord& expected) {
+    static void expect_record_equal(const SdmPersistedRecord& actual, const SdmPersistedRecord& expected) {
         ASSERT_EQ(actual.tables.size(), expected.tables.size());
         for (const auto& [id, expected_table] : expected.tables) {
             auto it = actual.tables.find(id);
             ASSERT_NE(it, actual.tables.end());
             const Table& actual_table = it->second;
             EXPECT_EQ(actual_table.table_id, expected_table.table_id);
-            EXPECT_EQ(actual_table.spec.table_name,
-                      expected_table.spec.table_name);
+            EXPECT_EQ(actual_table.spec.table_name, expected_table.spec.table_name);
             EXPECT_EQ(actual_table.spec.db_id, expected_table.spec.db_id);
             EXPECT_EQ(actual_table.spec.db_name, expected_table.spec.db_name);
-            EXPECT_EQ(actual_table.spec.shard_count,
-                      expected_table.spec.shard_count);
-            EXPECT_EQ(actual_table.spec.replica_count,
-                      expected_table.spec.replica_count);
-            EXPECT_EQ(actual_table.spec.resource_pool,
-                      expected_table.spec.resource_pool);
-            EXPECT_EQ(actual_table.spec.operation_id,
-                      expected_table.spec.operation_id);
+            EXPECT_EQ(actual_table.spec.shard_count, expected_table.spec.shard_count);
+            EXPECT_EQ(actual_table.spec.replica_count, expected_table.spec.replica_count);
+            EXPECT_EQ(actual_table.spec.resource_pool, expected_table.spec.resource_pool);
+            EXPECT_EQ(actual_table.spec.operation_id, expected_table.spec.operation_id);
+            EXPECT_EQ(actual_table.spec.engine_type, expected_table.spec.engine_type);
             EXPECT_EQ(actual_table.state.desired, expected_table.state.desired);
             EXPECT_EQ(actual_table.state.phase, expected_table.state.phase);
-            EXPECT_EQ(actual_table.state.last_error_msg,
-                      expected_table.state.last_error_msg);
-            EXPECT_EQ(actual_table.state.update_ts,
-                      expected_table.state.update_ts);
+            EXPECT_EQ(actual_table.state.last_error_msg, expected_table.state.last_error_msg);
+            EXPECT_EQ(actual_table.state.update_ts, expected_table.state.update_ts);
         }
 
         ASSERT_EQ(actual.replicas.size(), expected.replicas.size());
@@ -154,27 +148,17 @@ class SdmPersistEngineTest : public ::testing::Test {
             const Replica& actual_replica = it->second;
             EXPECT_EQ(actual_replica.replica_id, expected_replica.replica_id);
             EXPECT_EQ(actual_replica.spec.dc, expected_replica.spec.dc);
-            EXPECT_EQ(actual_replica.spec.assign_node_id,
-                      expected_replica.spec.assign_node_id);
-            EXPECT_EQ(actual_replica.spec.engine_type,
-                      expected_replica.spec.engine_type);
-            EXPECT_EQ(actual_replica.state.desired,
-                      expected_replica.state.desired);
+            EXPECT_EQ(actual_replica.spec.assign_node_id, expected_replica.spec.assign_node_id);
+            EXPECT_EQ(actual_replica.spec.engine_type, expected_replica.spec.engine_type);
+            EXPECT_EQ(actual_replica.state.desired, expected_replica.state.desired);
             EXPECT_EQ(actual_replica.state.phase, expected_replica.state.phase);
-            EXPECT_EQ(actual_replica.state.observed_raft_role,
-                      expected_replica.state.observed_raft_role);
-            EXPECT_EQ(actual_replica.state.observed_member_type,
-                      expected_replica.state.observed_member_type);
-            EXPECT_EQ(actual_replica.state.observed_endpoint,
-                      expected_replica.state.observed_endpoint);
-            EXPECT_EQ(actual_replica.state.observed_storage_status,
-                      expected_replica.state.observed_storage_status);
-            EXPECT_EQ(actual_replica.state.observed_no_exist,
-                      expected_replica.state.observed_no_exist);
-            EXPECT_EQ(actual_replica.state.last_error_msg,
-                      expected_replica.state.last_error_msg);
-            EXPECT_EQ(actual_replica.state.update_ts,
-                      expected_replica.state.update_ts);
+            EXPECT_EQ(actual_replica.state.observed_raft_role, expected_replica.state.observed_raft_role);
+            EXPECT_EQ(actual_replica.state.observed_member_type, expected_replica.state.observed_member_type);
+            EXPECT_EQ(actual_replica.state.observed_endpoint, expected_replica.state.observed_endpoint);
+            EXPECT_EQ(actual_replica.state.observed_storage_status, expected_replica.state.observed_storage_status);
+            EXPECT_EQ(actual_replica.state.observed_no_exist, expected_replica.state.observed_no_exist);
+            EXPECT_EQ(actual_replica.state.last_error_msg, expected_replica.state.last_error_msg);
+            EXPECT_EQ(actual_replica.state.update_ts, expected_replica.state.update_ts);
             EXPECT_EQ(actual_replica.state.term, expected_replica.state.term);
         }
 
@@ -192,16 +176,11 @@ class SdmPersistEngineTest : public ::testing::Test {
             const ReplicaGroup& actual_group = it->second;
             EXPECT_EQ(actual_group.shard_id, expected_group.shard_id);
             EXPECT_EQ(actual_group.mode, expected_group.mode);
-            EXPECT_EQ(actual_group.target_replica_count,
-                      expected_group.target_replica_count);
-            EXPECT_EQ(actual_group.desired_members,
-                      expected_group.desired_members);
-            EXPECT_EQ(actual_group.observed_membership_term,
-                      expected_group.observed_membership_term);
-            EXPECT_EQ(actual_group.observed_membership_leader,
-                      expected_group.observed_membership_leader);
-            EXPECT_EQ(actual_group.seq_allocator.current_id(),
-                      expected_group.seq_allocator.current_id());
+            EXPECT_EQ(actual_group.target_replica_count, expected_group.target_replica_count);
+            EXPECT_EQ(actual_group.desired_members, expected_group.desired_members);
+            EXPECT_EQ(actual_group.observed_membership_term, expected_group.observed_membership_term);
+            EXPECT_EQ(actual_group.observed_membership_leader, expected_group.observed_membership_leader);
+            EXPECT_EQ(actual_group.seq_allocator.current_id(), expected_group.seq_allocator.current_id());
         }
     }
 

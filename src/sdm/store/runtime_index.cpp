@@ -1,4 +1,4 @@
-#include "sdm/model/sdm_runtime_index.h"
+#include "sdm/store/runtime_index.h"
 
 #include <algorithm>
 #include <memory>
@@ -6,7 +6,7 @@
 #include "common/define.h"
 #include "common/func.h"
 #include "common/status.h"
-#include "sdm/model/store.h"
+#include "sdm/model/model.h"
 namespace adviskv::sdm {
 
 namespace {

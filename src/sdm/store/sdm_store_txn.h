@@ -4,9 +4,9 @@
 #include <vector>
 
 #include "common/status.h"
-#include "common/type.h"
-#include "sdm/model/sdm_runtime_index.h"
-#include "sdm/model/store.h"
+#include "common/model/type.h"
+#include "sdm/store/runtime_index.h"
+#include "sdm/model/model.h"
 
 namespace adviskv::sdm {
 

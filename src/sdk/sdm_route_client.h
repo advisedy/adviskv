@@ -5,9 +5,9 @@
 #include <memory>
 #include <string>
 
-#include "common/proto/rpc_alias.h"
+#include "common/proto/proto.h"
 #include "common/status.h"
-#include "common/type.h"
+#include "common/model/type.h"
 #include "sdk/config.h"
 #include "sdk/model.h"
 #include "sdm.grpc.pb.h"

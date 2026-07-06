@@ -1,26 +1,27 @@
 #include "meta/persist/meta_persist_engine.h"
 
-#include <gtest/gtest.h>
-
 #include <filesystem>
 #include <string>
 
+#include <gtest/gtest.h>
+
 #include "common/status.h"
 #include "meta/catalog/catalog_manager.h"
-#include "meta/catalog/meta_types.h"
+#include "meta/model/meta_types.h"
 
 namespace adviskv::meta {
 namespace {
 
 class MetaPersistEngineTest : public ::testing::Test {
-   protected:
+protected:
     void SetUp() override {
-        test_dir_ = std::filesystem::temp_directory_path() /
-                    ("meta_persist_test_" + std::to_string(::getpid()));
+        test_dir_ = std::filesystem::temp_directory_path() / ("meta_persist_test_" + std::to_string(::getpid()));
         std::filesystem::create_directories(test_dir_);
     }
 
-    void TearDown() override { std::filesystem::remove_all(test_dir_); }
+    void TearDown() override {
+        std::filesystem::remove_all(test_dir_);
+    }
 
     std::filesystem::path test_dir_;
 };
@@ -53,15 +54,10 @@ TEST_F(MetaPersistEngineTest, SaveAndLoadWithDBAndTable) {
     record.db_meta_map[1] = db1;
     record.db_meta_map[2] = db2;
 
-    TableMeta t1{10,         4,       3,        1,
-                 "test_db",  "users", "pool-a", TableState::NORMAL,
-                 "op-users", "",      100,      200};
-    TableMeta t2{11,          2,
-                 1,           1,
-                 "test_db",   "orders",
-                 "pool-b",    TableState::FAILED,
-                 "op-orders", "placement failed",
-                 300,         400};
+    TableMeta t1{10, 4, 3, 1, "test_db", "users", "pool-a", TableState::NORMAL, "op-users", "", 100, 200};
+    TableMeta t2{11,  2,  1, 1, "test_db", "orders", "pool-b", TableState::FAILED, "op-orders", "placement failed",
+                 300, 400};
+    t2.engine_type = EngineType::ROCKSDB;
     record.table_id2table_meta[10] = t1;
     record.table_id2table_meta[11] = t2;
     record.next_db_id = 3;
@@ -88,6 +84,7 @@ TEST_F(MetaPersistEngineTest, SaveAndLoadWithDBAndTable) {
     EXPECT_EQ(loaded.table_id2table_meta[10].db_name, "test_db");
     EXPECT_EQ(loaded.table_id2table_meta[10].table_name, "users");
     EXPECT_EQ(loaded.table_id2table_meta[10].resource_pool, "pool-a");
+    EXPECT_EQ(loaded.table_id2table_meta[10].engine_type, EngineType::MAP);
     EXPECT_EQ(loaded.table_id2table_meta[10].state, TableState::NORMAL);
     EXPECT_EQ(loaded.table_id2table_meta[10].operation_id, "op-users");
     EXPECT_EQ(loaded.table_id2table_meta[10].create_ts, 100);
@@ -98,10 +95,10 @@ TEST_F(MetaPersistEngineTest, SaveAndLoadWithDBAndTable) {
     EXPECT_EQ(loaded.table_id2table_meta[11].db_name, "test_db");
     EXPECT_EQ(loaded.table_id2table_meta[11].table_name, "orders");
     EXPECT_EQ(loaded.table_id2table_meta[11].resource_pool, "pool-b");
+    EXPECT_EQ(loaded.table_id2table_meta[11].engine_type, EngineType::ROCKSDB);
     EXPECT_EQ(loaded.table_id2table_meta[11].state, TableState::FAILED);
     EXPECT_EQ(loaded.table_id2table_meta[11].operation_id, "op-orders");
-    EXPECT_EQ(loaded.table_id2table_meta[11].last_error_msg,
-              "placement failed");
+    EXPECT_EQ(loaded.table_id2table_meta[11].last_error_msg, "placement failed");
     EXPECT_EQ(loaded.table_id2table_meta[11].create_ts, 300);
     EXPECT_EQ(loaded.table_id2table_meta[11].update_ts, 400);
 
@@ -127,8 +124,8 @@ TEST_F(MetaPersistEngineTest, OverwriteSaveAndReload) {
         {
             TableMeta table{};
             table.table_id = 20, table.shard_count = 8, table.replica_count = 2;
-            table.db_id = 10, table.db_name = "second_db",
-            table.table_name = "new_table", table.resource_pool = "pool-c";
+            table.db_id = 10, table.db_name = "second_db", table.table_name = "new_table",
+            table.resource_pool = "pool-c";
             record.table_id2table_meta[20] = {table};
         }
 

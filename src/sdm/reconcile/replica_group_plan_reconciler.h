@@ -1,8 +1,8 @@
 #pragma once
 
 #include "common/status.h"
-#include "common/type.h"
-#include "sdm/model/store.h"
+#include "common/model/type.h"
+#include "sdm/model/model.h"
 #include "sdm/service/replica_group_service.h"
 
 namespace adviskv::sdm {

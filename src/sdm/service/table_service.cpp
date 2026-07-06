@@ -9,11 +9,10 @@
 #include "common/func.h"
 #include "common/log.h"
 #include "common/status.h"
-#include "common/type.h"
-#include "sdm/model/sdm_store.h"
-#include "sdm/model/sdm_store_txn.h"
-#include "sdm/model/store.h"
-#include "sdm/model/table_status.h"
+#include "common/model/type.h"
+#include "sdm/store/sdm_store.h"
+#include "sdm/store/sdm_store_txn.h"
+#include "sdm/model/model.h"
 
 namespace adviskv::sdm {
 
@@ -56,6 +55,7 @@ Status TableService::place_table(const PlaceTableParam& param) {
         table.spec.replica_count = param.replica_count;
         table.spec.resource_pool = param.resource_pool;
         table.spec.operation_id = param.operation_id;
+        table.spec.engine_type = param.engine_type;
         table.state.desired = TableDesired::PRESENT;
         table.state.phase = TablePhase::CREATING;
         table.state.update_ts = func::get_current_ts_ms();
@@ -265,7 +265,6 @@ Status TableService::finalize_table_until_ready(Table& table, TablePhase waiting
             return Status::OK();
         }
 
-        // TODO111 这个desired真有的存在的必要吗？
         if (current->state.desired != TableDesired::PRESENT || current->state.phase == TablePhase::FAILED ||
             current->state.phase == TablePhase::READY) {
             table = *current;

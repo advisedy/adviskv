@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <optional>
 
-#include "common/type.h"
+#include "common/model/type.h"
 #include "storage/model/param.h"
 #include "storage/raft/raft_apply.h"
 #include "storage/raft/raft_log.h"

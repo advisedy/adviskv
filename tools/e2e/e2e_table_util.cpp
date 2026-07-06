@@ -5,7 +5,7 @@
 #include <chrono>
 
 #include "e2e_assert.h"
-#include "meta/catalog/meta_types.h"
+#include "meta/model/meta_types.h"
 
 namespace adviskv::e2e {
 

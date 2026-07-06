@@ -1,44 +1,37 @@
 #include "sdm/service/table_service.h"
 
-#include <fmt/format.h>
-
-#include <gtest/gtest.h>
 #include <memory>
 
+#include <fmt/format.h>
+#include <gtest/gtest.h>
+
 #include "common/status.h"
-#include "sdm/model/sdm_store.h"
+#include "sdm/store/sdm_store.h"
 #include "sdm/sdm_store_test_helper.h"
 
 namespace adviskv::sdm {
 namespace {
 
 PlaceTableParam make_place_table_param() {
-    return PlaceTableParam{11, 1001, "commerce", "orders",
-                           2,  3,    "pool-a",   "create-table-1001"};
+    return PlaceTableParam{11, 1001, "commerce", "orders", 2, 3, "pool-a", "create-table-1001"};
 }
 
 DropTableParam make_drop_table_param() {
     return DropTableParam{1001, "drop-table-1001"};
 }
 
-AlterReplicaCountParam make_alter_replica_count_param(
-    int32_t replica_count = 5) {
-    return AlterReplicaCountParam{1001, replica_count,
-                                       "alter-replica-count-1001"};
+AlterReplicaCountParam make_alter_replica_count_param(int32_t replica_count = 5) {
+    return AlterReplicaCountParam{1001, replica_count, "alter-replica-count-1001"};
 }
 
 void put_ready_table(SdmStore& store) {
     TableState state{};
     state.desired = TableDesired::PRESENT;
     state.phase = TablePhase::READY;
-    Table table{1001,
-                TableSpec{"orders", 11, "commerce", 3, 2, "pool-a",
-                          "create-table-1001"},
-                state};
+    Table table{1001, TableSpec{"orders", 11, "commerce", 3, 2, "pool-a", "create-table-1001"}, state};
     ASSERT_TRUE(store_test::put_table(store, table).ok());
 
-    for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count;
-         ++shard_index) {
+    for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count; ++shard_index) {
         ShardID shard_id{table.table_id, shard_index};
         ReplicaGroup group;
         group.shard_id = shard_id;
@@ -57,13 +50,11 @@ void put_ready_table(SdmStore& store) {
             Replica replica;
             replica.replica_id = rid;
             replica.spec.dc = "dc-a";
-            replica.spec.assign_node_id =
-                fmt::format("node-{}-{}", shard_index, seq);
+            replica.spec.assign_node_id = fmt::format("node-{}-{}", shard_index, seq);
             replica.spec.engine_type = EngineType::MAP;
             replica.state.desired = ReplicaDesired::PRESENT;
             replica.state.phase = ReplicaPhase::READY;
-            replica.state.observed_raft_role =
-                seq == 0 ? ReplicaRole::LEADER : ReplicaRole::FOLLOWER;
+            replica.state.observed_raft_role = seq == 0 ? ReplicaRole::LEADER : ReplicaRole::FOLLOWER;
             replica.state.observed_member_type = RaftMemberType::VOTER;
             replica.state.observed_endpoint = endpoint;
             replica.state.term = 1;
@@ -71,12 +62,12 @@ void put_ready_table(SdmStore& store) {
             ASSERT_TRUE(store_test::put_replica(store, replica).ok());
 
             route.replicas.push_back(RouteEntry{
-                rid,
-                replica.spec.assign_node_id,
-                endpoint.ip,
-                endpoint.port,
-                replica.state.observed_raft_role,
-                replica.state.term,
+                    rid,
+                    replica.spec.assign_node_id,
+                    endpoint.ip,
+                    endpoint.port,
+                    replica.state.observed_raft_role,
+                    replica.state.term,
             });
         }
 
@@ -93,6 +84,7 @@ TEST(TableServiceTest, PlaceTableConvertsParamToDesiredTableState) {
     ASSERT_TRUE(store.init().ok());
     TableService service(&store);
     PlaceTableParam param = make_place_table_param();
+    param.engine_type = EngineType::ROCKSDB;
 
     Status status = service.place_table(param);
 
@@ -108,6 +100,7 @@ TEST(TableServiceTest, PlaceTableConvertsParamToDesiredTableState) {
     EXPECT_EQ(stored->spec.shard_count, param.shard_count);
     EXPECT_EQ(stored->spec.resource_pool, param.resource_pool);
     EXPECT_EQ(stored->spec.operation_id, param.operation_id);
+    EXPECT_EQ(stored->spec.engine_type, EngineType::ROCKSDB);
     EXPECT_EQ(stored->state.desired, TableDesired::PRESENT);
     EXPECT_EQ(stored->state.phase, TablePhase::CREATING);
 }
@@ -209,8 +202,7 @@ TEST(TableServiceTest, DropTableHandlesAlreadyAbsentAsIdempotent) {
 
     EXPECT_TRUE(retry.ok()) << retry.msg();
 
-    Status another_drop = service.drop_table(
-        DropTableParam{1001, "drop-table-1001-another"});
+    Status another_drop = service.drop_table(DropTableParam{1001, "drop-table-1001-another"});
     EXPECT_TRUE(another_drop.ok()) << another_drop.msg();
 }
 
@@ -232,8 +224,7 @@ TEST(TableServiceTest, AlterReadyTableUpdatesReplicaCountAndMarksResizing) {
     put_ready_table(store);
     TableService service(&store);
 
-    Status status =
-        service.alter_table_replica_count(make_alter_replica_count_param(5));
+    Status status = service.alter_table_replica_count(make_alter_replica_count_param(5));
 
     ASSERT_TRUE(status.ok()) << status.to_string();
     TableOr stored;
@@ -253,8 +244,7 @@ TEST(TableServiceTest, AlterReadyTableAllowsZeroReplicaCount) {
     put_ready_table(store);
     TableService service(&store);
 
-    Status status =
-        service.alter_table_replica_count(make_alter_replica_count_param(0));
+    Status status = service.alter_table_replica_count(make_alter_replica_count_param(0));
 
     ASSERT_TRUE(status.ok()) << status.msg();
     TableOr stored;
@@ -284,9 +274,7 @@ TEST(TableServiceTest, ResizingTableKeepsResizingUntilShardsReady) {
     ASSERT_TRUE(store.init().ok());
     put_ready_table(store);
     TableService service(&store);
-    ASSERT_TRUE(
-        service.alter_table_replica_count(make_alter_replica_count_param(5))
-            .ok());
+    ASSERT_TRUE(service.alter_table_replica_count(make_alter_replica_count_param(5)).ok());
 
     Status status = service.reconcile_all();
 
@@ -304,8 +292,7 @@ TEST(TableServiceTest, AlterReplicaCountRejectsNonReadyTable) {
     TableService service(&store);
     ASSERT_TRUE(service.place_table(make_place_table_param()).ok());
 
-    Status status =
-        service.alter_table_replica_count(make_alter_replica_count_param(5));
+    Status status = service.alter_table_replica_count(make_alter_replica_count_param(5));
 
     EXPECT_EQ(status.code(), StatusCode::ERROR);
 }
@@ -319,19 +306,16 @@ TEST(TableServiceTest, GetTableStatusReturnsStoredTableAndChecksOperationId) {
     ASSERT_TRUE(service.place_table(param).ok());
 
     Table table;
-    Status status = service.get_table_status(
-        GetTableStatusParam{param.operation_id, param.table_id}, &table);
+    Status status = service.get_table_status(GetTableStatusParam{param.operation_id, param.table_id}, &table);
 
     ASSERT_TRUE(status.ok()) << status.msg();
     EXPECT_EQ(table.table_id, param.table_id);
     EXPECT_EQ(table.spec.operation_id, param.operation_id);
 
-    Status mismatch = service.get_table_status(
-        GetTableStatusParam{"other-op", param.table_id}, nullptr);
+    Status mismatch = service.get_table_status(GetTableStatusParam{"other-op", param.table_id}, nullptr);
     EXPECT_EQ(mismatch.code(), StatusCode::INVALID_ARGUMENT);
 
-    Status missing =
-        service.get_table_status(GetTableStatusParam{"", 9999}, nullptr);
+    Status missing = service.get_table_status(GetTableStatusParam{"", 9999}, nullptr);
     EXPECT_EQ(missing.code(), StatusCode::TABLE_NOT_FOUND);
 }
 

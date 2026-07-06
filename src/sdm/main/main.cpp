@@ -14,10 +14,10 @@
 #include "common/log.h"
 #include "common/metrics/metrics.h"
 #include "common/path_util.h"
-#include "common/type.h"
+#include "common/model/type.h"
 #include "sdm/background/background.h"
 #include "sdm/handler/sdm_service_impl.h"
-#include "sdm/model/sdm_store.h"
+#include "sdm/store/sdm_store.h"
 #include "sdm/selector/node_selector/node_selector.h"
 #include "sdm/service/service_manager.h"
 

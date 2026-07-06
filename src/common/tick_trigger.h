@@ -4,7 +4,7 @@
 #include <functional>
 
 #include "common/log.h"
-#include "common/type.h"
+#include "common/model/type.h"
 
 namespace adviskv {
 // 计数触发器。limit 可以是固定值，也可以由函数动态生成。

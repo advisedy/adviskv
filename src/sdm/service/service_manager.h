@@ -1,8 +1,8 @@
 #pragma once
 
 #include "common/status.h"
-#include "sdm/model/service_param.h"
-#include "sdm/model/store.h"
+#include "sdm/model/param.h"
+#include "sdm/model/model.h"
 #include "sdm/service/node_service.h"
 #include "sdm/service/replica_group_service.h"
 #include "sdm/service/route_service.h"

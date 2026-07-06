@@ -29,6 +29,7 @@ message CreateTableRequest {
   int32 shard_count = 3;
   int32 replica_count = 4;
   string resource_pool = 5;
+  adviskv.pb.EngineType engine_type = 6;
 }
 
 message CreateTableResponse {
@@ -79,6 +80,7 @@ message GetTableResponse {
   adviskv.pb.MetaTableState table_state = 6;
   string last_error_msg = 7;
   string operation_id = 8;
+  adviskv.pb.EngineType engine_type = 9;
 }
 
 

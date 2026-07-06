@@ -6,7 +6,7 @@
 #include "common/log.h"
 #include "common/metrics/metrics.h"
 #include "common/status.h"
-#include "common/type.h"
+#include "common/model/type.h"
 #include "storage/model/param.h"
 #include "storage/raft/core/raft_core.h"
 

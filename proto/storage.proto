@@ -38,7 +38,7 @@ message DeleteResponse {
 
 message CreateReplicaRequest {
   adviskv.pb.ReplicaID replica_id = 1;
-  int32 engine_type = 2;
+  adviskv.pb.EngineType engine_type = 2;
   repeated adviskv.pb.PeerMember initial_members = 3;
 }
 

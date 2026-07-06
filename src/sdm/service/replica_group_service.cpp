@@ -4,11 +4,11 @@
 
 #include "common/define.h"
 #include "common/func.h"
-#include "common/model/raft_member_type.h"
+#include "common/model/type.h"
 #include "common/status.h"
-#include "sdm/model/sdm_store.h"
-#include "sdm/model/sdm_store_txn.h"
-#include "sdm/model/store.h"
+#include "sdm/store/sdm_store.h"
+#include "sdm/store/sdm_store_txn.h"
+#include "sdm/model/model.h"
 #include "sdm/reconcile/replica_group_membership_reconciler.h"
 #include "sdm/reconcile/replica_group_plan_reconciler.h"
 

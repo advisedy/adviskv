@@ -3,9 +3,8 @@
 #include <cstdint>
 #include <string>
 
-#include "common/define.h"
+#include "common/model/type.h"
 #include "common/status.h"
-#include "common/type.h"
 
 namespace adviskv::meta {
 
@@ -13,8 +12,7 @@ struct CreateDBParam {
     std::string db_name;
     std::string zone;
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(!db_name.empty(),
-                                    "db_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
         return Status::OK();
     }
 };
@@ -22,8 +20,7 @@ struct CreateDBParam {
 struct DropDBParam {
     std::string db_name;
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(!db_name.empty(),
-                                    "db_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
         return Status::OK();
     }
 };
@@ -34,15 +31,20 @@ struct CreateTableParam {
     int32_t shard_count;
     int32_t replica_count;
     std::string resource_pool;
+    EngineType engine_type{EngineType::MAP};
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(!db_name.empty(),
-                                    "db_name should not empty")
-        RETURN_IF_INVALID_CONDITION(!table_name.empty(),
-                                    "table_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
         RETURN_IF_INVALID_CONDITION(shard_count > 0, "shard count should > 0")
         // replica_count 是可以等于0的
-        RETURN_IF_INVALID_CONDITION(replica_count >= 0,
-                                    "replica count should >= 0")
+        RETURN_IF_INVALID_CONDITION(replica_count >= 0, "replica count should >= 0")
+        switch (engine_type) {
+            case EngineType::MAP:
+            case EngineType::ROCKSDB:
+                break;
+            default:
+                return Status::INVALID_ARGUMENT("engine_type should be valid");
+        }
         return Status::OK();
     }
 };
@@ -59,9 +61,8 @@ struct GetTableParam {
 
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(
-            (use_table_id && table_id >= 0) ||
-                (!use_table_id && !db_name.empty() && !table_name.empty()),
-            "please fill (table_id) or (db_name, table_name)")
+                (use_table_id && table_id >= 0) || (!use_table_id && !db_name.empty() && !table_name.empty()),
+                "please fill (table_id) or (db_name, table_name)")
         return Status::OK();
     }
 };
@@ -70,10 +71,8 @@ struct DropTableParam {
     std::string db_name;
     std::string table_name;
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(!db_name.empty(),
-                                    "db_name should not empty")
-        RETURN_IF_INVALID_CONDITION(!table_name.empty(),
-                                    "table_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
         return Status::OK();
     }
 };
@@ -84,13 +83,10 @@ struct AlterTableReplicaCountParam {
     int32_t replica_count{0};
 
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(!db_name.empty(),
-                                    "db_name should not empty")
-        RETURN_IF_INVALID_CONDITION(!table_name.empty(),
-                                    "table_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
         // replica_count 是可以等于0的
-        RETURN_IF_INVALID_CONDITION(replica_count >= 0,
-                                    "replica_count should >= 0")
+        RETURN_IF_INVALID_CONDITION(replica_count >= 0, "replica_count should >= 0")
         return Status::OK();
     }
 };

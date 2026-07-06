@@ -168,6 +168,7 @@ private:
         buf.write(table.spec.replica_count);
         buf.write(table.spec.resource_pool);
         buf.write(table.spec.operation_id);
+        buf.write(static_cast<int32>(table.spec.engine_type));
         buf.write(static_cast<int32>(table.state.desired));
         buf.write(static_cast<int32>(table.state.phase));
         buf.write(table.state.last_error_msg);
@@ -184,6 +185,17 @@ private:
         RETURN_IF_INVALID_READ(buf, table.spec.replica_count)
         RETURN_IF_INVALID_READ(buf, table.spec.resource_pool)
         RETURN_IF_INVALID_READ(buf, table.spec.operation_id)
+
+        int32 engine_type{0};
+        RETURN_IF_INVALID_READ(buf, engine_type)
+        table.spec.engine_type = static_cast<EngineType>(engine_type);
+        switch (table.spec.engine_type) {
+            case EngineType::MAP:
+            case EngineType::ROCKSDB:
+                break;
+            default:
+                return Status::ERROR("invalid table engine_type");
+        }
 
         int32 desired{0};
         RETURN_IF_INVALID_READ(buf, desired)
@@ -241,6 +253,13 @@ private:
         int32 engine_type{0};
         RETURN_IF_INVALID_READ(buf, engine_type)
         replica.spec.engine_type = static_cast<EngineType>(engine_type);
+        switch (replica.spec.engine_type) {
+            case EngineType::MAP:
+            case EngineType::ROCKSDB:
+                break;
+            default:
+                return Status::ERROR("invalid replica engine_type");
+        }
 
         int32 desired{0};
         RETURN_IF_INVALID_READ(buf, desired)

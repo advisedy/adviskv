@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/proto/replica_id_proto.h"
+#include "common/proto/proto.h"
 #include "storage.pb.h"
 #include "storage/model/param.h"
 
@@ -56,8 +56,12 @@ inline bool decode_pb_log_entry(const rpc::LogEntry& in, LogEntry& out) {
     out.key = in.key();
     out.value = in.value();
 
-    out.config_member = decode_pb_peer_member(in.config_member());
-    out.config_replica_id = decode_pb_replica_id(in.config_replica_id());
+    if (!decode_pb_peer_member(in.config_member(), out.config_member)) {
+        return false;
+    }
+    if (!decode_pb_replica_id(in.config_replica_id(), out.config_replica_id)) {
+        return false;
+    }
     return true;
 }
 
@@ -72,8 +76,13 @@ inline bool encode_pb_log_entry(const LogEntry& in, rpc::LogEntry& out) {
     out.set_op_type(op_type);
     out.set_key(in.key);
     out.set_value(in.value);
-    encode_pb_peer_member(in.config_member, *out.mutable_config_member());
-    encode_pb_replica_id(in.config_replica_id, *out.mutable_config_replica_id());
+    if (!encode_pb_peer_member(in.config_member, *out.mutable_config_member())) {
+        return false;
+    }
+    if (!encode_pb_replica_id(in.config_replica_id,
+                              *out.mutable_config_replica_id())) {
+        return false;
+    }
     return true;
 }
 

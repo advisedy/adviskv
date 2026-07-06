@@ -6,13 +6,13 @@
 
 #include "common/define.h"
 #include "common/id_allocator.h"
-#include "common/model/raft_member_type.h"
-#include "common/model/storage_replica_status.h"
+#include "common/model/type.h"
 #include "common/optional.h"
-#include "common/type.h"
-#include "sdm/model/table_status.h"
 
 namespace adviskv::sdm {
+
+using TableDesired = ::adviskv::SdmTableDesired;
+using TablePhase = ::adviskv::SdmTablePhase;
 
 /*
 对于Spec的定义: 控制面定义/相对稳定/desired
@@ -57,7 +57,7 @@ struct ReplicaState {
     ReplicaRole observed_raft_role{ReplicaRole::FOLLOWER};                             // NodeService
     RaftMemberType observed_member_type{RaftMemberType::NON_MEMBER};                   // NodeService
     Endpoint observed_endpoint;                                                        // NodeService
-    StorageReplicaStatus observed_storage_status{StorageReplicaStatus::INITIALIZING};  // NodeService 
+    StorageReplicaStatus observed_storage_status{StorageReplicaStatus::INITIALIZING};  // NodeService
     bool observed_no_exist{false};                                                     // NodeService
     std::string last_error_msg;                                                        // ReplicaGroupService
     int64 update_ts{0};                                                                // evertone
@@ -133,6 +133,7 @@ struct TableSpec {
     int32_t replica_count;
     std::string resource_pool;
     std::string operation_id;
+    EngineType engine_type{EngineType::MAP};
 };
 
 struct TableState {

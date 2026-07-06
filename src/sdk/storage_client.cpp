@@ -8,7 +8,7 @@
 
 #include "common/define.h"
 #include "common/metrics/metrics.h"
-#include "common/proto/replica_id_proto.h"
+#include "common/proto/proto.h"
 #include "sdk/log.h"
 
 namespace adviskv::sdk {

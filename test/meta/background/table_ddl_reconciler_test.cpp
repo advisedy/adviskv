@@ -11,7 +11,7 @@
 #include "meta/persist/meta_persist_engine.h"
 #include "meta/proto/table_state_proto.h"
 #include "meta/service/sdm_client.h"
-#include "sdm/model/store.h"
+#include "sdm/model/model.h"
 
 namespace adviskv::meta {
 namespace {

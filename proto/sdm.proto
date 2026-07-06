@@ -45,6 +45,7 @@ message PlaceTableRequest{
     int32 replica_count = 6;
     string resource_pool = 7;
     string operation_id = 8;
+    adviskv.pb.EngineType engine_type = 9;
 }
 
 message PlaceTableResponse{
@@ -112,7 +113,7 @@ enum ExpectedReplicaType {
 message ExpectedReplica {
     ExpectedReplicaType type = 1;
     adviskv.pb.ReplicaID replica_id = 2;
-    int32 engine_type = 3;
+    adviskv.pb.EngineType engine_type = 3;
     repeated adviskv.pb.PeerMember initial_members = 4;
 }
 

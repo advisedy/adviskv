@@ -5,8 +5,8 @@
 #include "common/define.h"
 #include "common/log.h"
 #include "common/status.h"
-#include "meta/catalog/meta_types.h"
-#include "sdm/model/store.h"
+#include "meta/model/meta_types.h"
+#include "sdm/model/model.h"
 
 namespace adviskv::meta {
 

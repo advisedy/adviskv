@@ -12,9 +12,9 @@
 #include "common/log.h"
 #include "common/metrics/metrics.h"
 #include "common/path_util.h"
-#include "common/type.h"
+#include "common/model/type.h"
 #include "storage/engine/map_engine.h"
-#include "storage/handler/storage_service.h"
+#include "storage/handler/storage_service_impl.h"
 #include "storage/node_agent/node_agent.h"
 #include "storage/replica/replica_manager.h"
 

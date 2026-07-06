@@ -7,7 +7,7 @@
 #include <string>
 
 #include "common/status.h"
-#include "meta/catalog/meta_types.h"
+#include "meta/model/meta_types.h"
 #include "meta/persist/i_meta_persist_engine.h"
 #include "meta/persist/meta_persist_engine.h"
 

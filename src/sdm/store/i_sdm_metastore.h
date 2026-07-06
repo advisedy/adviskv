@@ -1,12 +1,10 @@
 #pragma once
-#include <filesystem>
-#include <functional>
-#include <unordered_map>
+#include <memory>
+#include <vector>
 
 #include "common/status.h"
-#include "common/type.h"
-#include "sdm/model/store.h"
-#include "sdm/persist/sdm_persist_engine.h"
+#include "common/model/type.h"
+#include "sdm/model/model.h"
 
 namespace adviskv::sdm {
 
@@ -55,48 +53,4 @@ class ISdmMetaStore {
 #undef X
 };
 
-class MemoryMetaStore : public ISdmMetaStore {
-   public:
-    Status init() override { return Status::OK(); }
-
-#define X(...) __VA_ARGS__ override;
-    ISDM_METASTORE_METHODS(X)
-#undef X
-
-   protected:
-    std::unordered_map<TableID, TablePtr> tables_;
-    std::unordered_map<NodeID, NodePtr> nodes_;
-    std::unordered_map<ReplicaID, ReplicaPtr, ReplicaIDHash> replicas_;
-    std::unordered_map<std::string, ResourcePoolPtr> resource_pools_;
-    std::unordered_map<ShardID, ReplicaGroupPtr, ShardIDHash> replica_groups_;
-};
-
-class PersistentMetaStore : public ISdmMetaStore {
-   public:
-    explicit PersistentMetaStore(std::filesystem::path data_dir);
-    PersistentMetaStore(std::unique_ptr<ISdmMetaStore> memory_store,
-                        std::filesystem::path data_dir);
-    PersistentMetaStore(std::unique_ptr<ISdmMetaStore> memory_store,
-                        std::unique_ptr<ISdmPersistEngine> persist_engine);
-
-    Status init() override;
-
-#define X(...) __VA_ARGS__ override;
-    ISDM_METASTORE_METHODS(X)
-#undef X
-
-   private:
-    Status load();
-    Status build_record_from_store(const ISdmMetaStore& store,
-                                   SdmPersistedRecord& record) const;
-    Status build_record(SdmPersistedRecord& record) const;
-    Status persist_record(const SdmPersistedRecord& record);
-    Status persist();
-    Status commit_with(const std::function<Status(ISdmMetaStore&)>& mutate);
-
-    std::unique_ptr<ISdmMetaStore> memory_store_;
-    std::unique_ptr<ISdmPersistEngine> persist_engine_;
-};
-
-#undef ISDM_METASTORE_METHODS
 }  // namespace adviskv::sdm
