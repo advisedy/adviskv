@@ -1,4 +1,3 @@
-
 <p align="center">
   <img src="docs/assets/adviskv.jpeg" alt="AdvisKV banner" width="960" />
 </p>
@@ -10,20 +9,24 @@
   <img src="https://img.shields.io/badge/Status-V1%20prototype-blue" alt="V1 prototype" />
 </p>
 
-AdvisKV 是一个使用 **C++17 + gRPC + Protobuf + Raft** 实现的分布式 Key-Value 存储原型。项目采用控制面和数据面拆分架构：`Meta` 负责 DDL 和 catalog，`SDM` 负责节点、表、副本和 route 收敛，`Storage` 负责 KV 读写、Raft 复制、WAL、snapshot 和本地恢复，`SDK` 对外提供基于 `db + table + key` 的访问接口。
+<p align="center">
+  <a href="README.zh-CN.md">中文版本</a>
+</p>
 
-当前 V1 已经跑通一条完整主链路：建库建表、表分片、多副本、调整副本数、异常副本替换、route 生成、SDK 读写、Raft 复制、WAL、snapshot、crash recovery、gtest、E2E、benchmark 和 Storage metrics 文本报告。它更适合作为分布式 KV 架构和本地实验工具链的可运行原型，而不是可直接生产部署的数据库。
+AdvisKV is a distributed Key-Value storage prototype implemented with **C++17 + gRPC + Protobuf + Raft**. It uses a control-plane/data-plane architecture: `Meta` manages DDL and catalog metadata, `SDM` manages Storage node registration, heartbeats, replica-group orchestration, desired replica dispatch, and shard route convergence, `Storage` handles KV reads/writes, Raft replication, WAL, snapshots, and local recovery, and `SDK` exposes `put/get/delete` APIs based on `db + table + key`.
+
+The current V1 runs a complete local main path: database/table creation, table sharding, multi-replica placement, replica-count changes, abnormal replica replacement, route generation, SDK reads/writes, Raft replication, WAL, snapshots, crash recovery, GoogleTest, Python E2E tests, benchmarks, and Storage metrics text reports. It is designed as a runnable prototype for learning distributed KV architecture and local experimentation, not as a production-ready database.
 
 ## Features
 
-- 建库、删库、建表、删表和 `AlterTableReplicaCount`。
-- 表按 shard 拆分，每个 shard 可以部署多个 Storage replica。
-- SDM 根据 NodeAgent 心跳下发期望副本，并维护 replica、replica group 和 route 状态。
-- 支持 `0 -> N`、`N -> 0` 和多副本扩缩容场景。
-- 支持异常副本 replacement：健康副本不足时补充新副本，并清理 `LOST` / `ERROR` 成员。
-- SDK 根据 `db + table + key` 自动解析 route，并访问 Storage leader 执行 `put/get/delete`。
-- Storage 基于 Raft 做副本复制，配套 WAL、snapshot 和 crash recovery。
-- 提供 gtest、Python E2E、benchmark 和无 Prometheus 依赖的 metrics 文本报告。
+- Database/table DDL: create/drop database, create/drop table, and `AlterTableReplicaCount`.
+- Sharded table model: each table is split into shards, and each shard can have multiple Storage replicas.
+- SDM-driven desired-state orchestration: Storage NodeAgent heartbeats report observed state, and SDM returns expected replica actions.
+- Replica-count scaling flows, including `0 -> N`, `N -> 0`, and multi-replica resize scenarios.
+- Abnormal replica replacement: SDM adds new replicas when healthy members are insufficient and cleans up `LOST` / `ERROR` members.
+- SDK route resolution based on `db + table + key`, followed by leader-based `put/get/delete` requests to Storage.
+- Storage replication based on Raft, with WAL, snapshots, and crash recovery.
+- GoogleTest, Python E2E tests, benchmark tooling, and Storage metrics reports without a Prometheus dependency.
 
 ## Architecture
 
@@ -42,7 +45,7 @@ Client / CLI / Benchmark
       Meta  ---- PlaceTable ---- Storage Replica / Raft / WAL / KV
 ```
 
-核心链路：
+Main flows:
 
 ```text
 DDL:
@@ -55,7 +58,7 @@ SDK -> SDM GetRoute -> Storage leader Put/Get/Delete -> Raft -> KV StateMachine
 
 ## Quick Start
 
-准备环境：macOS 或 Linux、C++17 编译器、CMake 3.20+、Ninja、Git、Python 3。
+Requirements: macOS or Linux, a C++17 compiler, CMake 3.20+, Ninja, Git, and Python 3.
 
 ```bash
 ./scripts/setup.sh
@@ -63,7 +66,7 @@ SDK -> SDM GetRoute -> Storage leader Put/Get/Delete -> Raft -> KV StateMachine
 ./scripts/adviskvctl_demo.sh
 ```
 
-`adviskvctl_demo.sh` 会自动拉起本地 `sdm/meta/storage`，并进入交互式 shell。可以输入：
+`adviskvctl_demo.sh` starts a local `sdm/meta/storage` cluster and opens an interactive shell. Example commands:
 
 ```text
 create_db demo_db dc1
@@ -75,7 +78,7 @@ route demo_db demo_table k1
 quit
 ```
 
-停止本地进程：
+Stop local processes:
 
 ```bash
 ./scripts/stop_cluster.sh
@@ -83,27 +86,27 @@ quit
 
 ## Build
 
-推荐使用脚本构建：
+Recommended script-based build:
 
 ```bash
 ./scripts/build.sh
 ```
 
-也可以使用 CMake presets：
+You can also use CMake presets:
 
 ```bash
 cmake --preset release
 cmake --build --preset release
 ```
 
-常用构建变量：
+Common build variables:
 
 ```bash
 BUILD_TYPE=Debug ./scripts/build.sh
 BUILD_TARGETS="meta sdm storage adviskvctl" ./scripts/build.sh
 ```
 
-主要二进制默认位于 `build/release/bin/`。
+Main binaries are generated under `build/release/bin/` by default.
 
 ## Test
 
@@ -113,21 +116,21 @@ BUILD_TARGETS="meta sdm storage adviskvctl" ./scripts/build.sh
 ./scripts/coverage.sh
 ```
 
-- `run_test.sh`：构建并运行 GoogleTest。
-- `e2e_pytest.sh`：拉起本地多进程集群，验证 Meta -> SDM -> Storage -> SDK 主链路。
-- `coverage.sh`：生成覆盖率报告。
+- `run_test.sh`: builds and runs GoogleTest suites.
+- `e2e_pytest.sh`: starts a local multi-process cluster and verifies the Meta -> SDM -> Storage -> SDK main path.
+- `coverage.sh`: generates a coverage report.
 
-E2E 覆盖基础 KV、重启恢复、leader failover、follower catch-up、crash recovery、scale-to-zero、副本数调整和故障场景。
+E2E tests cover basic KV operations, restart recovery, leader failover, follower catch-up, crash recovery, scale-to-zero, replica-count changes, and failure scenarios.
 
 ## Benchmark
 
-这里记录一组本地端到端 benchmark，链路覆盖 `SDK -> SDM route -> Storage leader -> Raft/WAL/KV`。结果来自下面这台机器和本地多进程集群，只代表当前 V1 的一次测试结果。
+The benchmark reports below measure local end-to-end flows through `SDK -> SDM route -> Storage leader -> Raft/WAL/KV`. Results come from one local V1 test environment and should be treated as local regression and tuning references, not production performance claims.
 
-测试环境：`Mac15,7`，Apple M3 Pro，12 物理核心 / 12 逻辑 CPU，36 GiB 内存；macOS 15.7.4，arm64。本地集群：`1 meta + 1 sdm + 5 storage`，所有进程都运行在同一台机器上，并通过 `127.0.0.1/localhost` 通信。
+Test environment: `Mac15,7`, Apple M3 Pro, 12 physical cores / 12 logical CPUs, 36 GiB memory, macOS 15.7.4, arm64. Local cluster: `1 meta + 1 sdm + 5 storage`, all processes running on the same machine and communicating through `127.0.0.1/localhost`.
 
 ![Mixed benchmark](docs/benchmark/assets/mixed_read_ratio_qps.svg)
 
-默认场景：`threads=16`、`shard_count=2`、`replica_count=3`、`value_size=128`、`requests=30000`。
+Default scenario: `threads=16`, `shard_count=2`, `replica_count=3`, `value_size=128`, `requests=30000`.
 
 | Workload | Scenario | success_qps | avg_us | p95_us | p99_us |
 |---|---|---:|---:|---:|---:|
@@ -135,40 +138,40 @@ E2E 覆盖基础 KV、重启恢复、leader failover、follower catch-up、crash
 | get | baseline | 8879.04 | 1800.89 | 2375 | 2831 |
 | mixed | read_ratio=0.80 | 7537.85 | 2121.47 | 3507 | 4686 |
 
-完整报告：
+Full reports:
 
 - [Put benchmark](docs/benchmark/benchmark_put.md)
 - [Get benchmark](docs/benchmark/benchmark_get.md)
 - [Mixed benchmark](docs/benchmark/benchmark_mixed.md)
 
-运行单次 benchmark：
+Run a single benchmark:
 
 ```bash
 ./scripts/bench.sh --workload=put --threads=4 --requests=10000 --replica_count=3
 ```
 
-运行 benchmark 并生成 Storage metrics 文本报告：
+Run a benchmark and generate a Storage metrics text report:
 
 ```bash
 ./scripts/bench_metrics.sh --workload=put --threads=4 --requests=10000 --replica_count=3
 ```
 
-`bench_metrics.sh` 与 `bench.sh` 使用同一套参数，只是在 benchmark 期间采样 Storage `/metrics`，结束后输出报告路径：
+`bench_metrics.sh` uses the same arguments as `bench.sh`, samples Storage `/metrics` during the benchmark, and prints the report path at the end:
 
 ```text
 [bench] metrics report: build/release/bench_results/<run_id>/metrics_report.txt
 ```
 
-报告会列出本次 benchmark 期间有增量的 Storage latency histogram 和 counter delta，适合本地调优和回归比较。
+The report lists Storage latency histogram deltas and counter deltas that changed during the run, which makes it useful for local tuning and regression comparison.
 
 ## Documentation
 
-- [scripts/README.md](scripts/README.md)：常用脚本入口说明。
-- [docs/benchmark/README.md](docs/benchmark/README.md)：V1 benchmark 入口和结果摘要。
-- [docs/约束.md](docs/约束.md)：V1 API、状态和 scale-to-zero 语义。
-- [docs/sdm_reconcile_layering.md](docs/sdm_reconcile_layering.md)：SDM reconcile 分层设计。
-- [docs/sdm_membership_change_design.md](docs/sdm_membership_change_design.md)：副本成员变更设计。
-- [docs/replica_group_service_source_guide.md](docs/replica_group_service_source_guide.md)：ReplicaGroupService 源码导读。
+- [scripts/README.md](scripts/README.md): common script entry points.
+- [docs/benchmark/README.md](docs/benchmark/README.md): V1 benchmark entry and result summary.
+- [docs/约束.md](docs/约束.md): V1 API, state, and scale-to-zero semantics.
+- [docs/sdm_reconcile_layering.md](docs/sdm_reconcile_layering.md): SDM reconcile layering design.
+- [docs/sdm_membership_change_design.md](docs/sdm_membership_change_design.md): replica membership change design.
+- [docs/replica_group_service_source_guide.md](docs/replica_group_service_source_guide.md): ReplicaGroupService source guide.
 
 ## Project Layout
 
@@ -184,14 +187,14 @@ docs/       design notes and V1 constraints
 
 ## Status
 
-AdvisKV 当前是 V1 prototype。已经具备可构建、可运行、可测试的分布式 KV 主链路，但仍需谨慎看待这些边界：
+AdvisKV is currently a V1 prototype. It provides a buildable, runnable, and testable distributed KV main path, but the following boundaries should be kept in mind:
 
-- Meta 和 SDM 目前是单进程本地模式，不是高可用部署。
-- 已有副本数调整和异常副本 replacement 主链路，但更完整的自动 rebalance、复杂成员变更策略和生产级运维策略仍在演进。
-- route 和 leader 可写路由语义还需要更多故障场景验证。
-- Storage 当前使用 map-based KV engine，还未集成 RocksDB 等生产级 LSM 引擎。
-- Storage metrics 已可采样，Meta/SDM 还没有同等级别的 metrics/health 暴露。
-- Benchmark 结果来自本地 V1 测试，适合做调优和回归对比，不代表生产环境性能。
+- Meta and SDM currently run as single local processes and are not highly available.
+- The main path for replica-count changes and abnormal replica replacement is implemented, but more complete automatic rebalancing, complex membership strategies, and production-grade operations are still out of scope for V1.
+- Route and writable-leader semantics still need broader failure-scenario validation.
+- Storage currently uses a map-based KV engine and has not integrated production-grade LSM engines such as RocksDB.
+- Storage metrics can be sampled, while Meta/SDM do not yet expose the same level of metrics or health endpoints.
+- Benchmark results come from local V1 tests and are intended for tuning and regression comparison, not production performance claims.
 
 ## License
 
