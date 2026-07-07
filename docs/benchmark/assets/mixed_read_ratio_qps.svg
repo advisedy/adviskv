@@ -1,50 +1,39 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="860" height="480" viewBox="0 0 860 480" role="img" aria-labelledby="title desc">
-  <title id="title">Mixed Read Ratio</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="906" height="470" viewBox="0 0 906 470" role="img" aria-labelledby="title desc">
+  <title id="title">Mixed QPS by Read Ratio</title>
   <desc id="desc">success_qps benchmark chart for read_ratio</desc>
+  <style>
+    .axis { stroke: #334155; stroke-width: 1.2; }
+    .grid { stroke: #e2e8f0; stroke-width: 1; }
+    .label { fill: #334155; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .title { fill: #0f172a; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  </style>
   <rect width="100%" height="100%" fill="#ffffff"/>
-  <style>text{font-family:Arial,sans-serif}.axis{stroke:#374151}.grid{stroke:#e5e7eb}.tick{fill:#6b7280}.label{fill:#374151}.qps-label{fill:#111827;font-size:11px;font-weight:600}</style>
-<text x="88" y="34" font-size="20" font-weight="700" fill="#111827">Mixed Read Ratio</text>
-  <rect x="88" y="72" width="730" height="326" fill="#f9fafb" stroke="#e5e7eb" stroke-width="1"/>
-<line x1="88" y1="398.0" x2="818" y2="398.0" class="grid" stroke-width="1"/>
-<text x="76" y="402.0" text-anchor="end" font-size="12" class="tick">0</text>
-<line x1="88" y1="332.8" x2="818" y2="332.8" class="grid" stroke-width="1"/>
-<text x="76" y="336.8" text-anchor="end" font-size="12" class="tick">2000</text>
-<line x1="88" y1="267.6" x2="818" y2="267.6" class="grid" stroke-width="1"/>
-<text x="76" y="271.6" text-anchor="end" font-size="12" class="tick">4000</text>
-<line x1="88" y1="202.4" x2="818" y2="202.4" class="grid" stroke-width="1"/>
-<text x="76" y="206.4" text-anchor="end" font-size="12" class="tick">6000</text>
-<line x1="88" y1="137.2" x2="818" y2="137.2" class="grid" stroke-width="1"/>
-<text x="76" y="141.2" text-anchor="end" font-size="12" class="tick">8000</text>
-<line x1="88" y1="72.0" x2="818" y2="72.0" class="grid" stroke-width="1"/>
-<text x="76" y="76.0" text-anchor="end" font-size="12" class="tick">10000</text>
-<line x1="88" y1="72" x2="88" y2="398" class="axis" stroke-width="1.2"/>
-<line x1="88" y1="398" x2="818" y2="398" class="axis" stroke-width="1.2"/>
-<line x1="88.0" y1="398" x2="88.0" y2="404" class="axis" stroke-width="1"/>
-<text x="88.0" y="423" text-anchor="middle" font-size="12" fill="#374151">0</text>
-<line x1="270.5" y1="398" x2="270.5" y2="404" class="axis" stroke-width="1"/>
-<text x="270.5" y="423" text-anchor="middle" font-size="12" fill="#374151">0.50</text>
-<line x1="453.0" y1="398" x2="453.0" y2="404" class="axis" stroke-width="1"/>
-<text x="453.0" y="423" text-anchor="middle" font-size="12" fill="#374151">0.80</text>
-<line x1="635.5" y1="398" x2="635.5" y2="404" class="axis" stroke-width="1"/>
-<text x="635.5" y="423" text-anchor="middle" font-size="12" fill="#374151">0.95</text>
-<line x1="818.0" y1="398" x2="818.0" y2="404" class="axis" stroke-width="1"/>
-<text x="818.0" y="423" text-anchor="middle" font-size="12" fill="#374151">1</text>
-  <polyline fill="none" stroke="#7c3aed" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="88.0,127.6 270.5,162.0 453.0,152.3 635.5,127.7 818.0,109.6"/>
-  <rect x="92.0" y="97.6" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
-<text x="115.5" y="111.6" text-anchor="middle" class="qps-label">8,293</text>
-  <rect x="247.0" y="132.0" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
-<text x="270.5" y="146.0" text-anchor="middle" class="qps-label">7,240</text>
-  <rect x="429.5" y="122.3" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
-<text x="453.0" y="136.3" text-anchor="middle" class="qps-label">7,538</text>
-  <rect x="612.0" y="97.7" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
-<text x="635.5" y="111.7" text-anchor="middle" class="qps-label">8,292</text>
-  <rect x="767.0" y="79.6" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
-<text x="790.5" y="93.6" text-anchor="middle" class="qps-label">8,846</text>
-  <circle cx="88.0" cy="127.6" r="5" fill="#ffffff" stroke="#7c3aed" stroke-width="2.5"><title>read_ratio=0, success_qps=8293.12, avg_us=1928.18, p95_us=3007, p99_us=6316</title></circle>
-  <circle cx="270.5" cy="162.0" r="5" fill="#ffffff" stroke="#7c3aed" stroke-width="2.5"><title>read_ratio=0.50, success_qps=7239.59, avg_us=2208.84, p95_us=4867, p99_us=7441</title></circle>
-  <circle cx="453.0" cy="152.3" r="5" fill="#ffffff" stroke="#7c3aed" stroke-width="2.5"><title>read_ratio=0.80, success_qps=7537.85, avg_us=2121.47, p95_us=3507, p99_us=4686</title></circle>
-  <circle cx="635.5" cy="127.7" r="5" fill="#ffffff" stroke="#7c3aed" stroke-width="2.5"><title>read_ratio=0.95, success_qps=8292.30, avg_us=1928.37, p95_us=3015, p99_us=3728</title></circle>
-  <circle cx="818.0" cy="109.6" r="5" fill="#ffffff" stroke="#7c3aed" stroke-width="2.5"><title>read_ratio=1, success_qps=8846.28, avg_us=1807.47, p95_us=2429, p99_us=2939</title></circle>
+  <text x="453.0" y="30" text-anchor="middle" font-size="18" class="title">Mixed QPS by Read Ratio</text>
+  <line x1="88" y1="390.0" x2="818" y2="390.0" class="grid"/>
+  <text x="76" y="394.0" text-anchor="end" font-size="12" class="label">0</text>
+  <line x1="88" y1="322.8" x2="818" y2="322.8" class="grid"/>
+  <text x="76" y="326.8" text-anchor="end" font-size="12" class="label">3000</text>
+  <line x1="88" y1="255.6" x2="818" y2="255.6" class="grid"/>
+  <text x="76" y="259.6" text-anchor="end" font-size="12" class="label">6000</text>
+  <line x1="88" y1="188.4" x2="818" y2="188.4" class="grid"/>
+  <text x="76" y="192.4" text-anchor="end" font-size="12" class="label">9000</text>
+  <line x1="88" y1="121.2" x2="818" y2="121.2" class="grid"/>
+  <text x="76" y="125.2" text-anchor="end" font-size="12" class="label">12000</text>
+  <line x1="88" y1="54.0" x2="818" y2="54.0" class="grid"/>
+  <text x="76" y="58.0" text-anchor="end" font-size="12" class="label">15000</text>
+  <line x1="88" y1="390" x2="818" y2="390" class="axis"/>
+  <line x1="88" y1="54" x2="88" y2="390" class="axis"/>
+  <polyline points="88.0,190.2 270.5,189.8 453.0,205.7 635.5,177.7 818.0,140.7" fill="none" stroke="#7c3aed" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="88.0" cy="190.2" r="5" fill="#ffffff" stroke="#7c3aed" stroke-width="2.5"><title>read_ratio=0.00, success_qps=8919.35, avg_us=1792.54, p95_us=3062, p99_us=6831</title></circle>
+  <text x="88.0" y="418" text-anchor="middle" font-size="12" class="label">0.00</text>
+  <circle cx="270.5" cy="189.8" r="5" fill="#ffffff" stroke="#7c3aed" stroke-width="2.5"><title>read_ratio=0.50, success_qps=8936.63, avg_us=1789.31, p95_us=3605, p99_us=5788</title></circle>
+  <text x="270.5" y="418" text-anchor="middle" font-size="12" class="label">0.50</text>
+  <circle cx="453.0" cy="205.7" r="5" fill="#ffffff" stroke="#7c3aed" stroke-width="2.5"><title>read_ratio=0.80, success_qps=8229.54, avg_us=1942.99, p95_us=3358, p99_us=4474</title></circle>
+  <text x="453.0" y="418" text-anchor="middle" font-size="12" class="label">0.80</text>
+  <circle cx="635.5" cy="177.7" r="5" fill="#ffffff" stroke="#7c3aed" stroke-width="2.5"><title>read_ratio=0.95, success_qps=9475.77, avg_us=1687.23, p95_us=2719, p99_us=3543</title></circle>
+  <text x="635.5" y="418" text-anchor="middle" font-size="12" class="label">0.95</text>
+  <circle cx="818.0" cy="140.7" r="5" fill="#ffffff" stroke="#7c3aed" stroke-width="2.5"><title>read_ratio=1.00, success_qps=11130.39, avg_us=1436.45, p95_us=1922, p99_us=2312</title></circle>
+  <text x="818.0" y="418" text-anchor="middle" font-size="12" class="label">1.00</text>
 <text x="453.0" y="452" text-anchor="middle" font-size="13" class="label">read_ratio</text>
-<text x="22" y="235.0" text-anchor="middle" font-size="13" class="label" transform="rotate(-90 22 235.0)">success_qps</text>
+<text x="22" y="222.0" text-anchor="middle" font-size="13" class="label" transform="rotate(-90 22 222.0)">success_qps</text>
 </svg>

@@ -6,6 +6,7 @@
 #include "common/model/type.h"
 #include "sdk/config.h"
 #include "sdk/model.h"
+#include "sdk/route_cache.h"
 #include "sdk/sdm_route_client.h"
 #include "sdk/storage_client.h"
 
@@ -21,9 +22,11 @@ class KVClient {
    private:
     static bool should_invalidate_route(const Status& status);
     Status resolve_route(const Key& key, RouteInfo* route);
+    Status refresh_route(const Key& key, RouteInfo* route);
 
     KVClientConf conf_;
     SdmRouteClient sdm_route_client_;
+    RouteCache route_cache_;
     StorageClient storage_client_;
 };
 

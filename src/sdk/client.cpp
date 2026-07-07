@@ -48,7 +48,12 @@ void convert_not_yet_commit_to_unknown(Status* status) {
 }  // namespace
 
 KVClient::KVClient(const KVClientConf& conf)
-    : conf_(conf), sdm_route_client_(conf), storage_client_(conf) {}
+    : conf_(conf),
+      sdm_route_client_(conf),
+      route_cache_(conf, &sdm_route_client_),
+      storage_client_(conf) {
+    route_cache_.start();
+}
 
 Status KVClient::put(const Key& key, const Value& value) {
     ADVISKV_METRICS_TIMER("sdk_put");
@@ -95,7 +100,7 @@ Status KVClient::put(const Key& key, const Value& value) {
                     conf_.db_name, conf_.table_name, key, status.to_string());
     {
         ADVISKV_METRICS_TIMER("sdk_put_retry_route_resolve");
-        status = resolve_route(key, &route);
+        status = refresh_route(key, &route);
     }
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("sdk_put_retry_route_resolve_failure");
@@ -167,7 +172,7 @@ Status KVClient::del(const Key& key) {
                     conf_.db_name, conf_.table_name, key, status.to_string());
     {
         ADVISKV_METRICS_TIMER("sdk_delete_retry_route_resolve");
-        status = resolve_route(key, &route);
+        status = refresh_route(key, &route);
     }
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("sdk_delete_retry_route_resolve_failure");
@@ -240,7 +245,7 @@ Status KVClient::get(const Key& key, Value* value) {
                     conf_.db_name, conf_.table_name, key, status.to_string());
     {
         ADVISKV_METRICS_TIMER("sdk_get_retry_route_resolve");
-        status = resolve_route(key, &route);
+        status = refresh_route(key, &route);
     }
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("sdk_get_retry_route_resolve_failure");
@@ -277,7 +282,13 @@ bool KVClient::should_invalidate_route(const Status& status) {
 Status KVClient::resolve_route(const Key& key, RouteInfo* route) {
     RETURN_IF_NULLPTR(route, "route should not be nullptr")
 
-    return sdm_route_client_.get_route(key, route);
+    return route_cache_.resolve_route(key, route);
+}
+
+Status KVClient::refresh_route(const Key& key, RouteInfo* route) {
+    RETURN_IF_NULLPTR(route, "route should not be nullptr")
+
+    return route_cache_.refresh_route_for_key(key, route);
 }
 
 }  // namespace adviskv::sdk

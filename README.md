@@ -134,9 +134,9 @@ Default scenario: `threads=16`, `shard_count=2`, `replica_count=3`, `value_size=
 
 | Workload | Scenario | success_qps | avg_us | p95_us | p99_us |
 |---|---|---:|---:|---:|---:|
-| put | baseline | 7960.23 | 2008.92 | 3087 | 6192 |
-| get | baseline | 8879.04 | 1800.89 | 2375 | 2831 |
-| mixed | read_ratio=0.80 | 7537.85 | 2121.47 | 3507 | 4686 |
+| put | baseline | 9799.99 | 1631.30 | 2577 | 5623 |
+| get | baseline | 11059.01 | 1445.76 | 1905 | 2211 |
+| mixed | read_ratio=0.80 | 8229.54 | 1942.99 | 3358 | 4474 |
 
 Full reports:
 

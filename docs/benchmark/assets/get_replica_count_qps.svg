@@ -1,40 +1,35 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="860" height="480" viewBox="0 0 860 480" role="img" aria-labelledby="title desc">
-  <title id="title">Get Replica Count</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="906" height="470" viewBox="0 0 906 470" role="img" aria-labelledby="title desc">
+  <title id="title">Get QPS by Replica Count</title>
   <desc id="desc">success_qps benchmark chart for replica_count</desc>
+  <style>
+    .axis { stroke: #334155; stroke-width: 1.2; }
+    .grid { stroke: #e2e8f0; stroke-width: 1; }
+    .label { fill: #334155; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .title { fill: #0f172a; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  </style>
   <rect width="100%" height="100%" fill="#ffffff"/>
-  <style>text{font-family:Arial,sans-serif}.axis{stroke:#374151}.grid{stroke:#e5e7eb}.tick{fill:#6b7280}.label{fill:#374151}.qps-label{fill:#111827;font-size:11px;font-weight:600}</style>
-<text x="88" y="34" font-size="20" font-weight="700" fill="#111827">Get Replica Count</text>
-  <rect x="88" y="72" width="730" height="326" fill="#f9fafb" stroke="#e5e7eb" stroke-width="1"/>
-<line x1="88" y1="398.0" x2="818" y2="398.0" class="grid" stroke-width="1"/>
-<text x="76" y="402.0" text-anchor="end" font-size="12" class="tick">0</text>
-<line x1="88" y1="332.8" x2="818" y2="332.8" class="grid" stroke-width="1"/>
-<text x="76" y="336.8" text-anchor="end" font-size="12" class="tick">5000</text>
-<line x1="88" y1="267.6" x2="818" y2="267.6" class="grid" stroke-width="1"/>
-<text x="76" y="271.6" text-anchor="end" font-size="12" class="tick">10000</text>
-<line x1="88" y1="202.4" x2="818" y2="202.4" class="grid" stroke-width="1"/>
-<text x="76" y="206.4" text-anchor="end" font-size="12" class="tick">15000</text>
-<line x1="88" y1="137.2" x2="818" y2="137.2" class="grid" stroke-width="1"/>
-<text x="76" y="141.2" text-anchor="end" font-size="12" class="tick">20000</text>
-<line x1="88" y1="72.0" x2="818" y2="72.0" class="grid" stroke-width="1"/>
-<text x="76" y="76.0" text-anchor="end" font-size="12" class="tick">25000</text>
-<line x1="88" y1="72" x2="88" y2="398" class="axis" stroke-width="1.2"/>
-<line x1="88" y1="398" x2="818" y2="398" class="axis" stroke-width="1.2"/>
-<line x1="88.0" y1="398" x2="88.0" y2="404" class="axis" stroke-width="1"/>
-<text x="88.0" y="423" text-anchor="middle" font-size="12" fill="#374151">1</text>
-<line x1="453.0" y1="398" x2="453.0" y2="404" class="axis" stroke-width="1"/>
-<text x="453.0" y="423" text-anchor="middle" font-size="12" fill="#374151">3</text>
-<line x1="818.0" y1="398" x2="818.0" y2="404" class="axis" stroke-width="1"/>
-<text x="818.0" y="423" text-anchor="middle" font-size="12" fill="#374151">5</text>
-  <polyline fill="none" stroke="#059669" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="88.0,114.6 453.0,277.1 818.0,319.4"/>
-  <rect x="92.0" y="84.6" width="54.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
-<text x="119.0" y="98.6" text-anchor="middle" class="qps-label">21,733</text>
-  <rect x="429.5" y="247.1" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
-<text x="453.0" y="261.1" text-anchor="middle" class="qps-label">9,271</text>
-  <rect x="767.0" y="289.4" width="47.0" height="20" rx="4" fill="#ffffff" stroke="#d1d5db" stroke-width="1"/>
-<text x="790.5" y="303.4" text-anchor="middle" class="qps-label">6,026</text>
-  <circle cx="88.0" cy="114.6" r="5" fill="#ffffff" stroke="#059669" stroke-width="2.5"><title>replica_count=1, success_qps=21732.71, avg_us=735.20, p95_us=985, p99_us=1219</title></circle>
-  <circle cx="453.0" cy="277.1" r="5" fill="#ffffff" stroke="#059669" stroke-width="2.5"><title>replica_count=3, success_qps=9270.94, avg_us=1724.79, p95_us=2193, p99_us=2560</title></circle>
-  <circle cx="818.0" cy="319.4" r="5" fill="#ffffff" stroke="#059669" stroke-width="2.5"><title>replica_count=5, success_qps=6026.20, avg_us=2653.99, p95_us=3282, p99_us=3857</title></circle>
+  <text x="453.0" y="30" text-anchor="middle" font-size="18" class="title">Get QPS by Replica Count</text>
+  <line x1="88" y1="390.0" x2="818" y2="390.0" class="grid"/>
+  <text x="76" y="394.0" text-anchor="end" font-size="12" class="label">0</text>
+  <line x1="88" y1="322.8" x2="818" y2="322.8" class="grid"/>
+  <text x="76" y="326.8" text-anchor="end" font-size="12" class="label">9500</text>
+  <line x1="88" y1="255.6" x2="818" y2="255.6" class="grid"/>
+  <text x="76" y="259.6" text-anchor="end" font-size="12" class="label">19000</text>
+  <line x1="88" y1="188.4" x2="818" y2="188.4" class="grid"/>
+  <text x="76" y="192.4" text-anchor="end" font-size="12" class="label">28500</text>
+  <line x1="88" y1="121.2" x2="818" y2="121.2" class="grid"/>
+  <text x="76" y="125.2" text-anchor="end" font-size="12" class="label">38000</text>
+  <line x1="88" y1="54.0" x2="818" y2="54.0" class="grid"/>
+  <text x="76" y="58.0" text-anchor="end" font-size="12" class="label">47500</text>
+  <line x1="88" y1="390" x2="818" y2="390" class="axis"/>
+  <line x1="88" y1="54" x2="88" y2="390" class="axis"/>
+  <polyline points="88.0,118.8 453.0,313.0 818.0,348.7" fill="none" stroke="#059669" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="88.0" cy="118.8" r="5" fill="#ffffff" stroke="#059669" stroke-width="2.5"><title>replica_count=1, success_qps=38334.88, avg_us=416.44, p95_us=636, p99_us=763</title></circle>
+  <text x="88.0" y="418" text-anchor="middle" font-size="12" class="label">1</text>
+  <circle cx="453.0" cy="313.0" r="5" fill="#ffffff" stroke="#059669" stroke-width="2.5"><title>replica_count=3, success_qps=10883.83, avg_us=1468.96, p95_us=1981, p99_us=2302</title></circle>
+  <text x="453.0" y="418" text-anchor="middle" font-size="12" class="label">3</text>
+  <circle cx="818.0" cy="348.7" r="5" fill="#ffffff" stroke="#059669" stroke-width="2.5"><title>replica_count=5, success_qps=5836.62, avg_us=2739.83, p95_us=3895, p99_us=6252</title></circle>
+  <text x="818.0" y="418" text-anchor="middle" font-size="12" class="label">5</text>
 <text x="453.0" y="452" text-anchor="middle" font-size="13" class="label">replica_count</text>
-<text x="22" y="235.0" text-anchor="middle" font-size="13" class="label" transform="rotate(-90 22 235.0)">success_qps</text>
+<text x="22" y="222.0" text-anchor="middle" font-size="13" class="label" transform="rotate(-90 22 222.0)">success_qps</text>
 </svg>

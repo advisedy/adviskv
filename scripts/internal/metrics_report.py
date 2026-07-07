@@ -12,6 +12,7 @@ from typing import Optional
 class MetricsTarget:
     name: str
     url: str
+    cumulative_from_zero: bool = False
 
 
 @dataclass
@@ -214,6 +215,10 @@ def valid_samples_by_target(samples: list[MetricsSample]) -> dict[str, list[Metr
     return by_target
 
 
+def empty_sample(target: MetricsTarget, timestamp: float) -> MetricsSample:
+    return MetricsSample(target=target, timestamp=timestamp)
+
+
 def build_report(samples: list[MetricsSample]) -> MetricsReport:
     if samples:
         started_at = min(sample.timestamp for sample in samples)
@@ -223,17 +228,26 @@ def build_report(samples: list[MetricsSample]) -> MetricsReport:
 
     histogram_summaries: list[HistogramSummary] = []
     counter_summaries: list[CounterSummary] = []
+    valid_targets = set(valid_samples_by_target(samples))
     errors = [
         f"{time.strftime('%H:%M:%S', time.localtime(sample.timestamp))} "
         f"{sample.target.name}: {sample.error}"
-        for sample in samples if sample.error
+        for sample in samples
+        if sample.error and not (
+            sample.target.cumulative_from_zero and
+            sample.target.name in valid_targets
+        )
     ]
 
     for target_name, target_samples in valid_samples_by_target(samples).items():
-        if len(target_samples) < 2:
-            continue
-        first = target_samples[0]
         last = target_samples[-1]
+        if last.target.cumulative_from_zero:
+            first = empty_sample(last.target, started_at)
+        elif len(target_samples) >= 2:
+            first = target_samples[0]
+        else:
+            continue
+
         duration_s = last.timestamp - first.timestamp
         if duration_s <= 0:
             continue

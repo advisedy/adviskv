@@ -33,6 +33,12 @@ Status ServiceManager::get_table_meta(const GetTableMetaParam& param,
     return table_service_.get_table_meta(param, out);
 }
 
+Status ServiceManager::get_table_routes(const GetTableRoutesParam& param,
+                                        Table* out_table,
+                                        std::vector<ShardRoute>* out_routes) const {
+    return route_service_.get_table_routes(param, out_table, out_routes);
+}
+
 Status ServiceManager::register_node(const RegisterNodeParam& param) {
     return node_service_.register_node(param);
 }
@@ -52,10 +58,6 @@ Status ServiceManager::get_route(const GetRouteParam& param,
     return route_service_.get_route(param, out);
 }
 
-Status ServiceManager::get_shard_route(const GetShardRouteParam& param,
-                                       ShardRoute* out) const {
-    return route_service_.get_shard_route(param, out);
-}
 
 Status ServiceManager::reconcile_tables() {
     return table_service_.reconcile_all();

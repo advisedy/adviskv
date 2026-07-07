@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "common/status.h"
 #include "sdm/model/param.h"
 #include "sdm/model/model.h"
@@ -25,13 +27,13 @@ class ServiceManager {
                             Table* out_table);
     Status get_table_meta(const GetTableMetaParam& param,
                           Table* out) const;
+    Status get_table_routes(const GetTableRoutesParam& param, Table* out_table,
+                            std::vector<ShardRoute>* out_routes) const;
 
     Status register_node(const RegisterNodeParam& param);
     Status heartbeat(const HeartBeatParam& param,
                      HeartBeatResult* result = nullptr);
     Status get_route(const GetRouteParam& param, ShardRoute* out) const;
-    Status get_shard_route(const GetShardRouteParam& param,
-                           ShardRoute* out) const;
 
     Status reconcile_tables();
     Status reconcile_nodes();

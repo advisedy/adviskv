@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -37,6 +38,8 @@ STORAGE_CONFS = [
     ROOT_DIR / "conf" / "storage-4.yaml",
     ROOT_DIR / "conf" / "storage-5.yaml",
 ]
+DEFAULT_BENCH_METRICS_PORT = 52000
+DEFAULT_BENCH_METRICS_HOLD_SECONDS = 2
 
 
 YamlValue = Union[bool, int, str, Path]
@@ -60,6 +63,78 @@ def bench_args(argv: list[str]) -> list[str]:
     if argv and argv[0] == "--":
         return argv[1:]
     return argv
+
+
+def bench_arg_value(args: list[str], name: str) -> Optional[str]:
+    prefix = f"--{name}="
+    for arg in reversed(args):
+        if arg.startswith(prefix):
+            return arg[len(prefix):]
+    return None
+
+
+def append_arg_if_missing(args: list[str], name: str, value: str) -> None:
+    if bench_arg_value(args, name) is None:
+        args.append(f"--{name}={value}")
+
+
+def normalize_metrics_path(path: str) -> str:
+    if not path.startswith("/"):
+        return f"/{path}"
+    return path
+
+
+def can_bind_tcp(host: str, port: int) -> bool:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((host, port))
+            return True
+    except OSError:
+        return False
+
+
+def pick_bench_metrics_port(host: str) -> int:
+    preferred = int(env("BENCH_CLIENT_METRICS_PORT",
+                        str(DEFAULT_BENCH_METRICS_PORT)))
+    candidates = [preferred]
+    if preferred == DEFAULT_BENCH_METRICS_PORT:
+        candidates.extend(range(DEFAULT_BENCH_METRICS_PORT + 1,
+                                DEFAULT_BENCH_METRICS_PORT + 51))
+    for port in candidates:
+        if port > 0 and can_bind_tcp(host, port):
+            return port
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((host, 0))
+        return int(sock.getsockname()[1])
+
+
+def prepare_bench_client_metrics_args(args: list[str]) -> list[str]:
+    prepared = list(args)
+    if bench_arg_value(prepared, "metrics_http_port") is None:
+        host = connect_host(bench_arg_value(prepared, "metrics_http_host") or
+                            "127.0.0.1")
+        prepared.append(
+            f"--metrics_http_port={pick_bench_metrics_port(host)}")
+    append_arg_if_missing(
+        prepared,
+        "metrics_hold_seconds",
+        env("BENCH_CLIENT_METRICS_HOLD_SECONDS",
+            str(DEFAULT_BENCH_METRICS_HOLD_SECONDS)),
+    )
+    return prepared
+
+
+def bench_client_metrics_target(args: list[str]) -> Optional[MetricsTarget]:
+    port = bench_arg_value(args, "metrics_http_port")
+    if port is None or int(port) <= 0:
+        return None
+    host = connect_host(bench_arg_value(args, "metrics_http_host") or
+                        "127.0.0.1")
+    path = normalize_metrics_path(
+        bench_arg_value(args, "metrics_http_path") or "/metrics")
+    return MetricsTarget("bench-client", f"http://{host}:{int(port)}{path}",
+                         cumulative_from_zero=True)
 
 
 def yaml_value(value: YamlValue) -> str:
@@ -145,9 +220,7 @@ def metrics_target_from_conf(name: str, conf: Path) -> Optional[MetricsTarget]:
     port = values.get("metrics_http_port")
     if not port:
         return None
-    path = values.get("metrics_http_path", "/metrics")
-    if not path.startswith("/"):
-        path = f"/{path}"
+    path = normalize_metrics_path(values.get("metrics_http_path", "/metrics"))
     return MetricsTarget(name, f"http://{host}:{int(port)}{path}")
 
 
@@ -160,9 +233,14 @@ def storage_metrics_targets(storage_confs: list[Path]) -> list[MetricsTarget]:
     return targets
 
 
-def bench_metrics_targets(sdm_conf: Path,
-                          storage_confs: list[Path]) -> list[MetricsTarget]:
+def bench_metrics_targets(
+    sdm_conf: Path,
+    storage_confs: list[Path],
+    bench_target: Optional[MetricsTarget],
+) -> list[MetricsTarget]:
     targets: list[MetricsTarget] = []
+    if bench_target is not None:
+        targets.append(bench_target)
     sdm_target = metrics_target_from_conf("sdm", sdm_conf)
     if sdm_target is not None:
         targets.append(sdm_target)
@@ -212,11 +290,18 @@ def run_bench(argv: list[str]) -> None:
         print(f"[bench] service data: {data_dir}", flush=True)
         print(f"[bench] service logs: {service_log_dir}", flush=True)
         print(f"[bench] process logs: {process_log_dir}", flush=True)
-        command = [str(BENCH_BIN), *bench_args(argv)]
+        command_args = bench_args(argv)
+        bench_target = None
+        if metrics_report_enabled:
+            command_args = prepare_bench_client_metrics_args(command_args)
+            bench_target = bench_client_metrics_target(command_args)
+
+        command = [str(BENCH_BIN), *command_args]
         print(f"[bench] running bench_client: {' '.join(command)}", flush=True)
 
         if metrics_report_enabled:
-            targets = bench_metrics_targets(sdm_conf, storage_confs)
+            targets = bench_metrics_targets(sdm_conf, storage_confs,
+                                            bench_target)
             metrics_sampler = MetricsSampler(targets)
             metrics_sampler.start()
 

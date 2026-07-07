@@ -33,17 +33,32 @@ Status RouteService::get_route(const GetRouteParam& param, ShardRoute* out) cons
     RETURN_IF_INVALID_PARAM(param)
     RETURN_IF_NULLPTR(store_, "store is nullptr")
 
-    TableOr table;
-    Status status = store_->read_with(
-            [&](const SdmStoreTxn& txn) { return txn.get_table_by_name(param.db_name, param.table_name, table); });
-    RETURN_IF_INVALID_STATUS(status)
-    if (table.is_empty()) {
-        return Status::TABLE_NOT_FOUND(fmt::format("table {}.{} not found", param.db_name, param.table_name));
+    ShardID shard_id;
+    if (param.use_id) {
+        TableOr table;
+        Status status = store_->read_with([&](const SdmStoreTxn& txn) { return txn.get_table(param.table_id, table); });
+        RETURN_IF_INVALID_STATUS(status)
+        if (table.is_empty()) {
+            return Status::TABLE_NOT_FOUND(fmt::format("table_id {} not found", param.table_id));
+        }
+        if (param.shard_id >= table->spec.shard_count) {
+            return Status::INVALID_ARGUMENT(fmt::format("shard_id {} out of range, shard_count={}", param.shard_id,
+                                                       table->spec.shard_count));
+        }
+        shard_id = ShardID{param.table_id, param.shard_id};
+    } else {
+        TableOr table;
+        Status status = store_->read_with(
+                [&](const SdmStoreTxn& txn) { return txn.get_table_by_name(param.db_name, param.table_name, table); });
+        RETURN_IF_INVALID_STATUS(status)
+        if (table.is_empty()) {
+            return Status::TABLE_NOT_FOUND(fmt::format("table {}.{} not found", param.db_name, param.table_name));
+        }
+        shard_id = calc_shard_id(*table, param.key);
     }
 
-    ShardID shard_id = calc_shard_id(*table, param.key);
     ShardRouteOr route;
-    status = store_->read_with([&](const SdmStoreTxn& txn) { return txn.get_shard_route(shard_id, route); });
+    Status status = store_->read_with([&](const SdmStoreTxn& txn) { return txn.get_shard_route(shard_id, route); });
     RETURN_IF_INVALID_STATUS(status)
     if (route.is_empty()) {
         return Status::ROUTE_NOT_FOUND("route not found");
@@ -73,34 +88,39 @@ Status RouteService::get_route(const GetRouteParam& param, ShardRoute* out) cons
     return status;
 }
 
-Status RouteService::get_shard_route(const GetShardRouteParam& param,
-                                     ShardRoute* out) const {
+Status RouteService::get_table_routes(const GetTableRoutesParam& param, Table* out_table,
+                                      std::vector<ShardRoute>* out_routes) const {
     RETURN_IF_INVALID_PARAM(param)
+    RETURN_IF_NULLPTR(out_routes, "out_routes is nullptr")
     RETURN_IF_NULLPTR(store_, "store is nullptr")
 
-    TableOr table;
-    Status status = store_->read_with([&](const SdmStoreTxn& txn) { return txn.get_table(param.table_id, table); });
-    RETURN_IF_INVALID_STATUS(status)
-    if (table.is_empty()) {
-        return Status::TABLE_NOT_FOUND(fmt::format("table_id {} not found", param.table_id));
-    }
-    if (param.shard_id >= table->spec.shard_count) {
-        return Status::INVALID_ARGUMENT(fmt::format("shard_id {} out of range, shard_count={}", param.shard_id,
-                                                   table->spec.shard_count));
-    }
+    return store_->read_with([&](const SdmStoreTxn& txn) -> Status {
+        TableOr table;
+        RETURN_IF_INVALID_STATUS(txn.get_table_by_name(param.db_name, param.table_name, table))
+        if (table.is_empty()) {
+            return Status::TABLE_NOT_FOUND(fmt::format("table {}.{} not found", param.db_name, param.table_name));
+        }
 
-    ShardRouteOr route;
-    ShardID shard_id{param.table_id, param.shard_id};
-    status = store_->read_with([&](const SdmStoreTxn& txn) { return txn.get_shard_route(shard_id, route); });
-    RETURN_IF_INVALID_STATUS(status)
-    if (route.is_empty()) {
-        return Status::ROUTE_NOT_FOUND("route not found");
-    }
-    RETURN_IF_INVALID_STATUS(validate_writable_route(*route))
-    if (out != nullptr) {
-        *out = *route;
-    }
-    return Status::OK();
+        std::vector<ShardRoute> routes;
+        routes.reserve(to<size_t>(table->spec.shard_count));
+        for (ShardIndex shard_index = 0; shard_index < table->spec.shard_count; ++shard_index) {
+            ShardRouteOr route;
+            ShardID shard_id{table->table_id, shard_index};
+            RETURN_IF_INVALID_STATUS(txn.get_shard_route(shard_id, route))
+            if (route.is_empty()) {
+                return Status::ROUTE_NOT_FOUND(fmt::format("route not found, table_id={}, shard_id={}",
+                                                           table->table_id, shard_index));
+            }
+            RETURN_IF_INVALID_STATUS(validate_writable_route(*route))
+            routes.push_back(*route);
+        }
+
+        if (out_table != nullptr) {
+            *out_table = *table;
+        }
+        *out_routes = std::move(routes);
+        return Status::OK();
+    });
 }
 
 ShardID RouteService::calc_shard_id(const Table& table, Key key) const {

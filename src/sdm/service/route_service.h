@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "common/status.h"
 #include "common/model/type.h"
 #include "sdm/model/param.h"
@@ -14,8 +16,9 @@ class RouteService {
     explicit RouteService(SdmStore* store);
 
     Status get_route(const GetRouteParam& param, ShardRoute* out) const;
-    Status get_shard_route(const GetShardRouteParam& param,
-                           ShardRoute* out) const;
+    Status get_table_routes(const GetTableRoutesParam& param, Table* out_table,
+                            std::vector<ShardRoute>* out_routes) const;
+
     Status reconcile_all();
 
    protected:

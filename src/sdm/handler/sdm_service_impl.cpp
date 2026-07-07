@@ -1,6 +1,7 @@
 #include "sdm/handler/sdm_service_impl.h"
 
 #include <cstddef>
+#include <vector>
 
 #include <grpcpp/server_context.h>
 #include <grpcpp/support/status.h>
@@ -187,15 +188,21 @@ grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context, const rpc::G
                                       rpc::GetRouteResponse* response) {
     UNUSED(context);
     GetRouteParam param;
-    param.db_name = request->db_name();
-    param.table_name = request->table_name();
-    param.key = request->key();
     ShardRoute route;
+    if (request->use_id()) {
+        param.use_id = true;
+        param.table_id = request->table_id();
+        param.shard_id = request->shard_id();
+    } else {
+        param.db_name = request->db_name();
+        param.table_name = request->table_name();
+        param.key = request->key();
+    }
     Status status = service_manager_->get_route(param, &route);
     fill_base_rsp(response, status);
     if (status.fail()) {
-        LOG_WARN("[SdmServiceImpl] GetRoute failed, db={}, table={}, key={}, status={}", param.db_name, param.table_name, param.key,
-                 status.to_string());
+        LOG_WARN("[SdmServiceImpl] GetRoute failed, db={}, table={}, key={}, status={}", param.db_name,
+                 param.table_name, param.key, status.to_string());
         return grpc::Status::OK;
     }
     if (!route.replicas.empty()) {
@@ -223,8 +230,7 @@ grpc::Status SdmServiceImpl::GetRoute(grpc::ServerContext* context, const rpc::G
     return grpc::Status::OK;
 }
 
-grpc::Status SdmServiceImpl::GetTableMeta(grpc::ServerContext* context,
-                                          const rpc::GetTableMetaRequest* request,
+grpc::Status SdmServiceImpl::GetTableMeta(grpc::ServerContext* context, const rpc::GetTableMetaRequest* request,
                                           rpc::GetTableMetaResponse* response) {
     UNUSED(context);
 
@@ -243,37 +249,42 @@ grpc::Status SdmServiceImpl::GetTableMeta(grpc::ServerContext* context,
 
     response->set_table_id(table.table_id);
     response->set_shard_count(table.spec.shard_count);
-    LOG_INFO("[SdmServiceImpl] GetTableMeta ok, db={}, table={}, table_id={}, shard_count={}", param.db_name, param.table_name,
-             table.table_id, table.spec.shard_count);
+    LOG_INFO("[SdmServiceImpl] GetTableMeta ok, db={}, table={}, table_id={}, shard_count={}", param.db_name,
+             param.table_name, table.table_id, table.spec.shard_count);
     return grpc::Status::OK;
 }
 
-grpc::Status SdmServiceImpl::GetShardRoute(grpc::ServerContext* context, const rpc::GetShardRouteRequest* request,
-                                           rpc::GetShardRouteResponse* response) {
+grpc::Status SdmServiceImpl::GetTableRoutes(grpc::ServerContext* context,
+                                            const rpc::GetTableRoutesRequest* request,
+                                            rpc::GetTableRoutesResponse* response) {
     UNUSED(context);
 
-    GetShardRouteParam param;
-    param.table_id = request->table_id();
-    param.shard_id = request->shard_id();
+    GetTableRoutesParam param;
+    param.db_name = request->db_name();
+    param.table_name = request->table_name();
 
-    ShardRoute route;
-    Status status = service_manager_->get_shard_route(param, &route);
+    Table table;
+    std::vector<ShardRoute> routes;
+    Status status = service_manager_->get_table_routes(param, &table, &routes);
     fill_base_rsp(response, status);
     if (status.fail()) {
-        LOG_WARN("[SdmServiceImpl] GetShardRoute failed, table_id={}, shard_id={}, status={}", param.table_id, param.shard_id,
-                 status.to_string());
+        LOG_WARN("[SdmServiceImpl] GetTableRoutes failed, db={}, table={}, status={}", param.db_name,
+                 param.table_name, status.to_string());
         return grpc::Status::OK;
     }
-    if (!route.replicas.empty()) {
-        response->set_table_id(route.shard_id.table_id);
-        response->set_shard_id(route.shard_id.shard_index);
+
+    response->set_table_id(table.table_id);
+    response->set_shard_count(table.spec.shard_count);
+    for (const auto& route : routes) {
+        auto* route_pb = response->add_routes();
+        route_pb->set_shard_id(route.shard_id.shard_index);
         for (const auto& replica : route.replicas) {
             pb::RaftRole role_pb;
             if (!encode_pb_raft_role(replica.role, role_pb)) {
                 fill_base_rsp(response, Status{StatusCode::ERROR, "route replica role is not valid"});
                 return grpc::Status::OK;
             }
-            auto* route_replica = response->add_replicas();
+            auto* route_replica = route_pb->add_replicas();
             encode_pb_replica_id(replica.replica_id, *route_replica->mutable_replica_id());
             auto* endpoint = route_replica->mutable_endpoint();
             endpoint->set_ip(replica.ip);
@@ -282,8 +293,8 @@ grpc::Status SdmServiceImpl::GetShardRoute(grpc::ServerContext* context, const r
         }
     }
 
-    LOG_INFO("[SdmServiceImpl] GetShardRoute ok, table_id={}, shard_id={}, replicas={}", route.shard_id.table_id,
-             route.shard_id.shard_index, route.replicas.size());
+    LOG_INFO("[SdmServiceImpl] GetTableRoutes ok, db={}, table={}, table_id={}, shard_count={}, routes={}",
+             param.db_name, param.table_name, table.table_id, table.spec.shard_count, routes.size());
     return grpc::Status::OK;
 }
 

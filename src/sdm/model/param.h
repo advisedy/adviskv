@@ -165,13 +165,24 @@ struct RegisterNodeParam {
 // route service
 
 struct GetRouteParam {
+    // 可选
     std::string db_name;
     std::string table_name;
     Key key;
 
+    // 可选，如果指定了id就优先使用id
+    bool use_id{false};
+    TableID table_id{-1};
+    ShardIndex shard_id{-1};
+
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
-        RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
+        if(use_id){
+            RETURN_IF_INVALID_CONDITION(table_id >= 0, "table_id should be greater than or equal to 0")
+            RETURN_IF_INVALID_CONDITION(shard_id >= 0, "shard_id should be greater than or equal to 0")
+        } else{
+            RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
+            RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
+        }
         return Status::OK();
     }
 };
@@ -187,16 +198,17 @@ struct GetTableMetaParam {
     }
 };
 
-struct GetShardRouteParam {
-    TableID table_id{-1};
-    ShardIndex shard_id{-1};
+struct GetTableRoutesParam {
+    std::string db_name;
+    std::string table_name;
 
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(table_id >= 0, "table_id should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(shard_id >= 0, "shard_id should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
         return Status::OK();
     }
 };
+
 
 struct HeartBeatReplicaInfo {
     ReplicaID replica_id;

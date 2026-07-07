@@ -1,10 +1,13 @@
 #include "sdk/sdm_route_client.h"
 
+#include <chrono>
+#include <string>
+#include <unordered_set>
+#include <vector>
+
 #include <fmt/format.h>
 #include <grpcpp/client_context.h>
 #include <grpcpp/create_channel.h>
-
-#include <chrono>
 
 #include "common/define.h"
 #include "common/proto/proto.h"
@@ -15,84 +18,84 @@
 namespace adviskv::sdk {
 
 SdmRouteClient::SdmRouteClient(const KVClientConf& conf) : conf_(conf) {
-    const std::string target =
-        fmt::format("{}:{}", conf_.sdm_host, conf_.sdm_port);
+    const std::string target = fmt::format("{}:{}", conf_.sdm_host, conf_.sdm_port);
     channel_ = grpc::CreateChannel(target, grpc::InsecureChannelCredentials());
     stub_ = sdm_rpc::SdmService::NewStub(channel_);
 }
 
-Status SdmRouteClient::get_route(const Key& key, RouteInfo* route) const {
-    RETURN_IF_NULLPTR(route, "route should not be nullptr")
+Status SdmRouteClient::get_table_routes(TableRouteInfo* table_routes) const {
+    RETURN_IF_NULLPTR(table_routes, "table_routes should not be nullptr")
 
-    sdm_rpc::GetRouteRequest request;
+    sdm_rpc::GetTableRoutesRequest request;
     request.set_db_name(conf_.db_name);
     request.set_table_name(conf_.table_name);
-    request.set_key(key);
 
-    sdm_rpc::GetRouteResponse response;
+    sdm_rpc::GetTableRoutesResponse response;
     grpc::ClientContext context;
-    context.set_deadline(std::chrono::system_clock::now() +
-                         Milliseconds(conf_.sdm_timeout_ms));
+    context.set_deadline(std::chrono::system_clock::now() + Milliseconds(conf_.sdm_timeout_ms));
 
-    grpc::Status grpc_status = stub_->GetRoute(&context, request, &response);
+    grpc::Status grpc_status = stub_->GetTableRoutes(&context, request, &response);
     if (!grpc_status.ok()) {
         ADVISKV_SDK_LOG(LogLevel::ERROR,
-                        "GetRoute RPC failed, sdm={}:{}, db={}, table={}, "
-                        "key={}, grpc_code={}, msg={}",
-                        conf_.sdm_host, conf_.sdm_port, conf_.db_name,
-                        conf_.table_name, key,
-                        static_cast<int>(grpc_status.error_code()),
-                        grpc_status.error_message());
-        return Status::ERROR(
-            fmt::format("GetRoute RPC failed, grpc code = {}, msg = {}",
-                        static_cast<int>(grpc_status.error_code()),
-                        grpc_status.error_message()));
+                        "GetTableRoutes RPC failed, sdm={}:{}, db={}, table={}, "
+                        "grpc_code={}, msg={}",
+                        conf_.sdm_host, conf_.sdm_port, conf_.db_name, conf_.table_name,
+                        static_cast<int>(grpc_status.error_code()), grpc_status.error_message());
+        return Status::ERROR(fmt::format("GetTableRoutes RPC failed, grpc code = {}, msg = {}",
+                                         static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
     }
 
-    if (Status status = decode_base_rsp_status(response.base_rsp());
-        status.fail()) {
+    if (Status status = decode_base_rsp_status(response.base_rsp()); status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
-                        "GetRoute returns non-ok, sdm={}:{}, db={}, table={}, "
-                        "key={}, code={}, msg={}",
-                        conf_.sdm_host, conf_.sdm_port, conf_.db_name,
-                        conf_.table_name, key, response.base_rsp().code(),
+                        "GetTableRoutes returns non-ok, sdm={}:{}, db={}, table={}, "
+                        "code={}, msg={}",
+                        conf_.sdm_host, conf_.sdm_port, conf_.db_name, conf_.table_name, response.base_rsp().code(),
                         response.base_rsp().msg());
         return status;
     }
 
-    RETURN_IF_INVALID_CONDITION(response.replicas_size() > 0,
-                                "route response replicas should not empty")
+    RETURN_IF_INVALID_CONDITION(response.table_id() >= 0, "table routes table_id is invalid")
+    RETURN_IF_INVALID_CONDITION(response.shard_count() > 0, "table routes shard_count is invalid")
 
-    route->table_id = response.table_id();
-    route->shard_id = response.shard_id();
-    route->replicas.clear();
-    route->replicas.reserve(response.replicas_size());
-    for (const auto& replica : response.replicas()) {
-        RouteReplica route_replica;
+    int32 shard_count = response.shard_count();
+    TableRouteInfo next;
+    next.table_id = response.table_id();
+    next.shard_count = shard_count;
+    next.routes.resize(to<size_t>(shard_count));
+
+    int32 decoded_count{0};
+    for (const auto& route_pb : response.routes()) {
+        ShardIndex shard_id = route_pb.shard_id();
         RETURN_IF_INVALID_CONDITION(
-            decode_pb_replica_id(replica.replica_id(), route_replica.replica_id),
-            "route replica id is not valid")
-        route_replica.endpoint =
-            Endpoint{replica.endpoint().ip(), replica.endpoint().port()};
-        ReplicaRole role = ReplicaRole::FOLLOWER;
-        RETURN_IF_INVALID_CONDITION(decode_pb_raft_role(replica.role(), role),
-                                    "route replica role is not valid")
-        route_replica.role = role;
-        route->replicas.push_back(std::move(route_replica));
-    }
+                shard_id >= 0 && shard_id < shard_count,
+                fmt::format("table route shard_id invalid, shard_id={}, shard_count={}", shard_id, shard_count))
+        RETURN_IF_INVALID_CONDITION(route_pb.replicas_size() > 0,
+                                    fmt::format("table route replicas should not empty, shard_id={}", shard_id))
 
-    {
-        std::string route_res;
-        for (const RouteReplica& one : route->replicas) {
-            std::string one_str{fmt::format(
-                "replica:[id:{}, ip:{}, port:{}, role:{}], ",
-                one.replica_id.to_string(), one.endpoint.ip, one.endpoint.port,
-                (int8)one.role)};
-            route_res.append(std::move(one_str));
+        RouteInfo route;
+        route.table_id = next.table_id;
+        route.shard_id = shard_id;
+        route.replicas.reserve(route_pb.replicas_size());
+        for (const auto& replica_pb : route_pb.replicas()) {
+            RouteReplica route_replica;
+            RETURN_IF_INVALID_CONDITION(decode_pb_replica_id(replica_pb.replica_id(), route_replica.replica_id),
+                                        "route replica id is not valid")
+            route_replica.endpoint = Endpoint{replica_pb.endpoint().ip(), replica_pb.endpoint().port()};
+            ReplicaRole role = ReplicaRole::FOLLOWER;
+            RETURN_IF_INVALID_CONDITION(decode_pb_raft_role(replica_pb.role(), role), "route replica role is not valid")
+            route_replica.role = role;
+            route.replicas.push_back(std::move(route_replica));
         }
-        ADVISKV_SDK_LOG(LogLevel::INFO, "get route ok, route: {}", route_res);
+
+        next.routes[to<size_t>(shard_id)] = std::move(route);
+        ++decoded_count;
     }
 
+    RETURN_IF_INVALID_CONDITION(
+            decoded_count == shard_count,
+            fmt::format("table routes count mismatch, routes={}, shard_count={}", decoded_count, shard_count))
+
+    *table_routes = std::move(next);
     return Status::OK();
 }
 

@@ -4,7 +4,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -183,16 +182,6 @@ std::string quote_value(const std::string& value) {
     }
     quoted.push_back('"');
     return quoted;
-}
-
-std::optional<std::string> probe_key_for_shard(ShardIndex shard, int32_t shard_count) {
-    for (int64_t attempt = 0; attempt < 1000000; ++attempt) {
-        std::string key = fmt::format("__adviskvctl_route_probe_{}_{}", shard, attempt);
-        if (adviskv::stable_shard_index(key, shard_count) == shard) {
-            return key;
-        }
-    }
-    return std::nullopt;
 }
 
 bool load_config(const std::string& path, AdvisKvCtlConfig* config) {
@@ -451,11 +440,18 @@ private:
         }
         adviskv::sdk::RouteInfo route_info;
         auto route_client = make_route_client(tokens[1], tokens[2]);
-        Status status = route_client.get_route(tokens[3], &route_info);
+        adviskv::sdk::TableRouteInfo table_routes;
+        Status status = route_client.get_table_routes(&table_routes);
         if (status.fail()) {
             print_status(status);
             return;
         }
+        ShardIndex shard = adviskv::stable_shard_index(tokens[3], table_routes.shard_count);
+        if (shard < 0 || static_cast<size_t>(shard) >= table_routes.routes.size()) {
+            fmt::print("ERR invalid shard={} shard_count={}\n", shard, table_routes.shard_count);
+            return;
+        }
+        route_info = table_routes.routes[static_cast<size_t>(shard)];
         fmt::print("Route\n");
         fmt::print("  table: {}.{}\n", tokens[1], tokens[2]);
         fmt::print("  key:   {}\n", tokens[3]);
@@ -468,36 +464,19 @@ private:
             return;
         }
 
-        TableInfo table_info;
-        if (!fetch_table(tokens[1], tokens[2], &table_info)) {
-            return;
-        }
-        if (table_info.shard_count <= 0) {
-            fmt::print("ERR invalid shard_count={}\n", table_info.shard_count);
+        adviskv::sdk::TableRouteInfo table_routes;
+        auto route_client = make_route_client(tokens[1], tokens[2]);
+        Status status = route_client.get_table_routes(&table_routes);
+        if (status.fail()) {
+            print_status(status);
             return;
         }
 
         fmt::print("Routes\n");
         fmt::print("  table: {}.{}\n", tokens[1], tokens[2]);
-        fmt::print("  id:    table_id={} shard_count={} replica_count={}\n", table_info.table_id,
-                   table_info.shard_count, table_info.replica_count);
+        fmt::print("  id:    table_id={} shard_count={}\n", table_routes.table_id, table_routes.shard_count);
 
-        auto route_client = make_route_client(tokens[1], tokens[2]);
-        for (ShardIndex shard = 0; shard < table_info.shard_count; ++shard) {
-            std::optional<std::string> key = probe_key_for_shard(shard, table_info.shard_count);
-            if (!key.has_value()) {
-                fmt::print("  shard {}\n", shard);
-                fmt::print("    ERR failed to find probe key\n");
-                continue;
-            }
-
-            adviskv::sdk::RouteInfo route_info;
-            Status status = route_client.get_route(*key, &route_info);
-            if (status.fail()) {
-                fmt::print("  shard {}\n", shard);
-                fmt::print("    ERR code={} msg={}\n", static_cast<int>(status.code()), status.msg());
-                continue;
-            }
+        for (const auto& route_info : table_routes.routes) {
             print_route(route_info, "  ");
         }
     }

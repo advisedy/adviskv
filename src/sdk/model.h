@@ -18,4 +18,10 @@ struct RouteInfo {
     ShardIndex shard_id{-1};
     std::vector<RouteReplica> replicas;
 };
+
+struct TableRouteInfo {
+    TableID table_id{-1};
+    int32_t shard_count{0};
+    std::vector<RouteInfo> routes;
+};
 }  // namespace adviskv::sdk

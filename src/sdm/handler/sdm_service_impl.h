@@ -29,7 +29,7 @@ class SdmServiceImpl final : public rpc::SdmService::Service {
     DEFINE_METHOD(RegisterNode)
     DEFINE_METHOD(GetRoute)
     DEFINE_METHOD(GetTableMeta) // for sdk
-    DEFINE_METHOD(GetShardRoute)
+    DEFINE_METHOD(GetTableRoutes) // for sdk
 
 #undef DEFINE_METHOD
 
