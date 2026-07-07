@@ -176,6 +176,28 @@ struct GetRouteParam {
     }
 };
 
+struct GetTableMetaParam {
+    std::string db_name;
+    std::string table_name;
+
+    Status validate() const {
+        RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
+        RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
+        return Status::OK();
+    }
+};
+
+struct GetShardRouteParam {
+    TableID table_id{-1};
+    ShardIndex shard_id{-1};
+
+    Status validate() const {
+        RETURN_IF_INVALID_CONDITION(table_id >= 0, "table_id should be greater than or equal to 0")
+        RETURN_IF_INVALID_CONDITION(shard_id >= 0, "shard_id should be greater than or equal to 0")
+        return Status::OK();
+    }
+};
+
 struct HeartBeatReplicaInfo {
     ReplicaID replica_id;
     ReplicaRole role;

@@ -23,11 +23,15 @@ class ServiceManager {
         const AlterReplicaCountParam& param);
     Status get_table_status(const GetTableStatusParam& param,
                             Table* out_table);
+    Status get_table_meta(const GetTableMetaParam& param,
+                          Table* out) const;
 
     Status register_node(const RegisterNodeParam& param);
     Status heartbeat(const HeartBeatParam& param,
                      HeartBeatResult* result = nullptr);
     Status get_route(const GetRouteParam& param, ShardRoute* out) const;
+    Status get_shard_route(const GetShardRouteParam& param,
+                           ShardRoute* out) const;
 
     Status reconcile_tables();
     Status reconcile_nodes();

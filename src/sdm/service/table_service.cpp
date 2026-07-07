@@ -159,7 +159,23 @@ Status TableService::alter_table_replica_count(const AlterReplicaCountParam& par
     });
 }
 
-// 语义： 这个接口是给 meta 侧在创建 table 的时候可以及时抓取查看 table
+Status TableService::get_table_meta(const GetTableMetaParam& param, Table* out_table) const {
+    RETURN_IF_INVALID_PARAM(param)
+    RETURN_IF_NULLPTR(store_, "store is nullptr")
+
+    TableOr existing;
+    RETURN_IF_INVALID_STATUS(store_->read_with(
+            [&](const SdmStoreTxn& txn) { return txn.get_table_by_name(param.db_name, param.table_name, existing); }))
+    if (existing.is_empty()) {
+        return Status::TABLE_NOT_FOUND(fmt::format("table {}.{} not found", param.db_name, param.table_name));
+    }
+    if (out_table != nullptr) {
+        *out_table = *existing;
+    }
+    return Status::OK();
+}
+
+// 这个接口是给 meta 侧在创建 table 的时候可以及时查看 table
 // 的信息而写的接口，并不是专门给用户看的
 Status TableService::get_table_status(const GetTableStatusParam& param, Table* out_table) const {
     RETURN_IF_INVALID_PARAM(param)

@@ -17,6 +17,7 @@ public:
     Status place_table(const PlaceTableParam& param);
     Status drop_table(const DropTableParam& param);
     Status alter_table_replica_count(const AlterReplicaCountParam& param);
+    Status get_table_meta(const GetTableMetaParam& param, Table* out_table) const;
     Status get_table_status(const GetTableStatusParam& param, Table* out_table) const;
 
     Status reconcile_all();

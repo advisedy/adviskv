@@ -16,7 +16,17 @@
 
 namespace adviskv::sdm {
 
-RouteService::RouteService(SdmStore* store) : store_(store) {
+RouteService::RouteService(SdmStore* store) : store_(store) {}
+
+Status RouteService::validate_writable_route(const ShardRoute& route) {
+    int leader_count = std::count_if(route.replicas.begin(), route.replicas.end(), [](const RouteEntry& entry) {
+        return entry.role == ReplicaRole::LEADER && !entry.ip.empty() && entry.port > 0;
+    });
+    if (leader_count != 1) {
+        return Status::ROUTE_NOT_FOUND(
+                fmt::format("writable leader route is not ready。 leader_count={}", leader_count));
+    }
+    return Status::OK();
 }
 
 Status RouteService::get_route(const GetRouteParam& param, ShardRoute* out) const {
@@ -38,13 +48,7 @@ Status RouteService::get_route(const GetRouteParam& param, ShardRoute* out) cons
     if (route.is_empty()) {
         return Status::ROUTE_NOT_FOUND("route not found");
     }
-    int leader_count = std::count_if(route->replicas.begin(), route->replicas.end(), [](const RouteEntry& entry) {
-        return entry.role == ReplicaRole::LEADER && !entry.ip.empty() && entry.port > 0;
-    });
-    if (leader_count != 1) {
-        return Status::ROUTE_NOT_FOUND(
-                fmt::format("writable leader route is not ready。 leader_count={}", leader_count));
-    }
+    RETURN_IF_INVALID_STATUS(validate_writable_route(*route))
     if (out) {
         *out = *route;
         // 这边第一个就是leader的，
@@ -69,11 +73,40 @@ Status RouteService::get_route(const GetRouteParam& param, ShardRoute* out) cons
     return status;
 }
 
+Status RouteService::get_shard_route(const GetShardRouteParam& param,
+                                     ShardRoute* out) const {
+    RETURN_IF_INVALID_PARAM(param)
+    RETURN_IF_NULLPTR(store_, "store is nullptr")
+
+    TableOr table;
+    Status status = store_->read_with([&](const SdmStoreTxn& txn) { return txn.get_table(param.table_id, table); });
+    RETURN_IF_INVALID_STATUS(status)
+    if (table.is_empty()) {
+        return Status::TABLE_NOT_FOUND(fmt::format("table_id {} not found", param.table_id));
+    }
+    if (param.shard_id >= table->spec.shard_count) {
+        return Status::INVALID_ARGUMENT(fmt::format("shard_id {} out of range, shard_count={}", param.shard_id,
+                                                   table->spec.shard_count));
+    }
+
+    ShardRouteOr route;
+    ShardID shard_id{param.table_id, param.shard_id};
+    status = store_->read_with([&](const SdmStoreTxn& txn) { return txn.get_shard_route(shard_id, route); });
+    RETURN_IF_INVALID_STATUS(status)
+    if (route.is_empty()) {
+        return Status::ROUTE_NOT_FOUND("route not found");
+    }
+    RETURN_IF_INVALID_STATUS(validate_writable_route(*route))
+    if (out != nullptr) {
+        *out = *route;
+    }
+    return Status::OK();
+}
+
 ShardID RouteService::calc_shard_id(const Table& table, Key key) const {
     // TODO 将来得搞range
     return ShardID{table.table_id, stable_shard_index(key, table.spec.shard_count)};
 }
-
 
 Status RouteService::reconcile_all() {
     RETURN_IF_NULLPTR(store_, "store is nullptr")

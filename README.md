@@ -15,7 +15,7 @@
 
 AdvisKV is a distributed Key-Value storage prototype implemented with **C++17 + gRPC + Protobuf + Raft**. It uses a control-plane/data-plane architecture: `Meta` manages DDL and catalog metadata, `SDM` manages Storage node registration, heartbeats, replica-group orchestration, desired replica dispatch, and shard route convergence, `Storage` handles KV reads/writes, Raft replication, WAL, snapshots, and local recovery, and `SDK` exposes `put/get/delete` APIs based on `db + table + key`.
 
-The current V1 runs a complete local main path: database/table creation, table sharding, multi-replica placement, replica-count changes, abnormal replica replacement, route generation, SDK reads/writes, Raft replication, WAL, snapshots, crash recovery, GoogleTest, Python E2E tests, benchmarks, and Storage metrics text reports. It is designed as a runnable prototype for learning distributed KV architecture and local experimentation, not as a production-ready database.
+The current V1 runs a complete local main path: database/table creation, table sharding, multi-replica placement, replica-count changes, abnormal replica replacement, route generation, SDK reads/writes, Raft replication, WAL, snapshots, crash recovery, GoogleTest, Python E2E tests, benchmarks, and metrics text reports. It is designed as a runnable prototype for learning distributed KV architecture and local experimentation, not as a production-ready database.
 
 ## Features
 
@@ -26,7 +26,7 @@ The current V1 runs a complete local main path: database/table creation, table s
 - Abnormal replica replacement: SDM adds new replicas when healthy members are insufficient and cleans up `LOST` / `ERROR` members.
 - SDK route resolution based on `db + table + key`, followed by leader-based `put/get/delete` requests to Storage.
 - Storage replication based on Raft, with WAL, snapshots, and crash recovery.
-- GoogleTest, Python E2E tests, benchmark tooling, and Storage metrics reports without a Prometheus dependency.
+- GoogleTest, Python E2E tests, benchmark tooling, and service/SDK metrics reports without a Prometheus dependency.
 
 ## Architecture
 
@@ -150,19 +150,19 @@ Run a single benchmark:
 ./scripts/bench.sh --workload=put --threads=4 --requests=10000 --replica_count=3
 ```
 
-Run a benchmark and generate a Storage metrics text report:
+Run a benchmark and generate a metrics text report:
 
 ```bash
 ./scripts/bench_metrics.sh --workload=put --threads=4 --requests=10000 --replica_count=3
 ```
 
-`bench_metrics.sh` uses the same arguments as `bench.sh`, samples Storage `/metrics` during the benchmark, and prints the report path at the end:
+`bench_metrics.sh` uses the same arguments as `bench.sh`, samples service `/metrics` endpoints plus the benchmark client's SDK metrics during the run, and prints the report path at the end:
 
 ```text
 [bench] metrics report: build/release/bench_results/<run_id>/metrics_report.txt
 ```
 
-The report lists Storage latency histogram deltas and counter deltas that changed during the run, which makes it useful for local tuning and regression comparison.
+The report lists latency histogram deltas and counter deltas that changed during the run, including `sdk_*` rows from the benchmark client, which makes it useful for local tuning and regression comparison.
 
 ## Documentation
 
@@ -193,7 +193,7 @@ AdvisKV is currently a V1 prototype. It provides a buildable, runnable, and test
 - The main path for replica-count changes and abnormal replica replacement is implemented, but more complete automatic rebalancing, complex membership strategies, and production-grade operations are still out of scope for V1.
 - Route and writable-leader semantics still need broader failure-scenario validation.
 - Storage currently uses a map-based KV engine and has not integrated production-grade LSM engines such as RocksDB.
-- Storage metrics can be sampled, while Meta/SDM do not yet expose the same level of metrics or health endpoints.
+- Storage and SDK benchmark metrics can be sampled, while Meta does not yet expose the same level of metrics or health endpoints.
 - Benchmark results come from local V1 tests and are intended for tuning and regression comparison, not production performance claims.
 
 ## License

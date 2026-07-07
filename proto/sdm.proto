@@ -24,6 +24,29 @@ message GetRouteResponse{
     repeated RouteReplica replicas = 4;
 }
 
+message GetTableRouteMetaRequest{
+    string db_name = 1;
+    string table_name = 2;
+}
+
+message GetTableRouteMetaResponse{
+    adviskv.pb.BaseRsp base_rsp = 1;
+    int32 table_id = 2;
+    int32 shard_count = 3;
+}
+
+message GetShardRouteRequest{
+    int32 table_id = 1;
+    int32 shard_id = 2;
+}
+
+message GetShardRouteResponse{
+    adviskv.pb.BaseRsp base_rsp = 1;
+    int32 table_id = 2;
+    int32 shard_id = 3;
+    repeated RouteReplica replicas = 4;
+}
+
 message RegisterNodeRequest{
     string node_id = 1;
     string ip = 2;
@@ -124,6 +147,8 @@ message HeartbeatResponse{
 
 service SdmService{
     rpc GetRoute(GetRouteRequest) returns (GetRouteResponse);
+    rpc GetTableRouteMeta(GetTableRouteMetaRequest) returns (GetTableRouteMetaResponse);
+    rpc GetShardRoute(GetShardRouteRequest) returns (GetShardRouteResponse);
     rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
     rpc PlaceTable(PlaceTableRequest) returns (PlaceTableResponse);
     rpc DropTable(DropTableRequest) returns (DropTableResponse);

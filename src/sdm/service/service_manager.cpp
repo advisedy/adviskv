@@ -28,6 +28,11 @@ Status ServiceManager::get_table_status(const GetTableStatusParam& param,
     return table_service_.get_table_status(param, out_table);
 }
 
+Status ServiceManager::get_table_meta(const GetTableMetaParam& param,
+                                      Table* out) const {
+    return table_service_.get_table_meta(param, out);
+}
+
 Status ServiceManager::register_node(const RegisterNodeParam& param) {
     return node_service_.register_node(param);
 }
@@ -45,6 +50,11 @@ Status ServiceManager::heartbeat(const HeartBeatParam& param,
 Status ServiceManager::get_route(const GetRouteParam& param,
                                  ShardRoute* out) const {
     return route_service_.get_route(param, out);
+}
+
+Status ServiceManager::get_shard_route(const GetShardRouteParam& param,
+                                       ShardRoute* out) const {
+    return route_service_.get_shard_route(param, out);
 }
 
 Status ServiceManager::reconcile_tables() {
