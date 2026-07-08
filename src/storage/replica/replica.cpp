@@ -8,9 +8,10 @@
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
+#include "common/model/type.h"
 #include "common/oper_gate.h"
 #include "common/status.h"
-#include "common/model/type.h"
+#include "common/types.h"
 #include "storage/model/param.h"
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/core/raft_core.h"
@@ -26,19 +27,17 @@ namespace adviskv::storage {
 
 namespace {
 
-constexpr Milliseconds kReplicaApplyTaskInterval{5};
-constexpr Milliseconds kReplicaProposalCommitTimeout{1000};
+constexpr Milliseconds K_REPLICA_APPLY_TASK_INTERVAL = Milliseconds{5};
+constexpr Milliseconds K_REPLICA_PROPOSAL_COMMIT_TIMEOUT = Milliseconds{1000};
 
 }  // namespace
 
 class ReplicaApplyTask : public BackgroundTask {
 public:
-    explicit ReplicaApplyTask(Replica* replica) : replica_(replica) {
-    }
+    explicit ReplicaApplyTask(Replica* replica) : replica_(replica) {}
 
     void run() override {
-        if (!replica_)
-            return;
+        if (!replica_) return;
         replica_->apply_committed_entries_from_task();
     }
 
@@ -48,9 +47,7 @@ private:
 
 Replica::Replica() = default;
 
-Replica::~Replica() {
-    shutdown();
-}
+Replica::~Replica() { shutdown(); }
 
 Status Replica::init(const ReplicaInitParam& param) {
     shard_id_ = ShardID{param.replica_id.table_id, param.replica_id.shard_index};
@@ -89,7 +86,7 @@ Status Replica::init(const ReplicaInitParam& param) {
     loop_->start();
     message_dispatcher_->start();
     enter_local_state_running();
-    apply_task_->start(kReplicaApplyTaskInterval);
+    apply_task_->start(K_REPLICA_APPLY_TASK_INTERVAL);
     return Status::OK();
 }
 
@@ -104,7 +101,7 @@ Status Replica::put(const PutParam& param) {
         }
     }
 
-    ProposeCall call{ProposeParam::write(WriteOpType::PUT, param.key, param.value), kReplicaProposalCommitTimeout};
+    ProposeCall call{ProposeParam::write(WriteOpType::PUT, param.key, param.value), K_REPLICA_PROPOSAL_COMMIT_TIMEOUT};
     loop_->sync_submit(&call);
     RETURN_IF_INVALID_STATUS(call.status)
 
@@ -227,7 +224,7 @@ Status Replica::del(const DelParam& param) {
         }
     }
 
-    ProposeCall call{ProposeParam::write(WriteOpType::DEL, param.key, ""), kReplicaProposalCommitTimeout};
+    ProposeCall call{ProposeParam::write(WriteOpType::DEL, param.key, ""), K_REPLICA_PROPOSAL_COMMIT_TIMEOUT};
     loop_->sync_submit(&call);
     RETURN_IF_INVALID_STATUS(call.status)
 
@@ -315,7 +312,8 @@ Status Replica::remove_member(const ReplicaID& replica_id) {
             return Status::IS_RECOVERING("replica is recovering");
         }
     }
-    LOG_INFO("[Replica] remove_member, replica_id:{}, remove target:{}", replica_id_.to_string(), replica_id.to_string());
+    LOG_INFO("[Replica] remove_member, replica_id:{}, remove target:{}", replica_id_.to_string(),
+             replica_id.to_string());
     RemoveMemberCall call{replica_id};
     loop_->sync_submit(&call);
     RETURN_IF_INVALID_STATUS(call.status)
@@ -364,8 +362,7 @@ void Replica::apply_committed_entries_from_task() {
 
 void Replica::on_tick() {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED_VOID(oper_gate_)
-    if (ensure_local_state_running().fail())
-        return;
+    if (ensure_local_state_running().fail()) return;
 
     loop_->async_submit(TickEvent{});
     notify_apply_task();
@@ -467,12 +464,9 @@ ReplicaStatus Replica::get_status() const {
             break;
     }
     std::lock_guard lock(raft_core_mutex_);
-    if (!raft_core_)
-        return ReplicaStatus::INITIALIZING;
-    if (raft_core_->is_recovering())
-        return ReplicaStatus::RECOVERING;
-    if (raft_core_->is_ready())
-        return ReplicaStatus::READY;
+    if (!raft_core_) return ReplicaStatus::INITIALIZING;
+    if (raft_core_->is_recovering()) return ReplicaStatus::RECOVERING;
+    if (raft_core_->is_ready()) return ReplicaStatus::READY;
 
     return ReplicaStatus::INITIALIZING;
 }

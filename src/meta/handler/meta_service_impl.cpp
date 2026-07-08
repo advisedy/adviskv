@@ -9,8 +9,8 @@
 #include "common/define.h"
 #include "common/proto/proto.h"
 #include "common/status.h"
-#include "meta/model/param.h"
 #include "meta/model/model.h"
+#include "meta/model/param.h"
 #include "meta/proto/table_state_proto.h"
 #include "meta/service/ddl_service.h"
 

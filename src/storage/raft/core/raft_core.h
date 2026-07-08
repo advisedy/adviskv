@@ -5,9 +5,9 @@
 #include <utility>
 #include <vector>
 
+#include "common/model/type.h"
 #include "common/status.h"
 #include "common/tick_trigger.h"
-#include "common/model/type.h"
 #include "storage/model/param.h"
 #include "storage/raft/raft_apply.h"
 #include "storage/raft/raft_election.h"
@@ -88,9 +88,7 @@ public:
 
     ///////////////////////////////////////
     // 测试用的入口
-    const std::vector<LogEntry>& log_entries_for_test() const {
-        return raft_log_.entries();
-    }
+    const std::vector<LogEntry>& log_entries_for_test() const { return raft_log_.entries(); }
 
     std::pair<LogIndex, Term> snapshot_for_test() const {
         return {raft_log_.snapshot_index(), raft_log_.snapshot_term()};
@@ -100,17 +98,11 @@ public:
         replication_.set_next_index_for_test(target, index);
     }
 
-    void become_candidate_for_test(RaftEffects& effects) {
-        become_candidate(effects);
-    }
+    void become_candidate_for_test(RaftEffects& effects) { become_candidate(effects); }
 
-    void reset_heartbeat_tick_for_test(int32 val) {
-        heartbeat_tick_trigger_.reset(val);
-    }
+    void reset_heartbeat_tick_for_test(int32 val) { heartbeat_tick_trigger_.reset(val); }
 
-    LogIndex next_index_for_test(const ReplicaID& target) const {
-        return replication_.next_index(target);
-    }
+    LogIndex next_index_for_test(const ReplicaID& target) const { return replication_.next_index(target); }
 
     LogIndex snapshot_watermark_for_test(const ReplicaID& target) const {
         return replication_.snapshot_watermark(target);

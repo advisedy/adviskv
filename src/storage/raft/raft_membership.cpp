@@ -12,9 +12,7 @@
 
 namespace adviskv::storage {
 
-RaftMembership::RaftMembership(const std::vector<PeerMember>& voters) {
-    reset_voters(voters);
-}
+RaftMembership::RaftMembership(const std::vector<PeerMember>& voters) { reset_voters(voters); }
 
 std::vector<PeerMember> RaftMembership::peer_members() const {
     std::vector<PeerMember> peers;
@@ -45,21 +43,16 @@ std::vector<PeerMember> RaftMembership::learners() const {
     return peers;
 }
 
-const std::vector<RaftMember>& RaftMembership::raft_members() const {
-    return members_;
-}
+const std::vector<RaftMember>& RaftMembership::raft_members() const { return members_; }
 
 const RaftMember* RaftMembership::find_raft_member(const ReplicaID& replica_id) const {
     auto it = std::find_if(members_.begin(), members_.end(),
                            [&replica_id](const RaftMember& member) { return member.peer.replica_id == replica_id; });
-    if (it == members_.end())
-        return nullptr;
+    if (it == members_.end()) return nullptr;
     return &(*it);
 }
 
-bool RaftMembership::contains(const ReplicaID& replica_id) const {
-    return find_raft_member(replica_id) != nullptr;
-}
+bool RaftMembership::contains(const ReplicaID& replica_id) const { return find_raft_member(replica_id) != nullptr; }
 
 bool RaftMembership::is_voter(const ReplicaID& replica_id) const {
     return member_type(replica_id) == RaftMemberType::VOTER;
@@ -81,9 +74,7 @@ void RaftMembership::reset_voters(const std::vector<PeerMember>& voters) {
     }
 }
 
-void RaftMembership::update_raft_members(const std::vector<RaftMember>& members) {
-    members_ = members;
-}
+void RaftMembership::update_raft_members(const std::vector<RaftMember>& members) { members_ = members; }
 
 Status RaftMembership::add_learner(const PeerMember& member) {
     if (const RaftMember* existing = find_raft_member(member.replica_id); existing != nullptr) {
@@ -121,8 +112,6 @@ int RaftMembership::quorum_size() const {
     return voter_count / 2 + 1;
 }
 
-bool RaftMembership::has_quorum(int ack_count) const {
-    return ack_count >= quorum_size();
-}
+bool RaftMembership::has_quorum(int ack_count) const { return ack_count >= quorum_size(); }
 
 }  // namespace adviskv::storage

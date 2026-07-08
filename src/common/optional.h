@@ -8,7 +8,7 @@ namespace adviskv {
 
 template <typename T>
 class Optional : public std::optional<T> {
-   public:
+public:
     using std::optional<T>::optional;
 
     bool is_empty() const { return !std::optional<T>::has_value(); }
@@ -26,9 +26,7 @@ class Optional : public std::optional<T> {
 
     const std::optional<T>& self() const { return *this; }
 
-    bool operator==(const Optional<T>& other) const {
-        return self() == other.self();
-    }
+    bool operator==(const Optional<T>& other) const { return self() == other.self(); }
 
     DEFINE_OPERATOR_NOT_EQUAL(Optional<T>)
 };

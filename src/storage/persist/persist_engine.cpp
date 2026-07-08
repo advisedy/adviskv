@@ -26,16 +26,16 @@
 #include "common/func.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
-#include "common/status.h"
 #include "common/model/type.h"
+#include "common/status.h"
 #include "storage/model/model.h"
 #include "storage/raft/state_machine/state_machine.h"
 namespace adviskv::storage {
 
-static constexpr int32 MAX_WAL_ENTRY_PAYLOAD_BYTES = 64 * 1024 * 1024;
-static constexpr int64 MAX_RAFT_META_PAYLOAD_BYTES = 1024 * 1024;
-
 namespace {
+
+constexpr int32 K_MAX_WAL_ENTRY_PAYLOAD_BYTES = 64 * 1024 * 1024;
+constexpr int64 K_MAX_RAFT_META_PAYLOAD_BYTES = 1024 * 1024;
 
 void encode_replica_id(const ReplicaID& replica_id, EncodeBuffer& buf) {
     buf.write(replica_id.table_id);
@@ -141,9 +141,7 @@ public:
     using ObjectType = LogEntry;
     using LenType = int32;
 
-    LenType max_payload_len() const {
-        return MAX_WAL_ENTRY_PAYLOAD_BYTES;
-    }
+    LenType max_payload_len() const { return K_MAX_WAL_ENTRY_PAYLOAD_BYTES; }
 
     void encode_payload(const ObjectType& entry, EncodeBuffer& buf) const {
         buf.write(entry.term);
@@ -178,9 +176,7 @@ public:
     using ObjectType = RaftMeta;
     using LenType = int64;
 
-    LenType max_payload_len() const {
-        return MAX_RAFT_META_PAYLOAD_BYTES;
-    }
+    LenType max_payload_len() const { return K_MAX_RAFT_META_PAYLOAD_BYTES; }
 
     void encode_payload(const ObjectType& meta, EncodeBuffer& buf) const {
         buf.write(meta.current_term);
@@ -207,8 +203,7 @@ public:
 }  // namespace
 
 PersistEngine::PersistEngine(const std::string& data_dir, const ReplicaID& replica_id)
-        : data_dir_(data_dir), replica_id_(replica_id) {
-}
+        : data_dir_(data_dir), replica_id_(replica_id) {}
 
 PersistEngine::~PersistEngine() {
     Status status = close();
@@ -325,8 +320,7 @@ Status PersistEngine::truncate_wal_unlocked(const LogIndex& snapshot_index) {
     RETURN_IF_INVALID_STATUS(read_wal_batch_unlocked(entries))
 
     for (LogEntry& entry : entries) {
-        if (entry.index <= snapshot_index)
-            continue;
+        if (entry.index <= snapshot_index) continue;
         remain.push_back(std::move(entry));
     }
 
@@ -776,8 +770,6 @@ Status PersistEngine::read_wal_from_disk(const std::string& path, WalReadResult&
     return Status::OK();
 }
 
-Status PersistEngine::clear_wal() {
-    return rewrite_wal({});
-}
+Status PersistEngine::clear_wal() { return rewrite_wal({}); }
 
 }  // namespace adviskv::storage

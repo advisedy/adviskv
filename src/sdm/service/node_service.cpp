@@ -14,7 +14,8 @@
 namespace adviskv::sdm {
 
 namespace {
-constexpr size_t kHeartbeatCheckBatchSize = 16;
+
+constexpr size_t K_HEARTBEAT_CHECK_BATCH_SIZE = 16;
 
 // 判断一下是否能够接收，防止旧leader打过来干扰信息
 bool should_accept_membership_report(const ReplicaGroup& group, const HeartBeatReplicaInfo& info) {
@@ -117,8 +118,7 @@ Status project_leader_membership(SdmStoreTxn& txn, const HeartBeatReplicaInfo& i
 
 }  // namespace
 
-NodeService::NodeService(SdmStore* store) : store_(store), start_ts_ms_(func::get_current_ts_ms()) {
-}
+NodeService::NodeService(SdmStore* store) : store_(store), start_ts_ms_(func::get_current_ts_ms()) {}
 
 Status NodeService::register_node(const RegisterNodeParam& param) {
     RETURN_IF_INVALID_PARAM(param)
@@ -240,8 +240,8 @@ Status NodeService::reconcile_all() {
     }
 
     // 这里给node搞批处理，防止持有锁的时间太久了
-    for (size_t begin = 0; begin < node_ids.size(); begin += kHeartbeatCheckBatchSize) {
-        size_t end = std::min(begin + kHeartbeatCheckBatchSize, node_ids.size());
+    for (size_t begin = 0; begin < node_ids.size(); begin += K_HEARTBEAT_CHECK_BATCH_SIZE) {
+        size_t end = std::min(begin + K_HEARTBEAT_CHECK_BATCH_SIZE, node_ids.size());
         status = store_->write_with([&](SdmStoreTxn& txn) -> Status {
             for (size_t index = begin; index < end; ++index) {
                 NodeOr current;

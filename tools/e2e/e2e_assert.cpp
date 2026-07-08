@@ -13,26 +13,26 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
-constexpr const char* kGreen = "\033[32m";
-constexpr const char* kRed = "\033[31m";
-constexpr const char* kBlue = "\033[34m";
-constexpr const char* kBold = "\033[1m";
-constexpr const char* kReset = "\033[0m";
+constexpr const char* K_GREEN = "\033[32m";
+constexpr const char* K_RED = "\033[31m";
+constexpr const char* K_BLUE = "\033[34m";
+constexpr const char* K_BOLD = "\033[1m";
+constexpr const char* K_RESET = "\033[0m";
 
 const char* color_code(COLOR color) {
     switch (color) {
         case COLOR::RED:
-            return kRed;
+            return K_RED;
         case COLOR::BLUE:
-            return kBlue;
+            return K_BLUE;
         case COLOR::GREEN:
-            return kGreen;
+            return K_GREEN;
         case COLOR::BOLD:
-            return kBold;
+            return K_BOLD;
         case COLOR::RESET:
-            return kReset;
+            return K_RESET;
     }
-    return kReset;
+    return K_RESET;
 }
 
 }  // namespace
@@ -45,7 +45,7 @@ std::string colorize(COLOR color, const std::string& text) {
         std::getenv("GITHUB_ACTIONS") == nullptr) {
         return text;
     }
-    return fmt::format("{}{}{}", color_code(color), text, kReset);
+    return fmt::format("{}{}{}", color_code(color), text, K_RESET);
 }
 
 void print_step(const std::string& message) {

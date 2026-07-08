@@ -7,8 +7,7 @@
 
 namespace adviskv::storage {
 
-ReplicaApplier::ReplicaApplier(ReplicaContext& context)
-    : context_(context) {}
+ReplicaApplier::ReplicaApplier(ReplicaContext& context) : context_(context) {}
 
 Status ReplicaApplier::apply_committed_entries() {
     ADVISKV_METRICS_TIMER("storage_replica_apply_committed_entries");
@@ -19,8 +18,7 @@ Status ReplicaApplier::apply_committed_entries() {
         std::lock_guard lock(context_.raft_core_mutex);
         entries = context_.raft_core.extract_committed_entries();
     }
-    ADVISKV_METRICS_COUNTER("storage_replica_apply_entry",
-                            to<int64_t>(entries.size()));
+    ADVISKV_METRICS_COUNTER("storage_replica_apply_entry", to<int64_t>(entries.size()));
     for (const LogEntry& entry : entries) {
         RETURN_IF_INVALID_STATUS(apply_log_entry(entry))
     }
@@ -46,8 +44,7 @@ Status ReplicaApplier::apply_kv_log_entry(const LogEntry& entry) {
     Status status = context_.state_machine.apply(entry);
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_failure");
-        LOG_WARN("apply_kv_log_entry failed, index={}, msg={}", entry.index,
-                 status.msg());
+        LOG_WARN("apply_kv_log_entry failed, index={}, msg={}", entry.index, status.msg());
         return status;
     }
     ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_success");
@@ -65,16 +62,14 @@ Status ReplicaApplier::apply_config_log_entry(const LogEntry& entry) {
         Status status = context_.raft_core.apply_config_entry(entry);
         if (status.fail()) {
             ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_failure");
-            LOG_WARN("apply_config_log_entry failed, index={}, msg={}",
-                     entry.index, status.msg());
+            LOG_WARN("apply_config_log_entry failed, index={}, msg={}", entry.index, status.msg());
             return status;
         }
     }
     Status status = context_.state_machine.apply(entry);
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_failure");
-        LOG_WARN("apply_config_log_entry state_machine apply failed, index={}, msg={}",
-                 entry.index, status.msg());
+        LOG_WARN("apply_config_log_entry state_machine apply failed, index={}, msg={}", entry.index, status.msg());
         return status;
     }
     ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_success");

@@ -1,7 +1,5 @@
 #pragma once
 
-#include <fmt/core.h>
-
 #include <cstdint>
 #include <cstdio>
 #include <exception>
@@ -11,29 +9,26 @@
 #include <utility>
 #include <vector>
 
+#include <fmt/core.h>
+
 namespace adviskv {
 
 class ArgParser {
-   public:
+public:
     void add_string(std::string name, std::string& output) {
-        add(std::move(name),
-            [&output](const std::string& value) { output = value; });
+        add(std::move(name), [&output](const std::string& value) { output = value; });
     }
 
     void add_int32(std::string name, int32_t& output) {
-        add(std::move(name),
-            [&output](const std::string& value) { output = std::stoi(value); });
+        add(std::move(name), [&output](const std::string& value) { output = std::stoi(value); });
     }
 
     void add_int64(std::string name, int64_t& output) {
-        add(std::move(name), [&output](const std::string& value) {
-            output = std::stoll(value);
-        });
+        add(std::move(name), [&output](const std::string& value) { output = std::stoll(value); });
     }
 
     void add_double(std::string name, double& output) {
-        add(std::move(name),
-            [&output](const std::string& value) { output = std::stod(value); });
+        add(std::move(name), [&output](const std::string& value) { output = std::stod(value); });
     }
 
     bool parse(int argc, char** argv) const {
@@ -45,8 +40,7 @@ class ArgParser {
             }
             size_t eq = arg.find('=');
             if (eq == std::string::npos) {
-                fmt::print(stderr, "argument '{}' must use --name=value\n",
-                           arg);
+                fmt::print(stderr, "argument '{}' must use --name=value\n", arg);
                 return false;
             }
 
@@ -60,15 +54,14 @@ class ArgParser {
             try {
                 option->set(value);
             } catch (const std::exception& e) {
-                fmt::print(stderr, "failed to parse --{}={}: {}\n", name, value,
-                           e.what());
+                fmt::print(stderr, "failed to parse --{}={}: {}\n", name, value, e.what());
                 return false;
             }
         }
         return true;
     }
 
-   private:
+private:
     using Setter = std::function<void(const std::string&)>;
 
     struct Option {
@@ -76,9 +69,7 @@ class ArgParser {
         Setter set;
     };
 
-    void add(std::string name, Setter setter) {
-        options_.push_back(Option{std::move(name), std::move(setter)});
-    }
+    void add(std::string name, Setter setter) { options_.push_back(Option{std::move(name), std::move(setter)}); }
 
     const Option* find(std::string_view name) const {
         for (const Option& option : options_) {

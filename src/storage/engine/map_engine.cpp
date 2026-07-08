@@ -1,15 +1,15 @@
 #include "storage/engine/map_engine.h"
 
-#include <fmt/format.h>
-
 #include <mutex>
 #include <shared_mutex>
 #include <utility>
 #include <vector>
 
+#include <fmt/format.h>
+
 #include "common/log.h"
-#include "common/status.h"
 #include "common/model/type.h"
+#include "common/status.h"
 
 namespace adviskv::storage {
 
@@ -27,8 +27,7 @@ Status MapEngine::get(const Key& key, Value& value) {
     std::shared_lock lock(map_mutex_);
     if (!map_.count(key)) {
         LOG_DEBUG("key = {}, not found", key);
-        return Status{StatusCode::KEY_NOT_FOUND,
-                      fmt::format("key = {} not found", key)};
+        return Status{StatusCode::KEY_NOT_FOUND, fmt::format("key = {} not found", key)};
     }
     value = map_[Key(key)];
     return Status::OK();
@@ -58,8 +57,7 @@ Status MapEngine::clear() {
     return Status::OK();
 }
 
-Status MapEngine::for_each_kv(
-    const std::function<Status(const Key&, const Value&)>& fn) const {
+Status MapEngine::for_each_kv(const std::function<Status(const Key&, const Value&)>& fn) const {
     std::shared_lock lock(map_mutex_);
     for (const auto& [k, v] : map_) {
         Status st = fn(k, v);

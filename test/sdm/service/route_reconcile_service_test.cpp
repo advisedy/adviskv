@@ -13,8 +13,8 @@
 namespace adviskv::sdm {
 namespace {
 
-constexpr TableID TEST_TABLE_ID = 1001;
-constexpr ShardIndex TEST_SHARD_INDEX = 0;
+constexpr TableID K_TEST_TABLE_ID = 1001;
+constexpr ShardIndex K_TEST_SHARD_INDEX = 0;
 
 class TestRouteService : public RouteService {
    public:
@@ -29,7 +29,7 @@ Table make_table() {
     state.desired = TableDesired::PRESENT;
     state.phase = TablePhase::READY;
     return Table{
-        TEST_TABLE_ID,
+        K_TEST_TABLE_ID,
         TableSpec{"orders", 11, "commerce", 1, 3, "pool-a", "create-1001"},
         state};
 }
@@ -49,7 +49,7 @@ Replica make_replica(ReplicaIndex replica_index, const NodeID& node_id,
     state.observed_member_type = RaftMemberType::VOTER;
     state.observed_endpoint = Endpoint{"127.0.0.1", port};
     state.term = term;
-    return Replica{ReplicaID{TEST_TABLE_ID, TEST_SHARD_INDEX, replica_index},
+    return Replica{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, replica_index},
                    ReplicaSpec{"dc-a", node_id, EngineType::MAP}, state};
 }
 
@@ -65,7 +65,7 @@ void put_test_table(SdmStore& store) {
     ASSERT_TRUE(store_test::put_table(store, make_table()).ok());
 }
 
-ShardID test_shard_id() { return ShardID{TEST_TABLE_ID, TEST_SHARD_INDEX}; }
+ShardID test_shard_id() { return ShardID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX}; }
 
 }  // namespace
 
@@ -88,13 +88,13 @@ TEST(RouteServiceReconcileTest, DeleteShardRouteWhenLeaderCountLessThanOne) {
             store,
             ShardRoute{
                 test_shard_id(),
-                {RouteEntry{ReplicaID{TEST_TABLE_ID, TEST_SHARD_INDEX, 0},
+                {RouteEntry{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, 0},
                             "node-0", "127.0.0.1", 18080, ReplicaRole::LEADER}},
             })
             .ok());
 
     TestRouteService ctrl(&store);
-    Status status = ctrl.check_shard_route_test(make_table(), TEST_SHARD_INDEX);
+    Status status = ctrl.check_shard_route_test(make_table(), K_TEST_SHARD_INDEX);
     EXPECT_EQ(status.code(), StatusCode::ROUTE_NOT_FOUND);
     EXPECT_NE(status.msg().find("writable leader route is not ready"),
               std::string::npos);
@@ -125,7 +125,7 @@ TEST(RouteServiceReconcileTest, PutShardRouteWhenLeaderCountEqualsOne) {
             .ok());
 
     TestRouteService ctrl(&store);
-    Status status = ctrl.check_shard_route_test(make_table(), TEST_SHARD_INDEX);
+    Status status = ctrl.check_shard_route_test(make_table(), K_TEST_SHARD_INDEX);
     ASSERT_TRUE(status.ok());
 
     ShardRouteOr route;
@@ -164,13 +164,13 @@ TEST(RouteServiceReconcileTest, ReturnRouteNotReadyWhenLeadersShareMaxTerm) {
             store,
             ShardRoute{
                 test_shard_id(),
-                {RouteEntry{ReplicaID{TEST_TABLE_ID, TEST_SHARD_INDEX, 0},
+                {RouteEntry{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, 0},
                             "node-0", "127.0.0.1", 18080, ReplicaRole::LEADER}},
             })
             .ok());
 
     TestRouteService ctrl(&store);
-    Status status = ctrl.check_shard_route_test(make_table(), TEST_SHARD_INDEX);
+    Status status = ctrl.check_shard_route_test(make_table(), K_TEST_SHARD_INDEX);
     EXPECT_EQ(status.code(), StatusCode::ROUTE_NOT_FOUND);
 
     ShardRouteOr route;
@@ -203,7 +203,7 @@ TEST(RouteServiceReconcileTest, MultipleLeadersWithDifferentTermsChooseMaxTermLe
             .ok());
 
     TestRouteService ctrl(&store);
-    Status status = ctrl.check_shard_route_test(make_table(), TEST_SHARD_INDEX);
+    Status status = ctrl.check_shard_route_test(make_table(), K_TEST_SHARD_INDEX);
     ASSERT_TRUE(status.ok());
 
     ShardRouteOr route;
@@ -243,10 +243,10 @@ TEST(RouteServiceReconcileTest, DeleteStaleRouteAndRepublishAfterLeaderRecovery)
             store,
             ShardRoute{
                 test_shard_id(),
-                {RouteEntry{ReplicaID{TEST_TABLE_ID, TEST_SHARD_INDEX, 0},
+                {RouteEntry{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, 0},
                             "node-0", "127.0.0.1", 18080, ReplicaRole::LEADER,
                             10},
-                 RouteEntry{ReplicaID{TEST_TABLE_ID, TEST_SHARD_INDEX, 1},
+                 RouteEntry{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, 1},
                             "node-1", "127.0.0.1", 18081, ReplicaRole::FOLLOWER,
                             10}},
             })
@@ -262,7 +262,7 @@ TEST(RouteServiceReconcileTest, DeleteStaleRouteAndRepublishAfterLeaderRecovery)
             store, make_replica(1, "node-1", 18081, ReplicaRole::FOLLOWER, 11))
             .ok());
 
-    Status status = ctrl.check_shard_route_test(make_table(), TEST_SHARD_INDEX);
+    Status status = ctrl.check_shard_route_test(make_table(), K_TEST_SHARD_INDEX);
     EXPECT_EQ(status.code(), StatusCode::ROUTE_NOT_FOUND);
 
     ShardRouteOr route;
@@ -279,7 +279,7 @@ TEST(RouteServiceReconcileTest, DeleteStaleRouteAndRepublishAfterLeaderRecovery)
             store, make_replica(1, "node-1", 18081, ReplicaRole::LEADER, 12))
             .ok());
 
-    status = ctrl.check_shard_route_test(make_table(), TEST_SHARD_INDEX);
+    status = ctrl.check_shard_route_test(make_table(), K_TEST_SHARD_INDEX);
     ASSERT_TRUE(status.ok());
 
     ASSERT_TRUE(
@@ -310,7 +310,7 @@ TEST(RouteServiceReconcileTest, CheckShardRouteReloadsCurrentTableState) {
             store,
             ShardRoute{
                 test_shard_id(),
-                {RouteEntry{ReplicaID{TEST_TABLE_ID, TEST_SHARD_INDEX, 0},
+                {RouteEntry{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, 0},
                             "node-0", "127.0.0.1", 18080, ReplicaRole::LEADER,
                             10}},
             })
@@ -322,7 +322,7 @@ TEST(RouteServiceReconcileTest, CheckShardRouteReloadsCurrentTableState) {
     ASSERT_TRUE(store_test::put_table(store, current).ok());
 
     TestRouteService ctrl(&store);
-    ASSERT_TRUE(ctrl.check_shard_route_test(stale_table, TEST_SHARD_INDEX).ok());
+    ASSERT_TRUE(ctrl.check_shard_route_test(stale_table, K_TEST_SHARD_INDEX).ok());
 
     ShardRouteOr route;
     ASSERT_TRUE(

@@ -7,14 +7,14 @@
 namespace adviskv::sdm {
 
 class MemoryMetaStore : public ISdmMetaStore {
-   public:
+public:
     Status init() override { return Status::OK(); }
 
 #define X(...) __VA_ARGS__ override;
     ISDM_METASTORE_METHODS(X)
 #undef X
 
-   protected:
+protected:
     std::unordered_map<TableID, TablePtr> tables_;
     std::unordered_map<ReplicaID, ReplicaPtr, ReplicaIDHash> replicas_;
     std::unordered_map<std::string, ResourcePoolPtr> resource_pools_;

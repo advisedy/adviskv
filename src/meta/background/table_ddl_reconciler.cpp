@@ -12,34 +12,25 @@ namespace adviskv::meta {
 
 namespace {
 
-bool is_sdm_phase(const SdmTableStatus& status, SdmTablePhase phase) {
-    return status.phase == phase;
-}
+bool is_sdm_phase(const SdmTableStatus& status, SdmTablePhase phase) { return status.phase == phase; }
 
-std::string fallback_msg(const std::string& msg, const char* fallback) {
-    return msg.empty() ? fallback : msg;
-}
+std::string fallback_msg(const std::string& msg, const char* fallback) { return msg.empty() ? fallback : msg; }
 
-void update_table_state_or_log(CatalogManager& catalog_manager,
-                               const TableMeta& table, TableState state,
-                               const std::string& last_error_msg,
-                               const char* action) {
-    Status status = catalog_manager.update_table_state(table.table_id, state,
-                                                       last_error_msg);
+void update_table_state_or_log(CatalogManager& catalog_manager, const TableMeta& table, TableState state,
+                               const std::string& last_error_msg, const char* action) {
+    Status status = catalog_manager.update_table_state(table.table_id, state, last_error_msg);
     if (status.fail()) {
-        LOG_WARN("{} failed, table_id={}, operation_id={}, msg={}", action,
-                 table.table_id, table.operation_id, status.msg());
+        LOG_WARN("{} failed, table_id={}, operation_id={}, msg={}", action, table.table_id, table.operation_id,
+                 status.msg());
     }
 }
 
-void keep_table_state_with_error(CatalogManager& catalog_manager,
-                                 const TableMeta& table, TableState state,
+void keep_table_state_with_error(CatalogManager& catalog_manager, const TableMeta& table, TableState state,
                                  const Status& status, const char* action) {
-    LOG_WARN("{} failed, table_id={}, operation_id={}, msg={}", action,
-             table.table_id, table.operation_id, status.msg());
+    LOG_WARN("{} failed, table_id={}, operation_id={}, msg={}", action, table.table_id, table.operation_id,
+             status.msg());
 
-    IGNORE_RESULT(catalog_manager.update_table_state(table.table_id, state,
-                                                     status.to_string()));
+    IGNORE_RESULT(catalog_manager.update_table_state(table.table_id, state, status.to_string()));
 }
 
 enum class ReconcileAction {
@@ -89,12 +80,9 @@ struct AddTablePolicy {
     static constexpr const char* done_action = "mark table NORMAL";
     static constexpr const char* failed_msg = "SDM table placement failed";
 
-    static Status resubmit(ISdmClient& client, const TableMeta& table) {
-        return client.call_place_table(table);
-    }
+    static Status resubmit(ISdmClient& client, const TableMeta& table) { return client.call_place_table(table); }
 
-    static ReconcileAction decide(const Status& status,
-                                  const SdmTableStatus& sdm_status) {
+    static ReconcileAction decide(const Status& status, const SdmTableStatus& sdm_status) {
         if (status.code() == StatusCode::TABLE_NOT_FOUND) {
             return ReconcileAction::RESUBMIT;
         }
@@ -124,12 +112,9 @@ struct DropTablePolicy {
     static constexpr const char* done_action = "mark table DELETED";
     static constexpr const char* failed_msg = "SDM table drop failed";
 
-    static Status resubmit(ISdmClient& client, const TableMeta& table) {
-        return client.call_drop_table(table);
-    }
+    static Status resubmit(ISdmClient& client, const TableMeta& table) { return client.call_drop_table(table); }
 
-    static ReconcileAction decide(const Status& status,
-                                  const SdmTableStatus& sdm_status) {
+    static ReconcileAction decide(const Status& status, const SdmTableStatus& sdm_status) {
         if (status.code() == StatusCode::TABLE_NOT_FOUND) {
             return ReconcileAction::DONE;
         }
@@ -155,18 +140,15 @@ struct AlterTablePolicy {
 
     static constexpr TableState done_state = TableState::NORMAL;
 
-    static constexpr const char* resubmit_action =
-        "resubmit SDM alter table replica_count";
-    static constexpr const char* done_action =
-        "mark table NORMAL, finish change replica count";
+    static constexpr const char* resubmit_action = "resubmit SDM alter table replica_count";
+    static constexpr const char* done_action = "mark table NORMAL, finish change replica count";
     static constexpr const char* failed_msg = "SDM table alter failed";
 
     static Status resubmit(ISdmClient& client, const TableMeta& table) {
         return client.call_alter_table_replica_count(table);
     }
 
-    static ReconcileAction decide(const Status& status,
-                                  const SdmTableStatus& sdm_status) {
+    static ReconcileAction decide(const Status& status, const SdmTableStatus& sdm_status) {
         if (status.code() == StatusCode::TABLE_NOT_FOUND) {
             return ReconcileAction::FAILED;
         }
@@ -187,51 +169,40 @@ struct AlterTablePolicy {
 };
 
 template <typename Policy>
-void resubmit_or_record_error(CatalogManager& catalog_manager,
-                              ISdmClient& sdm_client, const TableMeta& table) {
+void resubmit_or_record_error(CatalogManager& catalog_manager, ISdmClient& sdm_client, const TableMeta& table) {
     Status resubmit_status = Policy::resubmit(sdm_client, table);
     if (resubmit_status.fail()) {
-        keep_table_state_with_error(catalog_manager, table,
-                                    Policy::source_state, resubmit_status,
+        keep_table_state_with_error(catalog_manager, table, Policy::source_state, resubmit_status,
                                     Policy::resubmit_action);
     }
 }
 
 template <typename Policy>
-void reconcile_table(CatalogManager& catalog_manager, ISdmClient& sdm_client,
-                     const TableMeta& table) {
+void reconcile_table(CatalogManager& catalog_manager, ISdmClient& sdm_client, const TableMeta& table) {
     SdmTableStatus sdm_status;
     Status status = sdm_client.get_table_status(table, &sdm_status);
     ReconcileAction action = Policy::decide(status, sdm_status);
 
     switch (action) {
         case ReconcileAction::DONE:
-            update_table_state_or_log(catalog_manager, table,
-                                      Policy::done_state, "",
-                                      Policy::done_action);
+            update_table_state_or_log(catalog_manager, table, Policy::done_state, "", Policy::done_action);
             return;
         case ReconcileAction::RESUBMIT:
-            resubmit_or_record_error<Policy>(catalog_manager, sdm_client,
-                                             table);
+            resubmit_or_record_error<Policy>(catalog_manager, sdm_client, table);
             return;
         case ReconcileAction::FAILED:
-            update_table_state_or_log(
-                catalog_manager, table, TableState::FAILED,
-                fallback_msg(sdm_status.last_error_msg, Policy::failed_msg),
-                "mark table FAILED");
+            update_table_state_or_log(catalog_manager, table, TableState::FAILED,
+                                      fallback_msg(sdm_status.last_error_msg, Policy::failed_msg), "mark table FAILED");
             return;
         case ReconcileAction::ERROR:
-            keep_table_state_with_error(catalog_manager, table,
-                                        Policy::source_state, status,
-                                        "get SDM table status");
+            keep_table_state_with_error(catalog_manager, table, Policy::source_state, status, "get SDM table status");
             return;
         case ReconcileAction::WAIT:
             LOG_DEBUG(
-                "{} table waits SDM convergence, table_id={}, "
-                "operation_id={}, sdm_phase={}, sdm_last_error={}",
-                Policy::source_name, table.table_id, table.operation_id,
-                static_cast<int32>(sdm_status.phase),
-                sdm_status.last_error_msg);
+                    "{} table waits SDM convergence, table_id={}, "
+                    "operation_id={}, sdm_phase={}, sdm_last_error={}",
+                    Policy::source_name, table.table_id, table.operation_id, static_cast<int32>(sdm_status.phase),
+                    sdm_status.last_error_msg);
             return;
     }
 }
@@ -239,11 +210,9 @@ void reconcile_table(CatalogManager& catalog_manager, ISdmClient& sdm_client,
 template <typename Policy>
 void reconcile_tables(CatalogManager& catalog_manager, ISdmClient& sdm_client) {
     std::vector<TableMeta> tables;
-    Status status =
-        catalog_manager.list_tables_by_state(Policy::source_state, &tables);
+    Status status = catalog_manager.list_tables_by_state(Policy::source_state, &tables);
     if (status.fail()) {
-        LOG_WARN("list {} tables failed: {}", Policy::source_name,
-                 status.msg());
+        LOG_WARN("list {} tables failed: {}", Policy::source_name, status.msg());
         return;
     }
 
@@ -254,9 +223,8 @@ void reconcile_tables(CatalogManager& catalog_manager, ISdmClient& sdm_client) {
 
 }  // namespace
 
-TableDdlReconciler::TableDdlReconciler(CatalogManager* catalog_manager,
-                                       ISdmClient* sdm_client)
-    : catalog_manager_(catalog_manager), sdm_client_(sdm_client) {}
+TableDdlReconciler::TableDdlReconciler(CatalogManager* catalog_manager, ISdmClient* sdm_client)
+        : catalog_manager_(catalog_manager), sdm_client_(sdm_client) {}
 
 void TableDdlReconciler::run() {
     if (!catalog_manager_ or !sdm_client_) {

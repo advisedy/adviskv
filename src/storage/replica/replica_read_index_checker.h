@@ -1,7 +1,7 @@
 #pragma once
 
-#include "common/status.h"
 #include "common/model/type.h"
+#include "common/status.h"
 #include "storage/model/model.h"
 #include "storage/replica/replica.h"
 
@@ -11,13 +11,12 @@ class ReplicaLoop;
 
 // 负责 ReadIndex 读之前的 leader 身份确认。
 class ReplicaReadIndexChecker {
-   public:
-    ReplicaReadIndexChecker(ReplicaContext& context,
-                            ReplicaLoop& loop);
+public:
+    ReplicaReadIndexChecker(ReplicaContext& context, ReplicaLoop& loop);
 
     Status check_self_leader_and_get_read_index(LogIndex& read_index);
 
-   private:
+private:
     ReplicaContext& context_;
     ReplicaLoop& loop_;
 };

@@ -11,7 +11,7 @@ namespace adviskv::storage {
 
 // 专门处理raft node 内部的log相关的内容
 class RaftLog {
-   public:
+public:
     struct AppendEntriesResult {
         std::vector<LogEntry> entries_to_append;
         std::optional<std::vector<LogEntry>> entries_to_rewrite;
@@ -33,23 +33,19 @@ class RaftLog {
 
     const LogEntry* entry_at(LogIndex index) const;
     std::vector<LogEntry> entries_from(LogIndex index) const;
-    std::vector<LogEntry> entries_from(LogIndex index,
-                                       int64 max_count) const;
+    std::vector<LogEntry> entries_from(LogIndex index, int64 max_count) const;
 
     LogIndex append_new_entry(Term term, const ProposeParam& param);
-    Status append_entries_from_leader(const std::vector<LogEntry>& entries,
-                                      AppendEntriesResult& result);
+    Status append_entries_from_leader(const std::vector<LogEntry>& entries, AppendEntriesResult& result);
 
     Status truncate(LogIndex new_snapshot_index);
 
-    InstallSnapshotResult install_snapshot(LogIndex new_snapshot_index,
-                                           Term new_snapshot_term);
-    std::vector<LogEntry> retained_entries_after_snapshot(
-        LogIndex new_snapshot_index, Term new_snapshot_term) const;
+    InstallSnapshotResult install_snapshot(LogIndex new_snapshot_index, Term new_snapshot_term);
+    std::vector<LogEntry> retained_entries_after_snapshot(LogIndex new_snapshot_index, Term new_snapshot_term) const;
 
     void update_entries(const std::vector<LogEntry>& entries);
 
-   private:
+private:
     std::vector<LogEntry> log_entries_;
 
     LogIndex snapshot_index_{0};

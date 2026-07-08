@@ -15,12 +15,9 @@ struct ShardID {
     ShardIndex shard_index{-1};
 
     ShardID() = default;
-    ShardID(TableID table_id, ShardIndex shard_index) : table_id(table_id), shard_index(shard_index) {
-    }
+    ShardID(TableID table_id, ShardIndex shard_index) : table_id(table_id), shard_index(shard_index) {}
 
-    std::string to_string() const {
-        return fmt::format("{}:{}", table_id, shard_index);
-    }
+    std::string to_string() const { return fmt::format("{}:{}", table_id, shard_index); }
 
     bool operator==(const ShardID& other) const {
         return table_id == other.table_id && shard_index == other.shard_index;
@@ -47,16 +44,11 @@ struct ReplicaID {
 
     ReplicaID() = default;
     ReplicaID(TableID table_id, ShardIndex shard_index, ReplicaSeq replica_seq)
-            : table_id(table_id), shard_index(shard_index), replica_seq(replica_seq) {
-    }
+            : table_id(table_id), shard_index(shard_index), replica_seq(replica_seq) {}
 
-    std::string to_string() const {
-        return fmt::format("{}:{}:{}", table_id, shard_index, replica_seq);
-    }
+    std::string to_string() const { return fmt::format("{}:{}:{}", table_id, shard_index, replica_seq); }
 
-    ShardID get_shard_id() const {
-        return ShardID{table_id, shard_index};
-    }
+    ShardID get_shard_id() const { return ShardID{table_id, shard_index}; }
 
     bool operator==(const ReplicaID& other) const {
         return table_id == other.table_id && shard_index == other.shard_index && replica_seq == other.replica_seq;

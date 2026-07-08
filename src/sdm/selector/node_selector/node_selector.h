@@ -3,11 +3,11 @@
 #include <cstdint>
 #include <vector>
 
-#include "common/status.h"
 #include "common/model/type.h"
-#include "sdm/store/sdm_store.h"
-#include "sdm/model/param.h"
+#include "common/status.h"
 #include "sdm/model/model.h"
+#include "sdm/model/param.h"
+#include "sdm/store/sdm_store.h"
 
 namespace adviskv::sdm {
 
@@ -15,21 +15,19 @@ namespace adviskv::sdm {
 // 所以这个selector是专门给一个shard分配的。 基本单位是shard
 // update: 现在是直接对于一个table去分配了.
 class NodeSelector {
-   public:
+public:
     virtual ~NodeSelector() = default;
 
-    virtual Status select_table_nodes(const PlaceNodesParam& param,
-                                      TablePlacementResult& res) const = 0;
+    virtual Status select_table_nodes(const PlaceNodesParam& param, TablePlacementResult& res) const = 0;
 };
 
 class DefaultNodeSelector : public NodeSelector {
-   public:
+public:
     explicit DefaultNodeSelector(SdmStore* store) : store_(store) {}
 
-    Status select_table_nodes(const PlaceNodesParam& param,
-                              TablePlacementResult& res) const override;
+    Status select_table_nodes(const PlaceNodesParam& param, TablePlacementResult& res) const override;
 
-   private:
+private:
     SdmStore* store_;
 };
 

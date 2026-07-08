@@ -6,8 +6,8 @@
 #include <vector>
 
 #include "common/define.h"
-#include "common/status.h"
 #include "common/model/type.h"
+#include "common/status.h"
 #include "sdm/model/model.h"
 
 namespace adviskv::sdm {
@@ -38,7 +38,7 @@ struct TableNameKeyHash {
 };
 
 class SdmRuntimeIndex {
-   public:
+public:
     SdmRuntimeIndex() = default;
     SdmRuntimeIndex(const SdmRuntimeIndex& other);
     SdmRuntimeIndex& operator=(const SdmRuntimeIndex& other);
@@ -47,39 +47,28 @@ class SdmRuntimeIndex {
     virtual void clear();
     virtual std::unique_ptr<SdmRuntimeIndex> clone() const;
 
-    virtual Status on_table_upsert(const Table* old_table,
-                                   const Table& new_table);
+    virtual Status on_table_upsert(const Table* old_table, const Table& new_table);
     virtual Status on_node_upsert(const Node* old_node, const Node& new_node);
-    virtual Status on_replica_upsert(const Replica* old_replica,
-                                     const Replica& new_replica);
+    virtual Status on_replica_upsert(const Replica* old_replica, const Replica& new_replica);
 
     virtual Status on_table_delete(const Table& table);
     virtual Status on_node_delete(const Node& node);
     virtual Status on_replica_delete(const Replica& replica);
 
-    virtual Status find_table_by_name(const std::string& db_name,
-                                      const std::string& table_name,
+    virtual Status find_table_by_name(const std::string& db_name, const std::string& table_name,
                                       TableID& table_id) const;
 
-    virtual Status list_nodes_by_resource_pool(const std::string& pool_name,
-                                               std::vector<NodeID>& out) const;
+    virtual Status list_nodes_by_resource_pool(const std::string& pool_name, std::vector<NodeID>& out) const;
 
-    virtual Status list_replicas_by_shard(const ShardID& shard_id,
-                                          std::vector<ReplicaKey>& out) const;
+    virtual Status list_replicas_by_shard(const ShardID& shard_id, std::vector<ReplicaKey>& out) const;
 
-    virtual Status list_replicas_by_node(const NodeID& node_id,
-                                         std::vector<ReplicaKey>& out) const;
+    virtual Status list_replicas_by_node(const NodeID& node_id, std::vector<ReplicaKey>& out) const;
 
-   private:
-    std::unordered_map<TableNameKey, TableID, TableNameKeyHash>
-        table_name_index_;
-    std::unordered_map<std::string, std::unordered_set<NodeID>>
-        pool_nodes_index_;
-    std::unordered_map<ShardKey, std::unordered_set<ReplicaKey, ReplicaKeyHash>,
-                       ShardKeyHash>
-        shard_replicas_index_;
-    std::unordered_map<NodeID, std::unordered_set<ReplicaKey, ReplicaKeyHash>>
-        node_replicas_index_;
+private:
+    std::unordered_map<TableNameKey, TableID, TableNameKeyHash> table_name_index_;
+    std::unordered_map<std::string, std::unordered_set<NodeID>> pool_nodes_index_;
+    std::unordered_map<ShardKey, std::unordered_set<ReplicaKey, ReplicaKeyHash>, ShardKeyHash> shard_replicas_index_;
+    std::unordered_map<NodeID, std::unordered_set<ReplicaKey, ReplicaKeyHash>> node_replicas_index_;
 
     std::unordered_map<NodeID, std::string> node_pool_index_;
 };

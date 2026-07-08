@@ -10,8 +10,7 @@ void RaftCore::tick(RaftEffects& effects) {
     if (ensure_ready().fail()) return;
 
     if (election_.is_leader()) {
-        heartbeat_tick_trigger_.tick(
-            [&]() { broadcast_append_entries(effects); });
+        heartbeat_tick_trigger_.tick([&]() { broadcast_append_entries(effects); });
         maybe_promote_ready_learner(effects);
     } else {
         election_tick_trigger_.tick([&]() { become_candidate(effects); });
@@ -41,8 +40,7 @@ void RaftCore::become_candidate(RaftEffects& effects) {
     }
 }
 
-void RaftCore::send_request_vote_to(const PeerMember& member,
-                                    RaftEffects& effects) {
+void RaftCore::send_request_vote_to(const PeerMember& member, RaftEffects& effects) {
     RaftMessage msg;
     msg.type = RaftMessageType::REQUEST_VOTE;
     msg.target = member;
@@ -54,9 +52,7 @@ void RaftCore::send_request_vote_to(const PeerMember& member,
     effects.messages.push_back(std::move(msg));
 }
 
-void RaftCore::handle_request_vote(const RequestVoteParam& param,
-                                   RequestVoteResult& result,
-                                   RaftEffects& effects) {
+void RaftCore::handle_request_vote(const RequestVoteParam& param, RequestVoteResult& result, RaftEffects& effects) {
     result.term = election_.current_term();
     result.vote_granted = false;
 
@@ -68,18 +64,16 @@ void RaftCore::handle_request_vote(const RequestVoteParam& param,
 
     if (!membership_.is_voter(self_id_)) {
         LOG_WARN(
-            "[RaftCore Election] replica:{} reject RequestVote because self is "
-            "not voter, from:{}, term:{}, current_term:{}",
-            self_id_.to_string(), param.from_replica_id.to_string(), param.term,
-            election_.current_term());
+                "[RaftCore Election] replica:{} reject RequestVote because self is "
+                "not voter, from:{}, term:{}, current_term:{}",
+                self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term());
         return;
     }
     if (!membership_.is_voter(param.from_replica_id)) {
         LOG_WARN(
-            "[RaftCore Election] replica:{} reject RequestVote from non-voter "
-            "replica:{}, term:{}, current_term:{}",
-            self_id_.to_string(), param.from_replica_id.to_string(), param.term,
-            election_.current_term());
+                "[RaftCore Election] replica:{} reject RequestVote from non-voter "
+                "replica:{}, term:{}, current_term:{}",
+                self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term());
         return;
     }
 
@@ -109,8 +103,7 @@ void RaftCore::handle_request_vote(const RequestVoteParam& param,
     // 保障一致性，还是设置成true把
 
     if (election_.grant_vote_to(param.from_replica_id)) {
-        LOG_DEBUG("replica:{} vote to {}, current_term:{}",
-                  self_id_.to_string(), param.from_replica_id.to_string(),
+        LOG_DEBUG("replica:{} vote to {}, current_term:{}", self_id_.to_string(), param.from_replica_id.to_string(),
                   election_.current_term());
         record_hard_state(effects);
         result.vote_granted = true;
@@ -118,16 +111,13 @@ void RaftCore::handle_request_vote(const RequestVoteParam& param,
     }
 }
 
-void RaftCore::handle_vote_response(const ReplicaID& from,
-                                    const RequestVoteResult& result,
-                                    RaftEffects& effects) {
+void RaftCore::handle_vote_response(const ReplicaID& from, const RequestVoteResult& result, RaftEffects& effects) {
     if (ensure_ready().fail()) return;
 
     // 已经不是 CANDIDATE 了，就直接忽略之前的发起内容
     if (!election_.is_candidate()) return;
 
-    LOG_DEBUG("candidate replica:{} get vote response from replica:{}",
-              self_id_.to_string(), from.to_string());
+    LOG_DEBUG("candidate replica:{} get vote response from replica:{}", self_id_.to_string(), from.to_string());
 
     if (result.term > election_.current_term()) {
         become_follower(result.term, effects);
@@ -144,9 +134,9 @@ void RaftCore::handle_vote_response(const ReplicaID& from,
         return;
     }
     LOG_DEBUG(
-        "candidate replica:{} get vote response from replica:{}, self vote "
-        "count++ to {}",
-        self_id_.to_string(), from.to_string(), election_.granted_vote_count());
+            "candidate replica:{} get vote response from replica:{}, self vote "
+            "count++ to {}",
+            self_id_.to_string(), from.to_string(), election_.granted_vote_count());
 
     if (membership_.has_quorum(election_.granted_vote_count())) {
         become_leader(effects);
@@ -156,8 +146,7 @@ void RaftCore::handle_vote_response(const ReplicaID& from,
 void RaftCore::become_follower(Term later_term, RaftEffects& effects) {
     assert(later_term >= election_.current_term());
 
-    LOG_INFO("replica:{} become follower, new term:{}", self_id_.to_string(),
-             later_term);
+    LOG_INFO("replica:{} become follower, new term:{}", self_id_.to_string(), later_term);
 
     heartbeat_tick_trigger_.stop();
     election_tick_trigger_.reset();

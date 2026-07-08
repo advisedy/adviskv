@@ -7,7 +7,7 @@
 namespace adviskv::meta {
 
 class MetaPersistEngine : public IMetaPersistEngine {
-   public:
+public:
     explicit MetaPersistEngine(const std::string& data_dir);
     ~MetaPersistEngine() override;
 
@@ -17,7 +17,7 @@ class MetaPersistEngine : public IMetaPersistEngine {
     Status save_meta(const PersistedMetaRecord& record) override;
     Status load_meta(PersistedMetaRecord& record) override;
 
-   private:
+private:
     std::string data_dir_;
     std::string meta_data_path_;
     std::string meta_data_tmp_path_;

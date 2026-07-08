@@ -8,48 +8,48 @@ namespace adviskv::sdm {
 class ServiceManager;
 
 class TableReconcileTask : public BackgroundTask {
-   public:
+public:
     explicit TableReconcileTask(ServiceManager* service_manager);
 
     Status reconcile_once();
 
-   protected:
+protected:
     void run() override;
 
-   private:
+private:
     ServiceManager* service_manager_{nullptr};
 };
 
 class ReplicaGroupReconcileTask : public BackgroundTask {
-   public:
+public:
     explicit ReplicaGroupReconcileTask(ServiceManager* service_manager);
 
-   protected:
+protected:
     void run() override;
 
-   private:
+private:
     ServiceManager* service_manager_{nullptr};
 };
 
 class RouteUpdateCheckTask : public BackgroundTask {
-   public:
+public:
     explicit RouteUpdateCheckTask(ServiceManager* service_manager);
 
-   protected:
+protected:
     void run() override;
 
-   private:
+private:
     ServiceManager* service_manager_{nullptr};
 };
 
 class HeartBeatCheckTask : public BackgroundTask {
-   public:
+public:
     explicit HeartBeatCheckTask(ServiceManager* service_manager);
 
-   protected:
+protected:
     void run() override;
 
-   private:
+private:
     ServiceManager* service_manager_{nullptr};
 };
 

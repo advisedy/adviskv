@@ -1,11 +1,5 @@
 #include "common/metrics/metrics.h"
 
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
@@ -16,6 +10,12 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 namespace adviskv {
 namespace {
 
@@ -32,24 +32,14 @@ struct MetricsSnapshot {
 
 const std::vector<int64_t>& latency_buckets_us() {
     static const std::vector<int64_t> buckets = {
-        10,      25,
-        50,      75,
-        100,     150,
-        200,     250,
-        500,     750,
-        1000,    2000,
-        5000,    10000,
-        20000,   50000,
-        100000,  250000,
-        500000,  1000000,
-        std::numeric_limits<int64_t>::max(),
+            10,    25,    50,     75,     100,    150,     200,
+            250,   500,   750,    1000,   2000,   5000,    10000,
+            20000, 50000, 100000, 250000, 500000, 1000000, std::numeric_limits<int64_t>::max(),
     };
     return buckets;
 }
 
-std::string http_response(const std::string& status,
-                          const std::string& content_type,
-                          const std::string& body) {
+std::string http_response(const std::string& status, const std::string& content_type, const std::string& body) {
     std::ostringstream out;
     out << "HTTP/1.1 " << status << "\r\n"
         << "Content-Type: " << content_type << "\r\n"
@@ -81,7 +71,7 @@ std::string prometheus_bucket_label(int64_t upper_bound) {
 }  // namespace
 
 class AdvisMetrics::Registry {
-   public:
+public:
     Registry() : bucket_bounds_(latency_buckets_us()) {}
 
     void record_latency(const std::string& name, int64_t latency_us) {
@@ -127,8 +117,7 @@ class AdvisMetrics::Registry {
                     count = histogram.bucket_counts[i];
                 }
                 cumulative += count;
-                histogram_snapshot.buckets.emplace_back(bucket_bounds_[i],
-                                                        cumulative);
+                histogram_snapshot.buckets.emplace_back(bucket_bounds_[i], cumulative);
             }
             snapshot.latencies[name] = std::move(histogram_snapshot);
         }
@@ -136,7 +125,7 @@ class AdvisMetrics::Registry {
         return snapshot;
     }
 
-   private:
+private:
     struct Histogram {
         std::vector<int64_t> bucket_counts;
         int64_t count{0};
@@ -150,9 +139,8 @@ class AdvisMetrics::Registry {
 };
 
 class AdvisMetrics::HttpServer {
-   public:
-    explicit HttpServer(MetricsOptions options)
-        : options_(std::move(options)) {}
+public:
+    explicit HttpServer(MetricsOptions options) : options_(std::move(options)) {}
 
     Status start() {
         if (options_.http_port <= 0) {
@@ -165,8 +153,7 @@ class AdvisMetrics::HttpServer {
         }
 
         int reuse = 1;
-        IGNORE_RESULT(::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse,
-                                   sizeof(reuse)))
+        IGNORE_RESULT(::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)))
 
         sockaddr_in addr{};
 #ifdef __APPLE__
@@ -174,17 +161,13 @@ class AdvisMetrics::HttpServer {
 #endif
         addr.sin_family = AF_INET;
         addr.sin_port = htons(static_cast<uint16_t>(options_.http_port));
-        if (::inet_pton(AF_INET, options_.http_host.c_str(), &addr.sin_addr) !=
-            1) {
+        if (::inet_pton(AF_INET, options_.http_host.c_str(), &addr.sin_addr) != 1) {
             close_fd(&listen_fd_);
             return Status::INVALID_ARGUMENT("metrics http host invalid");
         }
 
-        if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr),
-                   sizeof(addr)) != 0) {
-            std::string msg =
-                std::string("failed to bind metrics http socket: ") +
-                std::strerror(errno);
+        if (::bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+            std::string msg = std::string("failed to bind metrics http socket: ") + std::strerror(errno);
             close_fd(&listen_fd_);
             return Status::ERROR(msg);
         }
@@ -210,14 +193,12 @@ class AdvisMetrics::HttpServer {
         }
     }
 
-   private:
+private:
     void serve_loop() {
         while (running_.load()) {
             sockaddr_in client_addr{};
             socklen_t client_len = sizeof(client_addr);
-            int client_fd =
-                ::accept(listen_fd_, reinterpret_cast<sockaddr*>(&client_addr),
-                         &client_len);
+            int client_fd = ::accept(listen_fd_, reinterpret_cast<sockaddr*>(&client_addr), &client_len);
             if (client_fd < 0) {
                 continue;
             }
@@ -249,12 +230,10 @@ class AdvisMetrics::HttpServer {
 
     std::string build_response(const std::string& request) const {
         if (request_matches_path(request, options_.http_path)) {
-            return http_response(
-                "200 OK", "text/plain; version=0.0.4; charset=utf-8",
-                AdvisMetrics::get_instance().dump_prometheus());
+            return http_response("200 OK", "text/plain; version=0.0.4; charset=utf-8",
+                                 AdvisMetrics::get_instance().dump_prometheus());
         }
-        return http_response("404 Not Found", "text/plain; charset=utf-8",
-                             "not found\n");
+        return http_response("404 Not Found", "text/plain; charset=utf-8", "not found\n");
     }
 
     MetricsOptions options_;
@@ -302,9 +281,7 @@ void AdvisMetrics::record_latency(const std::string& name, int64_t latency_us) {
     registry_->record_latency(name, latency_us);
 }
 
-void AdvisMetrics::record_counter(const std::string& name, int64_t delta) {
-    registry_->record_counter(name, delta);
-}
+void AdvisMetrics::record_counter(const std::string& name, int64_t delta) { registry_->record_counter(name, delta); }
 
 void AdvisMetrics::reset() { registry_->reset(); }
 
@@ -332,9 +309,8 @@ std::string AdvisMetrics::dump_prometheus() const {
 
         out << "# TYPE " << metric_name << " histogram\n";
         for (const auto& [upper_bound, cumulative_count] : histogram.buckets) {
-            out << metric_name << "_bucket{le=\""
-                << prometheus_bucket_label(upper_bound) << "\"} "
-                << cumulative_count << "\n";
+            out << metric_name << "_bucket{le=\"" << prometheus_bucket_label(upper_bound) << "\"} " << cumulative_count
+                << "\n";
         }
         out << metric_name << "_count " << histogram.count << "\n"
             << metric_name << "_sum " << histogram.sum_us << "\n";
@@ -342,21 +318,18 @@ std::string AdvisMetrics::dump_prometheus() const {
 
     for (const std::string& raw_name : counter_names) {
         const std::string metric_name = "adviskv_" + raw_name + "_total";
-        out << "# TYPE " << metric_name << " counter\n"
-            << metric_name << " " << snapshot.counters.at(raw_name) << "\n";
+        out << "# TYPE " << metric_name << " counter\n" << metric_name << " " << snapshot.counters.at(raw_name) << "\n";
     }
 
     return out.str();
 }
 
 ScopedMetricsTimer::ScopedMetricsTimer(std::string name)
-    : name_(std::move(name)), start_(std::chrono::steady_clock::now()) {}
+        : name_(std::move(name)), start_(std::chrono::steady_clock::now()) {}
 
 ScopedMetricsTimer::~ScopedMetricsTimer() {
     const auto end = std::chrono::steady_clock::now();
-    const int64_t latency_us =
-        std::chrono::duration_cast<std::chrono::microseconds>(end - start_)
-            .count();
+    const int64_t latency_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start_).count();
     AdvisMetrics::get_instance().record_latency(name_, latency_us);
 }
 

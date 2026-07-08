@@ -254,8 +254,7 @@ grpc::Status SdmServiceImpl::GetTableMeta(grpc::ServerContext* context, const rp
     return grpc::Status::OK;
 }
 
-grpc::Status SdmServiceImpl::GetTableRoutes(grpc::ServerContext* context,
-                                            const rpc::GetTableRoutesRequest* request,
+grpc::Status SdmServiceImpl::GetTableRoutes(grpc::ServerContext* context, const rpc::GetTableRoutesRequest* request,
                                             rpc::GetTableRoutesResponse* response) {
     UNUSED(context);
 
@@ -268,8 +267,8 @@ grpc::Status SdmServiceImpl::GetTableRoutes(grpc::ServerContext* context,
     Status status = service_manager_->get_table_routes(param, &table, &routes);
     fill_base_rsp(response, status);
     if (status.fail()) {
-        LOG_WARN("[SdmServiceImpl] GetTableRoutes failed, db={}, table={}, status={}", param.db_name,
-                 param.table_name, status.to_string());
+        LOG_WARN("[SdmServiceImpl] GetTableRoutes failed, db={}, table={}, status={}", param.db_name, param.table_name,
+                 status.to_string());
         return grpc::Status::OK;
     }
 

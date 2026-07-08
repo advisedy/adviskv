@@ -74,9 +74,7 @@ public:
 private:
     enum class State : int8_t { NORMAL = 0, WAITING_TIMER = 1, STOPPED = 2 };
 
-    bool enable_dispatch_unlocked() const {
-        return items_.size() >= max_batch_size_;
-    }
+    bool enable_dispatch_unlocked() const { return items_.size() >= max_batch_size_; }
 
     void schedule_timer_unlocked() {
         if (state_ == State::STOPPED) {

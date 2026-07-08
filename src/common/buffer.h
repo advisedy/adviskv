@@ -8,7 +8,7 @@
 namespace adviskv {
 
 class EncodeBuffer {
-   public:
+public:
     template <typename T>
     void write(const T& v) {
         auto* p = reinterpret_cast<const uint8_t*>(&v);
@@ -27,12 +27,12 @@ class EncodeBuffer {
     size_t size() const { return buf_.size(); }
     const uint8_t* data() const { return buf_.data(); }
 
-   private:
+private:
     std::vector<uint8_t> buf_;
 };
 
 class DecodeBuffer {
-   public:
+public:
     explicit DecodeBuffer(std::vector<uint8_t> data) : data_(std::move(data)) {}
 
     template <typename T>
@@ -60,7 +60,7 @@ class DecodeBuffer {
     bool is_end() const { return pos_ >= data_.size(); }
     size_t pos() const { return pos_; }
 
-   private:
+private:
     std::vector<uint8_t> data_;
     size_t pos_{0};
 };

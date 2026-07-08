@@ -12,7 +12,7 @@ class RaftLog;
 // 负责记录已经 commit / apply 到哪里的进度。
 // 和名字不同，不仅会负责apply的推进，还有commit的推进
 class RaftApply {
-   public:
+public:
     explicit RaftApply(const RaftLog& raft_log);
 
     LogIndex commit_index() const { return commit_index_; }
@@ -26,7 +26,7 @@ class RaftApply {
     std::vector<LogEntry> extract_committed_entries() const;
     bool has_committed_current_term_entry(Term current_term) const;
 
-   private:
+private:
     const RaftLog& raft_log_;
     LogIndex commit_index_{0};
     LogIndex last_applied_{0};

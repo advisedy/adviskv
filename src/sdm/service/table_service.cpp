@@ -8,11 +8,11 @@
 #include "common/define.h"
 #include "common/func.h"
 #include "common/log.h"
-#include "common/status.h"
 #include "common/model/type.h"
+#include "common/status.h"
+#include "sdm/model/model.h"
 #include "sdm/store/sdm_store.h"
 #include "sdm/store/sdm_store_txn.h"
-#include "sdm/model/model.h"
 
 namespace adviskv::sdm {
 
@@ -25,8 +25,7 @@ bool has_exactly_one_writable_leader(const ShardRoute& route) {
 }
 }  // namespace
 
-TableService::TableService(SdmStore* store) : store_(store) {
-}
+TableService::TableService(SdmStore* store) : store_(store) {}
 
 // 语义，执行创建 table 操作，如果 table 已经存在了，就会返回ALREADY_EXISTS
 Status TableService::place_table(const PlaceTableParam& param) {

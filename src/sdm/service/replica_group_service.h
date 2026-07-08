@@ -2,10 +2,10 @@
 
 #include <optional>
 
-#include "common/status.h"
 #include "common/model/type.h"
-#include "sdm/model/param.h"
+#include "common/status.h"
 #include "sdm/model/model.h"
+#include "sdm/model/param.h"
 
 namespace adviskv::sdm {
 
@@ -19,27 +19,21 @@ struct ReplicaGroupReconcileContext {
 };
 
 inline bool is_healthy(const Replica& replica) {
-    return replica.state.desired == ReplicaDesired::PRESENT &&
-           replica.state.phase != ReplicaPhase::LOST &&
-           replica.state.phase != ReplicaPhase::ERROR &&
-           replica.state.phase != ReplicaPhase::DELETING &&
+    return replica.state.desired == ReplicaDesired::PRESENT && replica.state.phase != ReplicaPhase::LOST &&
+           replica.state.phase != ReplicaPhase::ERROR && replica.state.phase != ReplicaPhase::DELETING &&
            replica.state.phase != ReplicaPhase::DELETED;
 }
 
-Status select_remove_member_victim(const SdmStoreTxn& txn,
-                                   const ReplicaGroup& group,
-                                   Optional<ReplicaID>& victim);
+Status select_remove_member_victim(const SdmStoreTxn& txn, const ReplicaGroup& group, Optional<ReplicaID>& victim);
 
 class ReplicaGroupService {
-   public:
-    explicit ReplicaGroupService(SdmStore* store,
-                                 NodeSelector* selector = nullptr);
+public:
+    explicit ReplicaGroupService(SdmStore* store, NodeSelector* selector = nullptr);
 
     Status reconcile_all();
-    Status build_heartbeat_result(const HeartBeatParam& param,
-                                  HeartBeatResult& result) const;
+    Status build_heartbeat_result(const HeartBeatParam& param, HeartBeatResult& result) const;
 
-   private:
+private:
     SdmStore* store_{nullptr};
     NodeSelector* selector_{nullptr};
 };

@@ -11,8 +11,7 @@ enum class StorageReplicaStatus : int8_t {
     FAULTED = 3,
 };
 
-inline bool decode_storage_replica_status(int32_t value,
-                                          StorageReplicaStatus& out) {
+inline bool decode_storage_replica_status(int32_t value, StorageReplicaStatus& out) {
     switch (value) {
         case 0:
             out = StorageReplicaStatus::INITIALIZING;

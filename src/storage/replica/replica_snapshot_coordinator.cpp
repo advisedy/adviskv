@@ -15,13 +15,12 @@
 namespace adviskv::storage {
 namespace {
 
-static constexpr int SNAPSHOT_LIMIT = 1000;
+constexpr int K_RAFT_DO_SNAPSHOT_LIMIT = 1000;
 
 }  // namespace
 
 ReplicaSnapshotCoordinator::ReplicaSnapshotCoordinator(ReplicaContext& context, ReplicaLoop& loop)
-        : context_(context), loop_(loop) {
-}
+        : context_(context), loop_(loop) {}
 
 Status ReplicaSnapshotCoordinator::handle_install_snapshot(const InstallSnapshotParam& param) {
     if (param.offset == 0) {
@@ -51,8 +50,7 @@ Status ReplicaSnapshotCoordinator::handle_install_snapshot(const InstallSnapshot
         RETURN_IF_INVALID_STATUS(check_snapshot_receive_session(param))
         RETURN_IF_INVALID_STATUS(context_.fault_if_fail(context_.persist.append_snapshot_chunk(param)))
         advance_snapshot_receive_session(param);
-        if (!param.done)
-            return Status::OK();
+        if (!param.done) return Status::OK();
 
         Status finish_status = finish_install_snapshot(param);
         receiving_snapshot_.reset();
@@ -166,8 +164,7 @@ void ReplicaSnapshotCoordinator::try_take_snapshot() {
         last_apply_index = context_.raft_core.last_applied();
         snapshot_index = context_.raft_core.snapshot_index();
     }
-    if (last_apply_index - snapshot_index < SNAPSHOT_LIMIT)
-        return;
+    if (last_apply_index - snapshot_index < K_RAFT_DO_SNAPSHOT_LIMIT) return;
 
     std::lock_guard snapshot_lock(context_.persist_snapshot_mutex);
     std::lock_guard state_machine_lock(context_.state_machine_mutex);
@@ -176,8 +173,7 @@ void ReplicaSnapshotCoordinator::try_take_snapshot() {
         last_apply_index = context_.raft_core.last_applied();
         snapshot_index = context_.raft_core.snapshot_index();
     }
-    if (last_apply_index - snapshot_index < SNAPSHOT_LIMIT)
-        return;
+    if (last_apply_index - snapshot_index < K_RAFT_DO_SNAPSHOT_LIMIT) return;
 
     LOG_INFO(
             "[Replica Snapshot] replica_id:{} try take snapshot start, "

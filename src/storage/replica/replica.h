@@ -1,13 +1,13 @@
 #pragma once
 
-#include <fmt/format.h>
-
 #include <atomic>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
+
+#include <fmt/format.h>
 
 #include "common/define.h"
 #include "common/log.h"
@@ -46,7 +46,7 @@ struct ReplicaContext {
 };
 
 class Replica {
-   public:
+public:
     Replica();
     ~Replica();
 
@@ -59,8 +59,7 @@ class Replica {
     }
     RaftMemberType get_member_type() const {
         std::lock_guard lock(raft_core_mutex_);
-        return raft_core_ ? raft_core_->member_type(replica_id_)
-                          : RaftMemberType::NON_MEMBER;
+        return raft_core_ ? raft_core_->member_type(replica_id_) : RaftMemberType::NON_MEMBER;
     }
     std::vector<RaftMember> get_raft_members() const {
         std::lock_guard lock(raft_core_mutex_);
@@ -86,16 +85,14 @@ class Replica {
     Status put(const PutParam& param);
     Status get(const GetParam& param, Value& value);
     Status del(const DelParam& param);
-    Status handle_request_vote(const RequestVoteParam& param,
-                               RequestVoteResult& result);
-    Status handle_append_entries(const AppendEntriesParam& param,
-                                 AppendEntriesResult& result);
+    Status handle_request_vote(const RequestVoteParam& param, RequestVoteResult& result);
+    Status handle_append_entries(const AppendEntriesParam& param, AppendEntriesResult& result);
     // 收到了来自leader的快照下载要求
     Status handle_install_snapshot(const InstallSnapshotParam& param);
     Status add_member(const PeerMember& member);
     Status remove_member(const ReplicaID& replica_id);
 
-   private:
+private:
     friend class ReplicaManager;
     friend class ReplicaApplyTask;
 
@@ -108,21 +105,14 @@ class Replica {
     friend class RaftTickTask;
     void on_tick();
 
-    void enter_local_state_faulted() {
-        local_state_.store(LocalState::FAULTED);
-    }
-    void enter_local_state_starting() {
-        local_state_.store(LocalState::STARTING);
-    }
-    void enter_local_state_running() {
-        local_state_.store(LocalState::RUNNING);
-    }
+    void enter_local_state_faulted() { local_state_.store(LocalState::FAULTED); }
+    void enter_local_state_starting() { local_state_.store(LocalState::STARTING); }
+    void enter_local_state_running() { local_state_.store(LocalState::RUNNING); }
 
     Status ensure_local_state_running() const {
         if (auto state = local_state_.load(); state != LocalState::RUNNING) {
-            return Status::ERROR(fmt::format(
-                "replica is not running, local_state:{}",
-                (state == LocalState::FAULTED ? "faulted" : "starting")));
+            return Status::ERROR(fmt::format("replica is not running, local_state:{}",
+                                             (state == LocalState::FAULTED ? "faulted" : "starting")));
         }
         return Status::OK();
     }
@@ -166,7 +156,7 @@ class Replica {
     std::unique_ptr<ReplicaSnapshotCoordinator> snapshot_coordinator_;
     std::unique_ptr<ReplicaReadIndexChecker> read_index_checker_;
 
-   public:
+public:
     ///////////
     // 专门给测试开了个接口
     struct ReplicaStateForTest {

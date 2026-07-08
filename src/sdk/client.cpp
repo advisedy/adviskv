@@ -39,19 +39,16 @@ void convert_not_yet_commit_to_unknown(Status* status) {
         return;
     }
     status->set_code(StatusCode::UNKNOWN);
-    status->set_msg(fmt::format(
-        "request result is unknown: {}; retry later or confirm the result "
-        "with a subsequent get",
-        status->msg()));
+    status->set_msg(
+            fmt::format("request result is unknown: {}; retry later or confirm the result "
+                        "with a subsequent get",
+                        status->msg()));
 }
 
 }  // namespace
 
 KVClient::KVClient(const KVClientConf& conf)
-    : conf_(conf),
-      sdm_route_client_(conf),
-      route_cache_(conf, &sdm_route_client_),
-      storage_client_(conf) {
+        : conf_(conf), sdm_route_client_(conf), route_cache_(conf, &sdm_route_client_), storage_client_(conf) {
     route_cache_.start();
 }
 
@@ -77,8 +74,7 @@ Status KVClient::put(const Key& key, const Value& value) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "put resolve route failed, db={}, table={}, key={}, "
                         "status={}",
-                        conf_.db_name, conf_.table_name, key,
-                        status.to_string());
+                        conf_.db_name, conf_.table_name, key, status.to_string());
         return status;
     }
 
@@ -107,8 +103,7 @@ Status KVClient::put(const Key& key, const Value& value) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "put retry resolve route failed, db={}, table={}, "
                         "key={}, status={}",
-                        conf_.db_name, conf_.table_name, key,
-                        status.to_string());
+                        conf_.db_name, conf_.table_name, key, status.to_string());
         return status;
     }
     {
@@ -118,10 +113,8 @@ Status KVClient::put(const Key& key, const Value& value) {
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("sdk_put_retry_failure");
         convert_not_yet_commit_to_unknown(&status);
-        ADVISKV_SDK_LOG(LogLevel::WARN,
-                        "put retry failed, db={}, table={}, key={}, status={}",
-                        conf_.db_name, conf_.table_name, key,
-                        status.to_string());
+        ADVISKV_SDK_LOG(LogLevel::WARN, "put retry failed, db={}, table={}, key={}, status={}", conf_.db_name,
+                        conf_.table_name, key, status.to_string());
     } else {
         ADVISKV_METRICS_COUNTER("sdk_put_retry_success");
     }
@@ -133,8 +126,7 @@ Status KVClient::del(const Key& key) {
     ADVISKV_METRICS_COUNTER("sdk_delete_request");
 
     Status status = Status::OK();
-    auto delete_result_guard =
-        Defer([&status]() { record_delete_result(status); });
+    auto delete_result_guard = Defer([&status]() { record_delete_result(status); });
 
     status = conf_.validate();
     if (status.fail()) {
@@ -151,8 +143,7 @@ Status KVClient::del(const Key& key) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "delete resolve route failed, db={}, table={}, key={}, "
                         "status={}",
-                        conf_.db_name, conf_.table_name, key,
-                        status.to_string());
+                        conf_.db_name, conf_.table_name, key, status.to_string());
         return status;
     }
 
@@ -179,8 +170,7 @@ Status KVClient::del(const Key& key) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "delete retry resolve route failed, db={}, table={}, "
                         "key={}, status={}",
-                        conf_.db_name, conf_.table_name, key,
-                        status.to_string());
+                        conf_.db_name, conf_.table_name, key, status.to_string());
         return status;
     }
     {
@@ -193,8 +183,7 @@ Status KVClient::del(const Key& key) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "delete retry failed, db={}, table={}, key={}, "
                         "status={}",
-                        conf_.db_name, conf_.table_name, key,
-                        status.to_string());
+                        conf_.db_name, conf_.table_name, key, status.to_string());
     } else {
         ADVISKV_METRICS_COUNTER("sdk_delete_retry_success");
     }
@@ -225,8 +214,7 @@ Status KVClient::get(const Key& key, Value* value) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "get resolve route failed, db={}, table={}, key={}, "
                         "status={}",
-                        conf_.db_name, conf_.table_name, key,
-                        status.to_string());
+                        conf_.db_name, conf_.table_name, key, status.to_string());
         return status;
     }
 
@@ -240,9 +228,8 @@ Status KVClient::get(const Key& key, Value* value) {
     }
 
     ADVISKV_METRICS_COUNTER("sdk_get_route_invalidated");
-    ADVISKV_SDK_LOG(LogLevel::INFO,
-                    "get re-resolves route, db={}, table={}, key={}, status={}",
-                    conf_.db_name, conf_.table_name, key, status.to_string());
+    ADVISKV_SDK_LOG(LogLevel::INFO, "get re-resolves route, db={}, table={}, key={}, status={}", conf_.db_name,
+                    conf_.table_name, key, status.to_string());
     {
         ADVISKV_METRICS_TIMER("sdk_get_retry_route_resolve");
         status = refresh_route(key, &route);
@@ -252,8 +239,7 @@ Status KVClient::get(const Key& key, Value* value) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "get retry resolve route failed, db={}, table={}, "
                         "key={}, status={}",
-                        conf_.db_name, conf_.table_name, key,
-                        status.to_string());
+                        conf_.db_name, conf_.table_name, key, status.to_string());
         return status;
     }
     {
@@ -263,10 +249,8 @@ Status KVClient::get(const Key& key, Value* value) {
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("sdk_get_retry_failure");
         convert_not_yet_commit_to_unknown(&status);
-        ADVISKV_SDK_LOG(LogLevel::WARN,
-                        "get retry failed, db={}, table={}, key={}, status={}",
-                        conf_.db_name, conf_.table_name, key,
-                        status.to_string());
+        ADVISKV_SDK_LOG(LogLevel::WARN, "get retry failed, db={}, table={}, key={}, status={}", conf_.db_name,
+                        conf_.table_name, key, status.to_string());
     } else {
         ADVISKV_METRICS_COUNTER("sdk_get_retry_success");
     }
@@ -274,14 +258,12 @@ Status KVClient::get(const Key& key, Value* value) {
 }
 
 bool KVClient::should_invalidate_route(const Status& status) {
-    return status.code() == StatusCode::NOT_LEADER ||
-           status.code() == StatusCode::REPLICA_NOT_FOUND ||
+    return status.code() == StatusCode::NOT_LEADER || status.code() == StatusCode::REPLICA_NOT_FOUND ||
            status.code() == StatusCode::ROUTE_NOT_FOUND;
 }
 
 Status KVClient::resolve_route(const Key& key, RouteInfo* route) {
     RETURN_IF_NULLPTR(route, "route should not be nullptr")
-
     return route_cache_.resolve_route(key, route);
 }
 

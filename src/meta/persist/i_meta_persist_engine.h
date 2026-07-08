@@ -13,7 +13,7 @@ struct PersistedMetaRecord {
 };
 
 class IMetaPersistEngine {
-   public:
+public:
     virtual ~IMetaPersistEngine() = default;
 
     virtual Status init() = 0;

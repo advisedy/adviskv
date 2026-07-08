@@ -5,8 +5,7 @@
 
 namespace adviskv {
 
-inline bool decode_pb_raft_member_type(pb::RaftMemberType in,
-                                       RaftMemberType& out) {
+inline bool decode_pb_raft_member_type(pb::RaftMemberType in, RaftMemberType& out) {
     switch (in) {
         case pb::RaftMemberType::RAFT_MEMBER_TYPE_NON_MEMBER:
             out = RaftMemberType::NON_MEMBER;
@@ -22,8 +21,7 @@ inline bool decode_pb_raft_member_type(pb::RaftMemberType in,
     }
 }
 
-inline bool encode_pb_raft_member_type(RaftMemberType in,
-                                       pb::RaftMemberType& out) {
+inline bool encode_pb_raft_member_type(RaftMemberType in, pb::RaftMemberType& out) {
     switch (in) {
         case RaftMemberType::NON_MEMBER:
             out = pb::RaftMemberType::RAFT_MEMBER_TYPE_NON_MEMBER;

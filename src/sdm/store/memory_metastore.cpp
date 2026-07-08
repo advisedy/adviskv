@@ -24,8 +24,7 @@ std::unique_ptr<ISdmMetaStore> MemoryMetaStore::clone_memory_snapshot() const {
     return copied;
 }
 
-Status MemoryMetaStore::commit_memory_snapshot(
-    std::unique_ptr<ISdmMetaStore> next_memory_store) {
+Status MemoryMetaStore::commit_memory_snapshot(std::unique_ptr<ISdmMetaStore> next_memory_store) {
     RETURN_IF_NULLPTR(next_memory_store, "next_memory_store is nullptr");
 
     auto* next = dynamic_cast<MemoryMetaStore*>(next_memory_store.get());
@@ -72,8 +71,7 @@ Status MemoryMetaStore::upsert_replica(const Replica& replica) {
     return Status::OK();
 }
 
-Status MemoryMetaStore::get_replica(const ReplicaID& key,
-                                    ReplicaPtr& out) const {
+Status MemoryMetaStore::get_replica(const ReplicaID& key, ReplicaPtr& out) const {
     auto it = replicas_.find(key);
     if (it == replicas_.end()) {
         out.reset();
@@ -110,8 +108,7 @@ Status MemoryMetaStore::upsert_resource_pool(const ResourcePool& pool) {
     return Status::OK();
 }
 
-Status MemoryMetaStore::get_resource_pool(const std::string& name,
-                                          ResourcePoolPtr& out) const {
+Status MemoryMetaStore::get_resource_pool(const std::string& name, ResourcePoolPtr& out) const {
     auto it = resource_pools_.find(name);
     if (it == resource_pools_.end()) {
         out.reset();
@@ -121,8 +118,7 @@ Status MemoryMetaStore::get_resource_pool(const std::string& name,
     return Status::OK();
 }
 
-Status MemoryMetaStore::list_resource_pools(
-    std::vector<ResourcePoolPtr>& out) const {
+Status MemoryMetaStore::list_resource_pools(std::vector<ResourcePoolPtr>& out) const {
     out.clear();
     out.reserve(resource_pools_.size());
     for (const auto& [_, pool] : resource_pools_) {
@@ -146,8 +142,7 @@ Status MemoryMetaStore::delete_replica_group(const ShardID& shard_id) {
     return Status::OK();
 }
 
-Status MemoryMetaStore::get_replica_group(const ShardID& shard_id,
-                                          ReplicaGroupPtr& out) const {
+Status MemoryMetaStore::get_replica_group(const ShardID& shard_id, ReplicaGroupPtr& out) const {
     auto it = replica_groups_.find(shard_id);
     if (it == replica_groups_.end()) {
         out.reset();
@@ -157,8 +152,7 @@ Status MemoryMetaStore::get_replica_group(const ShardID& shard_id,
     return Status::OK();
 }
 
-Status MemoryMetaStore::list_replica_groups(
-    std::vector<ReplicaGroupPtr>& out) const {
+Status MemoryMetaStore::list_replica_groups(std::vector<ReplicaGroupPtr>& out) const {
     out.clear();
     out.reserve(replica_groups_.size());
     for (const auto& [_, group] : replica_groups_) {

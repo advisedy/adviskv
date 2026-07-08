@@ -10,7 +10,7 @@
 namespace adviskv::storage {
 
 class RaftElection {
-   public:
+public:
     explicit RaftElection(const ReplicaID& self_id);
 
     ReplicaRole role() const;
@@ -33,7 +33,7 @@ class RaftElection {
     bool grant_vote_to(const ReplicaID& candidate);
     bool record_vote_granted_from(const ReplicaID& voter);
 
-   private:
+private:
     ReplicaID self_id_;
     ReplicaRole role_{ReplicaRole::FOLLOWER};
 

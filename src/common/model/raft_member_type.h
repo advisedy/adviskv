@@ -27,8 +27,6 @@ inline bool decode_raft_member_type(int32_t value, RaftMemberType& out) {
     }
 }
 
-inline bool is_raft_voter(RaftMemberType type) {
-    return type == RaftMemberType::VOTER;
-}
+inline bool is_raft_voter(RaftMemberType type) { return type == RaftMemberType::VOTER; }
 
 }  // namespace adviskv

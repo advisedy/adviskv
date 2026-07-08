@@ -7,14 +7,13 @@
 namespace adviskv::storage {
 
 class StorageServiceImpl final : public rpc::StorageService::Service {
-   public:
-#define DEFINE_METHOD(method_name)                                 \
-    grpc::Status method_name(grpc::ServerContext* context,         \
-                             const rpc::method_name##Request* req, \
+public:
+#define DEFINE_METHOD(method_name)                                                               \
+    grpc::Status method_name(grpc::ServerContext* context, const rpc::method_name##Request* req, \
                              rpc::method_name##Response* response) override;
 
     explicit StorageServiceImpl(std::unique_ptr<ReplicaManager> replica_manager)
-        : replica_manager_(std::move(replica_manager)) {}
+            : replica_manager_(std::move(replica_manager)) {}
 
     DEFINE_METHOD(Put)
     DEFINE_METHOD(Get)
@@ -50,7 +49,7 @@ class StorageServiceImpl final : public rpc::StorageService::Service {
     // grpc::Status GetReplicaInfo(grpc::ServerContext* context,
     //                         const rpc::GetReplicaInfoRequest* request,
     //                         rpc::GetReplicaInfoResponse* response) override;
-   private:
+private:
     std::unique_ptr<ReplicaManager> replica_manager_;
 };
 }  // namespace adviskv::storage

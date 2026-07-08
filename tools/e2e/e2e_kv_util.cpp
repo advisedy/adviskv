@@ -20,8 +20,8 @@ namespace adviskv::e2e {
 namespace {
 using Clock = std::chrono::steady_clock;
 
-constexpr int32_t kVerboseDatasetLogLimit = 32;
-constexpr int32_t kDatasetLogRangeSize = 100;
+constexpr int32_t K_VERBOSE_DATASET_LOG_LIMIT = 32;
+constexpr int32_t K_DATASET_LOG_RANGE_SIZE = 100;
 
 bool wait_status_quiet(const std::string& name, const Options& options,
                        const std::function<Status()>& operation) {
@@ -161,7 +161,7 @@ std::vector<Key> make_case_keys(const std::string& prefix, int32_t key_count) {
 
 bool write_kvs(sdk::KVClient* client, const Options& options,
                const std::string& name, const std::vector<KV>& kvs) {
-    if (static_cast<int32_t>(kvs.size()) <= kVerboseDatasetLogLimit) {
+    if (static_cast<int32_t>(kvs.size()) <= K_VERBOSE_DATASET_LOG_LIMIT) {
         for (const KV& kv : kvs) {
             const Key key = kv.first;
             const Value value = kv.second;
@@ -173,9 +173,9 @@ bool write_kvs(sdk::KVClient* client, const Options& options,
         return true;
     }
 
-    for (size_t begin = 0; begin < kvs.size(); begin += kDatasetLogRangeSize) {
+    for (size_t begin = 0; begin < kvs.size(); begin += K_DATASET_LOG_RANGE_SIZE) {
         const size_t end = std::min(
-            begin + static_cast<size_t>(kDatasetLogRangeSize), kvs.size());
+            begin + static_cast<size_t>(K_DATASET_LOG_RANGE_SIZE), kvs.size());
         for (size_t i = begin; i < end; ++i) {
             const Key key = kvs[i].first;
             const Value value = kvs[i].second;
@@ -192,7 +192,7 @@ bool write_kvs(sdk::KVClient* client, const Options& options,
 
 bool verify_kvs(sdk::KVClient* client, const Options& options,
                 const std::string& name, const std::vector<KV>& kvs) {
-    if (static_cast<int32_t>(kvs.size()) <= kVerboseDatasetLogLimit) {
+    if (static_cast<int32_t>(kvs.size()) <= K_VERBOSE_DATASET_LOG_LIMIT) {
         for (const KV& kv : kvs) {
             if (!wait_get_value(client, options, kv.first, kv.second)) {
                 return false;
@@ -201,9 +201,9 @@ bool verify_kvs(sdk::KVClient* client, const Options& options,
         return true;
     }
 
-    for (size_t begin = 0; begin < kvs.size(); begin += kDatasetLogRangeSize) {
+    for (size_t begin = 0; begin < kvs.size(); begin += K_DATASET_LOG_RANGE_SIZE) {
         const size_t end = std::min(
-            begin + static_cast<size_t>(kDatasetLogRangeSize), kvs.size());
+            begin + static_cast<size_t>(K_DATASET_LOG_RANGE_SIZE), kvs.size());
         for (size_t i = begin; i < end; ++i) {
             if (!wait_get_value_quiet(client, options, kvs[i].first,
                                       kvs[i].second)) {

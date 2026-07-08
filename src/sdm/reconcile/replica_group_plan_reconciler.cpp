@@ -9,8 +9,7 @@
 
 namespace adviskv::sdm {
 
-ReplicaGroupPlanReconciler::ReplicaGroupPlanReconciler(ReplicaGroupReconcileContext ctx) : ctx_(std::move(ctx)) {
-}
+ReplicaGroupPlanReconciler::ReplicaGroupPlanReconciler(ReplicaGroupReconcileContext ctx) : ctx_(std::move(ctx)) {}
 // 遍历每一个table，如果table是absent的话，直接replica_count=0，当replica都没了就删了
 // 如果是present的话，就遍历table的每一个ReplicaGroup，如果没有group就创建，或者修改target_replica_count为当前table的replica_count
 Status ReplicaGroupPlanReconciler::reconcile_all() {
@@ -71,16 +70,18 @@ Status ReplicaGroupPlanReconciler::ensure_group_for_shard(const Table& table, Sh
             group.mode = ReplicaGroupMode::BOOTSTRAP;
             group.target_replica_count = current->spec.replica_count;
             group.seq_allocator = IDAllocator<ReplicaSeq>(0);
-            LOG_INFO("[ReplicaGroupPlanReconciler] ensure_group_for_shard, create replica group, shard_id:{}, target_replica_count:{}",
-                     shard_id.to_string(), group.target_replica_count);
+            LOG_INFO(
+                    "[ReplicaGroupPlanReconciler] ensure_group_for_shard, create replica group, shard_id:{}, target_replica_count:{}",
+                    shard_id.to_string(), group.target_replica_count);
 
             RETURN_IF_INVALID_STATUS(txn.put_replica_group(group))
             return Status::OK();
         }
 
         if (group_or->target_replica_count != current->spec.replica_count) {
-            LOG_INFO("[ReplicaGroupPlanReconciler] ensure_group_for_shard, update target replica count, shard_id:{}, old_target:{}, new_target:{}",
-                     shard_id.to_string(), group_or->target_replica_count, current->spec.replica_count);
+            LOG_INFO(
+                    "[ReplicaGroupPlanReconciler] ensure_group_for_shard, update target replica count, shard_id:{}, old_target:{}, new_target:{}",
+                    shard_id.to_string(), group_or->target_replica_count, current->spec.replica_count);
 
             ReplicaGroup group = group_or.value();
             group.target_replica_count = current->spec.replica_count;

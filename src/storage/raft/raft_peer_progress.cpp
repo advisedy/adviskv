@@ -6,9 +6,7 @@
 
 namespace adviskv::storage {
 
-RaftPeerProgress::RaftPeerProgress(ReplicaID replica_id,
-                                   const RaftMembership& membership)
-    : self_id_(replica_id) {
+RaftPeerProgress::RaftPeerProgress(ReplicaID replica_id, const RaftMembership& membership) : self_id_(replica_id) {
     for (const PeerMember& member : membership.peer_members()) {
         if (member.replica_id == self_id_) continue;
         if (!match_index_.count(member.replica_id)) {
@@ -31,8 +29,7 @@ LogIndex RaftPeerProgress::get_next_index(ReplicaID replica_id) const {
     return it->second;
 }
 
-void RaftPeerProgress::update_next_index(ReplicaID replica_id,
-                                         LogIndex log_index) {
+void RaftPeerProgress::update_next_index(ReplicaID replica_id, LogIndex log_index) {
     next_index_[replica_id] = log_index;
 }
 
@@ -44,13 +41,11 @@ LogIndex RaftPeerProgress::get_match_index(ReplicaID replica_id) const {
     return it->second;
 }
 
-void RaftPeerProgress::update_match_index(ReplicaID replica_id,
-                                          LogIndex log_index) {
+void RaftPeerProgress::update_match_index(ReplicaID replica_id, LogIndex log_index) {
     match_index_[replica_id] = log_index;
 }
 
-void RaftPeerProgress::reset_for_leader(const RaftMembership& membership,
-                                        LogIndex last_log_index) {
+void RaftPeerProgress::reset_for_leader(const RaftMembership& membership, LogIndex last_log_index) {
     next_index_.clear();
     match_index_.clear();
     snapshot_watermark_.clear();
@@ -64,8 +59,7 @@ void RaftPeerProgress::reset_for_leader(const RaftMembership& membership,
     }
 }
 
-void RaftPeerProgress::update_snapshot_watermark(ReplicaID replica_id,
-                                                 LogIndex snapshot_watermark) {
+void RaftPeerProgress::update_snapshot_watermark(ReplicaID replica_id, LogIndex snapshot_watermark) {
     {  // log
         LogIndex old_watermark = get_snapshot_watermark(replica_id);
         LogIndex old_match = get_match_index(replica_id);
@@ -76,32 +70,26 @@ void RaftPeerProgress::update_snapshot_watermark(ReplicaID replica_id,
         LogIndex new_next = std::max(old_next, snapshot_watermark + 1);
 
         LOG_DEBUG(
-            "[Raft PeerProgress] update snapshot watermark, replica_id:{}, "
-            "snapshot_watermark:[old:{}, new:{}], match_index:[old:{}, "
-            "new:{}], "
-            "next_index:[old:{}, new:{}]",
-            replica_id.to_string(), old_watermark, new_watermark, old_match,
-            new_match, old_next, new_next);
+                "[Raft PeerProgress] update snapshot watermark, replica_id:{}, "
+                "snapshot_watermark:[old:{}, new:{}], match_index:[old:{}, "
+                "new:{}], "
+                "next_index:[old:{}, new:{}]",
+                replica_id.to_string(), old_watermark, new_watermark, old_match, new_match, old_next, new_next);
     }
 
-    snapshot_watermark_[replica_id] =
-        std::max(get_snapshot_watermark(replica_id), snapshot_watermark);
-    match_index_[replica_id] =
-        std::max(get_match_index(replica_id), snapshot_watermark);
-    next_index_[replica_id] =
-        std::max(get_next_index(replica_id), snapshot_watermark + 1);
+    snapshot_watermark_[replica_id] = std::max(get_snapshot_watermark(replica_id), snapshot_watermark);
+    match_index_[replica_id] = std::max(get_match_index(replica_id), snapshot_watermark);
+    next_index_[replica_id] = std::max(get_next_index(replica_id), snapshot_watermark + 1);
 }
 
 LogIndex RaftPeerProgress::get_snapshot_watermark(ReplicaID replica_id) const {
-    if (auto it = snapshot_watermark_.find(replica_id);
-        it != snapshot_watermark_.end()) {
+    if (auto it = snapshot_watermark_.find(replica_id); it != snapshot_watermark_.end()) {
         return it->second;
     }
     return 0;
 }
 
-LogIndex RaftPeerProgress::get_inflight_snapshot_index(
-    ReplicaID replica_id) const {
+LogIndex RaftPeerProgress::get_inflight_snapshot_index(ReplicaID replica_id) const {
     auto it = inflight_snapshot_index_.find(replica_id);
     if (it == inflight_snapshot_index_.end()) {
         return 0;
@@ -109,8 +97,7 @@ LogIndex RaftPeerProgress::get_inflight_snapshot_index(
     return it->second;
 }
 
-bool RaftPeerProgress::mark_snapshot_inflight(ReplicaID replica_id,
-                                              LogIndex snapshot_index) {
+bool RaftPeerProgress::mark_snapshot_inflight(ReplicaID replica_id, LogIndex snapshot_index) {
     if (get_inflight_snapshot_index(replica_id) > 0) {
         return false;
     }
@@ -118,8 +105,7 @@ bool RaftPeerProgress::mark_snapshot_inflight(ReplicaID replica_id,
     return true;
 }
 
-void RaftPeerProgress::clear_snapshot_inflight(ReplicaID replica_id,
-                                               LogIndex snapshot_index) {
+void RaftPeerProgress::clear_snapshot_inflight(ReplicaID replica_id, LogIndex snapshot_index) {
     auto it = inflight_snapshot_index_.find(replica_id);
     if (it == inflight_snapshot_index_.end()) {
         return;
@@ -129,23 +115,18 @@ void RaftPeerProgress::clear_snapshot_inflight(ReplicaID replica_id,
     }
 }
 
-void RaftPeerProgress::handle_append_ok(ReplicaID replica_id,
-                                        LogIndex prev_log_index,
-                                        size_t entries_size) {
-    LogIndex matched_index =
-        prev_log_index + static_cast<LogIndex>(entries_size);
+void RaftPeerProgress::handle_append_ok(ReplicaID replica_id, LogIndex prev_log_index, size_t entries_size) {
+    LogIndex matched_index = prev_log_index + static_cast<LogIndex>(entries_size);
     if (matched_index > get_match_index(replica_id)) {
         update_match_index(replica_id, matched_index);
     }
     update_next_index(replica_id, get_match_index(replica_id) + 1);
 }
 
-void RaftPeerProgress::handle_append_failed(ReplicaID replica_id,
-                                            LogIndex follower_last_log_index,
+void RaftPeerProgress::handle_append_failed(ReplicaID replica_id, LogIndex follower_last_log_index,
                                             LogIndex leader_last_log_index) {
     LogIndex current_next = get_next_index(replica_id);
-    LogIndex new_next =
-        std::min(follower_last_log_index, leader_last_log_index) + 1;
+    LogIndex new_next = std::min(follower_last_log_index, leader_last_log_index) + 1;
 
     if (new_next >= current_next && current_next > 1) {
         new_next = current_next - 1;
@@ -155,8 +136,7 @@ void RaftPeerProgress::handle_append_failed(ReplicaID replica_id,
     update_next_index(replica_id, new_next);
 }
 
-bool RaftPeerProgress::match_index_at_least(ReplicaID replica_id,
-                                            LogIndex log_index) const {
+bool RaftPeerProgress::match_index_at_least(ReplicaID replica_id, LogIndex log_index) const {
     return get_match_index(replica_id) >= log_index;
 }
 

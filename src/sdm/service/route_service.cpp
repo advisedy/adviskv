@@ -42,8 +42,8 @@ Status RouteService::get_route(const GetRouteParam& param, ShardRoute* out) cons
             return Status::TABLE_NOT_FOUND(fmt::format("table_id {} not found", param.table_id));
         }
         if (param.shard_id >= table->spec.shard_count) {
-            return Status::INVALID_ARGUMENT(fmt::format("shard_id {} out of range, shard_count={}", param.shard_id,
-                                                       table->spec.shard_count));
+            return Status::INVALID_ARGUMENT(
+                    fmt::format("shard_id {} out of range, shard_count={}", param.shard_id, table->spec.shard_count));
         }
         shard_id = ShardID{param.table_id, param.shard_id};
     } else {
@@ -108,8 +108,8 @@ Status RouteService::get_table_routes(const GetTableRoutesParam& param, Table* o
             ShardID shard_id{table->table_id, shard_index};
             RETURN_IF_INVALID_STATUS(txn.get_shard_route(shard_id, route))
             if (route.is_empty()) {
-                return Status::ROUTE_NOT_FOUND(fmt::format("route not found, table_id={}, shard_id={}",
-                                                           table->table_id, shard_index));
+                return Status::ROUTE_NOT_FOUND(
+                        fmt::format("route not found, table_id={}, shard_id={}", table->table_id, shard_index));
             }
             RETURN_IF_INVALID_STATUS(validate_writable_route(*route))
             routes.push_back(*route);

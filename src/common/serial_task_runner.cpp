@@ -4,9 +4,7 @@
 
 namespace adviskv {
 
-SerialTaskRunner::~SerialTaskRunner() {
-    stop();
-}
+SerialTaskRunner::~SerialTaskRunner() { stop(); }
 
 void SerialTaskRunner::start() {
     std::lock_guard lock(mutex_);

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "common/status.h"
 #include "common/model/type.h"
+#include "common/status.h"
 #include "sdm/model/model.h"
 #include "sdm/service/replica_group_service.h"
 

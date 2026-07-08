@@ -17,12 +17,9 @@ struct PeerMember {
     Endpoint endpoint;
 
     bool operator==(const PeerMember& other) const {
-        if (node_id != other.node_id)
-            return false;
-        if (!(replica_id == other.replica_id))
-            return false;
-        if (!(endpoint == other.endpoint))
-            return false;
+        if (node_id != other.node_id) return false;
+        if (!(replica_id == other.replica_id)) return false;
+        if (!(endpoint == other.endpoint)) return false;
         return true;
     }
 

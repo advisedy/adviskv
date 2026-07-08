@@ -3,13 +3,13 @@
 #include <functional>
 #include <string_view>
 
-#include "common/status.h"
 #include "common/model/type.h"
+#include "common/status.h"
 
 namespace adviskv::storage {
 
 class KVEngine {
-   public:
+public:
     KVEngine() = default;
     virtual ~KVEngine() = default;
 
@@ -20,9 +20,8 @@ class KVEngine {
     virtual std::vector<KV> dump_all() const = 0;
 
     // Iterate all KVs in the engine without materializing a full dump.
-    virtual Status for_each_kv(
-        const std::function<Status(const Key&, const Value&)>& fn) const = 0;
+    virtual Status for_each_kv(const std::function<Status(const Key&, const Value&)>& fn) const = 0;
 
-   private:
+private:
 };
 }  // namespace adviskv::storage

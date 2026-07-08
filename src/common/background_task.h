@@ -9,8 +9,8 @@
 #include <thread>
 
 #include "common/define.h"
-#include "common/status.h"
 #include "common/model/type.h"
+#include "common/status.h"
 
 namespace adviskv {
 
@@ -19,25 +19,25 @@ namespace adviskv {
 使用就是setup + start，或者手动notify唤醒
 */
 class BackgroundTask {
-   public:
+public:
     BackgroundTask() = default;
 
     virtual ~BackgroundTask() { stop(); }
 
-   public:
+public:
     virtual Status setup() { return Status::OK(); };
     void start(Milliseconds interval);
     void notify();
     void stop();
 
-   protected:
+protected:
     virtual void run() = 0;
     virtual void teardown() {};
 
-   private:
+private:
     void loop(Milliseconds interval);
 
-   private:
+private:
     std::atomic<bool> running_ = false;
     std::mutex mutex_;
     std::condition_variable cv_;

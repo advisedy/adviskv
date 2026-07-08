@@ -5,8 +5,7 @@
 
 namespace adviskv::storage {
 
-RaftTickTask::RaftTickTask(ReplicaManager* manager)
-    : BackgroundTask(), manager_(manager) {}
+RaftTickTask::RaftTickTask(ReplicaManager* manager) : BackgroundTask(), manager_(manager) {}
 
 void RaftTickTask::run() {
     std::vector<ReplicaPtr>&& replicas = manager_->get_replicas();

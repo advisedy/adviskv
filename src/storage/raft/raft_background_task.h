@@ -7,12 +7,12 @@ namespace adviskv::storage {
 class ReplicaManager;
 
 class RaftTickTask : public BackgroundTask {
-   public:
+public:
     explicit RaftTickTask(ReplicaManager* manager);
 
     void run() override;
 
-   private:
+private:
     ReplicaManager* manager_;
 };
 

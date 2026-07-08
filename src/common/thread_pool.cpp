@@ -2,13 +2,9 @@
 
 namespace adviskv {
 
-ThreadPool::ThreadPool(size_t worker_count) {
-    start(worker_count);
-}
+ThreadPool::ThreadPool(size_t worker_count) { start(worker_count); }
 
-ThreadPool::~ThreadPool() {
-    stop();
-}
+ThreadPool::~ThreadPool() { stop(); }
 
 void ThreadPool::start(size_t worker_count) {
     if (worker_count == 0) {

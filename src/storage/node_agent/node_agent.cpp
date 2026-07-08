@@ -12,21 +12,18 @@
 
 #include "common/define.h"
 #include "common/log.h"
+#include "common/model/type.h"
 #include "common/proto/proto.h"
 #include "common/status.h"
-#include "common/model/type.h"
 #include "storage/replica/replica.h"
 
 namespace adviskv::storage {
 
 class NodeAgent::HeartbeatTask : public BackgroundTask {
 public:
-    HeartbeatTask(NodeAgent* agent, Milliseconds interval) : agent_(agent), interval_(interval) {
-    }
+    HeartbeatTask(NodeAgent* agent, Milliseconds interval) : agent_(agent), interval_(interval) {}
 
-    Milliseconds interval() const {
-        return interval_;
-    }
+    Milliseconds interval() const { return interval_; }
 
 private:
     void run() override {
@@ -43,12 +40,9 @@ private:
 class NodeAgent::RegisterTask : public BackgroundTask {
 public:
     RegisterTask(NodeAgent* agent, Milliseconds first_retry_interval, Milliseconds interval)
-            : agent_(agent), first_retry_interval_(first_retry_interval), interval_(interval) {
-    }
+            : agent_(agent), first_retry_interval_(first_retry_interval), interval_(interval) {}
 
-    Milliseconds interval() const {
-        return interval_;
-    }
+    Milliseconds interval() const { return interval_; }
 
     Status setup() override {
         while (true) {
@@ -76,9 +70,7 @@ private:
 
 NodeAgent::NodeAgent() = default;
 
-NodeAgent::~NodeAgent() {
-    stop();
-}
+NodeAgent::~NodeAgent() { stop(); }
 
 Status NodeAgent::init(NodeAgentConf conf) {
     RETURN_IF_INVALID_STATUS(conf.validate())
@@ -129,9 +121,8 @@ Status NodeAgent::heartbeat_once() {
 
     for (const auto& expected_pb : response.expects()) {
         ExpectedReplica instruction;
-        RETURN_IF_INVALID_CONDITION(
-            decode_pb_expected_replica(expected_pb, instruction),
-            "heartbeat expected replica is not valid")
+        RETURN_IF_INVALID_CONDITION(decode_pb_expected_replica(expected_pb, instruction),
+                                    "heartbeat expected replica is not valid")
         Status apply_status = apply_expected_replica(instruction);
         if (apply_status.fail()) {
             if (apply_status.code() == StatusCode::RETRY_ERROR) {
@@ -149,8 +140,7 @@ Status NodeAgent::send_heartbeat_once(sdm_rpc::HeartbeatResponse* response) {
 
     sdm_rpc::HeartbeatRequest request = make_heartbeat_request();
     grpc::ClientContext context;
-    context.set_deadline(std::chrono::system_clock::now() +
-                         Milliseconds(conf_.rpc_timeout_ms));
+    context.set_deadline(std::chrono::system_clock::now() + Milliseconds(conf_.rpc_timeout_ms));
     grpc::Status grpc_status = stub_->Heartbeat(&context, request, response);
     RETURN_IF_INVALID_CONDITION(grpc_status.ok(), grpc_status.error_message())
     RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response->base_rsp()))
@@ -167,8 +157,7 @@ Status NodeAgent::register_node() {
 
     sdm_rpc::RegisterNodeResponse response;
     grpc::ClientContext context;
-    context.set_deadline(std::chrono::system_clock::now() +
-                         Milliseconds(conf_.rpc_timeout_ms));
+    context.set_deadline(std::chrono::system_clock::now() + Milliseconds(conf_.rpc_timeout_ms));
     grpc::Status grpc_status = stub_->RegisterNode(&context, request, &response);
     RETURN_IF_INVALID_CONDITION(grpc_status.ok(), grpc_status.error_message())
     RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
@@ -276,30 +265,22 @@ sdm_rpc::HeartbeatRequest NodeAgent::make_heartbeat_request() const {
         ReplicaRole role = replica->get_role();
         pb::RaftRole role_pb;
         pb::StorageReplicaStatus status_pb;
-        pb::RaftMemberType member_type_pb =
-            pb::RaftMemberType::RAFT_MEMBER_TYPE_NON_MEMBER;
+        pb::RaftMemberType member_type_pb = pb::RaftMemberType::RAFT_MEMBER_TYPE_NON_MEMBER;
         if (!encode_pb_raft_role(role, role_pb)) {
-            LOG_WARN("[NodeAgent] skip invalid replica role, replica_id={}",
-                     replica_id.to_string());
+            LOG_WARN("[NodeAgent] skip invalid replica role, replica_id={}", replica_id.to_string());
             continue;
         }
-        if (!encode_pb_storage_replica_status(replica->get_status(),
-                                              status_pb)) {
-            LOG_WARN("[NodeAgent] skip invalid replica status, replica_id={}",
-                     replica_id.to_string());
+        if (!encode_pb_storage_replica_status(replica->get_status(), status_pb)) {
+            LOG_WARN("[NodeAgent] skip invalid replica status, replica_id={}", replica_id.to_string());
             continue;
         }
-        if (!encode_pb_raft_member_type(replica->get_member_type(),
-                                        member_type_pb)) {
-            LOG_WARN(
-                "[NodeAgent] skip invalid replica member type, replica_id={}",
-                replica_id.to_string());
+        if (!encode_pb_raft_member_type(replica->get_member_type(), member_type_pb)) {
+            LOG_WARN("[NodeAgent] skip invalid replica member type, replica_id={}", replica_id.to_string());
             continue;
         }
         auto* info = request.add_replica_info_list();
         if (!encode_pb_replica_id(replica_id, *info->mutable_replica_id())) {
-            LOG_WARN("[NodeAgent] skip invalid replica id, replica_id={}",
-                     replica_id.to_string());
+            LOG_WARN("[NodeAgent] skip invalid replica id, replica_id={}", replica_id.to_string());
             request.mutable_replica_info_list()->RemoveLast();
             continue;
         }

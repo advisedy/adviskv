@@ -11,8 +11,7 @@ namespace adviskv::sdm {
 // TableReconcileTask
 //////////////////////////////////////////
 
-TableReconcileTask::TableReconcileTask(ServiceManager* service_manager)
-    : service_manager_(service_manager) {}
+TableReconcileTask::TableReconcileTask(ServiceManager* service_manager) : service_manager_(service_manager) {}
 
 void TableReconcileTask::run() {
     Status status = reconcile_once();
@@ -30,9 +29,8 @@ Status TableReconcileTask::reconcile_once() {
 // ReplicaGroupReconcileTask
 //////////////////////////////////////////
 
-ReplicaGroupReconcileTask::ReplicaGroupReconcileTask(
-    ServiceManager* service_manager)
-    : service_manager_(service_manager) {}
+ReplicaGroupReconcileTask::ReplicaGroupReconcileTask(ServiceManager* service_manager)
+        : service_manager_(service_manager) {}
 
 void ReplicaGroupReconcileTask::run() {
     if (service_manager_ == nullptr) {
@@ -49,8 +47,7 @@ void ReplicaGroupReconcileTask::run() {
 // RouteUpdateCheckTask
 //////////////////////////////////////////
 
-RouteUpdateCheckTask::RouteUpdateCheckTask(ServiceManager* service_manager)
-    : service_manager_(service_manager) {}
+RouteUpdateCheckTask::RouteUpdateCheckTask(ServiceManager* service_manager) : service_manager_(service_manager) {}
 
 void RouteUpdateCheckTask::run() {
     if (service_manager_ == nullptr) {
@@ -67,8 +64,7 @@ void RouteUpdateCheckTask::run() {
 // HeartBeatCheckTask
 //////////////////////////////////////////
 
-HeartBeatCheckTask::HeartBeatCheckTask(ServiceManager* service_manager)
-    : service_manager_(service_manager) {}
+HeartBeatCheckTask::HeartBeatCheckTask(ServiceManager* service_manager) : service_manager_(service_manager) {}
 
 void HeartBeatCheckTask::run() {
     if (service_manager_ == nullptr) {

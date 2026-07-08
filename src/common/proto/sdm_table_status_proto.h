@@ -6,8 +6,7 @@
 
 namespace adviskv {
 
-inline bool decode_pb_sdm_table_desired(pb::SdmTableDesired in,
-                                        SdmTableDesired& out) {
+inline bool decode_pb_sdm_table_desired(pb::SdmTableDesired in, SdmTableDesired& out) {
     switch (in) {
         case pb::SdmTableDesired::SDM_TABLE_DESIRED_PRESENT:
             out = SdmTableDesired::PRESENT;
@@ -20,8 +19,7 @@ inline bool decode_pb_sdm_table_desired(pb::SdmTableDesired in,
     }
 }
 
-inline bool encode_pb_sdm_table_desired(SdmTableDesired in,
-                                        pb::SdmTableDesired& out) {
+inline bool encode_pb_sdm_table_desired(SdmTableDesired in, pb::SdmTableDesired& out) {
     switch (in) {
         case SdmTableDesired::PRESENT:
             out = pb::SdmTableDesired::SDM_TABLE_DESIRED_PRESENT;
@@ -34,8 +32,7 @@ inline bool encode_pb_sdm_table_desired(SdmTableDesired in,
     }
 }
 
-inline bool decode_pb_sdm_table_phase(pb::SdmTablePhase in,
-                                      SdmTablePhase& out) {
+inline bool decode_pb_sdm_table_phase(pb::SdmTablePhase in, SdmTablePhase& out) {
     switch (in) {
         case pb::SdmTablePhase::SDM_TABLE_PHASE_CREATING:
             out = SdmTablePhase::CREATING;
@@ -60,8 +57,7 @@ inline bool decode_pb_sdm_table_phase(pb::SdmTablePhase in,
     }
 }
 
-inline bool encode_pb_sdm_table_phase(SdmTablePhase in,
-                                      pb::SdmTablePhase& out) {
+inline bool encode_pb_sdm_table_phase(SdmTablePhase in, pb::SdmTablePhase& out) {
     switch (in) {
         case SdmTablePhase::CREATING:
             out = pb::SdmTablePhase::SDM_TABLE_PHASE_CREATING;

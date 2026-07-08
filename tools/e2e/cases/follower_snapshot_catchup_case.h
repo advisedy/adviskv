@@ -15,16 +15,16 @@
 
 namespace adviskv::e2e {
 namespace {
-constexpr const char* kFollowerSnapshotCatchupBasePrefix =
+constexpr const char* K_FOLLOWER_SNAPSHOT_CATCHUP_BASE_PREFIX =
     "follower-snapshot-catchup-base";
-constexpr const char* kFollowerSnapshotCatchupGapPrefix =
+constexpr const char* K_FOLLOWER_SNAPSHOT_CATCHUP_GAP_PREFIX =
     "follower-snapshot-catchup-gap";
-constexpr const char* kFollowerSnapshotCatchupAfterKey =
+constexpr const char* K_FOLLOWER_SNAPSHOT_CATCHUP_AFTER_KEY =
     "follower-snapshot-catchup-after";
-constexpr const char* kFollowerSnapshotCatchupAfterValue =
+constexpr const char* K_FOLLOWER_SNAPSHOT_CATCHUP_AFTER_VALUE =
     "follower-snapshot-catchup-after-value";
-constexpr int32_t kFollowerSnapshotCatchupBaseCount = 16;
-constexpr int32_t kFollowerSnapshotCatchupGapCount = 1050;
+constexpr int32_t K_FOLLOWER_SNAPSHOT_CATCHUP_BASE_COUNT = 16;
+constexpr int32_t K_FOLLOWER_SNAPSHOT_CATCHUP_GAP_COUNT = 1050;
 }  // namespace
 
 /*
@@ -36,7 +36,7 @@ inline bool run_follower_snapshot_catchup_prepare_case(const Options& options) {
     // 创建db + 创建table + 写入 key +
     // （记得输出route，这样py那边方便判断follower）， 然后就该崩溃了。
     Options base_options =
-        heavy::with_key_count(options, kFollowerSnapshotCatchupBaseCount);
+        heavy::with_key_count(options, K_FOLLOWER_SNAPSHOT_CATCHUP_BASE_COUNT);
     if (base_options.key_count <= 0) {
         print_fail("validate options", "--key_count must be positive");
         return false;
@@ -44,29 +44,29 @@ inline bool run_follower_snapshot_catchup_prepare_case(const Options& options) {
 
     if (!heavy::prepare_and_print_route(
             base_options,
-            heavy::first_dataset_key(kFollowerSnapshotCatchupBasePrefix))) {
+            heavy::first_dataset_key(K_FOLLOWER_SNAPSHOT_CATCHUP_BASE_PREFIX))) {
         return false;
     }
     print_pass("prepare and print route", "ok");
 
     sdk::KVClient client = make_kv_client(base_options);
     return write_dataset(&client, base_options,
-                         kFollowerSnapshotCatchupBasePrefix);
+                         K_FOLLOWER_SNAPSHOT_CATCHUP_BASE_PREFIX);
 }
 
 inline bool run_follower_snapshot_catchup_write_gap_case(
     const Options& options) {
     Options gap_options =
-        heavy::with_key_count(options, kFollowerSnapshotCatchupGapCount);
+        heavy::with_key_count(options, K_FOLLOWER_SNAPSHOT_CATCHUP_GAP_COUNT);
 
     if (!heavy::wait_existing_table(
             gap_options,
-            heavy::first_dataset_key(kFollowerSnapshotCatchupGapPrefix))) {
+            heavy::first_dataset_key(K_FOLLOWER_SNAPSHOT_CATCHUP_GAP_PREFIX))) {
         return false;
     }
     sdk::KVClient client = make_kv_client(gap_options);
     if (!write_dataset(&client, gap_options,
-                       kFollowerSnapshotCatchupGapPrefix)) {
+                       K_FOLLOWER_SNAPSHOT_CATCHUP_GAP_PREFIX)) {
         return false;
     }
     E2EContext context{gap_options};
@@ -75,7 +75,7 @@ inline bool run_follower_snapshot_catchup_write_gap_case(
 
     if (!get_route_replica_states_for_test(
             &context,
-            heavy::first_dataset_key(kFollowerSnapshotCatchupGapPrefix),
+            heavy::first_dataset_key(K_FOLLOWER_SNAPSHOT_CATCHUP_GAP_PREFIX),
             &states, &last_error)) {
         print_fail("get route replica states", last_error);
         return false;
@@ -97,34 +97,34 @@ inline bool run_follower_snapshot_catchup_verify_case(const Options& options) {
     // 然后记录leader的last_apply，然后比较follower的，要大于等于leader的last_apply
 
     Options base_options =
-        heavy::with_key_count(options, kFollowerSnapshotCatchupBaseCount);
+        heavy::with_key_count(options, K_FOLLOWER_SNAPSHOT_CATCHUP_BASE_COUNT);
     Options gap_options =
-        heavy::with_key_count(options, kFollowerSnapshotCatchupGapCount);
+        heavy::with_key_count(options, K_FOLLOWER_SNAPSHOT_CATCHUP_GAP_COUNT);
 
     if (!heavy::wait_existing_table(
             options,
-            heavy::first_dataset_key(kFollowerSnapshotCatchupBasePrefix))) {
+            heavy::first_dataset_key(K_FOLLOWER_SNAPSHOT_CATCHUP_BASE_PREFIX))) {
         return false;
     }
     sdk::KVClient client = make_kv_client(options);
 
     if (!verify_dataset(&client, base_options,
-                        kFollowerSnapshotCatchupBasePrefix)) {
+                        K_FOLLOWER_SNAPSHOT_CATCHUP_BASE_PREFIX)) {
         return false;
     }
     if (!verify_dataset(&client, gap_options,
-                        kFollowerSnapshotCatchupGapPrefix)) {
+                        K_FOLLOWER_SNAPSHOT_CATCHUP_GAP_PREFIX)) {
         return false;
     }
     print_pass("verify before's dataset", "ok");
     if (!wait_status("sdk put follower-snapshot-catchup-after", options, [&]() {
-            return client.put(kFollowerSnapshotCatchupAfterKey,
-                              kFollowerSnapshotCatchupAfterValue);
+            return client.put(K_FOLLOWER_SNAPSHOT_CATCHUP_AFTER_KEY,
+                              K_FOLLOWER_SNAPSHOT_CATCHUP_AFTER_VALUE);
         })) {
         return false;
     }
-    if (!wait_get_value(&client, options, kFollowerSnapshotCatchupAfterKey,
-                        kFollowerSnapshotCatchupAfterValue)) {
+    if (!wait_get_value(&client, options, K_FOLLOWER_SNAPSHOT_CATCHUP_AFTER_KEY,
+                        K_FOLLOWER_SNAPSHOT_CATCHUP_AFTER_VALUE)) {
         return false;
     }
     print_pass("put new key", "ok");
@@ -133,7 +133,7 @@ inline bool run_follower_snapshot_catchup_verify_case(const Options& options) {
     std::string last_error;
     RouteReplicaStatesForTest replica_states;
     if (!get_route_replica_states_for_test(&context,
-                                           kFollowerSnapshotCatchupAfterKey,
+                                           K_FOLLOWER_SNAPSHOT_CATCHUP_AFTER_KEY,
                                            &replica_states, &last_error)) {
         print_fail("get route replica states", last_error);
         return false;
@@ -145,7 +145,7 @@ inline bool run_follower_snapshot_catchup_verify_case(const Options& options) {
         return false;
     }
     if (!get_route_replica_states_for_test(&context,
-                                           kFollowerSnapshotCatchupAfterKey,
+                                           K_FOLLOWER_SNAPSHOT_CATCHUP_AFTER_KEY,
                                            &replica_states, &last_error)) {
         print_fail("get route replica states", last_error);
         return false;

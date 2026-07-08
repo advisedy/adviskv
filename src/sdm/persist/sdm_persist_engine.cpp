@@ -19,20 +19,16 @@
 namespace adviskv::sdm {
 namespace {
 
-static constexpr int64 kMaxSdmMetaPayloadBytes = 256 * 1024 * 1024;
+static constexpr int64 K_MAX_SDM_META_PAYLOAD_BYTES = 256 * 1024 * 1024;
 
 class SdmMetaCodec {
 public:
     using ObjectType = SdmPersistedRecord;
     using LenType = int64;
 
-    LenType max_payload_len() const {
-        return kMaxSdmMetaPayloadBytes;
-    }
+    LenType max_payload_len() const { return K_MAX_SDM_META_PAYLOAD_BYTES; }
 
-    void encode_payload(const ObjectType& record, EncodeBuffer& buf) const {
-        encode_record(record, buf);
-    }
+    void encode_payload(const ObjectType& record, EncodeBuffer& buf) const { encode_record(record, buf); }
 
     Status decode_payload(DecodeBuffer& buf, ObjectType& record) const {
         record = {};
@@ -69,8 +65,7 @@ private:
     static Status decode_record(DecodeBuffer& buf, ObjectType& record) {
         int32 table_count{0};
         RETURN_IF_INVALID_READ(buf, table_count)
-        if (table_count < 0)
-            return Status::ERROR("invalid table_count");
+        if (table_count < 0) return Status::ERROR("invalid table_count");
         for (int32 i = 0; i < table_count; ++i) {
             Table table;
             RETURN_IF_INVALID_STATUS(decode_table(buf, table))
@@ -79,8 +74,7 @@ private:
 
         int32 replica_count{0};
         RETURN_IF_INVALID_READ(buf, replica_count)
-        if (replica_count < 0)
-            return Status::ERROR("invalid replica_count");
+        if (replica_count < 0) return Status::ERROR("invalid replica_count");
         for (int32 i = 0; i < replica_count; ++i) {
             Replica replica;
             RETURN_IF_INVALID_STATUS(decode_replica(buf, replica))
@@ -89,8 +83,7 @@ private:
 
         int32 pool_count{0};
         RETURN_IF_INVALID_READ(buf, pool_count)
-        if (pool_count < 0)
-            return Status::ERROR("invalid pool_count");
+        if (pool_count < 0) return Status::ERROR("invalid pool_count");
         for (int32 i = 0; i < pool_count; ++i) {
             ResourcePool pool;
             RETURN_IF_INVALID_READ(buf, pool.name)
@@ -99,8 +92,7 @@ private:
 
         int32 group_count{0};
         RETURN_IF_INVALID_READ(buf, group_count)
-        if (group_count < 0)
-            return Status::ERROR("invalid group_count");
+        if (group_count < 0) return Status::ERROR("invalid group_count");
         for (int32 i = 0; i < group_count; ++i) {
             ReplicaGroup group;
             RETURN_IF_INVALID_STATUS(decode_replica_group(buf, group))
@@ -320,12 +312,9 @@ private:
 
 }  // namespace
 
-SdmPersistEngine::SdmPersistEngine(const std::string& data_dir) : data_dir_(data_dir) {
-}
+SdmPersistEngine::SdmPersistEngine(const std::string& data_dir) : data_dir_(data_dir) {}
 
-SdmPersistEngine::~SdmPersistEngine() {
-    close();
-}
+SdmPersistEngine::~SdmPersistEngine() { close(); }
 
 Status SdmPersistEngine::init() {
     if (data_dir_.empty()) {
@@ -348,16 +337,13 @@ Status SdmPersistEngine::init() {
     return Status::OK();
 }
 
-Status SdmPersistEngine::close() {
-    return Status::OK();
-}
+Status SdmPersistEngine::close() { return Status::OK(); }
 
 Status SdmPersistEngine::save_sdm_meta(const SdmPersistedRecord& record) {
     ADVISKV_METRICS_TIMER("sdm_persist_save_sdm_meta");
     ADVISKV_METRICS_COUNTER("sdm_persist_save_sdm_meta_request");
 
-    if (!init_flag_)
-        return Status::NOT_INIT("sdm persist engine is not init");
+    if (!init_flag_) return Status::NOT_INIT("sdm persist engine is not init");
 
     int fd = ::open(meta_tmp_path_.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd < 0) {
@@ -372,11 +358,9 @@ Status SdmPersistEngine::save_sdm_meta(const SdmPersistedRecord& record) {
 
     RETURN_IF_INVALID_STATUS(FramedRecord<SdmMetaCodec>::encode_to_fd(fd, record))
 
-    if (::fsync(fd) != 0)
-        return Status::ERROR();
+    if (::fsync(fd) != 0) return Status::ERROR();
 
-    if (::close(fd) != 0)
-        return Status::ERROR();
+    if (::close(fd) != 0) return Status::ERROR();
 
     fd = -1;
 
@@ -386,13 +370,10 @@ Status SdmPersistEngine::save_sdm_meta(const SdmPersistedRecord& record) {
 
     {
         int dir_fd = ::open(data_dir_.c_str(), O_RDONLY | O_DIRECTORY);
-        if (dir_fd < 0)
-            return Status::ERROR();
+        if (dir_fd < 0) return Status::ERROR();
 
-        if (::fsync(dir_fd) != 0)
-            return Status::ERROR();
-        if (::close(dir_fd) != 0)
-            return Status::ERROR();
+        if (::fsync(dir_fd) != 0) return Status::ERROR();
+        if (::close(dir_fd) != 0) return Status::ERROR();
     }
 
     LOG_DEBUG(
@@ -403,8 +384,7 @@ Status SdmPersistEngine::save_sdm_meta(const SdmPersistedRecord& record) {
 }
 
 Status SdmPersistEngine::load_sdm_meta(SdmPersistedRecord& record) {
-    if (!init_flag_)
-        return Status::NOT_INIT("sdm persist engine is not init");
+    if (!init_flag_) return Status::NOT_INIT("sdm persist engine is not init");
 
     record = {};
 

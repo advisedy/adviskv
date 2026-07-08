@@ -16,14 +16,14 @@
 namespace adviskv::meta {
 namespace {
 
-static constexpr int64 kMaxMetaPayloadBytes = 64 * 1024 * 1024;
+static constexpr int64 K_MAX_META_PAYLOAD_BYTES = 64 * 1024 * 1024;
 
 class MetaRecordCodec {
 public:
     using ObjectType = PersistedMetaRecord;
     using LenType = int64;
 
-    LenType max_payload_len() const { return kMaxMetaPayloadBytes; }
+    LenType max_payload_len() const { return K_MAX_META_PAYLOAD_BYTES; }
 
     void encode_payload(const ObjectType& record, EncodeBuffer& buf) const {
         buf.write(record.next_db_id);

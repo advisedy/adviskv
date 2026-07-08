@@ -1,13 +1,13 @@
 #include "storage/persist/replica_meta_persist_engine.h"
 
-#include <fcntl.h>
-#include <unistd.h>
-
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
+
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "common/buffer.h"
 #include "common/defer.h"
@@ -18,14 +18,14 @@
 namespace adviskv::storage {
 namespace {
 
-constexpr int64 kMaxReplicaMetaPayloadBytes = 1024 * 1024;
+constexpr int64 K_MAX_REPLICA_META_PAYLOAD_BYTES = 1024 * 1024;
 
 class ReplicaMetaCodec {
-   public:
+public:
     using ObjectType = ReplicaMetaPayload;
     using LenType = int64;
 
-    LenType max_payload_len() const { return kMaxReplicaMetaPayloadBytes; }
+    LenType max_payload_len() const { return K_MAX_REPLICA_META_PAYLOAD_BYTES; }
 
     void encode_payload(const ObjectType& meta, EncodeBuffer& buf) const {
         buf.write(meta.init_param.replica_id.table_id);
@@ -66,8 +66,7 @@ class ReplicaMetaCodec {
         int32 member_count{0};
         RETURN_IF_INVALID_READ(buf, member_count)
         if (member_count < 0) {
-            return Status::ERROR(
-                fmt::format("invalid replica member count: {}", member_count));
+            return Status::ERROR(fmt::format("invalid replica member count: {}", member_count));
         }
         meta.init_param.members.clear();
         meta.init_param.members.reserve(static_cast<size_t>(member_count));
@@ -87,36 +86,29 @@ class ReplicaMetaCodec {
 
 }  // namespace
 
-ReplicaMetaPersistEngine::ReplicaMetaPersistEngine(std::string data_dir)
-    : data_dir_(std::move(data_dir)) {}
+ReplicaMetaPersistEngine::ReplicaMetaPersistEngine(std::string data_dir) : data_dir_(std::move(data_dir)) {}
 
-std::filesystem::path ReplicaMetaPersistEngine::replica_dir(
-    const ReplicaID& replica_id) const {
-    return std::filesystem::path(data_dir_) /
-           fmt::format("{}-{}", replica_id.table_id, replica_id.shard_index);
+std::filesystem::path ReplicaMetaPersistEngine::replica_dir(const ReplicaID& replica_id) const {
+    return std::filesystem::path(data_dir_) / fmt::format("{}-{}", replica_id.table_id, replica_id.shard_index);
 }
 
-std::filesystem::path ReplicaMetaPersistEngine::meta_path(
-    const ReplicaID& replica_id) const {
+std::filesystem::path ReplicaMetaPersistEngine::meta_path(const ReplicaID& replica_id) const {
     return replica_dir(replica_id) / kFileName;
 }
 
-Status ReplicaMetaPersistEngine::save_replica_meta(
-    const ReplicaMetaPayload& payload) const {
+Status ReplicaMetaPersistEngine::save_replica_meta(const ReplicaMetaPayload& payload) const {
     std::filesystem::path dir = replica_dir(payload.init_param.replica_id);
     std::filesystem::path path = meta_path(payload.init_param.replica_id);
 
-    return func::atomic_replace_file(path, [&payload](int fd) {
-        return FramedRecord<ReplicaMetaCodec>::encode_to_fd(fd, payload);
-    });
+    return func::atomic_replace_file(
+            path, [&payload](int fd) { return FramedRecord<ReplicaMetaCodec>::encode_to_fd(fd, payload); });
 }
 
-Status ReplicaMetaPersistEngine::load_replica_meta(
-    const std::filesystem::path& path, ReplicaMetaPayload& payload) const {
+Status ReplicaMetaPersistEngine::load_replica_meta(const std::filesystem::path& path,
+                                                   ReplicaMetaPayload& payload) const {
     int fd = ::open(path.c_str(), O_RDONLY);
     if (fd < 0) {
-        return Status::ERROR(
-            fmt::format("open replica meta failed: {}", path.string()));
+        return Status::ERROR(fmt::format("open replica meta failed: {}", path.string()));
     }
     auto close_fd = Defer([&]() {
         if (fd != -1) {
@@ -125,19 +117,16 @@ Status ReplicaMetaPersistEngine::load_replica_meta(
         }
     });
 
-    RETURN_IF_INVALID_STATUS(
-        FramedRecord<ReplicaMetaCodec>::decode_from_fd(fd, payload))
+    RETURN_IF_INVALID_STATUS(FramedRecord<ReplicaMetaCodec>::decode_from_fd(fd, payload))
 
     return Status::OK();
 }
 
-Status ReplicaMetaPersistEngine::load_replica_meta(
-    const ReplicaID& replica_id, ReplicaMetaPayload& payload) const {
+Status ReplicaMetaPersistEngine::load_replica_meta(const ReplicaID& replica_id, ReplicaMetaPayload& payload) const {
     return load_replica_meta(meta_path(replica_id), payload);
 }
 
-Status ReplicaMetaPersistEngine::delete_replica_data(
-    const ReplicaID& replica_id) const {
+Status ReplicaMetaPersistEngine::delete_replica_data(const ReplicaID& replica_id) const {
     std::filesystem::path dir = replica_dir(replica_id);
     try {
         if (!std::filesystem::exists(dir)) {
@@ -147,14 +136,12 @@ Status ReplicaMetaPersistEngine::delete_replica_data(
         RETURN_IF_INVALID_STATUS(func::fsync_dir(data_dir_))
         return Status::OK();
     } catch (const std::exception& e) {
-        return Status::ERROR(
-            fmt::format("delete replica data failed: {}", e.what()));
+        return Status::ERROR(fmt::format("delete replica data failed: {}", e.what()));
     }
 }
 
 // 返回所有的meta的路径，用来调用load_replica_meta
-std::vector<std::filesystem::path>
-ReplicaMetaPersistEngine::scan_replica_meta_files() const {
+std::vector<std::filesystem::path> ReplicaMetaPersistEngine::scan_replica_meta_files() const {
     std::vector<std::filesystem::path> paths;
     if (!std::filesystem::exists(data_dir_)) {
         return paths;

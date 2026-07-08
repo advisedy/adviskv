@@ -10,14 +10,12 @@ namespace adviskv {
 // 计数触发器。limit 可以是固定值，也可以由函数动态生成。
 // limit 为 0 时，下一次 tick 会立即触发；limit 不能为负数。
 class TickTrigger {
-   public:
+public:
     using TickLimitFunc = std::function<int32()>;
 
-    explicit TickTrigger(int32 limit_cnt)
-        : limit_cnt_(checked_limit(limit_cnt)) {}
+    explicit TickTrigger(int32 limit_cnt) : limit_cnt_(checked_limit(limit_cnt)) {}
 
-    explicit TickTrigger(TickLimitFunc limit_func)
-        : limit_func_(std::move(limit_func)) {
+    explicit TickTrigger(TickLimitFunc limit_func) : limit_func_(std::move(limit_func)) {
         assert(limit_func_);
         limit_cnt_ = make_next_limit();
     }
@@ -71,7 +69,7 @@ class TickTrigger {
     int32 get_cur_cnt() const { return cur_cnt_; }
     int32 get_limit_cnt() const { return limit_cnt_; }
 
-   private:
+private:
     static int32 checked_limit(int32 limit_cnt) {
         assert(limit_cnt >= 0);
         return limit_cnt;

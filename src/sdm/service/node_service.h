@@ -2,10 +2,10 @@
 
 #include <cstdint>
 
-#include "common/status.h"
 #include "common/model/type.h"
-#include "sdm/model/param.h"
+#include "common/status.h"
 #include "sdm/model/model.h"
+#include "sdm/model/param.h"
 
 namespace adviskv::sdm {
 
@@ -26,9 +26,7 @@ public:
     Status reconcile_all();
 
     Status check_and_modify_node_for_test(Node& node);
-    void set_start_ts_ms_for_test(int64_t ts) {
-        start_ts_ms_ = ts;
-    }
+    void set_start_ts_ms_for_test(int64_t ts) { start_ts_ms_ = ts; }
 
 private:
     Status update_node_heartbeat(SdmStoreTxn& txn, const HeartBeatParam& param);

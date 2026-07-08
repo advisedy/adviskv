@@ -5,9 +5,9 @@
 #include <vector>
 
 #include "common/define.h"
+#include "common/model/type.h"
 #include "common/status.h"
 #include "common/thread_pool.h"
-#include "common/model/type.h"
 #include "storage/model/model.h"
 #include "storage/raft/raft_sender.h"
 #include "storage/replica/replica_loop.h"
@@ -21,9 +21,7 @@ public:
     using EventCallback = std::function<void(Event)>;
 
     // 这里不用Context了，免得循环了，能简单点就简单点吧
-    ReplicaMessageDispatcher(int32 raft_rpc_timeout_ms,
-                             PersistEngine& persist,
-                             std::mutex& persist_snapshot_mutex,
+    ReplicaMessageDispatcher(int32 raft_rpc_timeout_ms, PersistEngine& persist, std::mutex& persist_snapshot_mutex,
                              EventCallback event_callback);
     ~ReplicaMessageDispatcher();
 
@@ -35,11 +33,9 @@ public:
     Status async_send(std::vector<RaftMessage> messages);
 
     // 专门给ReadIndexChecker搞得接口
-    Status sync_send_append_entries(const PeerMember& target,
-                                    const AppendEntriesParam& param,
+    Status sync_send_append_entries(const PeerMember& target, const AppendEntriesParam& param,
                                     AppendEntriesResult& result);
-    Status sync_send_install_snapshot(const PeerMember& target,
-                                      const InstallSnapshotParam& param,
+    Status sync_send_install_snapshot(const PeerMember& target, const InstallSnapshotParam& param,
                                       InstallSnapshotResult& result);
 
 private:

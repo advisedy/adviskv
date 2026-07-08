@@ -2,8 +2,8 @@
 
 #include <string>
 
-#include "common/status.h"
 #include "common/model/type.h"
+#include "common/status.h"
 #include "sdk/config.h"
 #include "sdk/model.h"
 #include "sdk/route_cache.h"
@@ -13,13 +13,14 @@
 namespace adviskv::sdk {
 
 class KVClient {
-   public:
+public:
     explicit KVClient(const KVClientConf& conf);
 
     Status put(const Key& key, const Value& value);
     Status get(const Key& key, Value* value);
     Status del(const Key& key);
-   private:
+
+private:
     static bool should_invalidate_route(const Status& status);
     Status resolve_route(const Key& key, RouteInfo* route);
     Status refresh_route(const Key& key, RouteInfo* route);

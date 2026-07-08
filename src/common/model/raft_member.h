@@ -13,9 +13,7 @@ struct RaftMember {
     PeerMember peer;
     RaftMemberType member_type{RaftMemberType::NON_MEMBER};
 
-    bool operator==(const RaftMember& other) const {
-        return peer == other.peer && member_type == other.member_type;
-    }
+    bool operator==(const RaftMember& other) const { return peer == other.peer && member_type == other.member_type; }
 
     DEFINE_OPERATOR_NOT_EQUAL(RaftMember)
 

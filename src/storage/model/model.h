@@ -29,8 +29,7 @@ enum class WriteOpType : int32_t {
 };
 
 inline bool is_config_change_op(WriteOpType op) {
-    return op == WriteOpType::ADD_LEARNER || op == WriteOpType::PROMOTE_VOTER ||
-           op == WriteOpType::REMOVE_MEMBER;
+    return op == WriteOpType::ADD_LEARNER || op == WriteOpType::PROMOTE_VOTER || op == WriteOpType::REMOVE_MEMBER;
 }
 
 struct RaftMeta {
@@ -39,8 +38,7 @@ struct RaftMeta {
 
     std::string to_string() const {
         return fmt::format("[term:{}, voted_for:{}]", current_term,
-                           voted_for.has_value() ? voted_for->to_string()
-                                                 : "none");
+                           voted_for.has_value() ? voted_for->to_string() : "none");
     }
 
     bool operator==(const RaftMeta& other) const {
@@ -61,17 +59,11 @@ struct LogEntry {
     ReplicaID config_replica_id;
 
     LogEntry() = default;
-    LogEntry(Term term, LogIndex index, WriteOpType op_type, Key key,
-             Value value)
-        : term(term),
-          index(index),
-          op_type(op_type),
-          key(std::move(key)),
-          value(std::move(value)) {}
+    LogEntry(Term term, LogIndex index, WriteOpType op_type, Key key, Value value)
+            : term(term), index(index), op_type(op_type), key(std::move(key)), value(std::move(value)) {}
 
     bool operator==(const LogEntry& other) const {
-        return term == other.term && index == other.index &&
-               op_type == other.op_type && key == other.key &&
+        return term == other.term && index == other.index && op_type == other.op_type && key == other.key &&
                value == other.value && config_member == other.config_member &&
                config_replica_id == other.config_replica_id;
     }
@@ -79,11 +71,10 @@ struct LogEntry {
 
     std::string to_string() const {
         return fmt::format(
-            "[term:{}, index:{}, key:{}, value:{}, op_type:{}, "
-            "config_member:{}, config_replica_id:{}]",
-            term, index, key, value, to<int32>(op_type),
-            config_member.replica_id.to_string(),
-            config_replica_id.to_string());
+                "[term:{}, index:{}, key:{}, value:{}, op_type:{}, "
+                "config_member:{}, config_replica_id:{}]",
+                term, index, key, value, to<int32>(op_type), config_member.replica_id.to_string(),
+                config_replica_id.to_string());
     }
 };
 
@@ -155,25 +146,22 @@ struct RaftMessage {
     std::string to_string() const {
         switch (type) {
             case RaftMessageType::REQUEST_VOTE:
-                return fmt::format(
-                    "[type:request_vote, target:{}, term:{}, last_log:{}:{}]",
-                    target.replica_id.to_string(), vote_param.term,
-                    vote_param.last_log_index, vote_param.last_log_term);
+                return fmt::format("[type:request_vote, target:{}, term:{}, last_log:{}:{}]",
+                                   target.replica_id.to_string(), vote_param.term, vote_param.last_log_index,
+                                   vote_param.last_log_term);
             case RaftMessageType::APPEND_ENTRIES:
                 return fmt::format(
-                    "[type:append_entries, target:{}, term:{}, prev:{}:{}, "
-                    "leader_commit:{}, entries:{}]",
-                    target.replica_id.to_string(), append_param.term,
-                    append_param.prev_log_index, append_param.prev_log_term,
-                    append_param.leader_commit, append_param.entries.size());
+                        "[type:append_entries, target:{}, term:{}, prev:{}:{}, "
+                        "leader_commit:{}, entries:{}]",
+                        target.replica_id.to_string(), append_param.term, append_param.prev_log_index,
+                        append_param.prev_log_term, append_param.leader_commit, append_param.entries.size());
             case RaftMessageType::INSTALL_SNAPSHOT:
                 return fmt::format(
-                    "[type:install_snapshot, target:{}, term:{}, "
-                    "snapshot:{}:{}, offset:{}, bytes:{}, done:{}]",
-                    target.replica_id.to_string(), snapshot_param.term,
-                    snapshot_param.snapshot_index,
-                    snapshot_param.snapshot_term, snapshot_param.offset,
-                    snapshot_param.data.size(), snapshot_param.done);
+                        "[type:install_snapshot, target:{}, term:{}, "
+                        "snapshot:{}:{}, offset:{}, bytes:{}, done:{}]",
+                        target.replica_id.to_string(), snapshot_param.term, snapshot_param.snapshot_index,
+                        snapshot_param.snapshot_term, snapshot_param.offset, snapshot_param.data.size(),
+                        snapshot_param.done);
         }
         return "[type:unknown]";
     }
@@ -189,14 +177,10 @@ struct RaftEffects {
 
     std::string to_string() const {
         std::string result = fmt::format(
-            "[hard_state:{}, append_entries:{}, rewrite_entries:{}, "
-            "messages:{}",
-            hard_state.has_value() ? hard_state->to_string() : "none",
-            entries_to_append.size(),
-            entries_to_rewrite.has_value()
-                ? std::to_string(entries_to_rewrite->size())
-                : "none",
-            messages.size());
+                "[hard_state:{}, append_entries:{}, rewrite_entries:{}, "
+                "messages:{}",
+                hard_state.has_value() ? hard_state->to_string() : "none", entries_to_append.size(),
+                entries_to_rewrite.has_value() ? std::to_string(entries_to_rewrite->size()) : "none", messages.size());
 
         if (!entries_to_append.empty()) {
             result += ", append=[";

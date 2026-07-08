@@ -11,15 +11,14 @@
 #include "common/define.h"
 #include "common/func.h"
 #include "common/log.h"
-#include "common/status.h"
 #include "common/model/type.h"
+#include "common/status.h"
 #include "meta/model/model.h"
 #include "meta/persist/i_meta_persist_engine.h"
 
 namespace adviskv::meta {
 
-CatalogManager::CatalogManager(IMetaPersistEngine* persist_engine) : persist_engine_(persist_engine) {
-}
+CatalogManager::CatalogManager(IMetaPersistEngine* persist_engine) : persist_engine_(persist_engine) {}
 
 Status CatalogManager::init() {
     if (!persist_engine_) {
@@ -45,8 +44,7 @@ Status CatalogManager::init() {
         table_id2table_meta_[table_id] = table_meta;
         db_id2table_ids_[table_meta.db_id].insert(table_id);
 
-        if (table_meta.state == TableState::DELETED)
-            continue;
+        if (table_meta.state == TableState::DELETED) continue;
 
         auto& table_name_index = db_table_name2table_id_[table_meta.db_name];
         auto [it, inserted] = table_name_index.emplace(table_meta.table_name, table_id);

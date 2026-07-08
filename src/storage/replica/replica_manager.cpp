@@ -1,24 +1,23 @@
 #include "storage/replica/replica_manager.h"
 
-#include <fmt/format.h>
-
 #include <filesystem>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <vector>
 
+#include <fmt/format.h>
+
 #include "common/define.h"
 #include "common/log.h"
-#include "common/status.h"
 #include "common/model/type.h"
+#include "common/status.h"
 #include "storage/model/param.h"
 #include "storage/replica/replica.h"
 
 namespace adviskv::storage {
 
-ReplicaPtr ReplicaManager::get_replica_by_id(
-    const ReplicaID& replica_id) const {
+ReplicaPtr ReplicaManager::get_replica_by_id(const ReplicaID& replica_id) const {
     std::shared_lock locker(mutex_);
     auto it = replica_map_.find(replica_id);
     if (it == replica_map_.end()) {
@@ -50,17 +49,16 @@ Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
 
     if (replica_map_.count(replica_id)) {
         LOG_INFO(
-            "[ReplicaManager] add_replica: replica already exists, "
-            "return OK, replica_id:{}, endpoint:{}",
-            replica_id.to_string(), param.local_endpoint.to_string());
+                "[ReplicaManager] add_replica: replica already exists, "
+                "return OK, replica_id:{}, endpoint:{}",
+                replica_id.to_string(), param.local_endpoint.to_string());
         return Status::OK();
     }
 
     if (shard_primary_index_.count(shard_id)) {
-        return Status{StatusCode::ALREADY_EXIST,
-                      fmt::format("shard already exists on current node, "
-                                  "table_id: {}, shard_index: {}",
-                                  shard_id.table_id, shard_id.shard_index)};
+        return Status{StatusCode::ALREADY_EXIST, fmt::format("shard already exists on current node, "
+                                                             "table_id: {}, shard_index: {}",
+                                                             shard_id.table_id, shard_id.shard_index)};
     }
 
     auto replica = std::make_shared<Replica>();
@@ -93,22 +91,18 @@ Status ReplicaManager::delete_replica(const ReplicaID& replica_id) {
     return meta_persist_.delete_replica_data(replica_id);
 }
 
-Status ReplicaManager::add_member(const ReplicaID& leader_replica_id,
-                                  const PeerMember& member) {
+Status ReplicaManager::add_member(const ReplicaID& leader_replica_id, const PeerMember& member) {
     ReplicaPtr replica = get_replica_by_id(leader_replica_id);
     if (!replica) {
-        return Status{StatusCode::REPLICA_NOT_FOUND,
-                      "leader replica not found"};
+        return Status{StatusCode::REPLICA_NOT_FOUND, "leader replica not found"};
     }
     return replica->add_member(member);
 }
 
-Status ReplicaManager::remove_member(const ReplicaID& leader_replica_id,
-                                     const ReplicaID& replica_id) {
+Status ReplicaManager::remove_member(const ReplicaID& leader_replica_id, const ReplicaID& replica_id) {
     ReplicaPtr replica = get_replica_by_id(leader_replica_id);
     if (!replica) {
-        return Status{StatusCode::REPLICA_NOT_FOUND,
-                      "leader replica not found"};
+        return Status{StatusCode::REPLICA_NOT_FOUND, "leader replica not found"};
     }
     return replica->remove_member(replica_id);
 }
@@ -137,30 +131,25 @@ void ReplicaManager::recover() {
             LOG_WARN("create replica manager data dir failed: {}", e.what());
         }
 
-        const std::vector<std::filesystem::path> meta_paths =
-            meta_persist_.scan_replica_meta_files();
+        const std::vector<std::filesystem::path> meta_paths = meta_persist_.scan_replica_meta_files();
         for (const auto& meta_path : meta_paths) {
             ReplicaMetaPayload payload;
             Status status = meta_persist_.load_replica_meta(meta_path, payload);
             if (status.fail()) {
-                LOG_WARN("load replica meta failed, path={}, msg={}",
-                         meta_path.string(), status.msg());
+                LOG_WARN("load replica meta failed, path={}, msg={}", meta_path.string(), status.msg());
                 continue;
             }
             ReplicaInitParam& param = payload.init_param;
             param = fill_param_runtime(param);
-            ShardID shard_id{param.replica_id.table_id,
-                             param.replica_id.shard_index};
-            if (replica_map_.count(param.replica_id) ||
-                shard_primary_index_.count(shard_id)) {
+            ShardID shard_id{param.replica_id.table_id, param.replica_id.shard_index};
+            if (replica_map_.count(param.replica_id) || shard_primary_index_.count(shard_id)) {
                 continue;
             }
 
             auto replica = std::make_shared<Replica>();
             status = replica->init(param);
             if (status.fail()) {
-                LOG_WARN("init recovered replica failed, path={}, msg={}",
-                         meta_path.string(), status.msg());
+                LOG_WARN("init recovered replica failed, path={}, msg={}", meta_path.string(), status.msg());
                 continue;
             }
             replica_map_[param.replica_id] = std::move(replica);
@@ -171,22 +160,18 @@ void ReplicaManager::recover() {
     for (const auto& [_, replica] : replica_map_) {
         Status status = replica->recover();
         if (status.fail()) {
-            LOG_WARN("replica recover failed, table_id={}, shard_index={}",
-                     replica->shard_id_.table_id,
+            LOG_WARN("replica recover failed, table_id={}, shard_index={}", replica->shard_id_.table_id,
                      replica->shard_id_.shard_index);
         }
     }
     LOG_INFO("all replicas recovered");
 }
 
-ReplicaInitParam ReplicaManager::fill_param_runtime(
-    ReplicaInitParam param) const {
+ReplicaInitParam ReplicaManager::fill_param_runtime(ReplicaInitParam param) const {
     param.runtime = runtime_options_;
     return param;
 }
 
-const std::string& ReplicaManager::get_data_dir() const {
-    return runtime_options_.data_dir;
-}
+const std::string& ReplicaManager::get_data_dir() const { return runtime_options_.data_dir; }
 
 }  // namespace adviskv::storage

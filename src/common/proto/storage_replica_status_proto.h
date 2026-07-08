@@ -5,8 +5,7 @@
 
 namespace adviskv {
 
-inline bool decode_pb_storage_replica_status(pb::StorageReplicaStatus in,
-                                             StorageReplicaStatus& out) {
+inline bool decode_pb_storage_replica_status(pb::StorageReplicaStatus in, StorageReplicaStatus& out) {
     switch (in) {
         case pb::StorageReplicaStatus::STORAGE_REPLICA_STATUS_INITIALIZING:
             out = StorageReplicaStatus::INITIALIZING;
@@ -25,8 +24,7 @@ inline bool decode_pb_storage_replica_status(pb::StorageReplicaStatus in,
     }
 }
 
-inline bool encode_pb_storage_replica_status(StorageReplicaStatus in,
-                                             pb::StorageReplicaStatus& out) {
+inline bool encode_pb_storage_replica_status(StorageReplicaStatus in, pb::StorageReplicaStatus& out) {
     switch (in) {
         case StorageReplicaStatus::INITIALIZING:
             out = pb::StorageReplicaStatus::STORAGE_REPLICA_STATUS_INITIALIZING;

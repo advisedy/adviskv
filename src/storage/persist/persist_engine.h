@@ -4,8 +4,8 @@
 #include <functional>
 #include <shared_mutex>
 
-#include "common/status.h"
 #include "common/model/type.h"
+#include "common/status.h"
 #include "storage/model/model.h"
 #include "storage/raft/state_machine/state_machine.h"
 namespace adviskv::storage {

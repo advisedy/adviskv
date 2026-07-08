@@ -6,11 +6,11 @@
 #include "common/func.h"
 #include "common/model/type.h"
 #include "common/status.h"
-#include "sdm/store/sdm_store.h"
-#include "sdm/store/sdm_store_txn.h"
 #include "sdm/model/model.h"
 #include "sdm/reconcile/replica_group_membership_reconciler.h"
 #include "sdm/reconcile/replica_group_plan_reconciler.h"
+#include "sdm/store/sdm_store.h"
+#include "sdm/store/sdm_store_txn.h"
 
 namespace adviskv::sdm {
 
@@ -37,8 +37,7 @@ Status select_remove_member_victim(const SdmStoreTxn& txn, const ReplicaGroup& g
 namespace {
 
 ReplicaPhase project_phase_from_observed_facts(const SdmStoreTxn& txn, const Replica& replica) {
-    if (replica.state.phase == ReplicaPhase::DELETED)
-        return ReplicaPhase::DELETED;
+    if (replica.state.phase == ReplicaPhase::DELETED) return ReplicaPhase::DELETED;
 
     if (replica.state.desired == ReplicaDesired::ABSENT) {
         if (replica.state.phase == ReplicaPhase::DELETING && replica.state.observed_no_exist) {
@@ -136,8 +135,7 @@ Status append_reconfig_command_for_leader(const SdmStoreTxn& txn, const HeartBea
         for (const ReplicaID& rid : group.desired_members) {
             ReplicaOr replica_or;
             RETURN_IF_INVALID_STATUS(txn.get_replica(rid, replica_or))
-            if (replica_or.is_empty())
-                continue;
+            if (replica_or.is_empty()) continue;
 
             const Replica& replica = replica_or.value();
             if (replica.spec.assign_node_id == param.node_id &&
@@ -153,8 +151,7 @@ Status append_reconfig_command_for_leader(const SdmStoreTxn& txn, const HeartBea
             }
         }
 
-        if (!node_is_leader)
-            continue;
+        if (!node_is_leader) continue;
 
         /*
           扩容：
@@ -207,8 +204,8 @@ Status append_reconfig_command_for_leader(const SdmStoreTxn& txn, const HeartBea
 
 }  // namespace
 
-ReplicaGroupService::ReplicaGroupService(SdmStore* store, NodeSelector* selector) : store_(store), selector_(selector) {
-}
+ReplicaGroupService::ReplicaGroupService(SdmStore* store, NodeSelector* selector)
+        : store_(store), selector_(selector) {}
 
 Status ReplicaGroupService::build_heartbeat_result(const HeartBeatParam& param, HeartBeatResult& result) const {
     RETURN_IF_INVALID_PARAM(param)
@@ -223,8 +220,7 @@ Status ReplicaGroupService::build_heartbeat_result(const HeartBeatParam& param, 
                 return false;
             }
             for (const ReplicaID& one : group_or->desired_members) {
-                if (one == replica_id)
-                    return true;
+                if (one == replica_id) return true;
             }
             return false;
         };
@@ -242,10 +238,8 @@ Status ReplicaGroupService::build_heartbeat_result(const HeartBeatParam& param, 
         // 期望有却没上报
         for (const Replica& r : replicas) {
             ShardID shard_id{r.replica_id.table_id, r.replica_id.shard_index};
-            if (!in_desired_members(shard_id, r.replica_id))
-                continue;
-            if (reported_ids.count(r.replica_id))
-                continue;
+            if (!in_desired_members(shard_id, r.replica_id)) continue;
+            if (reported_ids.count(r.replica_id)) continue;
 
             ExpectedReplica expect;
             expect.replica_id = r.replica_id;
@@ -263,8 +257,7 @@ Status ReplicaGroupService::build_heartbeat_result(const HeartBeatParam& param, 
         // 上报了却不该有
         for (const HeartBeatReplicaInfo& info : param.replica_list) {
             ShardID shard_id{info.replica_id.table_id, info.replica_id.shard_index};
-            if (in_desired_members(shard_id, info.replica_id))
-                continue;
+            if (in_desired_members(shard_id, info.replica_id)) continue;
 
             ExpectedReplica expect;
             expect.replica_id = info.replica_id;

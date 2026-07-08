@@ -6,37 +6,21 @@ namespace adviskv::storage {
 
 RaftElection::RaftElection(const ReplicaID& self_id) : self_id_(self_id) {}
 
-ReplicaRole RaftElection::role() const {
-    return role_;
-}
+ReplicaRole RaftElection::role() const { return role_; }
 
-Term RaftElection::current_term() const {
-    return current_term_;
-}
+Term RaftElection::current_term() const { return current_term_; }
 
-const std::optional<ReplicaID>& RaftElection::voted_for() const {
-    return voted_for_;
-}
+const std::optional<ReplicaID>& RaftElection::voted_for() const { return voted_for_; }
 
-bool RaftElection::is_follower() const {
-    return role_ == ReplicaRole::FOLLOWER;
-}
+bool RaftElection::is_follower() const { return role_ == ReplicaRole::FOLLOWER; }
 
-bool RaftElection::is_candidate() const {
-    return role_ == ReplicaRole::CANDIDATE;
-}
+bool RaftElection::is_candidate() const { return role_ == ReplicaRole::CANDIDATE; }
 
-bool RaftElection::is_leader() const {
-    return role_ == ReplicaRole::LEADER;
-}
+bool RaftElection::is_leader() const { return role_ == ReplicaRole::LEADER; }
 
-int32_t RaftElection::granted_vote_count() const {
-    return static_cast<int32_t>(granted_voters_.size());
-}
+int32_t RaftElection::granted_vote_count() const { return static_cast<int32_t>(granted_voters_.size()); }
 
-RaftMeta RaftElection::hard_state() const {
-    return RaftMeta{current_term_, voted_for_};
-}
+RaftMeta RaftElection::hard_state() const { return RaftMeta{current_term_, voted_for_}; }
 
 void RaftElection::update_meta(const RaftMeta& meta) {
     current_term_ = meta.current_term;
@@ -84,8 +68,6 @@ bool RaftElection::grant_vote_to(const ReplicaID& candidate) {
     return true;
 }
 
-bool RaftElection::record_vote_granted_from(const ReplicaID& voter) {
-    return granted_voters_.insert(voter).second;
-}
+bool RaftElection::record_vote_granted_from(const ReplicaID& voter) { return granted_voters_.insert(voter).second; }
 
 }  // namespace adviskv::storage

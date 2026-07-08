@@ -10,8 +10,8 @@
 
 #include "common/define.h"
 #include "common/func.h"
-#include "common/status.h"
 #include "common/model/type.h"
+#include "common/status.h"
 #include "sdm/model/model.h"
 
 namespace adviskv::sdm {
@@ -35,8 +35,7 @@ bool better_candidate(const NodeView& lhs, const NodeView& rhs,
     //
     auto get_count = [&selected_dc_counts](const std::string& dc) -> int {
         auto it = selected_dc_counts.find(dc);
-        if (it == selected_dc_counts.end())
-            return 0;
+        if (it == selected_dc_counts.end()) return 0;
         return it->second;
     };
 
@@ -62,8 +61,7 @@ std::vector<NodeView>::iterator select_one_node(std::vector<NodeView>& views,
     std::priority_queue<NodeViewIt, std::vector<NodeViewIt>, decltype(lower_priority)> candidates(lower_priority);
 
     for (auto it = views.begin(); it != views.end(); ++it) {
-        if (selected_node_ids.count(it->node.id))
-            continue;
+        if (selected_node_ids.count(it->node.id)) continue;
         candidates.push(it);
     }
     return candidates.empty() ? views.end() : candidates.top();

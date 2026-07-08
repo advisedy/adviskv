@@ -13,8 +13,7 @@ void BackgroundTask::start(Milliseconds interval) {
     if (running_.exchange(true)) {  // 防止搞了多个background task
         return;
     }
-    thread_ =
-        std::make_unique<std::thread>(&BackgroundTask::loop, this, interval);
+    thread_ = std::make_unique<std::thread>(&BackgroundTask::loop, this, interval);
 }
 
 void BackgroundTask::notify() { cv_.notify_one(); }
@@ -44,4 +43,4 @@ void BackgroundTask::loop(Milliseconds interval) {
     }
 }
 
-}  // namespace adviskv::sdm
+}  // namespace adviskv

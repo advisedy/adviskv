@@ -17,14 +17,10 @@ TableNameKey make_table_name_key(const Table& table) {
     return key;
 }
 
-ShardKey make_shard_key(const ReplicaKey& key) {
-    return ShardKey{key.table_id, key.shard_index};
-}
+ShardKey make_shard_key(const ReplicaKey& key) { return ShardKey{key.table_id, key.shard_index}; }
 
-void cleanup_empty_node_set(
-    std::unordered_map<NodeID, std::unordered_set<ReplicaKey, ReplicaKeyHash>>&
-        index,
-    const NodeID& node_id) {
+void cleanup_empty_node_set(std::unordered_map<NodeID, std::unordered_set<ReplicaKey, ReplicaKeyHash>>& index,
+                            const NodeID& node_id) {
     auto it = index.find(node_id);
     if (it != index.end() && it->second.empty()) {
         index.erase(it);
@@ -32,18 +28,16 @@ void cleanup_empty_node_set(
 }
 
 void cleanup_empty_shard_set(
-    std::unordered_map<ShardKey, std::unordered_set<ReplicaKey, ReplicaKeyHash>,
-                       ShardKeyHash>& index,
-    const ShardKey& shard_key) {
+        std::unordered_map<ShardKey, std::unordered_set<ReplicaKey, ReplicaKeyHash>, ShardKeyHash>& index,
+        const ShardKey& shard_key) {
     auto it = index.find(shard_key);
     if (it != index.end() && it->second.empty()) {
         index.erase(it);
     }
 }
 
-void cleanup_empty_pool_set(
-    std::unordered_map<std::string, std::unordered_set<NodeID>>& index,
-    const std::string& pool_name) {
+void cleanup_empty_pool_set(std::unordered_map<std::string, std::unordered_set<NodeID>>& index,
+                            const std::string& pool_name) {
     auto it = index.find(pool_name);
     if (it != index.end() && it->second.empty()) {
         index.erase(it);
@@ -52,9 +46,7 @@ void cleanup_empty_pool_set(
 
 }  // namespace
 
-SdmRuntimeIndex::SdmRuntimeIndex(const SdmRuntimeIndex& other) {
-    *this = other;
-}
+SdmRuntimeIndex::SdmRuntimeIndex(const SdmRuntimeIndex& other) { *this = other; }
 
 SdmRuntimeIndex& SdmRuntimeIndex::operator=(const SdmRuntimeIndex& other) {
     if (this == &other) {
@@ -78,8 +70,7 @@ void SdmRuntimeIndex::clear() {
     node_pool_index_.clear();
 }
 
-Status SdmRuntimeIndex::on_table_upsert(const Table* old_table,
-                                        const Table& new_table) {
+Status SdmRuntimeIndex::on_table_upsert(const Table* old_table, const Table& new_table) {
     if (old_table != nullptr) {
         table_name_index_.erase(make_table_name_key(*old_table));
     }
@@ -88,8 +79,7 @@ Status SdmRuntimeIndex::on_table_upsert(const Table* old_table,
     return Status::OK();
 }
 
-Status SdmRuntimeIndex::on_node_upsert(const Node* old_node,
-                                       const Node& new_node) {
+Status SdmRuntimeIndex::on_node_upsert(const Node* old_node, const Node& new_node) {
     if (old_node != nullptr) {
         const std::string& old_pool = old_node->meta.resource_pool;
         auto pool_it = pool_nodes_index_.find(old_pool);
@@ -105,8 +95,7 @@ Status SdmRuntimeIndex::on_node_upsert(const Node* old_node,
     return Status::OK();
 }
 
-Status SdmRuntimeIndex::on_replica_upsert(const Replica* old_replica,
-                                          const Replica& new_replica) {
+Status SdmRuntimeIndex::on_replica_upsert(const Replica* old_replica, const Replica& new_replica) {
     if (old_replica != nullptr) {
         const ShardKey old_shard_key = make_shard_key(old_replica->replica_id);
         auto shard_it = shard_replicas_index_.find(old_shard_key);
@@ -116,12 +105,10 @@ Status SdmRuntimeIndex::on_replica_upsert(const Replica* old_replica,
         }
 
         if (!old_replica->spec.assign_node_id.empty()) {
-            auto node_it =
-                node_replicas_index_.find(old_replica->spec.assign_node_id);
+            auto node_it = node_replicas_index_.find(old_replica->spec.assign_node_id);
             if (node_it != node_replicas_index_.end()) {
                 node_it->second.erase(old_replica->replica_id);
-                cleanup_empty_node_set(node_replicas_index_,
-                                       old_replica->spec.assign_node_id);
+                cleanup_empty_node_set(node_replicas_index_, old_replica->spec.assign_node_id);
             }
         }
     }
@@ -130,8 +117,7 @@ Status SdmRuntimeIndex::on_replica_upsert(const Replica* old_replica,
     shard_replicas_index_[new_shard_key].insert(new_replica.replica_id);
 
     if (!new_replica.spec.assign_node_id.empty()) {
-        node_replicas_index_[new_replica.spec.assign_node_id].insert(
-            new_replica.replica_id);
+        node_replicas_index_[new_replica.spec.assign_node_id].insert(new_replica.replica_id);
     }
     return Status::OK();
 }
@@ -163,16 +149,14 @@ Status SdmRuntimeIndex::on_replica_delete(const Replica& replica) {
         auto node_it = node_replicas_index_.find(replica.spec.assign_node_id);
         if (node_it != node_replicas_index_.end()) {
             node_it->second.erase(replica.replica_id);
-            cleanup_empty_node_set(node_replicas_index_,
-                                   replica.spec.assign_node_id);
+            cleanup_empty_node_set(node_replicas_index_, replica.spec.assign_node_id);
         }
     }
 
     return Status::OK();
 }
 
-Status SdmRuntimeIndex::find_table_by_name(const std::string& db_name,
-                                           const std::string& table_name,
+Status SdmRuntimeIndex::find_table_by_name(const std::string& db_name, const std::string& table_name,
                                            TableID& table_id) const {
     TableNameKey key;
     key.db_name = db_name;
@@ -185,8 +169,7 @@ Status SdmRuntimeIndex::find_table_by_name(const std::string& db_name,
     return Status::OK();
 }
 
-Status SdmRuntimeIndex::list_nodes_by_resource_pool(
-    const std::string& pool_name, std::vector<NodeID>& out) const {
+Status SdmRuntimeIndex::list_nodes_by_resource_pool(const std::string& pool_name, std::vector<NodeID>& out) const {
     out.clear();
     auto it = pool_nodes_index_.find(pool_name);
     if (it == pool_nodes_index_.end()) {
@@ -196,8 +179,7 @@ Status SdmRuntimeIndex::list_nodes_by_resource_pool(
     return Status::OK();
 }
 
-Status SdmRuntimeIndex::list_replicas_by_shard(
-    const ShardID& shard_id, std::vector<ReplicaKey>& out) const {
+Status SdmRuntimeIndex::list_replicas_by_shard(const ShardID& shard_id, std::vector<ReplicaKey>& out) const {
     out.clear();
     auto it = shard_replicas_index_.find(shard_id);
     if (it == shard_replicas_index_.end()) {
@@ -207,8 +189,7 @@ Status SdmRuntimeIndex::list_replicas_by_shard(
     return Status::OK();
 }
 
-Status SdmRuntimeIndex::list_replicas_by_node(
-    const NodeID& node_id, std::vector<ReplicaKey>& out) const {
+Status SdmRuntimeIndex::list_replicas_by_node(const NodeID& node_id, std::vector<ReplicaKey>& out) const {
     out.clear();
     auto it = node_replicas_index_.find(node_id);
     if (it == node_replicas_index_.end()) {
@@ -218,8 +199,6 @@ Status SdmRuntimeIndex::list_replicas_by_node(
     return Status::OK();
 }
 
-std::unique_ptr<SdmRuntimeIndex> SdmRuntimeIndex::clone() const {
-    return std::make_unique<SdmRuntimeIndex>(*this);
-}
+std::unique_ptr<SdmRuntimeIndex> SdmRuntimeIndex::clone() const { return std::make_unique<SdmRuntimeIndex>(*this); }
 
 }  // namespace adviskv::sdm

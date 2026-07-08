@@ -2,17 +2,17 @@
 
 #include <vector>
 
-#include "common/status.h"
 #include "common/model/type.h"
-#include "sdm/model/param.h"
+#include "common/status.h"
 #include "sdm/model/model.h"
+#include "sdm/model/param.h"
 
 namespace adviskv::sdm {
 
 class SdmStore;
 
 class RouteService {
-   public:
+public:
     explicit RouteService(SdmStore* store);
 
     Status get_route(const GetRouteParam& param, ShardRoute* out) const;
@@ -21,7 +21,7 @@ class RouteService {
 
     Status reconcile_all();
 
-   protected:
+protected:
     ShardID calc_shard_id(const Table& table, Key key) const;
     static Status validate_writable_route(const ShardRoute& route);
     Status check_shard_route(const Table& table, ShardIndex shard_index);

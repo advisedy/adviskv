@@ -10,7 +10,7 @@
 namespace adviskv::storage {
 
 class MapEngine : public KVEngine {
-   public:
+public:
     MapEngine() = default;
     ~MapEngine() = default;
 
@@ -20,10 +20,9 @@ class MapEngine : public KVEngine {
     std::vector<KV> dump_all() const override;
     Status clear() override;
 
-    Status for_each_kv(const std::function<Status(const Key&, const Value&)>&
-                           fn) const override;
+    Status for_each_kv(const std::function<Status(const Key&, const Value&)>& fn) const override;
 
-   private:
+private:
     mutable std::shared_mutex map_mutex_;
     std::map<Key, Value> map_;
 };

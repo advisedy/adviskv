@@ -2,17 +2,11 @@
 
 namespace adviskv::storage {
 
-void RaftCore::update_raft_meta(const RaftMeta& meta) {
-    election_.update_meta(meta);
-}
+void RaftCore::update_raft_meta(const RaftMeta& meta) { election_.update_meta(meta); }
 
-void RaftCore::update_log_entries(const std::vector<LogEntry>& entries) {
-    raft_log_.update_entries(entries);
-}
+void RaftCore::update_log_entries(const std::vector<LogEntry>& entries) { raft_log_.update_entries(entries); }
 
-void RaftCore::update_membership(const std::vector<RaftMember>& members) {
-    membership_.update_raft_members(members);
-}
+void RaftCore::update_membership(const std::vector<RaftMember>& members) { membership_.update_raft_members(members); }
 
 void RaftCore::enter_recovering() {
     state_ = State::RECOVERING;

@@ -1,22 +1,20 @@
 #pragma once
 
-#include "common/define.h"
 #include <type_traits>
 #include <utility>
+
+#include "common/define.h"
 
 namespace adviskv {
 
 template <typename F>
 class ScopeExit {
-   public:
+public:
     explicit ScopeExit(F&& fn) : fn_(std::forward<F>(fn)) {}
 
     DISALLOW_COPY_AND_ASSIGN(ScopeExit)
 
-    ScopeExit(ScopeExit&& other) noexcept
-        : fn_(std::move(other.fn_)), active_(other.active_) {
-        other.active_ = false;
-    }
+    ScopeExit(ScopeExit&& other) noexcept : fn_(std::move(other.fn_)), active_(other.active_) { other.active_ = false; }
 
     ~ScopeExit() {
         if (active_) {
@@ -26,7 +24,7 @@ class ScopeExit {
 
     void cancel() { active_ = false; }
 
-   private:
+private:
     F fn_;
     bool active_{true};
 };

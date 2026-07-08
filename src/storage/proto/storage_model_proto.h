@@ -79,8 +79,7 @@ inline bool encode_pb_log_entry(const LogEntry& in, rpc::LogEntry& out) {
     if (!encode_pb_peer_member(in.config_member, *out.mutable_config_member())) {
         return false;
     }
-    if (!encode_pb_replica_id(in.config_replica_id,
-                              *out.mutable_config_replica_id())) {
+    if (!encode_pb_replica_id(in.config_replica_id, *out.mutable_config_replica_id())) {
         return false;
     }
     return true;

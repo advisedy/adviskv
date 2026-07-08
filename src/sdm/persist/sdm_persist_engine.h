@@ -3,8 +3,8 @@
 #include <string>
 #include <unordered_map>
 
-#include "common/status.h"
 #include "common/model/type.h"
+#include "common/status.h"
 #include "sdm/model/model.h"
 
 namespace adviskv::sdm {
@@ -17,7 +17,7 @@ struct SdmPersistedRecord {
 };
 
 class ISdmPersistEngine {
-   public:
+public:
     virtual ~ISdmPersistEngine() = default;
 
     virtual Status init() = 0;
@@ -27,7 +27,7 @@ class ISdmPersistEngine {
 };
 
 class SdmPersistEngine : public ISdmPersistEngine {
-   public:
+public:
     explicit SdmPersistEngine(const std::string& data_dir);
     ~SdmPersistEngine();
 
@@ -37,7 +37,7 @@ class SdmPersistEngine : public ISdmPersistEngine {
     Status save_sdm_meta(const SdmPersistedRecord& record) override;
     Status load_sdm_meta(SdmPersistedRecord& record) override;
 
-   private:
+private:
     std::string data_dir_;
     std::string meta_path_;
     std::string meta_tmp_path_;

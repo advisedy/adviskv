@@ -11,12 +11,10 @@
 namespace adviskv::sdm {
 
 class PersistentMetaStore : public ISdmMetaStore {
-   public:
+public:
     explicit PersistentMetaStore(std::filesystem::path data_dir);
-    PersistentMetaStore(std::unique_ptr<ISdmMetaStore> memory_store,
-                        std::filesystem::path data_dir);
-    PersistentMetaStore(std::unique_ptr<ISdmMetaStore> memory_store,
-                        std::unique_ptr<ISdmPersistEngine> persist_engine);
+    PersistentMetaStore(std::unique_ptr<ISdmMetaStore> memory_store, std::filesystem::path data_dir);
+    PersistentMetaStore(std::unique_ptr<ISdmMetaStore> memory_store, std::unique_ptr<ISdmPersistEngine> persist_engine);
 
     Status init() override;
 
@@ -24,10 +22,9 @@ class PersistentMetaStore : public ISdmMetaStore {
     ISDM_METASTORE_METHODS(X)
 #undef X
 
-   private:
+private:
     Status load();
-    Status build_record_from_store(const ISdmMetaStore& store,
-                                   SdmPersistedRecord& record) const;
+    Status build_record_from_store(const ISdmMetaStore& store, SdmPersistedRecord& record) const;
     Status persist_record(const SdmPersistedRecord& record);
     Status commit_with(const std::function<Status(ISdmMetaStore&)>& mutate);
 

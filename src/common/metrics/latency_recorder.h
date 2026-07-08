@@ -9,7 +9,7 @@
 namespace adviskv {
 
 class LatencyRecorder {
-   public:
+public:
     void record(int64_t latency_us) {
         std::lock_guard<std::mutex> lock(mutex_);
         latencies_us_.push_back(latency_us);
@@ -43,8 +43,7 @@ class LatencyRecorder {
         summary.sum_us = total_us;
         summary.min_us = values.front();
         summary.max_us = values.back();
-        summary.avg_us =
-            static_cast<double>(total_us) / static_cast<double>(values.size());
+        summary.avg_us = static_cast<double>(total_us) / static_cast<double>(values.size());
         summary.p50_us = latency_percentile_us(values, 50);
         summary.p95_us = latency_percentile_us(values, 95);
         summary.p99_us = latency_percentile_us(values, 99);
@@ -56,14 +55,12 @@ class LatencyRecorder {
         return latencies_us_;
     }
 
-   private:
-    int64_t latency_percentile_us(const std::vector<int64_t>& sorted,
-                                  int32_t pct) const {
+private:
+    int64_t latency_percentile_us(const std::vector<int64_t>& sorted, int32_t pct) const {
         if (sorted.empty()) {
             return 0;
         }
-        const size_t index =
-            (static_cast<size_t>(pct) * (sorted.size() - 1) + 99) / 100;
+        const size_t index = (static_cast<size_t>(pct) * (sorted.size() - 1) + 99) / 100;
         return sorted[index];
     }
 

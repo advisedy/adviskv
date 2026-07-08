@@ -4,8 +4,8 @@
 
 #include "common/define.h"
 #include "common/metrics/metrics.h"
-#include "common/status.h"
 #include "common/model/type.h"
+#include "common/status.h"
 #include "storage/engine/map_engine.h"
 #include "storage/model/model.h"
 #include "storage/raft/state_machine/state_machine.h"
@@ -106,16 +106,10 @@ Status KvStateMachine::restore(const SnapshotPtr& snap, const KvForEach& for_eac
     apply_term_ = snap->apply_term;
     return Status::OK();
 }
-LogIndex KvStateMachine::apply_index() const {
-    return apply_index_;
-}
-LogIndex KvStateMachine::apply_term() const {
-    return apply_term_;
-}
+LogIndex KvStateMachine::apply_index() const { return apply_index_; }
+LogIndex KvStateMachine::apply_term() const { return apply_term_; }
 
-Status KvStateMachine::get(const Key& key, Value& value) const {
-    return engine_->get(key, value);
-}
+Status KvStateMachine::get(const Key& key, Value& value) const { return engine_->get(key, value); }
 
 Status KvStateMachine::for_each_kv(const std::function<Status(const Key&, const Value&)>& fn) const {
     if (!engine_) {

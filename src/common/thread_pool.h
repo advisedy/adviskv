@@ -1,6 +1,5 @@
 #pragma once
 
-#include "common/define.h"
 #include <condition_variable>
 #include <cstddef>
 #include <functional>
@@ -9,10 +8,12 @@
 #include <thread>
 #include <vector>
 
+#include "common/define.h"
+
 namespace adviskv {
 
 class ThreadPool {
-   public:
+public:
     ThreadPool() = default;
     explicit ThreadPool(size_t worker_count);
 
@@ -20,7 +21,7 @@ class ThreadPool {
 
     DISALLOW_COPY_AND_ASSIGN(ThreadPool)
 
-   public:
+public:
     void start(size_t worker_count);
     void stop();
 
@@ -28,10 +29,10 @@ class ThreadPool {
 
     bool started() const;
 
-   private:
+private:
     void worker_loop();
 
-   private:
+private:
     mutable std::mutex mutex_;
     std::condition_variable cv_;
     std::queue<std::function<void()>> tasks_;

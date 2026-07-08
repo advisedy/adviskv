@@ -10,22 +10,16 @@
 namespace adviskv::sdm {
 
 PersistentMetaStore::PersistentMetaStore(std::filesystem::path data_dir)
-    : memory_store_(std::make_unique<MemoryMetaStore>()),
-      persist_engine_(std::make_unique<SdmPersistEngine>(data_dir.string())) {
-}
+        : memory_store_(std::make_unique<MemoryMetaStore>()),
+          persist_engine_(std::make_unique<SdmPersistEngine>(data_dir.string())) {}
 
-PersistentMetaStore::PersistentMetaStore(
-    std::unique_ptr<ISdmMetaStore> memory_store, std::filesystem::path data_dir)
-    : memory_store_(std::move(memory_store)),
-      persist_engine_(std::make_unique<SdmPersistEngine>(data_dir.string())) {
-}
+PersistentMetaStore::PersistentMetaStore(std::unique_ptr<ISdmMetaStore> memory_store, std::filesystem::path data_dir)
+        : memory_store_(std::move(memory_store)),
+          persist_engine_(std::make_unique<SdmPersistEngine>(data_dir.string())) {}
 
-PersistentMetaStore::PersistentMetaStore(
-    std::unique_ptr<ISdmMetaStore> memory_store,
-    std::unique_ptr<ISdmPersistEngine> persist_engine)
-    : memory_store_(std::move(memory_store)),
-      persist_engine_(std::move(persist_engine)) {
-}
+PersistentMetaStore::PersistentMetaStore(std::unique_ptr<ISdmMetaStore> memory_store,
+                                         std::unique_ptr<ISdmPersistEngine> persist_engine)
+        : memory_store_(std::move(memory_store)), persist_engine_(std::move(persist_engine)) {}
 
 Status PersistentMetaStore::init() {
     RETURN_IF_NULLPTR(memory_store_, "sdm memory store is nullptr")
@@ -36,13 +30,11 @@ Status PersistentMetaStore::init() {
     return Status::OK();
 }
 
-std::unique_ptr<ISdmMetaStore> PersistentMetaStore::clone_memory_snapshot()
-    const {
+std::unique_ptr<ISdmMetaStore> PersistentMetaStore::clone_memory_snapshot() const {
     return memory_store_->clone_memory_snapshot();
 }
 
-Status PersistentMetaStore::commit_memory_snapshot(
-    std::unique_ptr<ISdmMetaStore> next_memory_store) {
+Status PersistentMetaStore::commit_memory_snapshot(std::unique_ptr<ISdmMetaStore> next_memory_store) {
     ADVISKV_METRICS_TIMER("sdm_metastore_commit_snapshot");
     ADVISKV_METRICS_COUNTER("sdm_metastore_commit_snapshot_request");
 
@@ -81,8 +73,7 @@ Status PersistentMetaStore::load() {
     return Status::OK();
 }
 
-Status PersistentMetaStore::build_record_from_store(
-    const ISdmMetaStore& store, SdmPersistedRecord& record) const {
+Status PersistentMetaStore::build_record_from_store(const ISdmMetaStore& store, SdmPersistedRecord& record) const {
     record = {};
 
     std::vector<TablePtr> tables;
@@ -116,10 +107,8 @@ Status PersistentMetaStore::persist_record(const SdmPersistedRecord& record) {
     return persist_engine_->save_sdm_meta(record);
 }
 
-Status PersistentMetaStore::commit_with(
-    const std::function<Status(ISdmMetaStore&)>& mutate) {
-    std::unique_ptr<ISdmMetaStore> next_memory_store =
-        memory_store_->clone_memory_snapshot();
+Status PersistentMetaStore::commit_with(const std::function<Status(ISdmMetaStore&)>& mutate) {
+    std::unique_ptr<ISdmMetaStore> next_memory_store = memory_store_->clone_memory_snapshot();
     RETURN_IF_INVALID_STATUS(mutate(*next_memory_store))
 
     SdmPersistedRecord next;
@@ -131,8 +120,7 @@ Status PersistentMetaStore::commit_with(
 }
 
 Status PersistentMetaStore::upsert_table(const Table& table) {
-    return commit_with(
-        [&table](ISdmMetaStore& store) { return store.upsert_table(table); });
+    return commit_with([&table](ISdmMetaStore& store) { return store.upsert_table(table); });
 }
 
 Status PersistentMetaStore::get_table(TableID table_id, TablePtr& out) const {
@@ -140,36 +128,25 @@ Status PersistentMetaStore::get_table(TableID table_id, TablePtr& out) const {
 }
 
 Status PersistentMetaStore::delete_table(TableID table_id) {
-    return commit_with([table_id](ISdmMetaStore& store) {
-        return store.delete_table(table_id);
-    });
+    return commit_with([table_id](ISdmMetaStore& store) { return store.delete_table(table_id); });
 }
 
-Status PersistentMetaStore::list_tables(std::vector<TablePtr>& out) const {
-    return memory_store_->list_tables(out);
-}
+Status PersistentMetaStore::list_tables(std::vector<TablePtr>& out) const { return memory_store_->list_tables(out); }
 
 Status PersistentMetaStore::upsert_replica(const Replica& replica) {
-    return commit_with([&replica](ISdmMetaStore& store) {
-        return store.upsert_replica(replica);
-    });
+    return commit_with([&replica](ISdmMetaStore& store) { return store.upsert_replica(replica); });
 }
 
-Status PersistentMetaStore::get_replica(const ReplicaID& key,
-                                        ReplicaPtr& out) const {
+Status PersistentMetaStore::get_replica(const ReplicaID& key, ReplicaPtr& out) const {
     return memory_store_->get_replica(key, out);
 }
 
 Status PersistentMetaStore::delete_replica(const ReplicaID& key) {
-    return commit_with(
-        [&key](ISdmMetaStore& store) { return store.delete_replica(key); });
+    return commit_with([&key](ISdmMetaStore& store) { return store.delete_replica(key); });
 }
 
-Status PersistentMetaStore::upsert_replicas(
-    const std::vector<Replica>& replicas) {
-    return commit_with([&replicas](ISdmMetaStore& store) {
-        return store.upsert_replicas(replicas);
-    });
+Status PersistentMetaStore::upsert_replicas(const std::vector<Replica>& replicas) {
+    return commit_with([&replicas](ISdmMetaStore& store) { return store.upsert_replicas(replicas); });
 }
 
 Status PersistentMetaStore::list_replicas(std::vector<ReplicaPtr>& out) const {
@@ -177,46 +154,34 @@ Status PersistentMetaStore::list_replicas(std::vector<ReplicaPtr>& out) const {
 }
 
 Status PersistentMetaStore::upsert_resource_pool(const ResourcePool& pool) {
-    return commit_with([&pool](ISdmMetaStore& store) {
-        return store.upsert_resource_pool(pool);
-    });
+    return commit_with([&pool](ISdmMetaStore& store) { return store.upsert_resource_pool(pool); });
 }
 
-Status PersistentMetaStore::get_resource_pool(const std::string& name,
-                                              ResourcePoolPtr& out) const {
+Status PersistentMetaStore::get_resource_pool(const std::string& name, ResourcePoolPtr& out) const {
     return memory_store_->get_resource_pool(name, out);
 }
 
-Status PersistentMetaStore::list_resource_pools(
-    std::vector<ResourcePoolPtr>& out) const {
+Status PersistentMetaStore::list_resource_pools(std::vector<ResourcePoolPtr>& out) const {
     return memory_store_->list_resource_pools(out);
 }
 
 Status PersistentMetaStore::delete_resource_pool(const std::string& name) {
-    return commit_with([&name](ISdmMetaStore& store) {
-        return store.delete_resource_pool(name);
-    });
+    return commit_with([&name](ISdmMetaStore& store) { return store.delete_resource_pool(name); });
 }
 
 Status PersistentMetaStore::upsert_replica_group(const ReplicaGroup& group) {
-    return commit_with([&group](ISdmMetaStore& store) {
-        return store.upsert_replica_group(group);
-    });
+    return commit_with([&group](ISdmMetaStore& store) { return store.upsert_replica_group(group); });
 }
 
 Status PersistentMetaStore::delete_replica_group(const ShardID& shard_id) {
-    return commit_with([&shard_id](ISdmMetaStore& store) {
-        return store.delete_replica_group(shard_id);
-    });
+    return commit_with([&shard_id](ISdmMetaStore& store) { return store.delete_replica_group(shard_id); });
 }
 
-Status PersistentMetaStore::get_replica_group(const ShardID& shard_id,
-                                              ReplicaGroupPtr& out) const {
+Status PersistentMetaStore::get_replica_group(const ShardID& shard_id, ReplicaGroupPtr& out) const {
     return memory_store_->get_replica_group(shard_id, out);
 }
 
-Status PersistentMetaStore::list_replica_groups(
-    std::vector<ReplicaGroupPtr>& out) const {
+Status PersistentMetaStore::list_replica_groups(std::vector<ReplicaGroupPtr>& out) const {
     return memory_store_->list_replica_groups(out);
 }
 

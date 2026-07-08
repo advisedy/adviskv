@@ -1,19 +1,19 @@
-#include <grpcpp/create_channel.h>
-#include <grpcpp/server.h>
-#include <grpcpp/server_builder.h>
-
 #include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <memory>
 #include <string>
 
+#include <grpcpp/create_channel.h>
+#include <grpcpp/server.h>
+#include <grpcpp/server_builder.h>
+
 #include "common/arg_parser.h"
 #include "common/confmgr.h"
 #include "common/log.h"
+#include "common/model/type.h"
 #include "common/path_util.h"
 #include "common/status.h"
-#include "common/model/type.h"
 #include "meta/background/table_ddl_reconciler.h"
 #include "meta/catalog/catalog_manager.h"
 #include "meta/handler/meta_service_impl.h"
@@ -51,10 +51,10 @@ void init_logger() {
     config.log_to_file = CONF_GET_BOOL("log_to_file");
     adviskv::Logger::get_instance().init(config);
     LOG_DEBUG(
-        "logger config: logger_name={}, log_dir={}, log_filename={}, "
-        "log_level={}, log_to_console={}, log_to_file={}",
-        config.logger_name, config.log_dir, config.log_filename,
-        config.log_level, config.log_to_console, config.log_to_file);
+            "logger config: logger_name={}, log_dir={}, log_filename={}, "
+            "log_level={}, log_to_console={}, log_to_file={}",
+            config.logger_name, config.log_dir, config.log_filename, config.log_level, config.log_to_console,
+            config.log_to_file);
 }
 
 }  // namespace
@@ -78,15 +78,11 @@ int main(int argc, char* argv[]) {
         using namespace adviskv::meta;
 
         int32_t listen_port = CONF_GET_INT("port");
-        std::string listen_host =
-            adviskv::ConfMgr::get_instance().Get<std::string>("listen_host",
-                                                              "127.0.0.1");
+        std::string listen_host = adviskv::ConfMgr::get_instance().Get<std::string>("listen_host", "127.0.0.1");
         std::string sdm_host = CONF_GET_STR("sdm_host");
         int32_t sdm_port = CONF_GET_INT("sdm_port");
-        int32_t sdm_rpc_timeout_ms =
-            CONF_GET_INT("sdm_rpc_timeout_ms", 3000);
-        std::string data_dir =
-            adviskv::path_from_project_root(CONF_GET_STR("data_dir")).string();
+        int32_t sdm_rpc_timeout_ms = CONF_GET_INT("sdm_rpc_timeout_ms", 3000);
+        std::string data_dir = adviskv::path_from_project_root(CONF_GET_STR("data_dir")).string();
 
         auto persist_engine = std::make_unique<MetaPersistEngine>(data_dir);
         if (adviskv::Status status = persist_engine->init(); status.fail()) {
@@ -94,8 +90,7 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        auto catalog_manager =
-            std::make_unique<CatalogManager>(persist_engine.get());
+        auto catalog_manager = std::make_unique<CatalogManager>(persist_engine.get());
 
         if (adviskv::Status status = catalog_manager->init(); status.fail()) {
             LOG_ERROR("failed to init catalog manager: {}", status.msg());
@@ -103,23 +98,17 @@ int main(int argc, char* argv[]) {
         }
 
         auto sdm_channel =
-            grpc::CreateChannel(fmt::format("{}:{}", sdm_host, sdm_port),
-                                grpc::InsecureChannelCredentials());
-        auto sdm_client =
-            std::make_unique<SdmClient>(sdm_channel, sdm_rpc_timeout_ms);
+                grpc::CreateChannel(fmt::format("{}:{}", sdm_host, sdm_port), grpc::InsecureChannelCredentials());
+        auto sdm_client = std::make_unique<SdmClient>(sdm_channel, sdm_rpc_timeout_ms);
 
-        auto ddl_service = std::make_unique<DdlService>(catalog_manager.get(),
-                                                        sdm_client.get());
-        auto table_ddl_reconciler = std::make_unique<TableDdlReconciler>(
-            catalog_manager.get(), sdm_client.get());
+        auto ddl_service = std::make_unique<DdlService>(catalog_manager.get(), sdm_client.get());
+        auto table_ddl_reconciler = std::make_unique<TableDdlReconciler>(catalog_manager.get(), sdm_client.get());
         table_ddl_reconciler->start(adviskv::Milliseconds(3000));
 
-        auto meta_service =
-            std::make_unique<MetaServiceImpl>(ddl_service.get());
+        auto meta_service = std::make_unique<MetaServiceImpl>(ddl_service.get());
 
         grpc::ServerBuilder builder;
-        builder.AddListeningPort(fmt::format("{}:{}", listen_host, listen_port),
-                                 grpc::InsecureServerCredentials());
+        builder.AddListeningPort(fmt::format("{}:{}", listen_host, listen_port), grpc::InsecureServerCredentials());
         builder.RegisterService(meta_service.get());
 
         std::unique_ptr<grpc::Server> server = builder.BuildAndStart();

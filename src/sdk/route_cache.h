@@ -12,7 +12,7 @@ namespace adviskv::sdk {
 class SdmRouteClient;
 
 class RouteCache {
-   public:
+public:
     RouteCache(const KVClientConf& conf, const SdmRouteClient* route_client);
     ~RouteCache();
 
@@ -24,7 +24,7 @@ class RouteCache {
     Status resolve_route(const Key& key, RouteInfo* route);
     Status refresh_route_for_key(const Key& key, RouteInfo* route);
 
-   private:
+private:
     struct TableRouteSnapshot;
     class RefreshTask;
 

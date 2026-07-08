@@ -75,7 +75,7 @@ Status RouteCache::lookup_cached_route(const Key& key, RouteInfo* route) const {
         return Status::ROUTE_NOT_FOUND("route cache is not ready");
     }
 
-    // TODO 以后不在SDK这边手动做hash了，让SDM那边传递过来ranges，这边直接做映射。
+    // TODO 以后尝试SDM那边传递过来ranges
     ShardIndex shard_id = stable_shard_index(key, snapshot->shard_count);
     if (shard_id < 0 || to<size_t>(shard_id) >= snapshot->routes.size()) {
         return Status::ROUTE_NOT_FOUND(fmt::format("route cache shard_id invalid, shard_id={}, shard_count={}",

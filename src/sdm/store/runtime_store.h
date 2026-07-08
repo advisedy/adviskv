@@ -1,8 +1,8 @@
 #pragma once
 
 #include <memory>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 #include "common/model/type.h"
 #include "common/status.h"
@@ -20,16 +20,15 @@ namespace adviskv::sdm {
     X(Status del_shard_route_entry(const ShardID& shard_id, const ReplicaID& replica_id)) \
     X(std::unique_ptr<SdmRuntimeStore> clone() const)
 
-
 class SdmRuntimeStore {
-   public:
+public:
     Status init() { return Status::OK(); }
 
 #define X(...) __VA_ARGS__;
     ISDM_RUNTIME_STORE_METHODS(X)
 #undef X
 
-   private:
+private:
     std::unordered_map<NodeID, NodePtr> nodes_;
     std::unordered_map<ShardID, ShardRoutePtr, ShardIDHash> shard_routes_;
 };

@@ -1,10 +1,10 @@
 #include "storage/raft/raft_log.h"
 
-#include <fmt/format.h>
-
 #include <algorithm>
 #include <utility>
 #include <variant>
+
+#include <fmt/format.h>
 
 #include "common/log.h"
 #include "common/model/type.h"
@@ -22,20 +22,15 @@ Term RaftLog::last_log_term() const {
     return log_entries_.back().term;
 }
 
-int64_t RaftLog::index_to_offset(LogIndex index) const {
-    return index - snapshot_index_ - 1;
-}
+int64_t RaftLog::index_to_offset(LogIndex index) const { return index - snapshot_index_ - 1; }
 
-LogIndex RaftLog::offset_to_index(int64_t offset) const {
-    return offset + 1 + snapshot_index_;
-}
+LogIndex RaftLog::offset_to_index(int64_t offset) const { return offset + 1 + snapshot_index_; }
 
 Term RaftLog::term_at(LogIndex index) const {
     if (index == 0) return 0;
     if (index == snapshot_index_) return snapshot_term_;
     if (index < snapshot_index_) {
-        LOG_WARN("raft log get term before snapshot, index={}, snapshot={}",
-                 index, snapshot_index_);
+        LOG_WARN("raft log get term before snapshot, index={}, snapshot={}", index, snapshot_index_);
         return 0;
     }
 
@@ -50,9 +45,9 @@ const LogEntry* RaftLog::entry_at(LogIndex index) const {
     int64_t offset = index_to_offset(index);
     if (offset < 0 || offset >= static_cast<int64_t>(log_entries_.size())) {
         LOG_WARN(
-            "offset is not valid, offset:{}, log_entries.size:{}, "
-            "snapshot_index:{}, last_log_index:{}",
-            offset, log_entries_.size(), snapshot_index_, last_log_index());
+                "offset is not valid, offset:{}, log_entries.size:{}, "
+                "snapshot_index:{}, last_log_index:{}",
+                offset, log_entries_.size(), snapshot_index_, last_log_index());
         return nullptr;
     }
     return &log_entries_[offset];
@@ -62,8 +57,7 @@ std::vector<LogEntry> RaftLog::entries_from(LogIndex index) const {
     return entries_from(index, last_log_index() - index + 1);
 }
 
-std::vector<LogEntry> RaftLog::entries_from(LogIndex index,
-                                            int64 max_count) const {
+std::vector<LogEntry> RaftLog::entries_from(LogIndex index, int64 max_count) const {
     std::vector<LogEntry> entries;
     if (max_count < 0) {
         LOG_WARN("[RaftLog] max count < 0");
@@ -77,8 +71,7 @@ std::vector<LogEntry> RaftLog::entries_from(LogIndex index,
         return {};
     }
     entries.insert(entries.end(), log_entries_.begin() + offset,
-                   log_entries_.begin() + std::min(offset + max_count,
-                                                   (int64)log_entries_.size()));
+                   log_entries_.begin() + std::min(offset + max_count, (int64)log_entries_.size()));
     return entries;
 }
 
@@ -91,8 +84,7 @@ LogIndex RaftLog::append_new_entry(Term term, const ProposeParam& param) {
         entry.op_type = write->op;
         entry.key = write->key;
         entry.value = write->value;
-    } else if (const auto* config =
-                   std::get_if<ConfigChangeProposal>(&param.payload)) {
+    } else if (const auto* config = std::get_if<ConfigChangeProposal>(&param.payload)) {
         entry.op_type = config->op;
         entry.config_member = config->member;
         entry.config_replica_id = config->target_replica_id;
@@ -105,8 +97,7 @@ LogIndex RaftLog::append_new_entry(Term term, const ProposeParam& param) {
     return new_index;
 }
 
-Status RaftLog::append_entries_from_leader(const std::vector<LogEntry>& entries,
-                                           AppendEntriesResult& result) {
+Status RaftLog::append_entries_from_leader(const std::vector<LogEntry>& entries, AppendEntriesResult& result) {
     result = {};
     if (entries.empty()) return Status::OK();
 
@@ -124,8 +115,7 @@ Status RaftLog::append_entries_from_leader(const std::vector<LogEntry>& entries,
         if (index < snapshot_index_) return 0;
         if (index == snapshot_index_) return snapshot_term_;
         int64_t offset = index_to_offset(index);
-        if (offset < 0 ||
-            offset >= static_cast<int64_t>(updated_entries.size())) {
+        if (offset < 0 || offset >= static_cast<int64_t>(updated_entries.size())) {
             return 0;
         }
         return updated_entries[offset].term;
@@ -147,10 +137,10 @@ Status RaftLog::append_entries_from_leader(const std::vector<LogEntry>& entries,
             updated_entries.push_back(entry);
             new_entries.push_back(entry);
         } else {
-            return Status::ERROR(fmt::format(
-                "raft log append entries found gap, last_log_index={}, "
-                "entry_index={}",
-                updated_last_log_index(), index));
+            return Status::ERROR(
+                    fmt::format("raft log append entries found gap, last_log_index={}, "
+                                "entry_index={}",
+                                updated_last_log_index(), index));
         }
     }
 
@@ -169,18 +159,18 @@ Status RaftLog::append_entries_from_leader(const std::vector<LogEntry>& entries,
 Status RaftLog::truncate(LogIndex new_snapshot_index) {
     if (new_snapshot_index <= snapshot_index_) {
         LOG_WARN(
-            "new_snapshot_index <= snapshot_index_, new_snapshot_index:{}, "
-            "snapshot_index:{}",
-            new_snapshot_index, snapshot_index_);
+                "new_snapshot_index <= snapshot_index_, new_snapshot_index:{}, "
+                "snapshot_index:{}",
+                new_snapshot_index, snapshot_index_);
         return StatusCode::ERROR;
     }
 
     if (new_snapshot_index > last_log_index()) {
         LOG_WARN(
-            "new_snapshot_index > last_log_index, (from "
-            "self)new_snapshot_index:{}, "
-            "last_log_index:{}",
-            new_snapshot_index, last_log_index());
+                "new_snapshot_index > last_log_index, (from "
+                "self)new_snapshot_index:{}, "
+                "last_log_index:{}",
+                new_snapshot_index, last_log_index());
         return StatusCode::ERROR;
     }
 
@@ -193,8 +183,8 @@ Status RaftLog::truncate(LogIndex new_snapshot_index) {
     return Status::OK();
 }
 
-std::vector<LogEntry> RaftLog::retained_entries_after_snapshot(
-    LogIndex new_snapshot_index, Term new_snapshot_term) const {
+std::vector<LogEntry> RaftLog::retained_entries_after_snapshot(LogIndex new_snapshot_index,
+                                                               Term new_snapshot_term) const {
     if (new_snapshot_index >= last_log_index()) {
         return {};
     }
@@ -203,24 +193,19 @@ std::vector<LogEntry> RaftLog::retained_entries_after_snapshot(
     }
 
     int64_t keep_from = index_to_offset(new_snapshot_index + 1);
-    if (keep_from < 0 ||
-        keep_from > static_cast<int64_t>(log_entries_.size())) {
+    if (keep_from < 0 || keep_from > static_cast<int64_t>(log_entries_.size())) {
         LOG_WARN(
-            "invalid keep_from when installing snapshot, keep_from:{}, "
-            "new_snapshot_index:{}, snapshot_index:{}, log_entries.size:{}",
-            keep_from, new_snapshot_index, snapshot_index_,
-            log_entries_.size());
+                "invalid keep_from when installing snapshot, keep_from:{}, "
+                "new_snapshot_index:{}, snapshot_index:{}, log_entries.size:{}",
+                keep_from, new_snapshot_index, snapshot_index_, log_entries_.size());
         return {};
     }
-    return std::vector<LogEntry>(log_entries_.begin() + keep_from,
-                                 log_entries_.end());
+    return std::vector<LogEntry>(log_entries_.begin() + keep_from, log_entries_.end());
 }
 
-RaftLog::InstallSnapshotResult RaftLog::install_snapshot(
-    LogIndex new_snapshot_index, Term new_snapshot_term) {
+RaftLog::InstallSnapshotResult RaftLog::install_snapshot(LogIndex new_snapshot_index, Term new_snapshot_term) {
     InstallSnapshotResult result;
-    result.retained_entries =
-        retained_entries_after_snapshot(new_snapshot_index, new_snapshot_term);
+    result.retained_entries = retained_entries_after_snapshot(new_snapshot_index, new_snapshot_term);
 
     snapshot_index_ = new_snapshot_index;
     snapshot_term_ = new_snapshot_term;
@@ -229,8 +214,6 @@ RaftLog::InstallSnapshotResult RaftLog::install_snapshot(
     return result;
 }
 
-void RaftLog::update_entries(const std::vector<LogEntry>& entries) {
-    log_entries_ = entries;
-}
+void RaftLog::update_entries(const std::vector<LogEntry>& entries) { log_entries_ = entries; }
 
 }  // namespace adviskv::storage

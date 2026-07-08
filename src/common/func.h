@@ -108,8 +108,7 @@ inline Status read_value(int fd, T& v) {
 inline Status write_string(int fd, const std::string& s) {
     int32_t len = static_cast<int32_t>(s.size());
     RETURN_IF_INVALID_STATUS(write_value(fd, len))
-    if (len == 0)
-        return Status::OK();
+    if (len == 0) return Status::OK();
     return write_full(fd, s.data(), static_cast<size_t>(len));
 }
 

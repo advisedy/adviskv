@@ -19,7 +19,7 @@ struct MetricsOptions {
 };
 
 class AdvisMetrics {
-   public:
+public:
     static AdvisMetrics& get_instance();
 
     Status init(const MetricsOptions& options);
@@ -29,7 +29,7 @@ class AdvisMetrics {
     void reset();
     std::string dump_prometheus() const;
 
-   private:
+private:
     class Registry;
     class HttpServer;
 
@@ -44,13 +44,13 @@ class AdvisMetrics {
 };
 
 class ScopedMetricsTimer {
-   public:
+public:
     explicit ScopedMetricsTimer(std::string name);
     ~ScopedMetricsTimer();
 
     DISALLOW_COPY_AND_ASSIGN(ScopedMetricsTimer)
 
-   private:
+private:
     std::string name_;
     std::chrono::steady_clock::time_point start_;
 };
@@ -59,8 +59,5 @@ class ScopedMetricsTimer {
 
 #define ADVISKV_CONCAT_INNER(x, y) x##y
 #define ADVISKV_CONCAT(x, y) ADVISKV_CONCAT_INNER(x, y)
-#define ADVISKV_METRICS_COUNTER(...) \
-    ::adviskv::AdvisMetrics::get_instance().record_counter(__VA_ARGS__)
-#define ADVISKV_METRICS_TIMER(name)                   \
-    ::adviskv::ScopedMetricsTimer ADVISKV_CONCAT(     \
-        adviskv_metrics_timer_, __LINE__)(name)
+#define ADVISKV_METRICS_COUNTER(...) ::adviskv::AdvisMetrics::get_instance().record_counter(__VA_ARGS__)
+#define ADVISKV_METRICS_TIMER(name) ::adviskv::ScopedMetricsTimer ADVISKV_CONCAT(adviskv_metrics_timer_, __LINE__)(name)

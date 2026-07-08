@@ -24,20 +24,18 @@ struct ReplicaMetaPayload {
 // "snapshot";
 // replica_meta，前几个是persist干的，最后一个是这个persist干的
 class ReplicaMetaPersistEngine {
-   public:
+public:
     static constexpr const char* kFileName = "replica_meta";
 
     explicit ReplicaMetaPersistEngine(std::string data_dir);
 
     Status save_replica_meta(const ReplicaMetaPayload& payload) const;
-    Status load_replica_meta(const std::filesystem::path& meta_path,
-                             ReplicaMetaPayload& payload) const;
-    Status load_replica_meta(const ReplicaID& replica_id,
-                             ReplicaMetaPayload& payload) const;
+    Status load_replica_meta(const std::filesystem::path& meta_path, ReplicaMetaPayload& payload) const;
+    Status load_replica_meta(const ReplicaID& replica_id, ReplicaMetaPayload& payload) const;
     Status delete_replica_data(const ReplicaID& replica_id) const;
     std::vector<std::filesystem::path> scan_replica_meta_files() const;
 
-   private:
+private:
     std::filesystem::path replica_dir(const ReplicaID& replica_id) const;
     std::filesystem::path meta_path(const ReplicaID& replica_id) const;
 

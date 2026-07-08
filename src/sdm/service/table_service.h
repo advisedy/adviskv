@@ -1,9 +1,9 @@
 #pragma once
 
-#include "common/status.h"
 #include "common/model/type.h"
-#include "sdm/model/param.h"
+#include "common/status.h"
 #include "sdm/model/model.h"
+#include "sdm/model/param.h"
 
 namespace adviskv::sdm {
 

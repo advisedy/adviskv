@@ -25,10 +25,10 @@ namespace adviskv::e2e {
 
 namespace resize_resilience_detail {
 
-constexpr const char* kBasePrefix = "resize-resilience";
-constexpr const char* kAfterPrefix = "resize-resilience-after";
-constexpr const char* kLivePrefix = "resize-live";
-constexpr int32_t kWriterSleepMs = 30;
+constexpr const char* K_BASE_PREFIX = "resize-resilience";
+constexpr const char* K_AFTER_PREFIX = "resize-resilience-after";
+constexpr const char* K_LIVE_PREFIX = "resize-live";
+constexpr int32_t K_WRITER_SLEEP_MS = 30;
 
 inline std::string first_key(const std::string& prefix) {
     return make_case_kvs(prefix, 1).front().first;
@@ -71,8 +71,8 @@ private:
 
         int32_t index = 0;
         while (!stop_.load(std::memory_order_relaxed)) {
-            KV kv{fmt::format("{}-key-{:06d}", kLivePrefix, index),
-                  fmt::format("{}-value-{:06d}", kLivePrefix, index)};
+            KV kv{fmt::format("{}-key-{:06d}", K_LIVE_PREFIX, index),
+                  fmt::format("{}-value-{:06d}", K_LIVE_PREFIX, index)};
             ++index;
 
             const Status status = client.put(kv.first, kv.second);
@@ -87,7 +87,7 @@ private:
             }
 
             std::this_thread::sleep_for(
-                std::chrono::milliseconds(kWriterSleepMs));
+                std::chrono::milliseconds(K_WRITER_SLEEP_MS));
         }
     }
 
@@ -157,11 +157,11 @@ inline bool run_table_replica_count_resize_with_writes_case(
 
     sdk::KVClient client = make_kv_client(options);
     if (!write_dataset(&client, options,
-                       resize_resilience_detail::kBasePrefix)) {
+                       resize_resilience_detail::K_BASE_PREFIX)) {
         return false;
     }
     if (!verify_dataset(&client, options,
-                        resize_resilience_detail::kBasePrefix)) {
+                        resize_resilience_detail::K_BASE_PREFIX)) {
         return false;
     }
 
@@ -194,18 +194,18 @@ inline bool run_table_replica_count_resize_with_writes_case(
                            writer.failed()));
 
     if (!verify_dataset(&client, options,
-                        resize_resilience_detail::kBasePrefix)) {
+                        resize_resilience_detail::K_BASE_PREFIX)) {
         return false;
     }
-    if (!verify_kvs(&client, options, resize_resilience_detail::kLivePrefix,
+    if (!verify_kvs(&client, options, resize_resilience_detail::K_LIVE_PREFIX,
                     acknowledged)) {
         return false;
     }
 
     return write_dataset(&client, options,
-                         resize_resilience_detail::kAfterPrefix) &&
+                         resize_resilience_detail::K_AFTER_PREFIX) &&
            verify_dataset(&client, options,
-                          resize_resilience_detail::kAfterPrefix);
+                          resize_resilience_detail::K_AFTER_PREFIX);
 }
 
 // resize 故障/重启类场景的准备阶段：
@@ -226,16 +226,16 @@ inline bool run_table_replica_count_resize_disruption_prepare_case(
 
     sdk::KVClient client = make_kv_client(options);
     if (!write_dataset(&client, options,
-                       resize_resilience_detail::kBasePrefix)) {
+                       resize_resilience_detail::K_BASE_PREFIX)) {
         return false;
     }
     if (!verify_dataset(&client, options,
-                        resize_resilience_detail::kBasePrefix)) {
+                        resize_resilience_detail::K_BASE_PREFIX)) {
         return false;
     }
 
     const std::string probe_key =
-        resize_resilience_detail::first_key(resize_resilience_detail::kBasePrefix);
+        resize_resilience_detail::first_key(resize_resilience_detail::K_BASE_PREFIX);
     if (!wait_route_has_leader(&context, probe_key, nullptr)) {
         return false;
     }
@@ -269,7 +269,7 @@ inline bool run_table_replica_count_resize_disruption_verify_case(
         return false;
     }
     const std::string probe_key =
-        resize_resilience_detail::first_key(resize_resilience_detail::kBasePrefix);
+        resize_resilience_detail::first_key(resize_resilience_detail::K_BASE_PREFIX);
     if (!wait_route_has_leader(&context, probe_key, nullptr)) {
         return false;
     }
@@ -283,13 +283,13 @@ inline bool run_table_replica_count_resize_disruption_verify_case(
 
     sdk::KVClient client = make_kv_client(options);
     if (!verify_dataset(&client, options,
-                        resize_resilience_detail::kBasePrefix)) {
+                        resize_resilience_detail::K_BASE_PREFIX)) {
         return false;
     }
     return write_dataset(&client, options,
-                         resize_resilience_detail::kAfterPrefix) &&
+                         resize_resilience_detail::K_AFTER_PREFIX) &&
            verify_dataset(&client, options,
-                          resize_resilience_detail::kAfterPrefix);
+                          resize_resilience_detail::K_AFTER_PREFIX);
 }
 
 }  // namespace adviskv::e2e

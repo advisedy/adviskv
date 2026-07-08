@@ -5,8 +5,8 @@
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
-#include "common/status.h"
 #include "common/model/type.h"
+#include "common/status.h"
 #include "storage/model/param.h"
 #include "storage/raft/core/raft_core.h"
 
@@ -26,12 +26,10 @@ namespace adviskv::storage {
 然后replica侧调用apply_committed_entries，去apply到状态机上。同时也会更新raft_node的last_apply_
 
 */
-LogIndex RaftCore::append_new_entry(const ProposeParam& param,
-                                    RaftEffects& effects) {
-    LogIndex new_index =
-        raft_log_.append_new_entry(election_.current_term(), param);
+LogIndex RaftCore::append_new_entry(const ProposeParam& param, RaftEffects& effects) {
+    LogIndex new_index = raft_log_.append_new_entry(election_.current_term(), param);
     const LogEntry* entry = raft_log_.entry_at(new_index);
-    if (entry != nullptr) { //TODO111
+    if (entry != nullptr) {  // TODO111
         effects.entries_to_append.push_back(*entry);
     }
     return new_index;
@@ -60,8 +58,7 @@ Status RaftCore::validate_proposal(const ProposeParam& param) const {
     return Status::INVALID_ARGUMENT("unknown proposal type");
 }
 
-std::pair<Status, LogIndex> RaftCore::propose(const ProposeParam& param,
-                                              RaftEffects& effects) {
+std::pair<Status, LogIndex> RaftCore::propose(const ProposeParam& param, RaftEffects& effects) {
     Status ready_status = ensure_ready();
     if (ready_status.fail()) return {ready_status, -1};
 
@@ -82,8 +79,8 @@ std::pair<Status, LogIndex> RaftCore::propose(const ProposeParam& param,
     return {Status::OK(), new_commit_idx};
 }
 
-std::vector<std::pair<Status, LogIndex>> RaftCore::propose_batch(
-    const std::vector<ProposeParam>& params, RaftEffects& effects) {
+std::vector<std::pair<Status, LogIndex>> RaftCore::propose_batch(const std::vector<ProposeParam>& params,
+                                                                 RaftEffects& effects) {
     std::vector<std::pair<Status, LogIndex>> results;
     if (params.empty()) {
         return results;
@@ -149,35 +146,31 @@ void RaftCore::broadcast_append_entries(RaftEffects& effects) {
 }
 
 // 这个是leadr发过来，raftnode作为follower/cacdidate做的handle
-void RaftCore::handle_append_entries(const AppendEntriesParam& param,
-                                     AppendEntriesResult& result,
+void RaftCore::handle_append_entries(const AppendEntriesParam& param, AppendEntriesResult& result,
                                      RaftEffects& effects) {
     result = AppendEntriesResult{};
     result.success = false;
     result.term = election_.current_term();
     result.last_log_index = raft_log_.last_log_index();
     LOG_DEBUG(
-        "[RaftCore Append] handle_append_entries, replica_id:{}, from:{}, term:{}, current_term:{}, prev_log_index:{}, prev_log_term:{}, entry_count:{}, leader_commit:{}",
-        self_id_.to_string(), param.from_replica_id.to_string(), param.term,
-        election_.current_term(), param.prev_log_index, param.prev_log_term,
-        param.entries.size(), param.leader_commit);
+            "[RaftCore Append] handle_append_entries, replica_id:{}, from:{}, term:{}, current_term:{}, prev_log_index:{}, prev_log_term:{}, entry_count:{}, leader_commit:{}",
+            self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term(),
+            param.prev_log_index, param.prev_log_term, param.entries.size(), param.leader_commit);
 
     if (!membership_.contains(param.from_replica_id)) {
         LOG_WARN(
-            "[RaftCore Append] replica:{} reject AppendEntries from non-member "
-            "replica:{}, term:{}, current_term:{}",
-            self_id_.to_string(), param.from_replica_id.to_string(), param.term,
-            election_.current_term());
+                "[RaftCore Append] replica:{} reject AppendEntries from non-member "
+                "replica:{}, term:{}, current_term:{}",
+                self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term());
         return;
     }
 
     if (param.term < election_.current_term()) {
-        ADVISKV_METRICS_COUNTER(
-            "storage_raft_handle_append_entries_stale_term");
+        ADVISKV_METRICS_COUNTER("storage_raft_handle_append_entries_stale_term");
         LOG_INFO(
-            "[RaftCore Append] handle_append_entries, param.term:{} < "
-            "election_.current_term:{}",
-            param.term, election_.current_term());
+                "[RaftCore Append] handle_append_entries, param.term:{} < "
+                "election_.current_term:{}",
+                param.term, election_.current_term());
         return;
     }
 
@@ -191,10 +184,9 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param,
     result.term = election_.current_term();
     election_tick_trigger_.clear();
     LOG_DEBUG(
-        "[RaftCore Append] handle_append_entries: clear election_tick_trigger, "
-        "cur_cnt:{}, limit_cnt:{}",
-        election_tick_trigger_.get_cur_cnt(),
-        election_tick_trigger_.get_limit_cnt())
+            "[RaftCore Append] handle_append_entries: clear election_tick_trigger, "
+            "cur_cnt:{}, limit_cnt:{}",
+            election_tick_trigger_.get_cur_cnt(), election_tick_trigger_.get_limit_cnt())
 
     if (param.prev_log_index > 0) {
         if (param.prev_log_index < raft_log_.snapshot_index()) {
@@ -202,16 +194,13 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param,
             // leader那边会一直prev_log_index--，然后直到达不到leader的
             // snapshot_index，然后发送快照让follower安装leader的快照。
             LOG_INFO(
-                "[RaftCore Append] handle_append_entries, replica_id:{} "
-                "follower "
-                "receive append entries: "
-                "param.prev_log_index:{} < snapshot_index_:{}",
-                self_id_.to_string(), param.prev_log_index,
-                raft_log_.snapshot_index());
-        } else if (raft_log_.term_at(param.prev_log_index) !=
-                   param.prev_log_term) {
-            ADVISKV_METRICS_COUNTER(
-                "storage_raft_handle_append_entries_prev_mismatch");
+                    "[RaftCore Append] handle_append_entries, replica_id:{} "
+                    "follower "
+                    "receive append entries: "
+                    "param.prev_log_index:{} < snapshot_index_:{}",
+                    self_id_.to_string(), param.prev_log_index, raft_log_.snapshot_index());
+        } else if (raft_log_.term_at(param.prev_log_index) != param.prev_log_term) {
+            ADVISKV_METRICS_COUNTER("storage_raft_handle_append_entries_prev_mismatch");
             return;
         }
     }
@@ -229,33 +218,30 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param,
     if (param.entries.empty()) {
         // 这里是心跳
         LOG_DEBUG(
-            "[RaftCore Append] handle_append_entries: this is heartbeat, from "
-            "replica_id:{}, term:{}, prev_log_index:{}, prev_log_term:{}, "
-            "leader_commit:{}",
-            param.from_replica_id.to_string(), param.term, param.prev_log_index,
-            param.prev_log_term, param.leader_commit)
+                "[RaftCore Append] handle_append_entries: this is heartbeat, from "
+                "replica_id:{}, term:{}, prev_log_index:{}, prev_log_term:{}, "
+                "leader_commit:{}",
+                param.from_replica_id.to_string(), param.term, param.prev_log_index, param.prev_log_term,
+                param.leader_commit)
     } else {
         RaftLog::AppendEntriesResult append_result;
-        Status append_status =
-            raft_log_.append_entries_from_leader(param.entries, append_result);
+        Status append_status = raft_log_.append_entries_from_leader(param.entries, append_result);
         if (append_status.fail()) {
             LOG_WARN(
-                "[RaftCore Append] storage raft handle append entries failed, "
-                "msg={}",
-                append_status.msg());
+                    "[RaftCore Append] storage raft handle append entries failed, "
+                    "msg={}",
+                    append_status.msg());
             return;
         }
         if (append_result.entries_to_rewrite.has_value()) {
-            effects.entries_to_rewrite =
-                std::move(append_result.entries_to_rewrite.value());
+            effects.entries_to_rewrite = std::move(append_result.entries_to_rewrite.value());
         } else {
-            effects.entries_to_append =
-                std::move(append_result.entries_to_append);
+            effects.entries_to_append = std::move(append_result.entries_to_append);
         }
         LOG_DEBUG(
-            "[RaftCore Append] handle_append_entries: effects finish, "
-            "effect:{}",
-            effects.to_string())
+                "[RaftCore Append] handle_append_entries: effects finish, "
+                "effect:{}",
+                effects.to_string())
     }
 
     // 不管是否有entry，也就是不管是日志追加还是心跳，都会需要更新commit_idx
@@ -267,42 +253,37 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param,
     ADVISKV_METRICS_COUNTER("storage_raft_handle_append_entries_success");
 }
 
-Status RaftCore::handle_append_response(const ReplicaID& from,
-                                        const AppendEntriesParam& sent_param,
-                                        const AppendEntriesResult& result,
-                                        RaftEffects& effects) {
+Status RaftCore::handle_append_response(const ReplicaID& from, const AppendEntriesParam& sent_param,
+                                        const AppendEntriesResult& result, RaftEffects& effects) {
     RETURN_IF_INVALID_STATUS(ensure_ready())
 
     if (result.term > election_.current_term()) {
-        ADVISKV_METRICS_COUNTER(
-            "storage_raft_handle_append_response_higher_term");
+        ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_higher_term");
         become_follower(result.term, effects);
         return Status::NOT_LEADER("higher term");
     }
 
     if (sent_param.term != election_.current_term()) {
         LOG_DEBUG(
-            "[RaftCore Append] leader replica:{} handle append response: "
-            "result.term:{} != "
-            "current_term:{}",
-            self_id_.to_string(), sent_param.term, election_.current_term());
+                "[RaftCore Append] leader replica:{} handle append response: "
+                "result.term:{} != "
+                "current_term:{}",
+                self_id_.to_string(), sent_param.term, election_.current_term());
         return Status::OK();
     }
 
     if (!election_.is_leader()) {
-        ADVISKV_METRICS_COUNTER(
-            "storage_raft_handle_append_response_not_leader");
+        ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_not_leader");
         return Status::NOT_LEADER();
     }
 
     if (result.success) {
         ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_success");
         LOG_DEBUG(
-            "[RaftCore Append] leader replica:{} append enrties to replica:{} "
-            "success.",
-            self_id_.to_string(), from.to_string());
-        replication_.handle_append_ok(from, sent_param.prev_log_index,
-                                      sent_param.entries.size());
+                "[RaftCore Append] leader replica:{} append enrties to replica:{} "
+                "success.",
+                self_id_.to_string(), from.to_string());
+        replication_.handle_append_ok(from, sent_param.prev_log_index, sent_param.entries.size());
         try_update_commit_index(effects);
         maybe_promote_ready_learner(effects);
     } else {
@@ -313,38 +294,34 @@ Status RaftCore::handle_append_response(const ReplicaID& from,
         if (replication_.is_stale_append_response(from, sent_param)) {
             // 说明其实过期了，这个是旧的请求的回应，应该忽略才对
             LOG_DEBUG(
-                "[RaftCore Append] leader replica:{} sent "
-                "param.prev_log_index:{} + 1 != "
-                "next_index_[from]:{}",
-                self_id_.to_string(), sent_param.prev_log_index,
-                replication_.next_index(from));
+                    "[RaftCore Append] leader replica:{} sent "
+                    "param.prev_log_index:{} + 1 != "
+                    "next_index_[from]:{}",
+                    self_id_.to_string(), sent_param.prev_log_index, replication_.next_index(from));
             return Status::OK();
         }
 
         replication_.handle_append_failed(from, result.last_log_index);
 
         LOG_DEBUG(
-            "[RaftCore Append] leader replica:{} append enrties to replica:{} "
-            "failed. set "
-            "next_index:{}",
-            self_id_.to_string(), from.to_string(),
-            replication_.next_index(from));
+                "[RaftCore Append] leader replica:{} append enrties to replica:{} "
+                "failed. set "
+                "next_index:{}",
+                self_id_.to_string(), from.to_string(), replication_.next_index(from));
     }
     return Status::OK();
 }
 
-void RaftCore::handle_append_send_failed(const ReplicaID& from,
-                                         const AppendEntriesParam& param,
-                                         const Status& status) {
+void RaftCore::handle_append_send_failed(const ReplicaID& from, const AppendEntriesParam& param, const Status& status) {
     if (ensure_ready().fail()) return;
     if (!election_.is_leader()) return;
     UNUSED(param);
 
     ADVISKV_METRICS_COUNTER("storage_raft_append_entries_send_failed");
     LOG_WARN(
-        "[RaftCore Append] leader replica:{} append entries send to "
-        "replica:{} failed, status:{}",
-        self_id_.to_string(), from.to_string(), status.to_string());
+            "[RaftCore Append] leader replica:{} append entries send to "
+            "replica:{} failed, status:{}",
+            self_id_.to_string(), from.to_string(), status.to_string());
 }
 
 // raftnode 作为leader，需要更新自己的commit_idx
@@ -352,12 +329,10 @@ void RaftCore::handle_append_send_failed(const ReplicaID& from,
 void RaftCore::try_update_commit_index(RaftEffects& effects) {
     if (ensure_ready().fail()) return;
 
-    RaftReplication::CommitAdvanceResult result =
-        replication_.try_advance_commit_index(election_.current_term());
+    RaftReplication::CommitAdvanceResult result = replication_.try_advance_commit_index(election_.current_term());
     if (result.advanced) {
         bool committed_remove_member = false;
-        for (LogIndex index = result.old_commit_index + 1;
-             index <= result.new_commit_index; ++index) {
+        for (LogIndex index = result.old_commit_index + 1; index <= result.new_commit_index; ++index) {
             const LogEntry* entry = raft_log_.entry_at(index);
             if (entry != nullptr && entry->op_type == WriteOpType::REMOVE_MEMBER) {
                 committed_remove_member = true;
@@ -365,19 +340,18 @@ void RaftCore::try_update_commit_index(RaftEffects& effects) {
             }
         }
         if (committed_remove_member) {
-            // 这里这样可以保证 quorum 的及时更新，如果是删除follower的话到还好，但是如果是删除leader的话就得有这个，不然quorum没有及时更新，影响正确性，最直观的例子比如是2个节点的情况
+            // 这里这样可以保证 quorum
+            // 的及时更新，如果是删除follower的话到还好，但是如果是删除leader的话就得有这个，不然quorum没有及时更新，影响正确性，最直观的例子比如是2个节点的情况
             broadcast_append_entries(effects);
         }
         ADVISKV_METRICS_COUNTER("storage_raft_commit_index_advance");
         ADVISKV_METRICS_COUNTER("storage_raft_committed_entry",
-                                static_cast<int64_t>(result.new_commit_index -
-                                                     result.old_commit_index));
+                                static_cast<int64_t>(result.new_commit_index - result.old_commit_index));
     }
 }
 
 const LogEntry* RaftCore::first_unapplied_config_entry() const {
-    for (LogIndex index = raft_apply_.last_applied() + 1;
-         index <= raft_log_.last_log_index(); ++index) {
+    for (LogIndex index = raft_apply_.last_applied() + 1; index <= raft_log_.last_log_index(); ++index) {
         const LogEntry* entry = raft_log_.entry_at(index);
         if (entry != nullptr && is_config_change_op(entry->op_type)) {
             return entry;
@@ -386,12 +360,9 @@ const LogEntry* RaftCore::first_unapplied_config_entry() const {
     return nullptr;
 }
 
-bool RaftCore::has_unapplied_config_entry() const {
-    return first_unapplied_config_entry() != nullptr;
-}
+bool RaftCore::has_unapplied_config_entry() const { return first_unapplied_config_entry() != nullptr; }
 
-Status RaftCore::ensure_add_learner(const PeerMember& member,
-                                    RaftEffects& effects) {
+Status RaftCore::ensure_add_learner(const PeerMember& member, RaftEffects& effects) {
     RETURN_IF_INVALID_STATUS(ensure_ready())
     if (!election_.is_leader()) {
         return Status::NOT_LEADER("not leader");
@@ -404,17 +375,16 @@ Status RaftCore::ensure_add_learner(const PeerMember& member,
     }
     const LogEntry* pending_entry = first_unapplied_config_entry();
     if (pending_entry != nullptr) {
-    if( pending_entry->config_member == member && pending_entry->op_type == WriteOpType::ADD_LEARNER) {
-        return Status::OK();
-    }
-      
+        if (pending_entry->config_member == member && pending_entry->op_type == WriteOpType::ADD_LEARNER) {
+            return Status::OK();
+        }
+
         return Status::RETRY_ERROR("another config change is in progress");
     }
     return propose(ProposeParam::add_learner(member), effects).first;
 }
 
-Status RaftCore::ensure_remove_member(const ReplicaID& replica_id,
-                                      RaftEffects& effects) {
+Status RaftCore::ensure_remove_member(const ReplicaID& replica_id, RaftEffects& effects) {
     RETURN_IF_INVALID_STATUS(ensure_ready())
     if (!election_.is_leader()) {
         return Status::NOT_LEADER("not leader");
@@ -427,7 +397,7 @@ Status RaftCore::ensure_remove_member(const ReplicaID& replica_id,
     }
     const LogEntry* pending_entry = first_unapplied_config_entry();
     if (pending_entry != nullptr) {
-        if(pending_entry->config_replica_id == replica_id && pending_entry->op_type == WriteOpType::REMOVE_MEMBER){
+        if (pending_entry->config_replica_id == replica_id && pending_entry->op_type == WriteOpType::REMOVE_MEMBER) {
             return Status::OK();
         }
         return Status::RETRY_ERROR("another config change is in progress");
@@ -445,8 +415,7 @@ void RaftCore::maybe_promote_ready_learner(RaftEffects& effects) {
 
     LogIndex target_index = raft_log_.last_log_index();
     for (const PeerMember& learner : membership_.learners()) {
-        if (!replication_.match_index_at_least(learner.replica_id,
-                                               target_index)) {
+        if (!replication_.match_index_at_least(learner.replica_id, target_index)) {
             continue;
         }
         UNUSED(propose(ProposeParam::promote_voter(learner.replica_id), effects));

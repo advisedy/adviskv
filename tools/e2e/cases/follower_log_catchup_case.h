@@ -11,12 +11,12 @@
 
 namespace adviskv::e2e {
 namespace {
-constexpr const char* kFollowerLogCatchupBasePrefix =
+constexpr const char* K_FOLLOWER_LOG_CATCHUP_BASE_PREFIX =
     "follower-log-catchup-base";
-constexpr const char* kFollowerLogCatchupGapPrefix = "follower-log-catchup-gap";
-constexpr const char* kFollowerLogCatchupAfterKey =
+constexpr const char* K_FOLLOWER_LOG_CATCHUP_GAP_PREFIX = "follower-log-catchup-gap";
+constexpr const char* K_FOLLOWER_LOG_CATCHUP_AFTER_KEY =
     "follower-log-catchup-after";
-constexpr const char* kFollowerLogCatchupAfterValue =
+constexpr const char* K_FOLLOWER_LOG_CATCHUP_AFTER_VALUE =
     "follower-log-catchup-after-value";
 }  // namespace
 
@@ -34,13 +34,13 @@ inline bool run_follower_log_catchup_prepare_case(const Options& options) {
     }
 
     if (!heavy::prepare_and_print_route(
-            options, heavy::first_dataset_key(kFollowerLogCatchupBasePrefix))) {
+            options, heavy::first_dataset_key(K_FOLLOWER_LOG_CATCHUP_BASE_PREFIX))) {
         return false;
     }
     print_pass("prepare and print route", "ok");
 
     sdk::KVClient client = make_kv_client(options);
-    return write_dataset(&client, options, kFollowerLogCatchupBasePrefix);
+    return write_dataset(&client, options, K_FOLLOWER_LOG_CATCHUP_BASE_PREFIX);
 }
 
 inline bool run_follower_log_catchup_write_gap_case(const Options& options) {
@@ -49,11 +49,11 @@ inline bool run_follower_log_catchup_write_gap_case(const Options& options) {
         return false;
     }
     if (!heavy::wait_existing_table(
-            options, heavy::first_dataset_key(kFollowerLogCatchupGapPrefix))) {
+            options, heavy::first_dataset_key(K_FOLLOWER_LOG_CATCHUP_GAP_PREFIX))) {
         return false;
     }
     sdk::KVClient client = make_kv_client(options);
-    return write_dataset(&client, options, kFollowerLogCatchupGapPrefix);
+    return write_dataset(&client, options, K_FOLLOWER_LOG_CATCHUP_GAP_PREFIX);
 }
 
 inline bool run_follower_log_catchup_verify_case(const Options& options) {
@@ -61,25 +61,25 @@ inline bool run_follower_log_catchup_verify_case(const Options& options) {
     // 然后记录leader的last_apply，然后比较follower的，要大于等于leader的last_apply
 
     if (!heavy::wait_existing_table(
-            options, heavy::first_dataset_key(kFollowerLogCatchupBasePrefix))) {
+            options, heavy::first_dataset_key(K_FOLLOWER_LOG_CATCHUP_BASE_PREFIX))) {
         return false;
     }
     sdk::KVClient client = make_kv_client(options);
-    if (!verify_dataset(&client, options, kFollowerLogCatchupBasePrefix)) {
+    if (!verify_dataset(&client, options, K_FOLLOWER_LOG_CATCHUP_BASE_PREFIX)) {
         return false;
     }
-    if (!verify_dataset(&client, options, kFollowerLogCatchupGapPrefix)) {
+    if (!verify_dataset(&client, options, K_FOLLOWER_LOG_CATCHUP_GAP_PREFIX)) {
         return false;
     }
     print_pass("verify before's dataset", "ok");
     if (!wait_status("sdk put follower-log-catchup-after", options, [&]() {
-            return client.put(kFollowerLogCatchupAfterKey,
-                              kFollowerLogCatchupAfterValue);
+            return client.put(K_FOLLOWER_LOG_CATCHUP_AFTER_KEY,
+                              K_FOLLOWER_LOG_CATCHUP_AFTER_VALUE);
         })) {
         return false;
     }
-    if (!wait_get_value(&client, options, kFollowerLogCatchupAfterKey,
-                        kFollowerLogCatchupAfterValue)) {
+    if (!wait_get_value(&client, options, K_FOLLOWER_LOG_CATCHUP_AFTER_KEY,
+                        K_FOLLOWER_LOG_CATCHUP_AFTER_VALUE)) {
         return false;
     }
     print_pass("put new key", "ok");
@@ -88,7 +88,7 @@ inline bool run_follower_log_catchup_verify_case(const Options& options) {
     std::string last_error;
     RouteReplicaStatesForTest replica_states;
     if (!get_route_replica_states_for_test(&context,
-                                           kFollowerLogCatchupAfterKey,
+                                           K_FOLLOWER_LOG_CATCHUP_AFTER_KEY,
                                            &replica_states, &last_error)) {
         print_fail("get route replica states", last_error);
         return false;

@@ -57,55 +57,32 @@ enum class StatusCode : int32_t {
 
 class Status {
 public:
-    Status() : code_(StatusCode::OK) {
-    }
-    Status(StatusCode code) : code_(code) {
-    }
-    explicit Status(int32_t code) : code_(static_cast<StatusCode>(code)) {
-    }
-    Status(StatusCode code, const std::string& msg) : code_(code), msg_(msg) {
-    }
-    Status(int32_t code, const std::string& msg) : code_(to<StatusCode>(code)), msg_(msg) {
-    }
+    Status() : code_(StatusCode::OK) {}
+    Status(StatusCode code) : code_(code) {}
+    explicit Status(int32_t code) : code_(static_cast<StatusCode>(code)) {}
+    Status(StatusCode code, const std::string& msg) : code_(code), msg_(msg) {}
+    Status(int32_t code, const std::string& msg) : code_(to<StatusCode>(code)), msg_(msg) {}
 
-    bool ok() const {
-        return code_ == StatusCode::OK;
-    }
-    bool fail() const {
-        return !ok();
-    }
+    bool ok() const { return code_ == StatusCode::OK; }
+    bool fail() const { return !ok(); }
 
-    StatusCode code() const {
-        return code_;
-    }
-    const std::string& msg() const {
-        return msg_;
-    }
+    StatusCode code() const { return code_; }
+    const std::string& msg() const { return msg_; }
 
-    bool operator==(const Status& other) const {
-        return code_ == other.code_;
-    }
+    bool operator==(const Status& other) const { return code_ == other.code_; }
     DEFINE_OPERATOR_NOT_EQUAL(Status)
 
     std::string to_string() const {  // 这里fmt里如果想要输出{}的转义，需要搞两下
         return fmt::format("Status{{code={}, msg='{}'}}", static_cast<int>(code_), msg_);
     }
 
-    void set_msg(const std::string& msg) {
-        msg_ = msg;
-    }
+    void set_msg(const std::string& msg) { msg_ = msg; }
 
-    void set_code(StatusCode code) {
-        code_ = code;
-    }
+    void set_code(StatusCode code) { code_ = code; }
 
-#define X(name, code)                            \
-    static Status name() {                       \
-        return Status(StatusCode::name);         \
-    }                                            \
-    static Status name(const std::string& msg) { \
-        return Status(StatusCode::name, msg);    \
-    }
+#define X(name, code)                                         \
+    static Status name() { return Status(StatusCode::name); } \
+    static Status name(const std::string& msg) { return Status(StatusCode::name, msg); }
     ADVISKV_STATUS_CODE_LIST(X)
 #undef X
 
@@ -116,9 +93,7 @@ private:
 
 using StatusOr = std::optional<Status>;
 
-inline int32_t to_rpc_code(StatusCode code) {
-    return static_cast<int32_t>(code);
-}
+inline int32_t to_rpc_code(StatusCode code) { return static_cast<int32_t>(code); }
 namespace {
 
 inline bool try_decode_status_code(int32_t code, StatusCode& out) {
@@ -135,8 +110,7 @@ inline bool try_decode_status_code(int32_t code, StatusCode& out) {
 }
 
 inline void encode_status_to_base_rsp(pb::BaseRsp* out, const Status& status) {
-    if (out == nullptr)
-        return;
+    if (out == nullptr) return;
     out->set_code(to_rpc_code(status.code()));
     out->set_msg(status.msg());
 }
@@ -154,8 +128,7 @@ inline Status decode_base_rsp_status(const pb::BaseRsp& rsp) {
 // 专门给RPC的response用的
 template <typename Response>
 inline void fill_base_rsp(Response* rsp, const Status& status) {
-    if (rsp == nullptr)
-        return;
+    if (rsp == nullptr) return;
     encode_status_to_base_rsp(rsp->mutable_base_rsp(), status);
 }
 

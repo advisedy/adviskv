@@ -46,8 +46,7 @@ Status SdmRuntimeStore::put_shard_route(const ShardRoute& route) {
     return Status::OK();
 }
 
-Status SdmRuntimeStore::get_shard_route(const ShardID& shard_id,
-                                     ShardRoutePtr& out) const {
+Status SdmRuntimeStore::get_shard_route(const ShardID& shard_id, ShardRoutePtr& out) const {
     auto it = shard_routes_.find(shard_id);
     if (it == shard_routes_.end()) {
         out.reset();
@@ -62,17 +61,14 @@ Status SdmRuntimeStore::delete_shard_route(const ShardID& shard_id) {
     return Status::OK();
 }
 
-Status SdmRuntimeStore::del_shard_route_entry(const ShardID& shard_id,
-                                           const ReplicaID& replica_id) {
+Status SdmRuntimeStore::del_shard_route_entry(const ShardID& shard_id, const ReplicaID& replica_id) {
     auto it = shard_routes_.find(shard_id);
     if (it == shard_routes_.end() || it->second == nullptr) {
         return Status::OK();
     }
 
     auto& replicas = it->second->replicas;
-    func::ad_erase_if(replicas, [&replica_id](const RouteEntry& entry) {
-        return entry.replica_id == replica_id;
-    });
+    func::ad_erase_if(replicas, [&replica_id](const RouteEntry& entry) { return entry.replica_id == replica_id; });
     return Status::OK();
 }
 

@@ -9,8 +9,7 @@
 namespace adviskv::storage {
 
 ReplicaReadIndexChecker::ReplicaReadIndexChecker(ReplicaContext& context, ReplicaLoop& loop)
-        : context_(context), loop_(loop) {
-}
+        : context_(context), loop_(loop) {}
 
 // 新 leader 刚当选时，虽然它是合法 leader，但它的 commit_index 可能还没包含旧
 // term 中已经成功提交的日志。Raft 通过让新 leader 提交一条当前 term 的 no-op
@@ -67,8 +66,7 @@ Status ReplicaReadIndexChecker::check_self_leader_and_get_read_index(LogIndex& r
             SnapshotResponseCall call{SnapshotResponseEvent{msg.target.replica_id, msg.snapshot_param, res}};
             loop_.sync_submit(&call);
             RETURN_IF_INVALID_STATUS(call.status)
-            if (res.term == read_call.read_term)
-                success_cnt++;
+            if (res.term == read_call.read_term) success_cnt++;
         } else {
             LOG_WARN("replica:{} check self leader, but have request vote msg!", context_.replica_id.to_string());
         }

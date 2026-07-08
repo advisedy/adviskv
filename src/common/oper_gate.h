@@ -11,17 +11,16 @@
 namespace adviskv {
 
 class OperGate {
-   public:
+public:
     class Guard {
-       public:
+    public:
         Guard() = default;
         DISALLOW_COPY_AND_ASSIGN(Guard)
         ALLOW_MOVE_AND_ASSIGN(Guard)
 
-       private:
+    private:
         friend class OperGate;
-        explicit Guard(std::shared_lock<std::shared_mutex>&& lock)
-            : lock_(std::move(lock)) {}
+        explicit Guard(std::shared_lock<std::shared_mutex>&& lock) : lock_(std::move(lock)) {}
 
         std::shared_lock<std::shared_mutex> lock_;
     };
@@ -49,7 +48,7 @@ class OperGate {
         std::unique_lock lock(mutex_);
     }
 
-   private:
+private:
     std::atomic<bool> closed_{false};
     mutable std::shared_mutex mutex_;
 };
@@ -57,18 +56,12 @@ class OperGate {
 #define ADVISKV_OPER_GATE_CONCAT_INNER(x, y) x##y
 #define ADVISKV_OPER_GATE_CONCAT(x, y) ADVISKV_OPER_GATE_CONCAT_INNER(x, y)
 
-#define RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(gate)                            \
-    ::adviskv::OperGate::Guard ADVISKV_OPER_GATE_CONCAT(adviskv_oper_guard_, \
-                                                        __LINE__);           \
-    RETURN_IF_INVALID_STATUS((gate).acquire(                                 \
-        ADVISKV_OPER_GATE_CONCAT(adviskv_oper_guard_, __LINE__)))
+#define RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(gate)                                       \
+    ::adviskv::OperGate::Guard ADVISKV_OPER_GATE_CONCAT(adviskv_oper_guard_, __LINE__); \
+    RETURN_IF_INVALID_STATUS((gate).acquire(ADVISKV_OPER_GATE_CONCAT(adviskv_oper_guard_, __LINE__)))
 
-#define RETURN_IF_OPER_GUARD_ACQUIRE_FAILED_VOID(gate)                       \
-    ::adviskv::OperGate::Guard ADVISKV_OPER_GATE_CONCAT(adviskv_oper_guard_, \
-                                                        __LINE__);           \
-    if (((gate).acquire(                                                     \
-             ADVISKV_OPER_GATE_CONCAT(adviskv_oper_guard_, __LINE__)))       \
-            .fail())                                                         \
-        return;
+#define RETURN_IF_OPER_GUARD_ACQUIRE_FAILED_VOID(gate)                                  \
+    ::adviskv::OperGate::Guard ADVISKV_OPER_GATE_CONCAT(adviskv_oper_guard_, __LINE__); \
+    if (((gate).acquire(ADVISKV_OPER_GATE_CONCAT(adviskv_oper_guard_, __LINE__))).fail()) return;
 
 }  // namespace adviskv

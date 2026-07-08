@@ -9,13 +9,12 @@ class DdlService;
 class CatalogManager;
 
 class MetaServiceImpl final : public rpc::MetaService::Service {
-   public:
+public:
     MetaServiceImpl() = default;
     explicit MetaServiceImpl(DdlService* ddl_service);
 
-#define DEFINE_METHOD(method_name)                                 \
-    grpc::Status method_name(grpc::ServerContext* context,         \
-                             const rpc::method_name##Request* req, \
+#define DEFINE_METHOD(method_name)                                                               \
+    grpc::Status method_name(grpc::ServerContext* context, const rpc::method_name##Request* req, \
                              rpc::method_name##Response* response) override;
 
     DEFINE_METHOD(CreateTable)
@@ -28,7 +27,7 @@ class MetaServiceImpl final : public rpc::MetaService::Service {
 
 #undef DEFINE_METHOD
 
-   private:
+private:
     DdlService* ddl_service_;
 };
 

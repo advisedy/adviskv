@@ -1,8 +1,8 @@
 #pragma once
 
-#include <grpcpp/channel.h>
-
 #include <memory>
+
+#include <grpcpp/channel.h>
 
 #include "common/proto/proto.h"
 #include "common/status.h"
@@ -13,12 +13,12 @@
 namespace adviskv::sdk {
 
 class SdmRouteClient {
-   public:
+public:
     explicit SdmRouteClient(const KVClientConf& conf);
 
     Status get_table_routes(TableRouteInfo* table_routes) const;
 
-   private:
+private:
     KVClientConf conf_;
     std::shared_ptr<grpc::Channel> channel_;
     std::unique_ptr<sdm_rpc::SdmService::Stub> stub_;

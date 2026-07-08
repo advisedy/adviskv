@@ -22,17 +22,14 @@ namespace adviskv::storage {
 
 namespace {
 
-constexpr size_t kMaxProposalBatchSize = 64;
-constexpr auto kProposalBatchDelay = Microseconds(200);
+constexpr size_t K_MAX_PROPOSAL_BATCH_SIZE = 64;
+constexpr auto K_PROPOSAL_BATCH_DELAY = Microseconds(200);
 
 }  // namespace
 
-ReplicaLoop::ReplicaLoop(ReplicaContext& context) : context_(context) {
-}
+ReplicaLoop::ReplicaLoop(ReplicaContext& context) : context_(context) {}
 
-ReplicaLoop::~ReplicaLoop() {
-    stop();
-}
+ReplicaLoop::~ReplicaLoop() { stop(); }
 
 void ReplicaLoop::start() {
     std::lock_guard lock(mutex_);
@@ -41,7 +38,7 @@ void ReplicaLoop::start() {
     }
     running_ = true;
     runner_.start();
-    submit_queue_.start(kProposalBatchDelay, kMaxProposalBatchSize,
+    submit_queue_.start(K_PROPOSAL_BATCH_DELAY, K_MAX_PROPOSAL_BATCH_SIZE,
                         [this](std::vector<SubmitQueueItem> items) { on_submit_queue_ready(std::move(items)); });
 }
 
@@ -272,17 +269,11 @@ Status ReplicaLoop::handle_call(CommitInstallSnapshotCall& call) {
     });
 }
 
-Status ReplicaLoop::handle_call(AppendResponseCall& call) {
-    return handle_event(call.event);
-}
+Status ReplicaLoop::handle_call(AppendResponseCall& call) { return handle_event(call.event); }
 
-Status ReplicaLoop::handle_call(SnapshotResponseCall& call) {
-    return handle_event(call.event);
-}
+Status ReplicaLoop::handle_call(SnapshotResponseCall& call) { return handle_event(call.event); }
 
-Status ReplicaLoop::handle_call(SnapshotSendFailedCall& call) {
-    return handle_event(call.event);
-}
+Status ReplicaLoop::handle_call(SnapshotSendFailedCall& call) { return handle_event(call.event); }
 
 Status ReplicaLoop::handle_call(ProposeCall& call) {
     return enqueue_proposal_and_wait(std::move(call.param), call.timeout);

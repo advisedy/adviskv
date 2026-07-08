@@ -10,10 +10,10 @@
 
 // 这里cond要填写应该合法的情况，如果cond与预期不符合，就会return，跟assert的语义有点像
 
-#include <fmt/core.h>
-
 #include <chrono>
 #include <utility>
+
+#include <fmt/core.h>
 
 namespace adviskv {
 
@@ -44,12 +44,11 @@ namespace adviskv {
         }                                                                   \
     } while (false);
 
-#define RETURN_IF_INVALID_READ_TYPE(buf, type, name)                        \
-    do {                                                                    \
-        if (bool success = (buf).read<type>(name); !success) {              \
-            return Status::ERROR(                                           \
-                fmt::format("read {} is invalid, type: {}", #name, #type)); \
-        }                                                                   \
+#define RETURN_IF_INVALID_READ_TYPE(buf, type, name)                                         \
+    do {                                                                                     \
+        if (bool success = (buf).read<type>(name); !success) {                               \
+            return Status::ERROR(fmt::format("read {} is invalid, type: {}", #name, #type)); \
+        }                                                                                    \
     } while (false);
 
 #define RETURN_IF_NULLPTR(ptr, msg)                       \
