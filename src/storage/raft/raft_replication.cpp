@@ -6,6 +6,7 @@
 
 #include "common/log.h"
 #include "common/metrics/metrics.h"
+#include "common/model/raft_member_type.h"
 #include "storage/model/model.h"
 #include "storage/raft/raft_log.h"
 
@@ -119,10 +120,6 @@ LogIndex RaftReplication::inflight_snapshot_index(const ReplicaID& replica_id) c
 
 bool RaftReplication::match_index_at_least(const ReplicaID& replica_id, LogIndex log_index) const {
     return peer_progress_.match_index_at_least(replica_id, log_index);
-}
-
-void RaftReplication::set_next_index_for_test(ReplicaID replica_id, LogIndex index) {
-    peer_progress_.update_next_index(replica_id, index);
 }
 
 RaftMessageOr RaftReplication::build_append_entries_message(const PeerMember& member, LogIndex next_index,

@@ -265,6 +265,7 @@ Status PersistEngine::append_wal(const LogEntry& entry) {
         ADVISKV_METRICS_COUNTER("storage_persist_append_wal_fsync_failure");
         return Status::ERROR("fsync != 0");
     }
+    testhook::crash_point("persist.append_wal.after_fsync");
     ADVISKV_METRICS_COUNTER("storage_persist_append_wal_success");
     return Status::OK();
 }
@@ -286,6 +287,7 @@ Status PersistEngine::append_wal_batch(const std::vector<LogEntry>& entries) {
         ADVISKV_METRICS_COUNTER("storage_persist_append_wal_batch_fsync_failure");
         return Status::ERROR("fsync != 0");
     }
+    testhook::crash_point("persist.append_wal.after_fsync");
     ADVISKV_METRICS_COUNTER("storage_persist_append_wal_batch_success");
     return Status::OK();
 }
@@ -347,6 +349,7 @@ Status PersistEngine::rewrite_wal_unlocked(const std::vector<LogEntry>& entries)
     if (::fsync(fd) != 0) {
         return Status::ERROR("failed to fsync wal tmp file");
     }
+    testhook::crash_point("persist.rewrite_wal.after_tmp_fsync");
     if (::close(fd) != 0) {
         fd = -1;
         return Status::ERROR("failed to close wal tmp file");
@@ -364,6 +367,7 @@ Status PersistEngine::rewrite_wal_unlocked(const std::vector<LogEntry>& entries)
     if (::rename(tmp_path.c_str(), wal_path_.c_str()) != 0) {
         return Status::ERROR("failed to rename wal tmp file");
     }
+    testhook::crash_point("persist.rewrite_wal.after_rename");
     RETURN_IF_INVALID_STATUS(func::fsync_dir(dir_path_))
 
     wal_fd_ = ::open(wal_path_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
@@ -556,50 +560,53 @@ Status PersistEngine::write_snapshot(const StateMachine& state_machine, const st
             "snapshot_term:{}",
             replica_id_.to_string(), apply_index, apply_term);
 
-    RETURN_IF_INVALID_STATUS(func::atomic_replace_file(snapshot_path_, [&](int fd) -> Status {
-        // payload_len + apply_index + apply_term + member_count +
-        // [member...] + kv_count + [k1, v1] + [k2, v2]
-        RETURN_IF_INVALID_STATUS(func::write_value<int64>(fd, 0))
-        RETURN_IF_INVALID_STATUS(func::write_value(fd, apply_index))
-        RETURN_IF_INVALID_STATUS(func::write_value(fd, apply_term))
-        RETURN_IF_INVALID_STATUS(func::write_value<int32>(fd, static_cast<int32>(members.size())))
-        for (const RaftMember& member : members) {
-            RETURN_IF_INVALID_STATUS(write_raft_member_to_fd(fd, member))
-        }
+    RETURN_IF_INVALID_STATUS(func::atomic_replace_file(
+            snapshot_path_,
+            [&](int fd) -> Status {
+                // payload_len + apply_index + apply_term + member_count +
+                // [member...] + kv_count + [k1, v1] + [k2, v2]
+                RETURN_IF_INVALID_STATUS(func::write_value<int64>(fd, 0))
+                RETURN_IF_INVALID_STATUS(func::write_value(fd, apply_index))
+                RETURN_IF_INVALID_STATUS(func::write_value(fd, apply_term))
+                RETURN_IF_INVALID_STATUS(func::write_value<int32>(fd, static_cast<int32>(members.size())))
+                for (const RaftMember& member : members) {
+                    RETURN_IF_INVALID_STATUS(write_raft_member_to_fd(fd, member))
+                }
 
-        off_t kv_count_pos = ::lseek(fd, 0, SEEK_CUR);
-        if (kv_count_pos < 0) {
-            return Status::ERROR("lseek snapshot kv_count pos failed");
-        }
-        RETURN_IF_INVALID_STATUS(func::write_value<int32>(fd, 0))
+                off_t kv_count_pos = ::lseek(fd, 0, SEEK_CUR);
+                if (kv_count_pos < 0) {
+                    return Status::ERROR("lseek snapshot kv_count pos failed");
+                }
+                RETURN_IF_INVALID_STATUS(func::write_value<int32>(fd, 0))
 
-        int32 kv_count = 0;
-        RETURN_IF_INVALID_STATUS(state_machine.for_each_kv([&](const Key& k, const Value& v) -> Status {
-            RETURN_IF_INVALID_STATUS(func::write_string(fd, k))
-            RETURN_IF_INVALID_STATUS(func::write_string(fd, v))
-            ++kv_count;
-            return Status::OK();
-        }))
+                int32 kv_count = 0;
+                RETURN_IF_INVALID_STATUS(state_machine.for_each_kv([&](const Key& k, const Value& v) -> Status {
+                    RETURN_IF_INVALID_STATUS(func::write_string(fd, k))
+                    RETURN_IF_INVALID_STATUS(func::write_string(fd, v))
+                    ++kv_count;
+                    return Status::OK();
+                }))
 
-        off_t end_pos = ::lseek(fd, 0, SEEK_END);
-        if (end_pos < 0) {
-            return Status::ERROR("lseek snapshot end failed");
-        }
+                off_t end_pos = ::lseek(fd, 0, SEEK_END);
+                if (end_pos < 0) {
+                    return Status::ERROR("lseek snapshot end failed");
+                }
 
-        int64 payload_len = static_cast<int64>(end_pos) - sizeof(int64);  // 这个len是没有算上自己的
+                int64 payload_len = static_cast<int64>(end_pos) - sizeof(int64);  // 这个len是没有算上自己的
 
-        if (::lseek(fd, 0, SEEK_SET) < 0) {
-            return Status::ERROR("lseek snapshot payload_len failed");
-        }
-        RETURN_IF_INVALID_STATUS(func::write_value(fd, payload_len))
+                if (::lseek(fd, 0, SEEK_SET) < 0) {
+                    return Status::ERROR("lseek snapshot payload_len failed");
+                }
+                RETURN_IF_INVALID_STATUS(func::write_value(fd, payload_len))
 
-        if (::lseek(fd, kv_count_pos, SEEK_SET) < 0) {
-            return Status::ERROR("lseek snapshot kv_count failed");
-        }
-        RETURN_IF_INVALID_STATUS(func::write_value(fd, kv_count))
+                if (::lseek(fd, kv_count_pos, SEEK_SET) < 0) {
+                    return Status::ERROR("lseek snapshot kv_count failed");
+                }
+                RETURN_IF_INVALID_STATUS(func::write_value(fd, kv_count))
 
-        return Status::OK();
-    }))
+                return Status::OK();
+            },
+            "persist.write_snapshot.after_tmp_fsync", "persist.write_snapshot.after_rename"))
 
     LOG_DEBUG(
             "replica_id:{}, persist engine finish write snapshot, "
@@ -629,6 +636,7 @@ Status PersistEngine::save_raft_meta(const RaftMeta& meta) {
     if (::fsync(fd) != 0) {
         return Status::ERROR("failed to fsync raft meta tmp file");
     }
+    testhook::crash_point("persist.save_raft_meta.after_tmp_fsync");
     if (::close(fd) != 0) {
         fd = -1;
         return Status::ERROR("failed to close raft meta tmp file");
@@ -638,6 +646,7 @@ Status PersistEngine::save_raft_meta(const RaftMeta& meta) {
     if (::rename(tmp_path.c_str(), raft_meta_path_.c_str()) != 0) {
         return Status::ERROR("failed to rename raft meta tmp file");
     }
+    testhook::crash_point("persist.save_raft_meta.after_rename");
     RETURN_IF_INVALID_STATUS(func::fsync_dir(dir_path_))
 
     return Status::OK();

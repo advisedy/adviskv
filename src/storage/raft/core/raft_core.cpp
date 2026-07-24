@@ -15,14 +15,18 @@ const TickTrigger::TickLimitFunc K_ELECTION_TIMEOUT_FUNC = std::bind(func::get_r
 }  // namespace
 
 RaftCore::RaftCore(const ReplicaID& self_id, const std::vector<PeerMember>& members)
+        : RaftCore(self_id, members, RaftCoreTimingConfig{}) {}
+
+RaftCore::RaftCore(const ReplicaID& self_id, const std::vector<PeerMember>& members, RaftCoreTimingConfig timing)
         : self_id_(self_id),
           election_(self_id_),
           raft_log_(),
           raft_apply_(raft_log_),
           membership_(members),
           replication_(self_id_, membership_, raft_log_, raft_apply_),
-          election_tick_trigger_(K_ELECTION_TIMEOUT_FUNC),
-          heartbeat_tick_trigger_(K_HEARTBEAT_INTERVAL) {}
+          election_tick_trigger_(timing.next_election_timeout ? std::move(timing.next_election_timeout)
+                                                              : K_ELECTION_TIMEOUT_FUNC),
+          heartbeat_tick_trigger_(timing.heartbeat_ticks > 0 ? timing.heartbeat_ticks : K_HEARTBEAT_INTERVAL) {}
 
 LogIndex RaftCore::last_log_index() const { return raft_log_.last_log_index(); }
 

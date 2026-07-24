@@ -1,6 +1,7 @@
 #pragma once
 
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 #include <filesystem>
 #include <string>
@@ -19,6 +20,7 @@ inline std::filesystem::path make_unique_test_dir(const std::string& prefix,
     return test_data_dir() /
            (prefix + "_" +
             std::to_string(::testing::UnitTest::GetInstance()->random_seed()) +
+            "_" + std::to_string(::getpid()) +
             "_" + std::to_string(unique_id));
 }
 

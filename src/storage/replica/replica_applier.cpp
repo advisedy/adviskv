@@ -1,5 +1,6 @@
 #include "storage/replica/replica_applier.h"
 
+#include "common/crash_injection.h"
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
@@ -47,6 +48,7 @@ Status ReplicaApplier::apply_kv_log_entry(const LogEntry& entry) {
         LOG_WARN("apply_kv_log_entry failed, index={}, msg={}", entry.index, status.msg());
         return status;
     }
+    testhook::crash_point("replica.apply.after_state_machine_before_progress");
     ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_success");
     {
         std::lock_guard lock(context_.raft_core_mutex);

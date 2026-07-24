@@ -17,10 +17,16 @@
 
 namespace adviskv::storage {
 
+struct RaftCoreTimingConfig {
+    int32 heartbeat_ticks{3};
+    TickTrigger::TickLimitFunc next_election_timeout;
+};
+
 // 上锁的逻辑都交给了外部，需持有 raft_core_mutex_。
 class RaftCore {
 public:
     RaftCore(const ReplicaID& self_id, const std::vector<PeerMember>& members);
+    RaftCore(const ReplicaID& self_id, const std::vector<PeerMember>& members, RaftCoreTimingConfig timing);
 
     void tick(RaftEffects& effects);
 
@@ -89,18 +95,6 @@ public:
     ///////////////////////////////////////
     // 测试用的入口
     const std::vector<LogEntry>& log_entries_for_test() const { return raft_log_.entries(); }
-
-    std::pair<LogIndex, Term> snapshot_for_test() const {
-        return {raft_log_.snapshot_index(), raft_log_.snapshot_term()};
-    }
-
-    void set_next_index_for_test(ReplicaID target, LogIndex index) {
-        replication_.set_next_index_for_test(target, index);
-    }
-
-    void become_candidate_for_test(RaftEffects& effects) { become_candidate(effects); }
-
-    void reset_heartbeat_tick_for_test(int32 val) { heartbeat_tick_trigger_.reset(val); }
 
     LogIndex next_index_for_test(const ReplicaID& target) const { return replication_.next_index(target); }
 

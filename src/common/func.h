@@ -152,7 +152,9 @@ inline Status fsync_dir(const std::string& dir_path) {
 // 这里我们只需要传递一个func，代表我们替换后的文件里面，我们具体怎么会操作它。
 // 这个函数会自动创建出来一个tmp文件，然后执行我们的func给这个tmp的fd
 template <typename Func>
-inline Status atomic_replace_file(std::filesystem::path path, Func func) {
+inline Status atomic_replace_file(std::filesystem::path path, Func func,
+                                  const char* after_tmp_fsync_crash_point = nullptr,
+                                  const char* after_rename_crash_point = nullptr) {
     namespace fs = std::filesystem;
 
     if (!path.has_parent_path()) {
@@ -183,6 +185,7 @@ inline Status atomic_replace_file(std::filesystem::path path, Func func) {
     if (::fsync(fd) != 0) {
         return Status::ERROR("failed to fsync tmp file");
     }
+    testhook::crash_point(after_tmp_fsync_crash_point);
     if (::close(fd) != 0) {
         fd = -1;
         return Status::ERROR("failed to close tmp file");
@@ -192,6 +195,7 @@ inline Status atomic_replace_file(std::filesystem::path path, Func func) {
     if (::rename(tmp_path.c_str(), path.c_str()) != 0) {
         return Status::ERROR(fmt::format("failed to rename tmp file to file:{}", path.string()));
     }
+    testhook::crash_point(after_rename_crash_point);
 
     fs::path parent_path = path.parent_path();
     RETURN_IF_INVALID_STATUS(func::fsync_dir(parent_path.string()))

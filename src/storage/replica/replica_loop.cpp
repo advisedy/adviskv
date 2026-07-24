@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "common/crash_injection.h"
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
@@ -299,7 +300,12 @@ Status ReplicaLoop::run_step(RaftStepFunc&& step) {
     {
         std::lock_guard lock(context_.raft_core_mutex);
         Status status = step(effects);
+        bool has_persistent_effect = effects.hard_state.has_value() || effects.entries_to_rewrite.has_value() ||
+                                           !effects.entries_to_append.empty();
         RETURN_IF_INVALID_STATUS(persist_raft_effects(effects))
+        if (has_persistent_effect) {
+            testhook::crash_point("replica.raft_step.after_persist_before_send");
+        }
         RETURN_IF_INVALID_STATUS(status)
     }
     Status send_status = context_.message_dispatcher.async_send(std::move(effects.messages));

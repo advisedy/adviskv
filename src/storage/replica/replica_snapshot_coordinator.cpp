@@ -5,6 +5,7 @@
 
 #include <fmt/format.h>
 
+#include "common/crash_injection.h"
 #include "common/define.h"
 #include "common/log.h"
 #include "storage/persist/persist_engine.h"
@@ -128,6 +129,7 @@ Status ReplicaSnapshotCoordinator::finish_install_snapshot(const InstallSnapshot
 
     RETURN_IF_INVALID_STATUS(context_.fault_if_fail(context_.persist.finish_snapshot_receive()))
     RETURN_IF_INVALID_STATUS(context_.fault_if_fail(context_.persist.load_snapshot_meta(snap)))
+    testhook::crash_point("replica.install_snapshot.after_persist_before_restore");
 
     InstallSnapshotContext install_context;
     install_context.snapshot_index = snap->apply_index;
@@ -141,6 +143,7 @@ Status ReplicaSnapshotCoordinator::finish_install_snapshot(const InstallSnapshot
                     return context_.persist.for_each_snapshot_kv(visitor);
                 })))
     }
+    testhook::crash_point("replica.install_snapshot.after_restore_before_raft");
     RETURN_IF_INVALID_STATUS(publish_ready_snapshot(install_context))
 
     LOG_INFO(
@@ -191,6 +194,7 @@ void ReplicaSnapshotCoordinator::try_take_snapshot() {
     Status status = context_.persist.write_snapshot(context_.state_machine, install_context.snapshot_members);
 
     if (status.ok()) {
+        testhook::crash_point("replica.local_snapshot.after_persist_before_raft");
         status = publish_ready_snapshot(install_context);
         if (status.fail()) {
             LOG_WARN(

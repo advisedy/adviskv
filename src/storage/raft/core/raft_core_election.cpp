@@ -49,6 +49,10 @@ void RaftCore::send_request_vote_to(const PeerMember& member, RaftEffects& effec
     msg.vote_param.term = election_.current_term();
     msg.vote_param.last_log_index = raft_log_.last_log_index();
     msg.vote_param.last_log_term = raft_log_.last_log_term();
+    LOG_DEBUG(
+            "[RaftCore Election] send_request_vote_to, from_replica_id:{}, to_replica_id:{}, from_current_term:{}, from_last_log_index:{}, from_last_log_term:{}",
+            msg.vote_param.from_replica_id.to_string(), msg.vote_param.to_replica_id.to_string(), msg.vote_param.term,
+            msg.vote_param.last_log_index, msg.vote_param.last_log_term);
     effects.messages.push_back(std::move(msg));
 }
 
@@ -62,13 +66,13 @@ void RaftCore::handle_request_vote(const RequestVoteParam& param, RequestVoteRes
     //     return;
     // }
 
-    if (!membership_.is_voter(self_id_)) {
-        LOG_WARN(
-                "[RaftCore Election] replica:{} reject RequestVote because self is "
-                "not voter, from:{}, term:{}, current_term:{}",
-                self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term());
-        return;
-    }
+    // if (!membership_.is_voter(self_id_)) {
+    //     LOG_WARN(
+    //             "[RaftCore Election] replica:{} reject RequestVote because self is "
+    //             "not voter, from:{}, term:{}, current_term:{}",
+    //             self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term());
+    //     return;
+    // }
     if (!membership_.is_voter(param.from_replica_id)) {
         LOG_WARN(
                 "[RaftCore Election] replica:{} reject RequestVote from non-voter "

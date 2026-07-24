@@ -104,8 +104,12 @@ add_adviskv_storage_gtest(persist_engine_test
     ${CMAKE_SOURCE_DIR}/test/storage/persist/persist_engine_test.cpp
 )
 
-add_adviskv_storage_gtest(wal_crash_injection_test
-    ${CMAKE_SOURCE_DIR}/test/storage/persist/wal_crash_injection_test.cpp
+add_adviskv_storage_gtest(persist_crash_recovery_test
+    ${CMAKE_SOURCE_DIR}/test/storage/persist/persist_crash_recovery_test.cpp
+)
+
+add_adviskv_storage_gtest(replica_crash_recovery_test
+    ${CMAKE_SOURCE_DIR}/test/storage/replica/replica_crash_recovery_test.cpp
 )
 
 add_adviskv_storage_gtest(replica_meta_persist_engine_test
@@ -132,16 +136,22 @@ add_adviskv_storage_gtest(node_agent_test
     ${CMAKE_SOURCE_DIR}/test/storage/node_agent/node_agent_test.cpp
 )
 
-add_adviskv_storage_gtest(raft_node_test
-    ${CMAKE_SOURCE_DIR}/test/storage/raft/core/raft_node_test.cpp
-)
-
 add_adviskv_storage_gtest(raft_sender_test
     ${CMAKE_SOURCE_DIR}/test/storage/raft/raft_sender_test.cpp
 )
 
-add_adviskv_storage_gtest(raft_cluster_test
-    ${CMAKE_SOURCE_DIR}/test/storage/raft/core/raft_cluster_test.cpp
+add_adviskv_storage_gtest(raft_protocol_test
+    ${CMAKE_SOURCE_DIR}/test/storage/raft/core/raft_test_harness.cpp
+    ${CMAKE_SOURCE_DIR}/test/storage/raft/core/raft_protocol_election_test.cpp
+    ${CMAKE_SOURCE_DIR}/test/storage/raft/core/raft_protocol_replication_test.cpp
+    ${CMAKE_SOURCE_DIR}/test/storage/raft/core/raft_protocol_membership_snapshot_test.cpp
+    ${CMAKE_SOURCE_DIR}/test/storage/raft/core/raft_protocol_read_recovery_test.cpp
+)
+
+add_adviskv_storage_gtest(raft_seeded_test
+    ${CMAKE_SOURCE_DIR}/test/storage/raft/core/raft_test_harness.cpp
+    ${CMAKE_SOURCE_DIR}/test/storage/raft/core/raft_test_scheduler.cpp
+    ${CMAKE_SOURCE_DIR}/test/storage/raft/core/raft_seeded_schedule_test.cpp
 )
 
 add_adviskv_sdm_gtest(node_service_test
