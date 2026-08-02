@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
+# Deps: .adviskv_deps/ (setup.sh). Build output: build/ (build.sh, default Debug).
 set(CMAKE_TOOLCHAIN_FILE
     "${CMAKE_CURRENT_LIST_DIR}/third_party/vcpkg/scripts/buildsystems/vcpkg.cmake"
     CACHE FILEPATH "vcpkg toolchain file")

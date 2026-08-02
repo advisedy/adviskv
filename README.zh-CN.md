@@ -99,11 +99,11 @@ quit
 ./scripts/build.sh
 ```
 
-也可以使用 CMake presets:
+也可以直接调用 CMake:
 
 ```bash
-cmake --preset release
-cmake --build --preset release
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --parallel
 ```
 
 常用构建变量:
@@ -113,7 +113,7 @@ BUILD_TYPE=Debug ./scripts/build.sh
 BUILD_TARGETS="meta sdm storage adviskvctl" ./scripts/build.sh
 ```
 
-主要二进制默认位于 `build/release/bin/`。
+主要二进制默认位于 `build/bin/`。
 
 ## Test
 
@@ -166,7 +166,7 @@ E2E 覆盖基础 KV、重启恢复、leader failover、follower catch-up、crash
 `bench_metrics.sh` 与 `bench.sh` 使用同一套参数,只是在 benchmark 期间采样服务端 `/metrics` 和 benchmark 客户端里的 SDK metrics,结束后输出报告路径:
 
 ```text
-[bench] metrics report: build/release/bench_results/<run_id>/metrics_report.txt
+[bench] metrics report: build/bench_results/<run_id>/metrics_report.txt
 ```
 
 ## 设计博客

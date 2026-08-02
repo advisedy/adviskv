@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+BUILD_TYPE="${BUILD_TYPE:-Debug}"
 BUILD_DIR="${BUILD_DIR:-build-coverage}"
 GCOVR="${GCOVR:-gcovr}"
 GCOV="${GCOV:-}"

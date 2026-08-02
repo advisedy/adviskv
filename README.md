@@ -92,11 +92,11 @@ Recommended script-based build:
 ./scripts/build.sh
 ```
 
-You can also use CMake presets:
+You can also invoke CMake directly:
 
 ```bash
-cmake --preset release
-cmake --build --preset release
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --parallel
 ```
 
 Common build variables:
@@ -106,7 +106,7 @@ BUILD_TYPE=Debug ./scripts/build.sh
 BUILD_TARGETS="meta sdm storage adviskvctl" ./scripts/build.sh
 ```
 
-Main binaries are generated under `build/release/bin/` by default.
+Main binaries are generated under `build/bin/` by default.
 
 ## Test
 
@@ -159,7 +159,7 @@ Run a benchmark and generate a metrics text report:
 `bench_metrics.sh` uses the same arguments as `bench.sh`, samples service `/metrics` endpoints plus the benchmark client's SDK metrics during the run, and prints the report path at the end:
 
 ```text
-[bench] metrics report: build/release/bench_results/<run_id>/metrics_report.txt
+[bench] metrics report: build/bench_results/<run_id>/metrics_report.txt
 ```
 
 The report lists latency histogram deltas and counter deltas that changed during the run, including `sdk_*` rows from the benchmark client, which makes it useful for local tuning and regression comparison.

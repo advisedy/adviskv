@@ -10,15 +10,11 @@ from typing import Optional
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-BUILD_TYPE = os.environ.get("BUILD_TYPE", "Release")
-BUILD_DIR_NAME = os.environ.get(
-    "BUILD_DIR",
-    {
-        "Debug": "build/debug",
-        "Release": "build/release",
-    }.get(BUILD_TYPE, f"build/{BUILD_TYPE}"),
-)
-BUILD_DIR = ROOT_DIR / BUILD_DIR_NAME
+BUILD_TYPE = os.environ.get("BUILD_TYPE", "Debug")
+# Single build tree: build/ (Debug/Release only change CMAKE_BUILD_TYPE).
+_raw_build_dir = os.environ.get("BUILD_DIR", "build").strip() or "build"
+_build_path = Path(_raw_build_dir).expanduser()
+BUILD_DIR = _build_path if _build_path.is_absolute() else (ROOT_DIR / _build_path)
 BIN_DIR = BUILD_DIR / "bin"
 
 

@@ -3,20 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON="${PYTHON:-python3}"
-BUILD_TYPE="${BUILD_TYPE:-Release}"
-if [[ -z "${BUILD_DIR:-}" ]]; then
-  case "$BUILD_TYPE" in
-    Debug)
-      BUILD_DIR="$ROOT_DIR/build/debug"
-      ;;
-    Release)
-      BUILD_DIR="$ROOT_DIR/build/release"
-      ;;
-    *)
-      BUILD_DIR="$ROOT_DIR/build/$BUILD_TYPE"
-      ;;
-  esac
-fi
+BUILD_TYPE="${BUILD_TYPE:-Debug}"
+BUILD_DIR="${BUILD_DIR:-build}"
 case "$BUILD_DIR" in
   /*) ;;
   *) BUILD_DIR="$ROOT_DIR/$BUILD_DIR" ;;
@@ -44,7 +32,7 @@ echo "[demo] stopping stale local processes"
 "$ROOT_DIR/scripts/stop_cluster.sh"
 
 echo "[demo] clearing local demo data"
-rm -rf "$BUILD_DIR/runtime"
+rm -rf "$ROOT_DIR/build/runtime" "$BUILD_DIR/runtime"
 
 require_binary "$BUILD_DIR/bin/sdm"
 require_binary "$BUILD_DIR/bin/meta"

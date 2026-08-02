@@ -1,5 +1,8 @@
 # Scripts
 
+
+路径约定：依赖在 `.adviskv_deps/`（`setup.sh`），工程默认输出在 `build/`（`build/bin`、`build/runtime`，默认 Debug）。
+特例：`build-asan/`、`build-coverage/`。
 这个目录是常用的一些脚本。
 
  `internal/` 里面的脚本基本是为了服务给这个目录里面的脚本使用的，可以不需在意。

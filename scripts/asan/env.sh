@@ -5,7 +5,7 @@ export ROOT_DIR="$(cd -- "$ASAN_SCRIPT_DIR/../.." && pwd -P)"
 
 export SANITIZER="address"
 export BUILD_TYPE="${BUILD_TYPE:-Debug}"
-export BUILD_DIR="${BUILD_DIR:-build/asan}"
+export BUILD_DIR="${BUILD_DIR:-build-asan}"
 
 # The address sanitizer build also enables UBSan in CMake.
 default_asan_options="halt_on_error=1:abort_on_error=1:strict_string_checks=1:check_initialization_order=1"

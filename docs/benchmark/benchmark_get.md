@@ -110,5 +110,5 @@ BENCH_LOG_LEVEL=warning \
   --replica_count=3 \
   --value_size=128 \
   --requests=30000 \
-  --output_json=build/release/bench_results/get_baseline.json
+  --output_json=build/bench_results/get_baseline.json
 ```

@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
-
 ADVISKV_DEPS_ROOT="${ADVISKV_DEPS_ROOT:-$REPO_ROOT/.adviskv_deps}"
 VCPKG_ROOT="${VCPKG_ROOT:-$REPO_ROOT/third_party/vcpkg}"
 VCPKG_EXE="${VCPKG_EXE:-$VCPKG_ROOT/vcpkg}"
@@ -11,6 +9,8 @@ VCPKG_STATE_ROOT="${VCPKG_STATE_ROOT:-$ADVISKV_DEPS_ROOT/vcpkg}"
 VCPKG_INSTALL_ROOT="$VCPKG_STATE_ROOT/installed"
 VCPKG_DOWNLOADS="$VCPKG_STATE_ROOT/downloads"
 VCPKG_BINARY_CACHE="$VCPKG_STATE_ROOT/binary-cache"
+VCPKG_BUILDTREES_ROOT="$VCPKG_STATE_ROOT/buildtrees"
+VCPKG_PACKAGES_ROOT="$VCPKG_STATE_ROOT/packages"
 
 cd "$REPO_ROOT"
 
@@ -24,11 +24,18 @@ if [[ ! -x "$VCPKG_EXE" ]]; then
   "$VCPKG_ROOT/bootstrap-vcpkg.sh"
 fi
 
-mkdir -p "$VCPKG_INSTALL_ROOT" "$VCPKG_DOWNLOADS" "$VCPKG_BINARY_CACHE"
+mkdir -p \
+  "$VCPKG_INSTALL_ROOT" \
+  "$VCPKG_DOWNLOADS" \
+  "$VCPKG_BINARY_CACHE" \
+  "$VCPKG_BUILDTREES_ROOT" \
+  "$VCPKG_PACKAGES_ROOT"
 
 "$VCPKG_EXE" install \
   --downloads-root="$VCPKG_DOWNLOADS" \
   --x-install-root="$VCPKG_INSTALL_ROOT" \
+  --x-buildtrees-root="$VCPKG_BUILDTREES_ROOT" \
+  --x-packages-root="$VCPKG_PACKAGES_ROOT" \
   --binarysource=clear \
   --binarysource="files,$VCPKG_BINARY_CACHE,readwrite" \
   "$@"
