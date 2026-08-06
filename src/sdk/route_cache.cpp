@@ -33,7 +33,7 @@ protected:
             return;
         }
         ADVISKV_METRICS_COUNTER("sdk_route_cache_refresh_background");
-        IGNORE_RESULT(cache_->refresh_table_routes())
+        IGNORE_RESULT(cache_->refresh())
     }
 
 private:
@@ -45,18 +45,49 @@ RouteCache::RouteCache(const KVClientConf& conf, const SdmRouteClient* route_cli
 
 RouteCache::~RouteCache() { stop(); }
 
-void RouteCache::start() {
+Status RouteCache::init() {
+    RETURN_IF_INVALID_STATUS(conf_.validate())
+
     if (refresh_task_ == nullptr) {
         refresh_task_ = std::make_unique<RefreshTask>(this);
     }
-    refresh_task_->start(Milliseconds(conf_.route_shard_refresh_interval_ms));
-    refresh_task_->notify();
+    refresh_task_->start(Milliseconds(conf_.route_shard_refresh_interval_ms), true);
+    return Status::OK();
 }
 
 void RouteCache::stop() {
     if (refresh_task_ != nullptr) {
         refresh_task_->stop();
     }
+}
+
+Status RouteCache::resolve_route(const Key& key, RouteInfo* route) {
+    ADVISKV_METRICS_TIMER("sdk_route_cache_lookup");
+    Status status = lookup_cached_route(key, route);
+    if (status.ok()) {
+        ADVISKV_METRICS_COUNTER("sdk_route_cache_hit");
+    } else {
+        ADVISKV_METRICS_COUNTER("sdk_route_cache_miss");
+    }
+    return status;
+}
+
+Status RouteCache::refresh() {
+    ADVISKV_METRICS_TIMER("sdk_route_cache_refresh_table_routes");
+    ADVISKV_METRICS_COUNTER("sdk_route_cache_refresh_table_routes_request");
+    RETURN_IF_NULLPTR(route_client_, "route client is nullptr")
+
+    TableRouteInfo table_routes;
+    Status status = route_client_->get_table_routes(&table_routes);
+    if (status.fail()) {
+        ADVISKV_METRICS_COUNTER("sdk_route_cache_refresh_table_routes_failure");
+        ADVISKV_SDK_LOG(LogLevel::WARN, "refresh table routes failed, db={}, table={}, status={}", conf_.db_name,
+                        conf_.table_name, status.to_string());
+        return status;
+    }
+
+    ADVISKV_METRICS_COUNTER("sdk_route_cache_refresh_table_routes_success");
+    return publish_table_routes(table_routes);
 }
 
 std::shared_ptr<RouteCache::TableRouteSnapshot> RouteCache::load_snapshot() const {
@@ -89,44 +120,6 @@ Status RouteCache::lookup_cached_route(const Key& key, RouteInfo* route) const {
 
     *route = cached;
     return Status::OK();
-}
-
-Status RouteCache::resolve_route(const Key& key, RouteInfo* route) {
-    ADVISKV_METRICS_TIMER("sdk_route_cache_lookup");
-    Status status = lookup_cached_route(key, route);
-    if (status.ok()) {
-        ADVISKV_METRICS_COUNTER("sdk_route_cache_hit");
-        return status;
-    }
-    // 这里我们对查询路由缓存进行重试，和外部的put的重试并不是一回事
-    ADVISKV_METRICS_COUNTER("sdk_route_cache_miss");
-    return refresh_route_for_key(key, route);
-}
-
-Status RouteCache::refresh_route_for_key(const Key& key, RouteInfo* route) {
-    RETURN_IF_NULLPTR(route, "route should not be nullptr")
-    ADVISKV_METRICS_COUNTER("sdk_route_cache_refresh_foreground");
-
-    RETURN_IF_INVALID_STATUS(refresh_table_routes())
-    return lookup_cached_route(key, route);
-}
-
-Status RouteCache::refresh_table_routes() {
-    ADVISKV_METRICS_TIMER("sdk_route_cache_refresh_table_routes");
-    ADVISKV_METRICS_COUNTER("sdk_route_cache_refresh_table_routes_request");
-    RETURN_IF_NULLPTR(route_client_, "route client is nullptr")
-
-    TableRouteInfo table_routes;
-    Status status = route_client_->get_table_routes(&table_routes);
-    if (status.fail()) {
-        ADVISKV_METRICS_COUNTER("sdk_route_cache_refresh_table_routes_failure");
-        ADVISKV_SDK_LOG(LogLevel::WARN, "refresh table routes failed, db={}, table={}, status={}", conf_.db_name,
-                        conf_.table_name, status.to_string());
-        return status;
-    }
-
-    ADVISKV_METRICS_COUNTER("sdk_route_cache_refresh_table_routes_success");
-    return publish_table_routes(table_routes);
 }
 
 Status RouteCache::publish_table_routes(const TableRouteInfo& table_routes) {

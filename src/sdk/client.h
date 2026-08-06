@@ -16,6 +16,8 @@ class KVClient {
 public:
     explicit KVClient(const KVClientConf& conf);
 
+    Status init();
+
     Status put(const Key& key, const Value& value);
     Status get(const Key& key, Value* value);
     Status del(const Key& key);

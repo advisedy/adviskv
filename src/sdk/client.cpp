@@ -49,7 +49,27 @@ void convert_not_yet_commit_to_unknown(Status* status) {
 
 KVClient::KVClient(const KVClientConf& conf)
         : conf_(conf), sdm_route_client_(conf), route_cache_(conf, &sdm_route_client_), storage_client_(conf) {
-    route_cache_.start();
+    IGNORE_RESULT(init());
+}
+
+Status KVClient::init() {
+    RETURN_IF_INVALID_STATUS(conf_.validate())
+    return route_cache_.init();
+}
+
+Status KVClient::resolve_route(const Key& key, RouteInfo* route) {
+    RETURN_IF_NULLPTR(route, "route should not be nullptr")
+
+    Status status = route_cache_.resolve_route(key, route);
+    if (status.ok() || status.code() != StatusCode::ROUTE_NOT_FOUND) {
+        return status;
+    }
+
+    // 主要是第一次请求的时候，会有可能出现找不到route的情况，
+    // 这个时候手动刷新一次。这个重试只是因为route最开始的时候可能没有的情况导致的
+    ADVISKV_METRICS_COUNTER("sdk_route_resolve_refresh_on_miss");
+    RETURN_IF_INVALID_STATUS(route_cache_.refresh())
+    return route_cache_.resolve_route(key, route);
 }
 
 Status KVClient::put(const Key& key, const Value& value) {
@@ -262,15 +282,11 @@ bool KVClient::should_invalidate_route(const Status& status) {
            status.code() == StatusCode::ROUTE_NOT_FOUND;
 }
 
-Status KVClient::resolve_route(const Key& key, RouteInfo* route) {
-    RETURN_IF_NULLPTR(route, "route should not be nullptr")
-    return route_cache_.resolve_route(key, route);
-}
-
 Status KVClient::refresh_route(const Key& key, RouteInfo* route) {
     RETURN_IF_NULLPTR(route, "route should not be nullptr")
 
-    return route_cache_.refresh_route_for_key(key, route);
+    RETURN_IF_INVALID_STATUS(route_cache_.refresh())
+    return route_cache_.resolve_route(key, route);
 }
 
 }  // namespace adviskv::sdk

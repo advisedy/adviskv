@@ -26,7 +26,7 @@ public:
 
 public:
     virtual Status setup() { return Status::OK(); };
-    void start(Milliseconds interval);
+    void start(Milliseconds interval, bool run_immediately = false);
     void notify();
     void stop();
 
@@ -35,7 +35,7 @@ protected:
     virtual void teardown() {};
 
 private:
-    void loop(Milliseconds interval);
+    void loop(Milliseconds interval, bool run_immediately);
 
 private:
     std::atomic<bool> running_ = false;

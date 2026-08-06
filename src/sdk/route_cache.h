@@ -18,11 +18,11 @@ public:
 
     DISALLOW_COPY_AND_ASSIGN(RouteCache)
 
-    void start();
+    Status init();
     void stop();
 
     Status resolve_route(const Key& key, RouteInfo* route);
-    Status refresh_route_for_key(const Key& key, RouteInfo* route);
+    Status refresh();
 
 private:
     struct TableRouteSnapshot;
@@ -32,7 +32,6 @@ private:
     void store_snapshot(std::shared_ptr<TableRouteSnapshot> snapshot);
 
     Status lookup_cached_route(const Key& key, RouteInfo* route) const;
-    Status refresh_table_routes();
     Status publish_table_routes(const TableRouteInfo& table_routes);
 
     KVClientConf conf_;

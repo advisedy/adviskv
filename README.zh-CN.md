@@ -42,7 +42,7 @@ AdvisKV 把一套分布式 KV 系统从**控制面到数据面**完整拉通:Met
   <img src="docs/assets/minimal-overview.png" alt="AdvisKV architecture overview" width="820" />
 </p>
 
-- **Client / SDK**:走 `db + table + key` 路由,先 `GetRoute` 拿到 leader,再直连 Storage 做 `put/get/delete`;RouteCache 采用 COW + atomic snapshot,读路径无锁。
+- **Client / SDK**:走 `db + table + key` 路由,后台异步刷新整表路由后直连 Storage 做 `put/get/delete`;RouteCache 采用 COW + atomic snapshot,读路径无锁。
 - **Meta**:DDL / catalog 的单一权威源,建表时把表信息交给 SDM 编排落地。
 - **SDM**:reconciler 驱动的控制面,接收 Storage NodeAgent Heartbeat,下发 ExpectedReplica,把 desired state 收敛为 observed state,再对外发布 route。
 - **Storage Raft Group**:多副本 Raft 复制,leader 负责写路径;WAL 顺序落盘、Snapshot install、Log truncate 与 crash recovery 全部覆盖。
@@ -54,7 +54,7 @@ AdvisKV 把一套分布式 KV 系统从**控制面到数据面**完整拉通:Met
 </p>
 
 关键点:
-- SDK 侧先查 RouteCache;缺失或过期时回源到 SDM `GetTableRoutes / GetRoute`,再直连 Storage leader。
+- SDK 侧先查 RouteCache;缓存尚未就绪时由 SDK 前台回源 SDM `GetTableRoutes`,Storage 返回路由失效状态时刷新后重试一次,再直连 Storage leader。
 - Storage leader 侧走 `ReplicaManager → Replica::put → ProposeCall`,先本地 append Raft log 与 WAL,再发起 `AppendEntries`。
 - Quorum commit 完成后立即回客户端 `OK / UNKNOWN / NOT_LEADER`,`apply committed log → StateMachine` 是**异步**动作——这也是 `NOT_YET_COMMIT → UNKNOWN` 语义存在的原因,由 SDK 层重试兜底。
 
