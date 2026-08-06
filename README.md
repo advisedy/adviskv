@@ -13,7 +13,7 @@
   <a href="README.zh-CN.md">中文版本</a>
 </p>
 
-AdvisKV is a distributed Key-Value storage prototype implemented with **C++17 + gRPC + Protobuf + Raft**. It uses a control-plane/data-plane architecture: `Meta` manages DDL and catalog metadata, `SDM` manages Storage node registration, heartbeats, replica-group orchestration, desired replica dispatch, and shard route convergence, `Storage` handles KV reads/writes, Raft replication, WAL, snapshots, and local recovery, and `SDK` exposes `put/get/delete` APIs based on `db + table + key`.
+AdvisKV is a distributed Key-Value storage prototype implemented with **C++17 + gRPC + Protobuf + Raft**. It uses a control-plane/data-plane architecture: `Meta` manages DDL and catalog metadata, `TOPO` manages Storage node registration, heartbeats, replica-group orchestration, desired replica dispatch, and shard route convergence, `Storage` handles KV reads/writes, Raft replication, WAL, snapshots, and local recovery, and `SDK` exposes `put/get/delete` APIs based on `db + table + key`.
 
 The current V1 runs a complete local main path: database/table creation, table sharding, multi-replica placement, replica-count changes, abnormal replica replacement, route generation, SDK reads/writes, Raft replication, WAL, snapshots, crash recovery, GoogleTest, Python E2E tests, benchmarks, and metrics text reports. It is designed as a runnable prototype for learning distributed KV architecture and local experimentation, not as a production-ready database.
 
@@ -21,9 +21,9 @@ The current V1 runs a complete local main path: database/table creation, table s
 
 - Database/table DDL: create/drop database, create/drop table, and `AlterTableReplicaCount`.
 - Sharded table model: each table is split into shards, and each shard can have multiple Storage replicas.
-- SDM-driven desired-state orchestration: Storage NodeAgent heartbeats report observed state, and SDM returns expected replica actions.
+- TOPO-driven desired-state orchestration: Storage NodeAgent heartbeats report observed state, and TOPO returns expected replica actions.
 - Replica-count scaling flows, including `0 -> N`, `N -> 0`, and multi-replica resize scenarios.
-- Abnormal replica replacement: SDM adds new replicas when healthy members are insufficient and cleans up `LOST` / `ERROR` members.
+- Abnormal replica replacement: TOPO adds new replicas when healthy members are insufficient and cleans up `LOST` / `ERROR` members.
 - SDK route resolution based on `db + table + key`, followed by leader-based `put/get/delete` requests to Storage.
 - Storage replication based on Raft, with WAL, snapshots, and crash recovery.
 - GoogleTest, Python E2E tests, benchmark tooling, and service/SDK metrics reports without a Prometheus dependency.
@@ -38,7 +38,7 @@ Client / CLI / Benchmark
         |
         | GetRoute(db, table, key)
         v
-       SDM  <-------------------- Storage NodeAgent HeartBeat
+       TOPO  <-------------------- Storage NodeAgent HeartBeat
         ^                         |
         |                         | Apply ExpectedReplica
         |                         v
@@ -49,11 +49,11 @@ Main flows:
 
 ```text
 DDL:
-Client -> Meta CreateTable -> SDM PlaceTable -> NodeAgent HeartBeat
+Client -> Meta CreateTable -> TOPO PlaceTable -> NodeAgent HeartBeat
        -> Apply ExpectedReplica -> Replica READY -> Route READY -> Meta NORMAL
 
 Data:
-SDK -> SDM GetRoute -> Storage leader Put/Get/Delete -> Raft -> KV StateMachine
+SDK -> TOPO GetRoute -> Storage leader Put/Get/Delete -> Raft -> KV StateMachine
 ```
 
 ## Quick Start
@@ -66,7 +66,7 @@ Requirements: macOS or Linux, a C++17 compiler, CMake 3.20+, Ninja, Git, and Pyt
 ./scripts/adviskvctl_demo.sh
 ```
 
-`adviskvctl_demo.sh` starts a local `sdm/meta/storage` cluster and opens an interactive shell. Example commands:
+`adviskvctl_demo.sh` starts a local `topo/meta/storage` cluster and opens an interactive shell. Example commands:
 
 ```text
 create_db demo_db dc1
@@ -103,7 +103,7 @@ Common build variables:
 
 ```bash
 BUILD_TYPE=Debug ./scripts/build.sh
-BUILD_TARGETS="meta sdm storage adviskvctl" ./scripts/build.sh
+BUILD_TARGETS="meta topo storage adviskvctl" ./scripts/build.sh
 ```
 
 Main binaries are generated under `build/bin/` by default.
@@ -117,16 +117,16 @@ Main binaries are generated under `build/bin/` by default.
 ```
 
 - `run_test.sh`: builds and runs GoogleTest suites.
-- `e2e_pytest.sh`: starts a local multi-process cluster and verifies the Meta -> SDM -> Storage -> SDK main path.
+- `e2e_pytest.sh`: starts a local multi-process cluster and verifies the Meta -> TOPO -> Storage -> SDK main path.
 - `coverage.sh`: generates a coverage report.
 
 E2E tests cover basic KV operations, restart recovery, leader failover, follower catch-up, crash recovery, scale-to-zero, replica-count changes, and failure scenarios.
 
 ## Benchmark
 
-The benchmark reports below measure local end-to-end flows through `SDK -> SDM route -> Storage leader -> Raft/WAL/KV`. Results come from one local V1 test environment and should be treated as local regression and tuning references, not production performance claims.
+The benchmark reports below measure local end-to-end flows through `SDK -> TOPO route -> Storage leader -> Raft/WAL/KV`. Results come from one local V1 test environment and should be treated as local regression and tuning references, not production performance claims.
 
-Test environment: `Mac15,7`, Apple M3 Pro, 12 physical cores / 12 logical CPUs, 36 GiB memory, macOS 15.7.4, arm64. Local cluster: `1 meta + 1 sdm + 5 storage`, all processes running on the same machine and communicating through `127.0.0.1/localhost`.
+Test environment: `Mac15,7`, Apple M3 Pro, 12 physical cores / 12 logical CPUs, 36 GiB memory, macOS 15.7.4, arm64. Local cluster: `1 meta + 1 topo + 5 storage`, all processes running on the same machine and communicating through `127.0.0.1/localhost`.
 
 ![Mixed benchmark](docs/benchmark/assets/mixed_read_ratio_qps.svg)
 
@@ -169,8 +169,8 @@ The report lists latency histogram deltas and counter deltas that changed during
 - [scripts/README.md](scripts/README.md): common script entry points.
 - [docs/benchmark/README.md](docs/benchmark/README.md): V1 benchmark entry and result summary.
 - [docs/约束.md](docs/约束.md): V1 API, state, and scale-to-zero semantics.
-- [docs/sdm_reconcile_layering.md](docs/sdm_reconcile_layering.md): SDM reconcile layering design.
-- [docs/sdm_membership_change_design.md](docs/sdm_membership_change_design.md): replica membership change design.
+- [docs/topo_reconcile_layering.md](docs/topo_reconcile_layering.md): TOPO reconcile layering design.
+- [docs/topo_membership_change_design.md](docs/topo_membership_change_design.md): replica membership change design.
 - [docs/replica_group_service_source_guide.md](docs/replica_group_service_source_guide.md): ReplicaGroupService source guide.
 
 ## Project Layout
@@ -179,7 +179,7 @@ The report lists latency histogram deltas and counter deltas that changed during
 conf/       local config files
 proto/      gRPC / Protobuf definitions
 scripts/    build, test, demo and benchmark scripts
-src/        Meta, SDM, Storage, SDK and common modules
+src/        Meta, TOPO, Storage, SDK and common modules
 tools/      adviskvctl, e2e client, benchmark client, storage client
 test/       GoogleTest and Python E2E tests
 docs/       design notes and V1 constraints
@@ -189,7 +189,7 @@ docs/       design notes and V1 constraints
 
 AdvisKV is currently a V1 prototype. It provides a buildable, runnable, and testable distributed KV main path, but the following boundaries should be kept in mind:
 
-- Meta and SDM currently run as single local processes and are not highly available.
+- Meta and TOPO currently run as single local processes and are not highly available.
 - The main path for replica-count changes and abnormal replica replacement is implemented, but more complete automatic rebalancing, complex membership strategies, and production-grade operations are still out of scope for V1.
 - Route and writable-leader semantics still need broader failure-scenario validation.
 - Storage currently uses a map-based KV engine and has not integrated production-grade LSM engines such as RocksDB.

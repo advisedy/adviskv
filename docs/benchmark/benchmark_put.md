@@ -27,7 +27,7 @@ warmup_requests = 0
 ## 测试环境
 
 - 运行方式：`scripts/bench.sh` 拉起本地集群并运行 `bench_client`。
-- 本地集群：`1 meta + 1 sdm + 5 storage`，所有进程都运行在同一台机器上，并通过 `127.0.0.1/localhost` 通信。
+- 本地集群：`1 meta + 1 topo + 5 storage`，所有进程都运行在同一台机器上，并通过 `127.0.0.1/localhost` 通信。
 - 测试机器：`Mac15,7`，Apple M3 Pro，12 物理核心 / 12 逻辑 CPU，36 GiB 内存。
 - 操作系统：macOS 15.7.4 (24G517)，arm64。
 - 构建方式：Release
@@ -40,7 +40,7 @@ warmup_requests = 0
 - `replica_count=1` 的写入吞吐约 21305 QPS，高于 `replica_count=3/5` 的约 9765/4837 QPS，符合 Raft 多副本写入需要复制和提交的成本预期。
 - `value_size` 从 16 增加到 4096 bytes 时，`success_qps` 从约 10471 下降到约 4193，写入 payload 变大后复制、WAL 和网络序列化成本会更明显。
 - `shard_count` 在本地单机多进程环境下没有表现出稳定线性提升，结果会受到 Storage node 数量、leader 分布和单机资源竞争影响。
-- SDK 当前使用整表 route cache，正式 workload 阶段不再对每次请求做 SDM route resolve；所有测试点 `failure=0`。
+- SDK 当前使用整表 route cache，正式 workload 阶段不再对每次请求做 TOPO route resolve；所有测试点 `failure=0`。
 
 ## Threads
 

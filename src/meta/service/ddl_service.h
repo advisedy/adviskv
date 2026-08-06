@@ -3,15 +3,15 @@
 #include "common/status.h"
 #include "meta/catalog/catalog_manager.h"
 #include "meta/model/param.h"
-#include "meta/service/sdm_client.h"
+#include "meta/service/topo_client.h"
 
 namespace adviskv::meta {
 
 class DdlService {
 public:
-    explicit DdlService(CatalogManager* catalog_manager, ISdmClient* sdm_client);
+    explicit DdlService(CatalogManager* catalog_manager, ITopoClient* topo_client);
 
-    // 负责一些会涉及到catalog和sdm的操作
+    // 负责一些会涉及到catalog和topo的操作
     Status create_table(const CreateTableParam& param, TableMeta* table_meta);
     Status drop_table(const DropTableParam& param, TableMeta* table_meta);
     Status alter_table_replica_count(const AlterTableReplicaCountParam& param, TableMeta* table_meta);
@@ -20,7 +20,7 @@ public:
     Status get_table(const GetTableParam& param, TableMeta* table_meta);
 
 private:
-    ISdmClient* sdm_client_;
+    ITopoClient* topo_client_;
     CatalogManager* catalog_manager_;
 };
 

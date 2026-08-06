@@ -26,5 +26,5 @@ target_link_libraries(adviskv_common PUBLIC
 
 add_subdirectory(storage)
 add_subdirectory(meta)
-add_subdirectory(sdm)
+add_subdirectory(topo)
 add_subdirectory(sdk)

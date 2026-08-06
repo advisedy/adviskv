@@ -34,7 +34,7 @@ echo "[demo] stopping stale local processes"
 echo "[demo] clearing local demo data"
 rm -rf "$ROOT_DIR/build/runtime" "$BUILD_DIR/runtime"
 
-require_binary "$BUILD_DIR/bin/sdm"
+require_binary "$BUILD_DIR/bin/topo"
 require_binary "$BUILD_DIR/bin/meta"
 require_binary "$BUILD_DIR/bin/storage"
 require_binary "$ADVISKVCTL"

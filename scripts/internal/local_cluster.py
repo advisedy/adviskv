@@ -315,7 +315,7 @@ class LocalCluster:
 def cluster_from_confs(
     *,
     log_dir: Path,
-    sdm_conf: Path,
+    topo_conf: Path,
     meta_conf: Path,
     storage_confs: list[Path],
     capture_output: bool = False,
@@ -325,7 +325,7 @@ def cluster_from_confs(
         for index, conf in enumerate(storage_confs, start=1)
     ]
     specs = [
-        service_spec_from_conf("sdm", BIN_DIR / "sdm", sdm_conf),
+        service_spec_from_conf("topo", BIN_DIR / "topo", topo_conf),
         service_spec_from_conf("meta", BIN_DIR / "meta", meta_conf),
         *storage_specs,
     ]
@@ -339,7 +339,7 @@ def cluster_from_confs(
 def default_cluster() -> LocalCluster:
     return cluster_from_confs(
         log_dir=BUILD_DIR / "runtime" / "logs",
-        sdm_conf=ROOT_DIR / "conf" / "sdm.yaml",
+        topo_conf=ROOT_DIR / "conf" / "topo.yaml",
         meta_conf=ROOT_DIR / "conf" / "meta.yaml",
         storage_confs=[
             ROOT_DIR / "conf" / "storage-1.yaml",
@@ -434,7 +434,7 @@ def start_spec(cluster: LocalCluster, spec: ServiceSpec) -> None:
 def handle_cli(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Manage local AdvisKV demo cluster")
     parser.add_argument("command", choices=["start", "stop", "kill", "restart", "status"])
-    parser.add_argument("service", nargs="?", help="sdm, meta, storage-N")
+    parser.add_argument("service", nargs="?", help="topo, meta, storage-N")
     args = parser.parse_args(argv)
 
     cluster = default_cluster()

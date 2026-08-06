@@ -18,7 +18,7 @@ log_level: "debug"
 log_to_console: false
 log_to_file: true
 
-#sdm
+#topo
 manager_host: "127.0.0.1"
 manager_port: 50049
 

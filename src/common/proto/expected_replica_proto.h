@@ -11,37 +11,37 @@
 
 namespace adviskv {
 
-inline bool encode_pb_expected_replica_type(ExpectedReplicaType in, sdm_rpc::ExpectedReplicaType& out) {
+inline bool encode_pb_expected_replica_type(ExpectedReplicaType in, topo_rpc::ExpectedReplicaType& out) {
     switch (in) {
         case ExpectedReplicaType::PRESENT:
-            out = sdm_rpc::PRESENT;
+            out = topo_rpc::PRESENT;
             return true;
         case ExpectedReplicaType::ABSENT:
-            out = sdm_rpc::ABSENT;
+            out = topo_rpc::ABSENT;
             return true;
         case ExpectedReplicaType::ADD_MEMBER:
-            out = sdm_rpc::ADD_MEMBER;
+            out = topo_rpc::ADD_MEMBER;
             return true;
         case ExpectedReplicaType::REMOVE_MEMBER:
-            out = sdm_rpc::REMOVE_MEMBER;
+            out = topo_rpc::REMOVE_MEMBER;
             return true;
         default:
             return false;
     }
 }
 
-inline bool decode_pb_expected_replica_type(sdm_rpc::ExpectedReplicaType in, ExpectedReplicaType& out) {
+inline bool decode_pb_expected_replica_type(topo_rpc::ExpectedReplicaType in, ExpectedReplicaType& out) {
     switch (in) {
-        case sdm_rpc::PRESENT:
+        case topo_rpc::PRESENT:
             out = ExpectedReplicaType::PRESENT;
             return true;
-        case sdm_rpc::ABSENT:
+        case topo_rpc::ABSENT:
             out = ExpectedReplicaType::ABSENT;
             return true;
-        case sdm_rpc::ADD_MEMBER:
+        case topo_rpc::ADD_MEMBER:
             out = ExpectedReplicaType::ADD_MEMBER;
             return true;
-        case sdm_rpc::REMOVE_MEMBER:
+        case topo_rpc::REMOVE_MEMBER:
             out = ExpectedReplicaType::REMOVE_MEMBER;
             return true;
         default:
@@ -49,8 +49,8 @@ inline bool decode_pb_expected_replica_type(sdm_rpc::ExpectedReplicaType in, Exp
     }
 }
 
-inline bool encode_pb_expected_replica(const ExpectedReplica& in, sdm_rpc::ExpectedReplica& out) {
-    sdm_rpc::ExpectedReplicaType type = sdm_rpc::ABSENT;
+inline bool encode_pb_expected_replica(const ExpectedReplica& in, topo_rpc::ExpectedReplica& out) {
+    topo_rpc::ExpectedReplicaType type = topo_rpc::ABSENT;
     if (!encode_pb_expected_replica_type(in.type, type)) {
         return false;
     }
@@ -71,7 +71,7 @@ inline bool encode_pb_expected_replica(const ExpectedReplica& in, sdm_rpc::Expec
     return true;
 }
 
-inline bool decode_pb_expected_replica(const sdm_rpc::ExpectedReplica& in, ExpectedReplica& out) {
+inline bool decode_pb_expected_replica(const topo_rpc::ExpectedReplica& in, ExpectedReplica& out) {
     if (!decode_pb_replica_id(in.replica_id(), out.replica_id)) {
         return false;
     }

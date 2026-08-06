@@ -73,8 +73,8 @@ def service_port(cluster: AdvisKVCluster, name: str) -> int:
 def run_create_table_crash_story(cluster: AdvisKVCluster, *, crash_point: str,
                                  prepare_case: str, verify_case: str, db: str,
                                  table: str) -> None:
-    cluster.set_service_env("sdm", {"ADVISKV_ENABLE_CRASH_POINT": crash_point})
-    cluster.restart_service("sdm")
+    cluster.set_service_env("topo", {"ADVISKV_ENABLE_CRASH_POINT": crash_point})
+    cluster.restart_service("topo")
 
     prepare_output = run_case_and_get_output(
         cluster,
@@ -84,10 +84,10 @@ def run_create_table_crash_story(cluster: AdvisKVCluster, *, crash_point: str,
         key_count=8,
     )
     assert prepare_output
-    cluster.assert_service_stopped("sdm")
+    cluster.assert_service_stopped("topo")
 
-    cluster.clear_service_env("sdm")
-    cluster.start_service("sdm")
+    cluster.clear_service_env("topo")
+    cluster.start_service("topo")
 
     run_case_and_get_output(
         cluster,
@@ -305,7 +305,7 @@ def test_restart_persistence_case(cluster: AdvisKVCluster):
 def test_create_table_crash_before_persist_case(cluster: AdvisKVCluster):
     run_create_table_crash_story(
         cluster,
-        crash_point="sdm.place_table.before_put_table",
+        crash_point="topo.place_table.before_put_table",
         prepare_case="create_table_crash_before_persist_prepare",
         verify_case="create_table_crash_before_persist_verify",
         db="pytest_create_before_persist_db",
@@ -316,7 +316,7 @@ def test_create_table_crash_before_persist_case(cluster: AdvisKVCluster):
 def test_create_table_crash_after_persist_case(cluster: AdvisKVCluster):
     run_create_table_crash_story(
         cluster,
-        crash_point="sdm.place_table.after_put_table",
+        crash_point="topo.place_table.after_put_table",
         prepare_case="create_table_crash_after_persist_prepare",
         verify_case="create_table_crash_after_persist_verify",
         db="pytest_create_after_persist_db",
@@ -374,25 +374,25 @@ def test_follower_snapshot_catchup_case(cluster: AdvisKVCluster):
     )
 
 
-def test_sdm_crash_recovery_case(cluster: AdvisKVCluster):
-    """SDM 崩溃后重启，验证数据持久化：创建 DB/table 写入数据 → kill SDM → 重启 SDM → 验证数据可读。"""
+def test_topo_crash_recovery_case(cluster: AdvisKVCluster):
+    """TOPO 崩溃后重启，验证数据持久化：创建 DB/table 写入数据 → kill TOPO → 重启 TOPO → 验证数据可读。"""
     run_case_and_get_output(
         cluster,
-        case="sdm_crash_seed",
-        db="pytest_sdm_crash_db",
-        table="pytest_sdm_crash_table",
+        case="topo_crash_seed",
+        db="pytest_topo_crash_db",
+        table="pytest_topo_crash_table",
         key_count=16,
     )
 
-    cluster.kill_service("sdm")
-    cluster.assert_service_stopped("sdm")
-    cluster.start_service("sdm")
+    cluster.kill_service("topo")
+    cluster.assert_service_stopped("topo")
+    cluster.start_service("topo")
 
     run_case_and_get_output(
         cluster,
-        case="sdm_crash_verify",
-        db="pytest_sdm_crash_db",
-        table="pytest_sdm_crash_table",
+        case="topo_crash_verify",
+        db="pytest_topo_crash_db",
+        table="pytest_topo_crash_table",
         key_count=16,
         timeout_ms=VERIFY_TIMEOUT_MS,
     )

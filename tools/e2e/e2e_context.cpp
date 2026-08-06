@@ -16,19 +16,19 @@ namespace adviskv::e2e {
 E2EContext::E2EContext(const Options& options) : options_(options) {
     const std::string meta_target =
         fmt::format("{}:{}", options_.meta_host, options_.meta_port);
-    const std::string sdm_target =
-        fmt::format("{}:{}", options_.sdm_host, options_.sdm_port);
+    const std::string topo_target =
+        fmt::format("{}:{}", options_.topo_host, options_.topo_port);
 
     print_step(fmt::format("meta target: {}", meta_target));
-    print_step(fmt::format("sdm target: {}", sdm_target));
+    print_step(fmt::format("topo target: {}", topo_target));
 
     auto meta_channel =
         grpc::CreateChannel(meta_target, grpc::InsecureChannelCredentials());
     meta_stub_ = meta_rpc::MetaService::NewStub(meta_channel);
 
-    auto sdm_channel =
-        grpc::CreateChannel(sdm_target, grpc::InsecureChannelCredentials());
-    sdm_stub_ = sdm_rpc::SdmService::NewStub(sdm_channel);
+    auto topo_channel =
+        grpc::CreateChannel(topo_target, grpc::InsecureChannelCredentials());
+    topo_stub_ = topo_rpc::TopoService::NewStub(topo_channel);
 }
 
 }  // namespace adviskv::e2e

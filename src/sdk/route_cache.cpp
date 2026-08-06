@@ -12,7 +12,7 @@
 #include "common/metrics/metrics.h"
 #include "common/stable_hash.h"
 #include "sdk/log.h"
-#include "sdk/sdm_route_client.h"
+#include "sdk/topo_route_client.h"
 
 namespace adviskv::sdk {
 
@@ -40,7 +40,7 @@ private:
     RouteCache* cache_{nullptr};
 };
 
-RouteCache::RouteCache(const KVClientConf& conf, const SdmRouteClient* route_client)
+RouteCache::RouteCache(const KVClientConf& conf, const TopoRouteClient* route_client)
         : conf_(conf), route_client_(route_client) {}
 
 RouteCache::~RouteCache() { stop(); }
@@ -106,7 +106,7 @@ Status RouteCache::lookup_cached_route(const Key& key, RouteInfo* route) const {
         return Status::ROUTE_NOT_FOUND("route cache is not ready");
     }
 
-    // TODO 以后尝试SDM那边传递过来ranges
+    // TODO 以后尝试TOPO那边传递过来ranges
     ShardIndex shard_id = stable_shard_index(key, snapshot->shard_count);
     if (shard_id < 0 || to<size_t>(shard_id) >= snapshot->routes.size()) {
         return Status::ROUTE_NOT_FOUND(fmt::format("route cache shard_id invalid, shard_id={}, shard_count={}",

@@ -1,0 +1,18 @@
+listen_host: "127.0.0.1"
+port: 50049
+
+data_dir: "build/runtime/data/topo"
+
+# log
+logger_name: "topo_log"
+log_dir: "build/runtime/logs/topo"
+log_filename: "topo.log"
+log_level: "debug"
+log_to_console: false
+log_to_file: true
+
+# metrics
+metrics_http_enable: true
+metrics_http_host: "127.0.0.1"
+metrics_http_port: 51049
+metrics_http_path: "/metrics"

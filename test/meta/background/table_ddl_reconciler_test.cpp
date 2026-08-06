@@ -10,13 +10,13 @@
 #include "meta/catalog/catalog_manager.h"
 #include "meta/persist/meta_persist_engine.h"
 #include "meta/proto/table_state_proto.h"
-#include "meta/service/sdm_client.h"
-#include "sdm/model/model.h"
+#include "meta/service/topo_client.h"
+#include "topo/model/model.h"
 
 namespace adviskv::meta {
 namespace {
 
-class FakeSdmClient : public ISdmClient {
+class FakeTopoClient : public ITopoClient {
    public:
     Status call_place_table(const TableMeta& table_meta) override {
         ++place_table_calls;
@@ -38,7 +38,7 @@ class FakeSdmClient : public ISdmClient {
     }
 
     Status get_table_status(const TableMeta& table_meta,
-                            SdmTableStatus* table_status) override {
+                            TopoTableStatus* table_status) override {
         ++get_table_status_calls;
         last_get_table = table_meta;
         if (table_status) {
@@ -51,7 +51,7 @@ class FakeSdmClient : public ISdmClient {
     Status drop_table_status{Status::OK()};
     Status alter_table_status{Status::OK()};
     Status get_table_status_status{Status::OK()};
-    SdmTableStatus table_status_result;
+    TopoTableStatus table_status_result;
 
     int place_table_calls{0};
     int drop_table_calls{0};
@@ -119,11 +119,11 @@ class TableDdlReconcilerTest : public ::testing::Test {
         return table;
     }
 
-    SdmTableStatus sdm_status(SdmTablePhase phase,
+    TopoTableStatus topo_status(TopoTablePhase phase,
                               const std::string& error_msg = "") {
-        SdmTableStatus status{};
+        TopoTableStatus status{};
         status.table_id = 0;
-        status.desired = SdmTableDesired::PRESENT;
+        status.desired = TopoTableDesired::PRESENT;
         status.phase = phase;
         status.last_error_msg = error_msg;
         return status;
@@ -136,11 +136,11 @@ class TableDdlReconcilerTest : public ::testing::Test {
     const std::string resource_pool_{"pool-a"};
 };
 
-// 测试ADDING的table，sdm那边查不到table的时候，会重新提交place_table。
-TEST_F(TableDdlReconcilerTest, AddingTableMissingInSdmResubmitsPlaceTable) {
+// 测试ADDING的table，topo那边查不到table的时候，会重新提交place_table。
+TEST_F(TableDdlReconcilerTest, AddingTableMissingInTopoResubmitsPlaceTable) {
     Fixture fixture{make_sub_dir("adding_missing")};
     TableMeta table = create_table(fixture.catalog, TableState::ADDING);
-    FakeSdmClient client;
+    FakeTopoClient client;
     client.get_table_status_status = Status::TABLE_NOT_FOUND("not found");
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
@@ -155,12 +155,12 @@ TEST_F(TableDdlReconcilerTest, AddingTableMissingInSdmResubmitsPlaceTable) {
     EXPECT_EQ(stored.state, TableState::ADDING);
 }
 
-// 测试ADDING的table，sdm还是CREATING的时候，meta这边先保持ADDING继续等。
-TEST_F(TableDdlReconcilerTest, AddingTableCreatingInSdmKeepsAdding) {
+// 测试ADDING的table，topo还是CREATING的时候，meta这边先保持ADDING继续等。
+TEST_F(TableDdlReconcilerTest, AddingTableCreatingInTopoKeepsAdding) {
     Fixture fixture{make_sub_dir("adding_creating")};
     TableMeta table = create_table(fixture.catalog, TableState::ADDING);
-    FakeSdmClient client;
-    client.table_status_result = sdm_status(SdmTablePhase::CREATING);
+    FakeTopoClient client;
+    client.table_status_result = topo_status(TopoTablePhase::CREATING);
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();
@@ -173,8 +173,8 @@ TEST_F(TableDdlReconcilerTest, AddingTableCreatingInSdmKeepsAdding) {
     EXPECT_EQ(stored.state, TableState::ADDING);
 }
 
-// 测试 ADDING 的 table 在 SDM 仍为 CREATING 时保持 ADDING，并保留已有错误信息。
-TEST_F(TableDdlReconcilerTest, AddingTableCreatingInSdmKeepsPreviousError) {
+// 测试 ADDING 的 table 在 TOPO 仍为 CREATING 时保持 ADDING，并保留已有错误信息。
+TEST_F(TableDdlReconcilerTest, AddingTableCreatingInTopoKeepsPreviousError) {
     Fixture fixture{make_sub_dir("adding_creating_keep_error")};
     TableMeta table = create_table(fixture.catalog, TableState::ADDING);
     const std::string previous_error = "previous place table rpc failed";
@@ -183,8 +183,8 @@ TEST_F(TableDdlReconcilerTest, AddingTableCreatingInSdmKeepsPreviousError) {
                                         previous_error)
                     .ok());
 
-    FakeSdmClient client;
-    client.table_status_result = sdm_status(SdmTablePhase::CREATING);
+    FakeTopoClient client;
+    client.table_status_result = topo_status(TopoTablePhase::CREATING);
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();
@@ -195,12 +195,12 @@ TEST_F(TableDdlReconcilerTest, AddingTableCreatingInSdmKeepsPreviousError) {
     EXPECT_EQ(stored.last_error_msg, previous_error);
 }
 
-// 测试ADDING的table，sdm那边已经READY了，meta这边要同步成NORMAL。
-TEST_F(TableDdlReconcilerTest, AddingTableReadyInSdmMarksNormal) {
+// 测试ADDING的table，topo那边已经READY了，meta这边要同步成NORMAL。
+TEST_F(TableDdlReconcilerTest, AddingTableReadyInTopoMarksNormal) {
     Fixture fixture{make_sub_dir("adding_ready")};
     TableMeta table = create_table(fixture.catalog, TableState::ADDING);
-    FakeSdmClient client;
-    client.table_status_result = sdm_status(SdmTablePhase::READY);
+    FakeTopoClient client;
+    client.table_status_result = topo_status(TopoTablePhase::READY);
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();
@@ -211,13 +211,13 @@ TEST_F(TableDdlReconcilerTest, AddingTableReadyInSdmMarksNormal) {
     EXPECT_TRUE(stored.last_error_msg.empty());
 }
 
-// 测试ADDING的table，sdm那边已经FAILED了，meta这边也要变成FAILED并且记录err_msg。
-TEST_F(TableDdlReconcilerTest, AddingTableFailedInSdmMarksFailedWithError) {
+// 测试ADDING的table，topo那边已经FAILED了，meta这边也要变成FAILED并且记录err_msg。
+TEST_F(TableDdlReconcilerTest, AddingTableFailedInTopoMarksFailedWithError) {
     Fixture fixture{make_sub_dir("adding_failed")};
     TableMeta table = create_table(fixture.catalog, TableState::ADDING);
-    FakeSdmClient client;
+    FakeTopoClient client;
     client.table_status_result =
-        sdm_status(SdmTablePhase::FAILED, "sdm placement failed");
+        topo_status(TopoTablePhase::FAILED, "topo placement failed");
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();
@@ -225,14 +225,14 @@ TEST_F(TableDdlReconcilerTest, AddingTableFailedInSdmMarksFailedWithError) {
     TableMeta stored;
     ASSERT_TRUE(fixture.catalog.get_table_by_id(table.table_id, &stored).ok());
     EXPECT_EQ(stored.state, TableState::FAILED);
-    EXPECT_EQ(stored.last_error_msg, "sdm placement failed");
+    EXPECT_EQ(stored.last_error_msg, "topo placement failed");
 }
 
-// 测试ADDING的table，查询sdm状态失败了，meta这边还是ADDING，然后记录err_msg。
+// 测试ADDING的table，查询topo状态失败了，meta这边还是ADDING，然后记录err_msg。
 TEST_F(TableDdlReconcilerTest, AddingTableGetStatusFailureKeepsAddingWithError) {
     Fixture fixture{make_sub_dir("adding_get_status_failure")};
     TableMeta table = create_table(fixture.catalog, TableState::ADDING);
-    FakeSdmClient client;
+    FakeTopoClient client;
     client.get_table_status_status = Status::ERROR("get status failed");
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
@@ -245,7 +245,7 @@ TEST_F(TableDdlReconcilerTest, AddingTableGetStatusFailureKeepsAddingWithError) 
               std::string::npos);
 }
 
-// 测试 ADDING 的 table 在 SDM 查不到后重新提交成功时，仍保留之前的错误信息。
+// 测试 ADDING 的 table 在 TOPO 查不到后重新提交成功时，仍保留之前的错误信息。
 TEST_F(TableDdlReconcilerTest, AddingTableResubmitSuccessKeepsPreviousError) {
     Fixture fixture{make_sub_dir("adding_resubmit_keep_error")};
     TableMeta table = create_table(fixture.catalog, TableState::ADDING);
@@ -255,7 +255,7 @@ TEST_F(TableDdlReconcilerTest, AddingTableResubmitSuccessKeepsPreviousError) {
                                         previous_error)
                     .ok());
 
-    FakeSdmClient client;
+    FakeTopoClient client;
     client.get_table_status_status = Status::TABLE_NOT_FOUND("not found");
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
@@ -268,11 +268,11 @@ TEST_F(TableDdlReconcilerTest, AddingTableResubmitSuccessKeepsPreviousError) {
     EXPECT_EQ(stored.last_error_msg, previous_error);
 }
 
-// 测试 ALTERING 的 table 在 SDM 查不到时，Meta 侧会标记为 FAILED。
-TEST_F(TableDdlReconcilerTest, AlteringTableMissingInSdmMarksFailed) {
+// 测试 ALTERING 的 table 在 TOPO 查不到时，Meta 侧会标记为 FAILED。
+TEST_F(TableDdlReconcilerTest, AlteringTableMissingInTopoMarksFailed) {
     Fixture fixture{make_sub_dir("altering_missing")};
     TableMeta table = create_table(fixture.catalog, TableState::ALTERING);
-    FakeSdmClient client;
+    FakeTopoClient client;
     client.get_table_status_status = Status::TABLE_NOT_FOUND("not found");
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
@@ -284,15 +284,15 @@ TEST_F(TableDdlReconcilerTest, AlteringTableMissingInSdmMarksFailed) {
     TableMeta stored;
     ASSERT_TRUE(fixture.catalog.get_table_by_id(table.table_id, &stored).ok());
     EXPECT_EQ(stored.state, TableState::FAILED);
-    EXPECT_EQ(stored.last_error_msg, "SDM table alter failed");
+    EXPECT_EQ(stored.last_error_msg, "TOPO table alter failed");
 }
 
-// 测试 ALTERING 的 table 在 SDM 仍为 RESIZING 时，Meta 侧继续保持 ALTERING。
-TEST_F(TableDdlReconcilerTest, AlteringTableResizingInSdmKeepsAltering) {
+// 测试 ALTERING 的 table 在 TOPO 仍为 RESIZING 时，Meta 侧继续保持 ALTERING。
+TEST_F(TableDdlReconcilerTest, AlteringTableResizingInTopoKeepsAltering) {
     Fixture fixture{make_sub_dir("altering_resizing")};
     TableMeta table = create_table(fixture.catalog, TableState::ALTERING);
-    FakeSdmClient client;
-    client.table_status_result = sdm_status(SdmTablePhase::RESIZING);
+    FakeTopoClient client;
+    client.table_status_result = topo_status(TopoTablePhase::RESIZING);
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();
@@ -305,12 +305,12 @@ TEST_F(TableDdlReconcilerTest, AlteringTableResizingInSdmKeepsAltering) {
     EXPECT_EQ(stored.state, TableState::ALTERING);
 }
 
-// 测试 ALTERING 的 table 在 SDM 已 READY 时，Meta 侧同步为 NORMAL。
-TEST_F(TableDdlReconcilerTest, AlteringTableReadyInSdmMarksNormal) {
+// 测试 ALTERING 的 table 在 TOPO 已 READY 时，Meta 侧同步为 NORMAL。
+TEST_F(TableDdlReconcilerTest, AlteringTableReadyInTopoMarksNormal) {
     Fixture fixture{make_sub_dir("altering_ready")};
     TableMeta table = create_table(fixture.catalog, TableState::ALTERING);
-    FakeSdmClient client;
-    client.table_status_result = sdm_status(SdmTablePhase::READY);
+    FakeTopoClient client;
+    client.table_status_result = topo_status(TopoTablePhase::READY);
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();
@@ -321,11 +321,11 @@ TEST_F(TableDdlReconcilerTest, AlteringTableReadyInSdmMarksNormal) {
     EXPECT_TRUE(stored.last_error_msg.empty());
 }
 
-// 测试DROPPING的table，sdm那边查不到table的时候，meta这边要直接变成DELETED。
-TEST_F(TableDdlReconcilerTest, DroppingTableMissingInSdmMarksDeleted) {
+// 测试DROPPING的table，topo那边查不到table的时候，meta这边要直接变成DELETED。
+TEST_F(TableDdlReconcilerTest, DroppingTableMissingInTopoMarksDeleted) {
     Fixture fixture{make_sub_dir("dropping_missing")};
     TableMeta table = create_table(fixture.catalog, TableState::DROPPING);
-    FakeSdmClient client;
+    FakeTopoClient client;
     client.get_table_status_status = Status::TABLE_NOT_FOUND("not found");
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
@@ -337,12 +337,12 @@ TEST_F(TableDdlReconcilerTest, DroppingTableMissingInSdmMarksDeleted) {
     EXPECT_EQ(stored.state, TableState::DELETED);
 }
 
-// 测试DROPPING的table，sdm那边还是DELETING的时候，meta这边先保持DROPPING继续等。
-TEST_F(TableDdlReconcilerTest, DroppingTableDeletingInSdmKeepsDropping) {
+// 测试DROPPING的table，topo那边还是DELETING的时候，meta这边先保持DROPPING继续等。
+TEST_F(TableDdlReconcilerTest, DroppingTableDeletingInTopoKeepsDropping) {
     Fixture fixture{make_sub_dir("dropping_deleting")};
     TableMeta table = create_table(fixture.catalog, TableState::DROPPING);
-    FakeSdmClient client;
-    client.table_status_result = sdm_status(SdmTablePhase::DELETING);
+    FakeTopoClient client;
+    client.table_status_result = topo_status(TopoTablePhase::DELETING);
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();
@@ -353,12 +353,12 @@ TEST_F(TableDdlReconcilerTest, DroppingTableDeletingInSdmKeepsDropping) {
     EXPECT_EQ(stored.state, TableState::DROPPING);
 }
 
-// 测试DROPPING的table，sdm那边已经DELETED了，meta这边也要同步成DELETED。
-TEST_F(TableDdlReconcilerTest, DroppingTableDeletedInSdmMarksDeleted) {
+// 测试DROPPING的table，topo那边已经DELETED了，meta这边也要同步成DELETED。
+TEST_F(TableDdlReconcilerTest, DroppingTableDeletedInTopoMarksDeleted) {
     Fixture fixture{make_sub_dir("dropping_deleted")};
     TableMeta table = create_table(fixture.catalog, TableState::DROPPING);
-    FakeSdmClient client;
-    client.table_status_result = sdm_status(SdmTablePhase::DELETED);
+    FakeTopoClient client;
+    client.table_status_result = topo_status(TopoTablePhase::DELETED);
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();
@@ -368,12 +368,12 @@ TEST_F(TableDdlReconcilerTest, DroppingTableDeletedInSdmMarksDeleted) {
     EXPECT_EQ(stored.state, TableState::DELETED);
 }
 
-// 测试DROPPING的table，sdm那边还是READY的时候，会重新提交drop_table。
-TEST_F(TableDdlReconcilerTest, DroppingTableReadyInSdmResubmitsDropTable) {
+// 测试DROPPING的table，topo那边还是READY的时候，会重新提交drop_table。
+TEST_F(TableDdlReconcilerTest, DroppingTableReadyInTopoResubmitsDropTable) {
     Fixture fixture{make_sub_dir("dropping_ready")};
     TableMeta table = create_table(fixture.catalog, TableState::DROPPING);
-    FakeSdmClient client;
-    client.table_status_result = sdm_status(SdmTablePhase::READY);
+    FakeTopoClient client;
+    client.table_status_result = topo_status(TopoTablePhase::READY);
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();
@@ -385,13 +385,13 @@ TEST_F(TableDdlReconcilerTest, DroppingTableReadyInSdmResubmitsDropTable) {
     EXPECT_EQ(stored.state, TableState::DROPPING);
 }
 
-// 测试DROPPING的table，sdm那边已经FAILED了，meta这边也要变成FAILED并且记录err_msg。
-TEST_F(TableDdlReconcilerTest, DroppingTableFailedInSdmMarksFailedWithError) {
+// 测试DROPPING的table，topo那边已经FAILED了，meta这边也要变成FAILED并且记录err_msg。
+TEST_F(TableDdlReconcilerTest, DroppingTableFailedInTopoMarksFailedWithError) {
     Fixture fixture{make_sub_dir("dropping_failed")};
     TableMeta table = create_table(fixture.catalog, TableState::DROPPING);
-    FakeSdmClient client;
+    FakeTopoClient client;
     client.table_status_result =
-        sdm_status(SdmTablePhase::FAILED, "sdm drop failed");
+        topo_status(TopoTablePhase::FAILED, "topo drop failed");
     TestableTableDdlReconciler reconciler{&fixture.catalog, &client};
 
     reconciler.run_once_for_test();
@@ -399,7 +399,7 @@ TEST_F(TableDdlReconcilerTest, DroppingTableFailedInSdmMarksFailedWithError) {
     TableMeta stored;
     ASSERT_TRUE(fixture.catalog.get_table_by_id(table.table_id, &stored).ok());
     EXPECT_EQ(stored.state, TableState::FAILED);
-    EXPECT_EQ(stored.last_error_msg, "sdm drop failed");
+    EXPECT_EQ(stored.last_error_msg, "topo drop failed");
 }
 
 }  // namespace

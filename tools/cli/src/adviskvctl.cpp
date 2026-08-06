@@ -19,7 +19,7 @@
 #include "direct_meta_client.h"
 #include "meta/model/model.h"
 #include "sdk/client.h"
-#include "sdk/sdm_route_client.h"
+#include "sdk/topo_route_client.h"
 namespace {
 
 using adviskv::DatabaseID;
@@ -194,9 +194,9 @@ bool load_config(const std::string& path, AdvisKvCtlConfig* config) {
         config->meta.endpoint.port = CONF_GET_INT("meta_port");
         config->meta.timeout_ms = CONF_GET_INT("meta_timeout_ms");
 
-        config->sdk.sdm_host = CONF_GET_STR("sdm_host");
-        config->sdk.sdm_port = CONF_GET_INT("sdm_port");
-        config->sdk.sdm_timeout_ms = CONF_GET_INT("sdm_timeout_ms");
+        config->sdk.topo_host = CONF_GET_STR("topo_host");
+        config->sdk.topo_port = CONF_GET_INT("topo_port");
+        config->sdk.topo_timeout_ms = CONF_GET_INT("topo_timeout_ms");
         config->sdk.storage_timeout_ms = CONF_GET_INT("storage_timeout_ms");
         return config->meta.validate().ok() && config->sdk.validate().ok();
     } catch (const std::exception& e) {
@@ -260,11 +260,11 @@ private:
         return adviskv::sdk::KVClient(conf);
     }
 
-    adviskv::sdk::SdmRouteClient make_route_client(const std::string& db, const std::string& table) const {
+    adviskv::sdk::TopoRouteClient make_route_client(const std::string& db, const std::string& table) const {
         adviskv::sdk::KVClientConf conf = config_.sdk;
         conf.db_name = db;
         conf.table_name = table;
-        return adviskv::sdk::SdmRouteClient(conf);
+        return adviskv::sdk::TopoRouteClient(conf);
     }
 
     void create_db(const std::vector<std::string>& tokens) const {
@@ -583,8 +583,8 @@ int main(int argc, char* argv[]) {
     if (!load_config(conf_file, &config))
         return 1;
 
-    fmt::print("connected meta {}:{}, sdm {}:{}\n", config.meta.endpoint.ip, config.meta.endpoint.port,
-               config.sdk.sdm_host, config.sdk.sdm_port);
+    fmt::print("connected meta {}:{}, topo {}:{}\n", config.meta.endpoint.ip, config.meta.endpoint.port,
+               config.sdk.topo_host, config.sdk.topo_port);
     AdvisKvCtl ctl(std::move(config));
     if (!command_tokens.empty()) {
         ctl.execute(command_tokens);

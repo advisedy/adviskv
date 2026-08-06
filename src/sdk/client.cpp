@@ -48,7 +48,7 @@ void convert_not_yet_commit_to_unknown(Status* status) {
 }  // namespace
 
 KVClient::KVClient(const KVClientConf& conf)
-        : conf_(conf), sdm_route_client_(conf), route_cache_(conf, &sdm_route_client_), storage_client_(conf) {
+        : conf_(conf), topo_route_client_(conf), route_cache_(conf, &topo_route_client_), storage_client_(conf) {
     IGNORE_RESULT(init());
 }
 

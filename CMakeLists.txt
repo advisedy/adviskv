@@ -76,7 +76,7 @@ set(ADVISKV_PROTO_FILES
     ${CMAKE_SOURCE_DIR}/proto/common.proto
     ${CMAKE_SOURCE_DIR}/proto/storage.proto
     ${CMAKE_SOURCE_DIR}/proto/meta.proto
-    ${CMAKE_SOURCE_DIR}/proto/sdm.proto
+    ${CMAKE_SOURCE_DIR}/proto/topo.proto
 )
 
 set(ADVISKV_PROTO_GENERATED_SRCS)

@@ -49,8 +49,8 @@ bool parse_args(int argc, char** argv, BenchOptions* options) {
     ArgParser parser;
     parser.add_string("meta_host", options->meta_host);
     parser.add_int32("meta_port", options->meta_port);
-    parser.add_string("sdm_host", options->sdm_host);
-    parser.add_int32("sdm_port", options->sdm_port);
+    parser.add_string("topo_host", options->topo_host);
+    parser.add_int32("topo_port", options->topo_port);
     parser.add_string("db", options->db);
     parser.add_string("table", options->table);
     parser.add_string("zone", options->zone);
@@ -93,7 +93,7 @@ bool validate_options(const BenchOptions& options) {
         fmt::print(stderr, "--read_ratio must be in [0.0, 1.0]\n");
         return false;
     }
-    if (options.meta_port <= 0 || options.sdm_port <= 0 ||
+    if (options.meta_port <= 0 || options.topo_port <= 0 ||
         options.timeout_ms <= 0 || options.shard_count <= 0 ||
         options.replica_count < 0 || options.sdk_timeout_ms <= 0 ||
         options.metrics_http_port < 0 || options.metrics_hold_seconds < 0) {
@@ -151,8 +151,8 @@ e2e::Options to_e2e_options(const BenchOptions& options) {
     e2e::Options e2e_options;
     e2e_options.meta_host = options.meta_host;
     e2e_options.meta_port = options.meta_port;
-    e2e_options.sdm_host = options.sdm_host;
-    e2e_options.sdm_port = options.sdm_port;
+    e2e_options.topo_host = options.topo_host;
+    e2e_options.topo_port = options.topo_port;
     e2e_options.db = options.db;
     e2e_options.table = options.table;
     e2e_options.zone = options.zone;
@@ -185,9 +185,9 @@ sdk::KVClient make_client(const BenchOptions& options) {
     sdk::KVClientConf conf;
     conf.db_name = options.db;
     conf.table_name = options.table;
-    conf.sdm_host = options.sdm_host;
-    conf.sdm_port = options.sdm_port;
-    conf.sdm_timeout_ms = options.sdk_timeout_ms;
+    conf.topo_host = options.topo_host;
+    conf.topo_port = options.topo_port;
+    conf.topo_timeout_ms = options.sdk_timeout_ms;
     conf.storage_timeout_ms = options.sdk_timeout_ms;
     conf.log.level = sdk::LogLevel::WARN;
     return sdk::KVClient(conf);

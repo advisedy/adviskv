@@ -10,12 +10,12 @@
 #include "meta/catalog/catalog_manager.h"
 #include "meta/persist/meta_persist_engine.h"
 #include "meta/proto/table_state_proto.h"
-#include "meta/service/sdm_client.h"
+#include "meta/service/topo_client.h"
 
 namespace adviskv::meta {
 namespace {
 
-class FakeSdmClient : public ISdmClient {
+class FakeTopoClient : public ITopoClient {
 public:
     Status call_place_table(const TableMeta& table_meta) override {
         ++place_table_calls;
@@ -35,7 +35,7 @@ public:
         return alter_table_status;
     }
 
-    Status get_table_status(const TableMeta& table_meta, SdmTableStatus* table_status) override {
+    Status get_table_status(const TableMeta& table_meta, TopoTableStatus* table_status) override {
         ++get_table_status_calls;
         last_get_table = table_meta;
         if (table_status) {
@@ -48,7 +48,7 @@ public:
     Status drop_table_status{Status::OK()};
     Status alter_table_status{Status::OK()};
     Status get_table_status_status{Status::OK()};
-    SdmTableStatus table_status_result;
+    TopoTableStatus table_status_result;
 
     int place_table_calls{0};
     int drop_table_calls{0};
@@ -124,9 +124,9 @@ protected:
     const std::string resource_pool_{"pool-a"};
 };
 
-// DB 是 Meta 侧 namespace，创建 DB 不依赖 SDM。
-TEST_F(DdlServiceTest, CreateDbWithoutSdmClientPersistsCatalog) {
-    Fixture fixture{make_sub_dir("create_db_without_sdm")};
+// DB 是 Meta 侧 namespace，创建 DB 不依赖 TOPO。
+TEST_F(DdlServiceTest, CreateDbWithoutTopoClientPersistsCatalog) {
+    Fixture fixture{make_sub_dir("create_db_without_topo")};
     DdlService service{&fixture.catalog, nullptr};
 
     DBMeta db;
@@ -141,7 +141,7 @@ TEST_F(DdlServiceTest, CreateDbWithoutSdmClientPersistsCatalog) {
 // 测试创建db一切正常，然后查询db是否存在。
 TEST_F(DdlServiceTest, CreateDbSuccessPersistsCatalog) {
     Fixture fixture{make_sub_dir("create_db_success")};
-    FakeSdmClient client;
+    FakeTopoClient client;
     DdlService service{&fixture.catalog, &client};
 
     DBMeta db;
@@ -159,7 +159,7 @@ TEST_F(DdlServiceTest, CreateDbSuccessPersistsCatalog) {
 // 测试 DDL 层删除仍包含活跃表的 DB 时返回非法参数，并保留 DB 元信息。
 TEST_F(DdlServiceTest, DropDbRejectsDbWithActiveTable) {
     Fixture fixture{make_sub_dir("drop_db_with_active_table")};
-    FakeSdmClient client;
+    FakeTopoClient client;
     DdlService service{&fixture.catalog, &client};
     ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
     TableMeta table;
@@ -177,7 +177,7 @@ TEST_F(DdlServiceTest, DropDbRejectsDbWithActiveTable) {
 // 测试 DDL 层允许删除只剩 DELETED 历史表的 DB，并确认 DB 名称索引被清理。
 TEST_F(DdlServiceTest, DropDbAllowsOnlyDeletedTables) {
     Fixture fixture{make_sub_dir("drop_db_only_deleted_tables")};
-    FakeSdmClient client;
+    FakeTopoClient client;
     DdlService service{&fixture.catalog, &client};
     ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
     TableMeta table;
@@ -193,10 +193,10 @@ TEST_F(DdlServiceTest, DropDbAllowsOnlyDeletedTables) {
     EXPECT_EQ(fixture.catalog.get_db(db_name_, &stored).code(), StatusCode::DB_NOT_FOUND);
 }
 
-// 测试 Meta 建表允许 replica_count = 0，并把 scale-to-zero 语义交给 SDM。
+// 测试 Meta 建表允许 replica_count = 0，并把 scale-to-zero 语义交给 TOPO。
 TEST_F(DdlServiceTest, CreateTableAllowsZeroReplicaCount) {
     Fixture fixture{make_sub_dir("create_table_zero_replica")};
-    FakeSdmClient client;
+    FakeTopoClient client;
     DdlService service{&fixture.catalog, &client};
     ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
 
@@ -220,9 +220,9 @@ TEST_F(DdlServiceTest, CreateTableAllowsZeroReplicaCount) {
     EXPECT_EQ(stored.state, TableState::ADDING);
 }
 
-// 测试创建table之后，没有sdm_client，失败了，table的状态还是ADDING，检测err_msg。
-TEST_F(DdlServiceTest, CreateTableWithoutSdmClientKeepsAddingWithError) {
-    Fixture fixture{make_sub_dir("create_table_without_sdm")};
+// 测试创建table之后，没有topo_client，失败了，table的状态还是ADDING，检测err_msg。
+TEST_F(DdlServiceTest, CreateTableWithoutTopoClientKeepsAddingWithError) {
+    Fixture fixture{make_sub_dir("create_table_without_topo")};
     ASSERT_TRUE(fixture.catalog.create_db(CreateDBParam{db_name_, zone_}, nullptr).ok());
 
     DdlService db_service{&fixture.catalog, nullptr};
@@ -230,18 +230,18 @@ TEST_F(DdlServiceTest, CreateTableWithoutSdmClientKeepsAddingWithError) {
     ASSERT_TRUE(db_service.create_table(create_table_param(), &created).ok());
 
     EXPECT_EQ(created.state, TableState::ADDING);
-    EXPECT_EQ(created.last_error_msg, "sdm_client is nullptr");
+    EXPECT_EQ(created.last_error_msg, "topo_client is nullptr");
 
     TableMeta stored;
     ASSERT_TRUE(fixture.catalog.get_table_by_name(db_name_, table_name_, &stored).ok());
     EXPECT_EQ(stored.state, TableState::ADDING);
-    EXPECT_EQ(stored.last_error_msg, "sdm_client is nullptr");
+    EXPECT_EQ(stored.last_error_msg, "topo_client is nullptr");
 }
 
-// 测试创建table之后，sdm_client_->call_place_table返回失败了，table的状态还是ADDING，检测err_msg。
-TEST_F(DdlServiceTest, CreateTableSdmFailureKeepsAddingWithError) {
-    Fixture fixture{make_sub_dir("create_table_sdm_failure")};
-    FakeSdmClient client;
+// 测试创建table之后，topo_client_->call_place_table返回失败了，table的状态还是ADDING，检测err_msg。
+TEST_F(DdlServiceTest, CreateTableTopoFailureKeepsAddingWithError) {
+    Fixture fixture{make_sub_dir("create_table_topo_failure")};
+    FakeTopoClient client;
     DdlService service{&fixture.catalog, &client};
     ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
 
@@ -262,7 +262,7 @@ TEST_F(DdlServiceTest, CreateTableSdmFailureKeepsAddingWithError) {
 // 测试创建table成功了，get_table的两种方法是没有问题的。
 TEST_F(DdlServiceTest, CreateTableSuccessSupportsGetByNameAndId) {
     Fixture fixture{make_sub_dir("create_table_success_get")};
-    FakeSdmClient client;
+    FakeTopoClient client;
     DdlService service{&fixture.catalog, &client};
     ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
 
@@ -283,10 +283,10 @@ TEST_F(DdlServiceTest, CreateTableSuccessSupportsGetByNameAndId) {
     EXPECT_EQ(by_id, by_name);
 }
 
-// 测试 alter replica_count 成功时会调用 SDM，并把 Meta 表状态标记为 ALTERING。
-TEST_F(DdlServiceTest, AlterReplicaCountSuccessMarksAlteringAndCallsSdm) {
+// 测试 alter replica_count 成功时会调用 TOPO，并把 Meta 表状态标记为 ALTERING。
+TEST_F(DdlServiceTest, AlterReplicaCountSuccessMarksAlteringAndCallsTopo) {
     Fixture fixture{make_sub_dir("alter_replica_count_success")};
-    FakeSdmClient client;
+    FakeTopoClient client;
     DdlService service{&fixture.catalog, &client};
     ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
 
@@ -306,10 +306,10 @@ TEST_F(DdlServiceTest, AlterReplicaCountSuccessMarksAlteringAndCallsSdm) {
     EXPECT_TRUE(altered.last_error_msg.empty());
 }
 
-// 测试 alter replica_count 允许缩到 0，并把 scale-to-zero 语义交给 SDM。
+// 测试 alter replica_count 允许缩到 0，并把 scale-to-zero 语义交给 TOPO。
 TEST_F(DdlServiceTest, AlterReplicaCountAllowsZeroReplicaCount) {
     Fixture fixture{make_sub_dir("alter_replica_count_zero")};
-    FakeSdmClient client;
+    FakeTopoClient client;
     DdlService service{&fixture.catalog, &client};
     ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
 
@@ -327,10 +327,10 @@ TEST_F(DdlServiceTest, AlterReplicaCountAllowsZeroReplicaCount) {
     EXPECT_EQ(altered.replica_count, 0);
 }
 
-// 测试 alter replica_count 缺少 SDM client 时，表保持 ALTERING 并记录错误信息。
-TEST_F(DdlServiceTest, AlterReplicaCountWithoutSdmKeepsAlteringWithError) {
-    Fixture fixture{make_sub_dir("alter_replica_count_without_sdm")};
-    FakeSdmClient client;
+// 测试 alter replica_count 缺少 TOPO client 时，表保持 ALTERING 并记录错误信息。
+TEST_F(DdlServiceTest, AlterReplicaCountWithoutTopoKeepsAlteringWithError) {
+    Fixture fixture{make_sub_dir("alter_replica_count_without_topo")};
+    FakeTopoClient client;
     DdlService create_service{&fixture.catalog, &client};
     ASSERT_NO_FATAL_FAILURE(create_db_or_die(create_service));
 
@@ -344,13 +344,13 @@ TEST_F(DdlServiceTest, AlterReplicaCountWithoutSdmKeepsAlteringWithError) {
 
     EXPECT_EQ(altered.state, TableState::ALTERING);
     EXPECT_EQ(altered.replica_count, 5);
-    EXPECT_EQ(altered.last_error_msg, "sdm_client is nullptr");
+    EXPECT_EQ(altered.last_error_msg, "topo_client is nullptr");
 }
 
 // 测试创建table成功后，drop_table遇到table.state == TableState::DELETED的情况。
 TEST_F(DdlServiceTest, DropDeletedTableReturnsTableNotFound) {
     Fixture fixture{make_sub_dir("drop_deleted")};
-    FakeSdmClient client;
+    FakeTopoClient client;
     DdlService service{&fixture.catalog, &client};
     ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
 
@@ -366,9 +366,9 @@ TEST_F(DdlServiceTest, DropDeletedTableReturnsTableNotFound) {
 }
 
 // 测试 V1 普通 drop_table 只允许删除已经 NORMAL 的 table，创建中的 table 会被拒绝。
-TEST_F(DdlServiceTest, DropAddingTableIsRejectedWithoutCallingSdm) {
+TEST_F(DdlServiceTest, DropAddingTableIsRejectedWithoutCallingTopo) {
     Fixture fixture{make_sub_dir("drop_adding_rejected")};
-    FakeSdmClient client;
+    FakeTopoClient client;
     DdlService service{&fixture.catalog, &client};
     ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
 
@@ -392,7 +392,7 @@ TEST_F(DdlServiceTest, DropAddingTableIsRejectedWithoutCallingSdm) {
 // TableState::DROPPING的情况。
 TEST_F(DdlServiceTest, DropDroppingTableIsIdempotent) {
     Fixture fixture{make_sub_dir("drop_dropping")};
-    FakeSdmClient client;
+    FakeTopoClient client;
     DdlService service{&fixture.catalog, &client};
     ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
 
@@ -410,10 +410,10 @@ TEST_F(DdlServiceTest, DropDroppingTableIsIdempotent) {
     EXPECT_EQ(client.drop_table_calls, 0);
 }
 
-// 测试创建table成功后，drop_table遇到没有sdm_client的情况，状态会是DROPPING，检测err_msg。
-TEST_F(DdlServiceTest, DropTableWithoutSdmClientKeepsDroppingWithError) {
-    Fixture fixture{make_sub_dir("drop_without_sdm")};
-    FakeSdmClient client;
+// 测试创建table成功后，drop_table遇到没有topo_client的情况，状态会是DROPPING，检测err_msg。
+TEST_F(DdlServiceTest, DropTableWithoutTopoClientKeepsDroppingWithError) {
+    Fixture fixture{make_sub_dir("drop_without_topo")};
+    FakeTopoClient client;
     DdlService create_service{&fixture.catalog, &client};
     ASSERT_NO_FATAL_FAILURE(create_db_or_die(create_service));
 
@@ -426,18 +426,18 @@ TEST_F(DdlServiceTest, DropTableWithoutSdmClientKeepsDroppingWithError) {
     ASSERT_TRUE(drop_service.drop_table(drop_table_param(), &dropped).ok());
 
     EXPECT_EQ(dropped.state, TableState::DROPPING);
-    EXPECT_EQ(dropped.last_error_msg, "sdm_client is nullptr");
+    EXPECT_EQ(dropped.last_error_msg, "topo_client is nullptr");
 
     TableMeta stored;
     ASSERT_TRUE(fixture.catalog.get_table_by_id(dropped.table_id, &stored).ok());
     EXPECT_EQ(stored.state, TableState::DROPPING);
-    EXPECT_EQ(stored.last_error_msg, "sdm_client is nullptr");
+    EXPECT_EQ(stored.last_error_msg, "topo_client is nullptr");
 }
 
-// 测试创建table成功后，drop_table遇到sdm_client_->call_drop_table返回失败的情况，检测err_msg。
-TEST_F(DdlServiceTest, DropTableSdmFailureKeepsDroppingWithError) {
-    Fixture fixture{make_sub_dir("drop_sdm_failure")};
-    FakeSdmClient client;
+// 测试创建table成功后，drop_table遇到topo_client_->call_drop_table返回失败的情况，检测err_msg。
+TEST_F(DdlServiceTest, DropTableTopoFailureKeepsDroppingWithError) {
+    Fixture fixture{make_sub_dir("drop_topo_failure")};
+    FakeTopoClient client;
     DdlService service{&fixture.catalog, &client};
     ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
 
@@ -459,10 +459,10 @@ TEST_F(DdlServiceTest, DropTableSdmFailureKeepsDroppingWithError) {
     EXPECT_NE(stored.last_error_msg.find("drop table failed"), std::string::npos);
 }
 
-// 测试创建table成功后，drop_table一切正常，会调用sdm_client并且table状态变成DROPPING。
-TEST_F(DdlServiceTest, DropTableSuccessMarksDroppingAndCallsSdm) {
+// 测试创建table成功后，drop_table一切正常，会调用topo_client并且table状态变成DROPPING。
+TEST_F(DdlServiceTest, DropTableSuccessMarksDroppingAndCallsTopo) {
     Fixture fixture{make_sub_dir("drop_success")};
-    FakeSdmClient client;
+    FakeTopoClient client;
     DdlService service{&fixture.catalog, &client};
     ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
 
@@ -482,7 +482,7 @@ TEST_F(DdlServiceTest, DropTableSuccessMarksDroppingAndCallsSdm) {
 // 测试创建table成功了，然后删除table成功了，然后再创建一个同名的table后，get_table用name和id分别找到当下的table和之前的table。
 TEST_F(DdlServiceTest, RecreateSameNameAfterDeleteKeepsOldIdLookup) {
     Fixture fixture{make_sub_dir("recreate_same_name")};
-    FakeSdmClient client;
+    FakeTopoClient client;
     DdlService service{&fixture.catalog, &client};
     ASSERT_NO_FATAL_FAILURE(create_db_or_die(service));
 

@@ -19,7 +19,7 @@
 #include "meta/handler/meta_service_impl.h"
 #include "meta/persist/meta_persist_engine.h"
 #include "meta/service/ddl_service.h"
-#include "meta/service/sdm_client.h"
+#include "meta/service/topo_client.h"
 
 namespace {
 
@@ -79,9 +79,9 @@ int main(int argc, char* argv[]) {
 
         int32_t listen_port = CONF_GET_INT("port");
         std::string listen_host = adviskv::ConfMgr::get_instance().Get<std::string>("listen_host", "127.0.0.1");
-        std::string sdm_host = CONF_GET_STR("sdm_host");
-        int32_t sdm_port = CONF_GET_INT("sdm_port");
-        int32_t sdm_rpc_timeout_ms = CONF_GET_INT("sdm_rpc_timeout_ms", 3000);
+        std::string topo_host = CONF_GET_STR("topo_host");
+        int32_t topo_port = CONF_GET_INT("topo_port");
+        int32_t topo_rpc_timeout_ms = CONF_GET_INT("topo_rpc_timeout_ms", 3000);
         std::string data_dir = adviskv::path_from_project_root(CONF_GET_STR("data_dir")).string();
 
         auto persist_engine = std::make_unique<MetaPersistEngine>(data_dir);
@@ -97,12 +97,12 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        auto sdm_channel =
-                grpc::CreateChannel(fmt::format("{}:{}", sdm_host, sdm_port), grpc::InsecureChannelCredentials());
-        auto sdm_client = std::make_unique<SdmClient>(sdm_channel, sdm_rpc_timeout_ms);
+        auto topo_channel =
+                grpc::CreateChannel(fmt::format("{}:{}", topo_host, topo_port), grpc::InsecureChannelCredentials());
+        auto topo_client = std::make_unique<TopoClient>(topo_channel, topo_rpc_timeout_ms);
 
-        auto ddl_service = std::make_unique<DdlService>(catalog_manager.get(), sdm_client.get());
-        auto table_ddl_reconciler = std::make_unique<TableDdlReconciler>(catalog_manager.get(), sdm_client.get());
+        auto ddl_service = std::make_unique<DdlService>(catalog_manager.get(), topo_client.get());
+        auto table_ddl_reconciler = std::make_unique<TableDdlReconciler>(catalog_manager.get(), topo_client.get());
         table_ddl_reconciler->start(adviskv::Milliseconds(3000));
 
         auto meta_service = std::make_unique<MetaServiceImpl>(ddl_service.get());

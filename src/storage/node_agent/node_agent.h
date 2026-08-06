@@ -14,7 +14,7 @@
 #include "common/optional.h"
 #include "common/proto/proto.h"
 #include "common/status.h"
-#include "sdm.grpc.pb.h"
+#include "topo.grpc.pb.h"
 #include "storage/replica/replica.h"
 
 namespace adviskv::storage {
@@ -83,19 +83,19 @@ private:
     class RegisterTask;
 
     Status heartbeat_once();
-    Status send_heartbeat_once(sdm_rpc::HeartbeatResponse* response);
+    Status send_heartbeat_once(topo_rpc::HeartbeatResponse* response);
 
     Status register_node();
 
     Status apply_expected_replica(const ExpectedReplica& instruction);
     Optional<ReplicaID> find_local_leader_replica(const ShardID& shard_id) const;
     ReplicaInitParam make_replica_init_param(const ExpectedReplica& expects) const;
-    sdm_rpc::HeartbeatRequest make_heartbeat_request() const;
+    topo_rpc::HeartbeatRequest make_heartbeat_request() const;
 
     NodeAgentConf conf_;
 
     std::shared_ptr<grpc::Channel> channel_;
-    std::unique_ptr<sdm_rpc::SdmService::Stub> stub_;
+    std::unique_ptr<topo_rpc::TopoService::Stub> stub_;
     std::unique_ptr<HeartbeatTask> heartbeat_task_;
     std::unique_ptr<RegisterTask> register_task_;
     bool initialized_{false};

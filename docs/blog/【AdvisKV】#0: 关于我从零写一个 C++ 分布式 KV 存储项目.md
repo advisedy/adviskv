@@ -2,7 +2,7 @@
 
 ## 写在开头的开头
 
-AdvisKV 是我用 C++17 从零写的一个分布式 KV 存储系统原型，包含 Meta、SDM、Storage、SDK 四个主要模块，覆盖建库建表、路由查询、KV 读写、副本数扩缩容、坏副本替换、Raft、WAL/snapshot 恢复，跑了gtest + E2E 测试和 benchmark。（但是控制面高可用、自动 rebalance、接入rocksdb这些还没实现）
+AdvisKV 是我用 C++17 从零写的一个分布式 KV 存储系统原型，包含 Meta、TOPO、Storage、SDK 四个主要模块，覆盖建库建表、路由查询、KV 读写、副本数扩缩容、坏副本替换、Raft、WAL/snapshot 恢复，跑了gtest + E2E 测试和 benchmark。（但是控制面高可用、自动 rebalance、接入rocksdb这些还没实现）
 
 项目地址：https://github.com/advisedy/adviskv
 
@@ -24,19 +24,19 @@ AdvisKV 是我用 C++17 从零写的一个分布式 KV 存储系统原型，包�
 
 简单来说，AdvisKV 是我用 C++17 写的一个分布式 KV 存储系统原型。实现它的原因，说的功利一点，就是希望可以秋招体面一点。顺带其实也希望可以完成自己的第一个从头开始搞的项目。希望各位不要期望太高，定位并没有多高，就是一个学习向系统的原型罢了。
 
-大概概括这个项目的主线的话，就是 Meta/SDM 作为控制面维护表、副本和路由的期望状态，Storage 作为数据面负责 KV 读写和 Raft 复制，控制面和数据面通过心跳和 reconciler 不断把系统状态收敛到预期。
+大概概括这个项目的主线的话，就是 Meta/TOPO 作为控制面维护表、副本和路由的期望状态，Storage 作为数据面负责 KV 读写和 Raft 复制，控制面和数据面通过心跳和 reconciler 不断把系统状态收敛到预期。
 
 这个项目里面大概分成四个模块：
 
 `Meta` 负责DB，Table这些元数据和DDL。
 
-`SDM` 负责 Storage 节点注册、心跳、ReplicaGroup 编排、期望副本下发和 Route 维护。
+`TOPO` 负责 Storage 节点注册、心跳、ReplicaGroup 编排、期望副本下发和 Route 维护。
 
 `Storage` 负责 KV 数据读写、Raft 和本地持久化。
 
 `SDK` 对外提供基于 `db + table + key` 的put/get/delete 接口。
 
-目前这个项目可以跑通建库建表，路由查询，KV的读操作写操作，副本数调整，自动替换坏了的副本，raft，WAL，snapshot，recover等这些功能，然后目前有两百多个gtest单测，一批E2E测试（例如最基础的端到端 KV 链路，leader崩溃后切主，follower追日志和追snapshot，Meta/SDM重启恢复啊等等等等），还有benchmark和metrics。
+目前这个项目可以跑通建库建表，路由查询，KV的读操作写操作，副本数调整，自动替换坏了的副本，raft，WAL，snapshot，recover等这些功能，然后目前有两百多个gtest单测，一批E2E测试（例如最基础的端到端 KV 链路，leader崩溃后切主，follower追日志和追snapshot，Meta/TOPO重启恢复啊等等等等），还有benchmark和metrics。
 
 关于详细的内容和数据这里就不详说了，我更想的其实是写关于这个项目的自我感受（一直以来就是这个样子，所以就不写的那么官方味了）。
 
@@ -84,7 +84,7 @@ Route
     - replica_id=1:2:0 endpoint=127.0.0.1:50051 role=LEADER
     - replica_id=1:2:1 endpoint=127.0.0.1:50052 role=FOLLOWER
     - replica_id=1:2:2 endpoint=127.0.0.1:50053 role=FOLLOWER
-# key hello 会先定位到 table 某个 shard，然后 SDK 再通过 SDM 查询该 shard 对应的 route，通过 route 上的 endpoint，最终把请求发送到对应的 leader 的 Storage 节点
+# key hello 会先定位到 table 某个 shard，然后 SDK 再通过 TOPO 查询该 shard 对应的 route，通过 route 上的 endpoint，最终把请求发送到对应的 leader 的 Storage 节点
 
 # 这里是副本的扩容缩容
 # alter_table <db> <table> <replicas>
@@ -104,9 +104,9 @@ int main() {
     adviskv::sdk::KVClientConf conf;
     conf.db_name = "demo_db";
     conf.table_name = "demo_table";
-    conf.sdm_host = "127.0.0.1";
-    conf.sdm_port = 50049;
-    conf.sdm_timeout_ms = 3000;
+    conf.topo_host = "127.0.0.1";
+    conf.topo_port = 50049;
+    conf.topo_timeout_ms = 3000;
     conf.storage_timeout_ms = 3000;
 
     adviskv::sdk::KVClient client(conf);
@@ -133,13 +133,13 @@ int main() {
 
 ## 整体架构的粗略介绍
 
-这个项目主要是分为了四个模块: meta，sdm， storage， sdk。
+这个项目主要是分为了四个模块: meta，topo， storage， sdk。
 
 ### SDK
 
 先来说一下最外层的sdk，sdk其实本身并不算是隶属在分布式KV里面的服务端模块，它就是一个客户端库，给使用者执行put，get这种操作。
 
-拿 put 操作来说，在当前版本里，sdk 会先向 sdm 查询 route，也就是路由表。这个 route 里面包含当前 db/table 对应的 shard 信息，以及每个 shard 下面的 replica 节点信息。sdk 根据 key 算出它应该落在哪一个 shard 上，然后从这个 shard 的 replica 列表里面找到 leader 节点，然后直接给这个节点发送put操作。删除操作也是这个样子。值得一提的是，在我们的V1版本里面，get操作也是只有leader才可以执行。（后续版本会考虑优化这里）
+拿 put 操作来说，在当前版本里，sdk 会先向 topo 查询 route，也就是路由表。这个 route 里面包含当前 db/table 对应的 shard 信息，以及每个 shard 下面的 replica 节点信息。sdk 根据 key 算出它应该落在哪一个 shard 上，然后从这个 shard 的 replica 列表里面找到 leader 节点，然后直接给这个节点发送put操作。删除操作也是这个样子。值得一提的是，在我们的V1版本里面，get操作也是只有leader才可以执行。（后续版本会考虑优化这里）
 
 ### Meta
 
@@ -149,27 +149,27 @@ Minimal architecture diagram:
 
 这个模块主要负责 DDL 和 DB/Table 这些元信息。
 
-创建 table 的时候，请求会先打到 Meta。Meta 收到 CreateTable 之后，会先在自己的 catalog 里面记录这个 table，并把 table 状态标记成创建中的状态。然后 Meta 会向 SDM 发送 PlaceTable 请求，让 SDM 去负责后续的 replica 放置和 route 生成。
+创建 table 的时候，请求会先打到 Meta。Meta 收到 CreateTable 之后，会先在自己的 catalog 里面记录这个 table，并把 table 状态标记成创建中的状态。然后 Meta 会向 TOPO 发送 PlaceTable 请求，让 TOPO 去负责后续的 replica 放置和 route 生成。
 
-这里需要注意的是，CreateTable 返回成功并不一定代表这个 table 立刻就已经可以读写了。这个接口本身是一个异步操作，返回的OK只是代表meta这边接受了这个DDL，并不保证DDL最后一定会成功。后续 table 是否真正 ready，主要是取决 Meta 和 SDM 里的后台 reconciler 能否把状态推进到最终状态。
+这里需要注意的是，CreateTable 返回成功并不一定代表这个 table 立刻就已经可以读写了。这个接口本身是一个异步操作，返回的OK只是代表meta这边接受了这个DDL，并不保证DDL最后一定会成功。后续 table 是否真正 ready，主要是取决 Meta 和 TOPO 里的后台 reconciler 能否把状态推进到最终状态。
 
-后面做副本数调整之后，这里也多了 AlterTableReplicaCount。用户发起 alter_table 的时候，Meta 会先把 catalog 里面的 replica_count 和状态改掉，然后通知 SDM 去把每个 shard 的目标副本数调到新值。这个过程也不是同步等所有 replica 都调整完，最后还是靠后台 reconciler 推回来。
+后面做副本数调整之后，这里也多了 AlterTableReplicaCount。用户发起 alter_table 的时候，Meta 会先把 catalog 里面的 replica_count 和状态改掉，然后通知 TOPO 去把每个 shard 的目标副本数调到新值。这个过程也不是同步等所有 replica 都调整完，最后还是靠后台 reconciler 推回来。
 
-而创建db这种操作的话，就不会发送给sdm，因为像DB这边的概念，是只有meta才会知晓的概念，sdm那边不会在乎db，也不会持久化db。sdm侧应当只会关心table，以及对应的shard_count和replica_count来进行编排。虽然sdk通过传递db_name和table_name和hash(key)找到路由表，但是db_name这个其实是附在table上的，所以对于db而言，不需要往sdm知道，sdm只需要了解到table的内容其实就可以了。
+而创建db这种操作的话，就不会发送给topo，因为像DB这边的概念，是只有meta才会知晓的概念，topo那边不会在乎db，也不会持久化db。topo侧应当只会关心table，以及对应的shard_count和replica_count来进行编排。虽然sdk通过传递db_name和table_name和hash(key)找到路由表，但是db_name这个其实是附在table上的，所以对于db而言，不需要往topo知道，topo只需要了解到table的内容其实就可以了。
 
-### SDM
+### TOPO
 
 Minimal architecture diagram:
 
-![SDM Minimal Architecture](../assets/sdm-minimal-architecture.png)
+![TOPO Minimal Architecture](../assets/topo-minimal-architecture.png)
 
-sdm 维护了一个很重要的东西就是 route。route是以shard为单位的，每一个shard都会有个对应的route。sdk 每次要 put/get/delete 的时候，会先拿 db_name 和 table_name 去 sdm 查询路由表，然后根据 key 算出对应的 shard，再从 shard 的 replica 列表里面找到 leader 节点，最后把真正的 KV 请求发给 storage。
+topo 维护了一个很重要的东西就是 route。route是以shard为单位的，每一个shard都会有个对应的route。sdk 每次要 put/get/delete 的时候，会先拿 db_name 和 table_name 去 topo 查询路由表，然后根据 key 算出对应的 shard，再从 shard 的 replica 列表里面找到 leader 节点，最后把真正的 KV 请求发给 storage。
 
-另外，sdm还会负责 storage 节点的注册和心跳。storage 启动之后，会向 sdm 注册自己，然后周期性发送 heartbeat。 heartbeat 不只是告诉 sdm 目前节点还没有掉点，还会把本机 replica 的状态、raft role、成员信息（leader会传）这些发过去；sdm 也会在 heartbeat response 里面下发期望的 Replica，让 storage 的 NodeAgent 在本机创建、删除 replica，或者做成员变更。sdm 和 storage 这边用的就是经典的观测-期望，sdm 维护期望状态，再让 NodeAgent 去收敛。自动 rebalance 的话就没考虑再做了（再做也赶不上秋招了）
+另外，topo还会负责 storage 节点的注册和心跳。storage 启动之后，会向 topo 注册自己，然后周期性发送 heartbeat。 heartbeat 不只是告诉 topo 目前节点还没有掉点，还会把本机 replica 的状态、raft role、成员信息（leader会传）这些发过去；topo 也会在 heartbeat response 里面下发期望的 Replica，让 storage 的 NodeAgent 在本机创建、删除 replica，或者做成员变更。topo 和 storage 这边用的就是经典的观测-期望，topo 维护期望状态，再让 NodeAgent 去收敛。自动 rebalance 的话就没考虑再做了（再做也赶不上秋招了）
 
-还有，由于 sdm 需要提供 route，这边sdk的链路是通过提供db_name + table_name + key向sdm查询一下路由表，所以sdm这边需要有table的概念，也需要知道每个table下面有多少个shard。table里面还有 ReplicaGroup 这一层，每个shard都会对应了一个group，用来维护这个shard希望有几个副本、哪些replica是当前还想保留的成员。而shard作为我们的逻辑数据，所以并没有在sdm里面专门出现，通过ReplicaGroup + Route的方式在代码层面实现的。
+还有，由于 topo 需要提供 route，这边sdk的链路是通过提供db_name + table_name + key向topo查询一下路由表，所以topo这边需要有table的概念，也需要知道每个table下面有多少个shard。table里面还有 ReplicaGroup 这一层，每个shard都会对应了一个group，用来维护这个shard希望有几个副本、哪些replica是当前还想保留的成员。而shard作为我们的逻辑数据，所以并没有在topo里面专门出现，通过ReplicaGroup + Route的方式在代码层面实现的。
 
-由于我们用的经典的观测期望，所以关于后台任务的话，现在主要靠几类后台reconcile去推动状态：TableReconciler 负责判断 table 是否 ready/deleting，ReplicaGroupReconciler 负责根据 target_replica_count 去补副本、删副本、替换坏副本，Route 负责在 replica ready 之后发布可用路由。说起来还是稍微有点绕的，但是核心想法其实就是把“应该是什么样子”和“现在实际是什么样子”不断对齐。之后等到要讲 sdm 的时候再细讲吧。
+由于我们用的经典的观测期望，所以关于后台任务的话，现在主要靠几类后台reconcile去推动状态：TableReconciler 负责判断 table 是否 ready/deleting，ReplicaGroupReconciler 负责根据 target_replica_count 去补副本、删副本、替换坏副本，Route 负责在 replica ready 之后发布可用路由。说起来还是稍微有点绕的，但是核心想法其实就是把“应该是什么样子”和“现在实际是什么样子”不断对齐。之后等到要讲 topo 的时候再细讲吧。
 
 ### Storage
 
@@ -177,7 +177,7 @@ Minimal architecture diagram:
 
 ![Storage Minimal Architecture](../assets/storage-minimal-architecture.png)
 
-storage 负责数据的读写，前面的 meta 和 sdm 更偏控制面一些，一个负责元信息，一个负责路由和节点状态；storage 这边是真正处理 put/get/delete 请求，以及维护数据副本的地方。
+storage 负责数据的读写，前面的 meta 和 topo 更偏控制面一些，一个负责元信息，一个负责路由和节点状态；storage 这边是真正处理 put/get/delete 请求，以及维护数据副本的地方。
 
 拿 put/delete 操作来说，sdk 直接把请求打到对应 shard 的 leader 所在的 storage 节点上。打向storage写请求之后，这个写请求就会进入 replica 内部，交给 raft 做复制。首先本地会写一条 raft log，然后发送给其他的 follower，等待这个 log 被多数派确认并且提交之后，会 apply 到 KV engine。当前版本里的 KV engine 还是一个比较简单的 map engine，主要是为了先把分布式链路跑通。（后续有考虑接入rocksdb，maybe，maybe考虑）
 
@@ -189,7 +189,7 @@ get操作来说的话，其实目前也只是leader-only的状态，最终的读
 
 其实目前还有很多没有完成的内容，例如
 
-- Meta 和 SDM 在V1版本里只打算做单进程，没有高可用
+- Meta 和 TOPO 在V1版本里只打算做单进程，没有高可用
 - Storage侧目前的 kv engine 直接用了map，还没有接入rocksdb
 - 关于 shard 目前不支持 split，也没有实现自动 rebalance
 - 目前只支持 leader put 和 read，不支持follower read

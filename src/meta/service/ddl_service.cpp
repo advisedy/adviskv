@@ -6,9 +6,9 @@
 
 namespace adviskv::meta {
 
-DdlService::DdlService(CatalogManager* catalog_manager, ISdmClient* sdm_client) {
+DdlService::DdlService(CatalogManager* catalog_manager, ITopoClient* topo_client) {
     catalog_manager_ = catalog_manager;
-    sdm_client_ = sdm_client;
+    topo_client_ = topo_client;
 }
 
 Status DdlService::create_table(const CreateTableParam& param, TableMeta* table_meta) {
@@ -19,18 +19,18 @@ Status DdlService::create_table(const CreateTableParam& param, TableMeta* table_
 
     RETURN_IF_INVALID_STATUS(status)
 
-    if (!sdm_client_) {
+    if (!topo_client_) {
         Status state_status = catalog_manager_->update_table_state(created_table_meta.table_id, TableState::ADDING,
-                                                                   "sdm_client is nullptr");
+                                                                   "topo_client is nullptr");
         RETURN_IF_INVALID_STATUS(state_status)
-        created_table_meta.last_error_msg = "sdm_client is nullptr";
+        created_table_meta.last_error_msg = "topo_client is nullptr";
         if (table_meta != nullptr) {
             *table_meta = created_table_meta;
         }
         return Status::OK();
     }
 
-    status = sdm_client_->call_place_table(created_table_meta);
+    status = topo_client_->call_place_table(created_table_meta);
     if (status.fail()) {
         Status state_status = catalog_manager_->update_table_state(created_table_meta.table_id, TableState::ADDING,
                                                                    status.to_string());
@@ -65,9 +65,9 @@ Status DdlService::drop_table(const DropTableParam& param, TableMeta* table_meta
 
     RETURN_IF_INVALID_STATUS(catalog_manager_->delete_table(table.table_id, &table))
 
-    if (!sdm_client_) {
+    if (!topo_client_) {
         // 这里后续的内容交给reconclier去做，先返回OK。
-        const std::string err_msg = "sdm_client is nullptr";
+        const std::string err_msg = "topo_client is nullptr";
 
         // 更新一遍持久化那边的last_error_msg
         RETURN_IF_INVALID_STATUS(catalog_manager_->update_table_state(table.table_id, TableState::DROPPING, err_msg))
@@ -78,7 +78,7 @@ Status DdlService::drop_table(const DropTableParam& param, TableMeta* table_meta
         return Status::OK();
     }
 
-    status = sdm_client_->call_drop_table(table);
+    status = topo_client_->call_drop_table(table);
     if (status.fail()) {
         RETURN_IF_INVALID_STATUS(
                 catalog_manager_->update_table_state(table.table_id, TableState::DROPPING, status.to_string()))
@@ -105,8 +105,8 @@ Status DdlService::alter_table_replica_count(const AlterTableReplicaCountParam& 
         return Status::OK();
     }
 
-    if (!sdm_client_) {
-        const std::string err_msg = "sdm_client is nullptr";
+    if (!topo_client_) {
+        const std::string err_msg = "topo_client is nullptr";
         RETURN_IF_INVALID_STATUS(catalog_manager_->update_table_state(table.table_id, TableState::ALTERING, err_msg))
         table.last_error_msg = err_msg;
         if (table_meta != nullptr) {
@@ -115,7 +115,7 @@ Status DdlService::alter_table_replica_count(const AlterTableReplicaCountParam& 
         return Status::OK();
     }
 
-    Status status = sdm_client_->call_alter_table_replica_count(table);
+    Status status = topo_client_->call_alter_table_replica_count(table);
     if (status.fail()) {
         RETURN_IF_INVALID_STATUS(
                 catalog_manager_->update_table_state(table.table_id, TableState::ALTERING, status.to_string()))

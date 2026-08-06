@@ -8,6 +8,6 @@
 #include "common/model/raft_member.h"
 #include "common/model/raft_member_type.h"
 #include "common/model/replica_role.h"
-#include "common/model/sdm_table_status.h"
+#include "common/model/topo_table_status.h"
 #include "common/model/storage_replica_status.h"
 #include "common/types.h"

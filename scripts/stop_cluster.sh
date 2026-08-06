@@ -55,7 +55,7 @@ kill_group() {
     fi
 }
 
-kill_group "sdm" "sdm"
+kill_group "topo" "topo"
 kill_group "meta" "meta"
 kill_group "storage" "storage"
 

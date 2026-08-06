@@ -24,12 +24,12 @@ warmup_requests = 0
 
 本次只测试 `get`，每组只改变一个参数：`threads`、`shard_count`、`replica_count`、`value_size`。
 
-当前 SDK 的 `get` 会通过 SDM 下发的 route 选择 leader replica 读，并经过 Storage 侧 ReadIndex 检查。因此这里的 get benchmark 衡量的是 leader-based linearizable read path，不是 follower read 或多副本分摊读流量。
+当前 SDK 的 `get` 会通过 TOPO 下发的 route 选择 leader replica 读，并经过 Storage 侧 ReadIndex 检查。因此这里的 get benchmark 衡量的是 leader-based linearizable read path，不是 follower read 或多副本分摊读流量。
 
 ## 测试环境
 
 - 运行方式：`scripts/bench.sh` 拉起本地集群并运行 `bench_client`。
-- 本地集群：`1 meta + 1 sdm + 5 storage`，所有进程都运行在同一台机器上，并通过 `127.0.0.1/localhost` 通信。
+- 本地集群：`1 meta + 1 topo + 5 storage`，所有进程都运行在同一台机器上，并通过 `127.0.0.1/localhost` 通信。
 - 每个测试点会先写入 `key_count=1000` 的可读数据集，这部分准备阶段不计入正式 benchmark 结果。
 - 测试机器：`Mac15,7`，Apple M3 Pro，12 物理核心 / 12 逻辑 CPU，36 GiB 内存。
 - 操作系统：macOS 15.7.4 (24G517)，arm64。
@@ -42,7 +42,7 @@ warmup_requests = 0
 - `threads` 从 1 增加到 32 时，`success_qps` 从约 2420 提升到约 11716，同时 `avg_us`、`p95_us` 和 `p99_us` 也随并发上升而增加。
 - `replica_count=1` 的读吞吐约 38335 QPS，`replica_count=3/5` 分别约 10884/5837 QPS。当前读路径仍走 leader 和 ReadIndex，因此副本数不代表读流量会被 follower 自动分摊。
 - `value_size` 从 16 增加到 4096 bytes 时，`success_qps` 从约 10936 变化到约 10919。
-- SDK 当前使用整表 route cache，正式 workload 阶段不再对每次请求做 SDM route resolve；所有测试点 `failure=0`。
+- SDK 当前使用整表 route cache，正式 workload 阶段不再对每次请求做 TOPO route resolve；所有测试点 `failure=0`。
 
 ## Threads
 

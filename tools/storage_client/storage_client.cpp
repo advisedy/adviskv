@@ -9,7 +9,7 @@
 #include "common/define.h"
 #include "common/proto/proto.h"
 #include "common/status.h"
-#include "sdm/model/model.h"
+#include "topo/model/model.h"
 
 namespace adviskv::tools {
 

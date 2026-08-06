@@ -19,7 +19,7 @@ from scripts.internal.local_cluster import (
 
 LOCALHOST = "127.0.0.1"
 META_PORT = 50048
-SDM_PORT = 50049
+TOPO_PORT = 50049
 STORAGE_BASE_PORT = 50050
 STORAGE_COUNT = 3
 DEFAULT_REPLICA_COUNT = 3
@@ -35,7 +35,7 @@ LOG_DIR = E2E_DIR / "logs"
 
 
 def build_e2e_targets() -> None:
-    build_targets("sdm sdm_test meta storage e2e_client")
+    build_targets("topo topo_test meta storage e2e_client")
 
 
 def clean_data_dirs() -> None:
@@ -81,15 +81,15 @@ def write_client_config() -> None:
     )
 
 
-def write_sdm_config() -> None:
+def write_topo_config() -> None:
     write_config_file(
-        CONF_DIR / "sdm.yaml",
+        CONF_DIR / "topo.yaml",
         f"""
         listen_host: "{LOCALHOST}"
-        port: {SDM_PORT}
-        data_dir: "{DATA_DIR / 'sdm'}"
+        port: {TOPO_PORT}
+        data_dir: "{DATA_DIR / 'topo'}"
 
-        {logger_block('e2e_sdm_log', LOG_DIR / 'sdm', 'sdm.log')}
+        {logger_block('e2e_topo_log', LOG_DIR / 'topo', 'topo.log')}
         """,
     )
 
@@ -100,8 +100,8 @@ def write_meta_config() -> None:
         f"""
         listen_host: "{LOCALHOST}"
         port: {META_PORT}
-        sdm_host: "{LOCALHOST}"
-        sdm_port: {SDM_PORT}
+        topo_host: "{LOCALHOST}"
+        topo_port: {TOPO_PORT}
         data_dir: "{DATA_DIR / 'meta'}"
 
         {logger_block('e2e_meta_log', LOG_DIR / 'meta', 'meta.log')}
@@ -122,7 +122,7 @@ def write_storage_config(index: int) -> None:
         dc: "{DEFAULT_ZONE}"
         data_dir: "{DATA_DIR / name}"
         manager_host: "{LOCALHOST}"
-        manager_port: {SDM_PORT}
+        manager_port: {TOPO_PORT}
         heartbeat_interval_ms: 3000
         node_agent_rpc_timeout_ms: 3000
         enable_test_api: true
@@ -134,7 +134,7 @@ def write_storage_config(index: int) -> None:
 
 def write_e2e_configs(storage_count: int = STORAGE_COUNT) -> None:
     write_client_config()
-    write_sdm_config()
+    write_topo_config()
     write_meta_config()
     for index in range(1, storage_count + 1):
         write_storage_config(index)
@@ -147,11 +147,11 @@ def e2e_service_specs(
     envs = service_envs or {}
     specs = [
         ServiceSpec(
-            "sdm",
-            [str(BIN_DIR / "sdm_test"), f"--conf={CONF_DIR / 'sdm.yaml'}"],
+            "topo",
+            [str(BIN_DIR / "topo_test"), f"--conf={CONF_DIR / 'topo.yaml'}"],
             LOCALHOST,
-            SDM_PORT,
-            env=envs.get("sdm"),
+            TOPO_PORT,
+            env=envs.get("topo"),
         ),
         ServiceSpec(
             "meta",
@@ -245,8 +245,8 @@ class AdvisKVCluster(LocalCluster):
             f"--conf={CONF_DIR / 'e2e_client.yaml'}",
             f"--meta_host={LOCALHOST}",
             f"--meta_port={META_PORT}",
-            f"--sdm_host={LOCALHOST}",
-            f"--sdm_port={SDM_PORT}",
+            f"--topo_host={LOCALHOST}",
+            f"--topo_port={TOPO_PORT}",
             f"--zone={DEFAULT_ZONE}",
             f"--resource_pool={DEFAULT_RESOURCE_POOL}",
             "--shard_count=1",

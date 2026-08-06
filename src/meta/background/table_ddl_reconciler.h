@@ -8,14 +8,14 @@ namespace adviskv::meta {
 
 class TableDdlReconciler : public BackgroundTask {
 public:
-    TableDdlReconciler(CatalogManager* catalog_manager, ISdmClient* sdm_client);
+    TableDdlReconciler(CatalogManager* catalog_manager, ITopoClient* topo_client);
 
 protected:
     void run() override;
 
 private:
     CatalogManager* catalog_manager_;
-    ISdmClient* sdm_client_;
+    ITopoClient* topo_client_;
 };
 
 }  // namespace adviskv::meta

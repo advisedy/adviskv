@@ -18,17 +18,17 @@ bool get_route(E2EContext* context, const Key& key, sdk::RouteInfo* route,
     }
 
     const Options& options = context->options();
-    sdm_rpc::GetRouteRequest request;
+    topo_rpc::GetRouteRequest request;
     request.set_db_name(options.db);
     request.set_table_name(options.table);
     request.set_key(key);
 
-    sdm_rpc::GetRouteResponse response;
+    topo_rpc::GetRouteResponse response;
     grpc::ClientContext client_context;
     client_context.set_deadline(std::chrono::system_clock::now() +
                                 std::chrono::milliseconds(3000));
     const grpc::Status status =
-        context->sdm()->GetRoute(&client_context, request, &response);
+        context->topo()->GetRoute(&client_context, request, &response);
     if (!grpc_ok(status, "GetRoute", error)) {
         return false;
     }

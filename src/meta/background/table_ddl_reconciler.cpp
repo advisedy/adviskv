@@ -6,13 +6,13 @@
 #include "common/log.h"
 #include "common/status.h"
 #include "meta/model/model.h"
-#include "sdm/model/model.h"
+#include "topo/model/model.h"
 
 namespace adviskv::meta {
 
 namespace {
 
-bool is_sdm_phase(const SdmTableStatus& status, SdmTablePhase phase) { return status.phase == phase; }
+bool is_topo_phase(const TopoTableStatus& status, TopoTablePhase phase) { return status.phase == phase; }
 
 std::string fallback_msg(const std::string& msg, const char* fallback) { return msg.empty() ? fallback : msg; }
 
@@ -59,15 +59,15 @@ done_action
 failed_msg
 以上这几个是给日志打印用的，随便填就好
 
-static Status resubmit(ISdmClient& client, const TableMeta& table):
-    代表你需要再一次用SdmClient执行一遍你的policy要代表的操作，
+static Status resubmit(ITopoClient& client, const TableMeta& table):
+    代表你需要再一次用TopoClient执行一遍你的policy要代表的操作，
     例如AddTablePolicy的是client.call_place_table(table)
 
-tatic ReconcileAction decide(const Status& status,const SdmTableStatus&
-sdm_status)函数:
+tatic ReconcileAction decide(const Status& status,const TopoTableStatus&
+topo_status)函数:
     前面的status代表的是get_table_status返回的status，后者是这次函数返回的 const
-    SdmTableStatus&
-    sdm_status，也就是说要实现一个decide函数，针对status和sdm_status进行判断，该进入ReconcileAction的哪一个环节
+    TopoTableStatus&
+    topo_status，也就是说要实现一个decide函数，针对status和topo_status进行判断，该进入ReconcileAction的哪一个环节
 */
 
 struct AddTablePolicy {
@@ -76,26 +76,26 @@ struct AddTablePolicy {
 
     static constexpr TableState done_state = TableState::NORMAL;
 
-    static constexpr const char* resubmit_action = "resubmit SDM place table";
+    static constexpr const char* resubmit_action = "resubmit TOPO place table";
     static constexpr const char* done_action = "mark table NORMAL";
-    static constexpr const char* failed_msg = "SDM table placement failed";
+    static constexpr const char* failed_msg = "TOPO table placement failed";
 
-    static Status resubmit(ISdmClient& client, const TableMeta& table) { return client.call_place_table(table); }
+    static Status resubmit(ITopoClient& client, const TableMeta& table) { return client.call_place_table(table); }
 
-    static ReconcileAction decide(const Status& status, const SdmTableStatus& sdm_status) {
+    static ReconcileAction decide(const Status& status, const TopoTableStatus& topo_status) {
         if (status.code() == StatusCode::TABLE_NOT_FOUND) {
             return ReconcileAction::RESUBMIT;
         }
         if (status.fail()) {
             return ReconcileAction::ERROR;
         }
-        if (is_sdm_phase(sdm_status, SdmTablePhase::READY)) {
+        if (is_topo_phase(topo_status, TopoTablePhase::READY)) {
             return ReconcileAction::DONE;
         }
-        if (is_sdm_phase(sdm_status, SdmTablePhase::FAILED)) {
+        if (is_topo_phase(topo_status, TopoTablePhase::FAILED)) {
             return ReconcileAction::FAILED;
         }
-        if (is_sdm_phase(sdm_status, SdmTablePhase::CREATING)) {
+        if (is_topo_phase(topo_status, TopoTablePhase::CREATING)) {
             return ReconcileAction::WAIT;
         }
         return ReconcileAction::RESUBMIT;
@@ -108,26 +108,26 @@ struct DropTablePolicy {
 
     static constexpr TableState done_state = TableState::DELETED;
 
-    static constexpr const char* resubmit_action = "resubmit SDM drop table";
+    static constexpr const char* resubmit_action = "resubmit TOPO drop table";
     static constexpr const char* done_action = "mark table DELETED";
-    static constexpr const char* failed_msg = "SDM table drop failed";
+    static constexpr const char* failed_msg = "TOPO table drop failed";
 
-    static Status resubmit(ISdmClient& client, const TableMeta& table) { return client.call_drop_table(table); }
+    static Status resubmit(ITopoClient& client, const TableMeta& table) { return client.call_drop_table(table); }
 
-    static ReconcileAction decide(const Status& status, const SdmTableStatus& sdm_status) {
+    static ReconcileAction decide(const Status& status, const TopoTableStatus& topo_status) {
         if (status.code() == StatusCode::TABLE_NOT_FOUND) {
             return ReconcileAction::DONE;
         }
         if (status.fail()) {
             return ReconcileAction::ERROR;
         }
-        if (is_sdm_phase(sdm_status, SdmTablePhase::DELETED)) {
+        if (is_topo_phase(topo_status, TopoTablePhase::DELETED)) {
             return ReconcileAction::DONE;
         }
-        if (is_sdm_phase(sdm_status, SdmTablePhase::FAILED)) {
+        if (is_topo_phase(topo_status, TopoTablePhase::FAILED)) {
             return ReconcileAction::FAILED;
         }
-        if (is_sdm_phase(sdm_status, SdmTablePhase::DELETING)) {
+        if (is_topo_phase(topo_status, TopoTablePhase::DELETING)) {
             return ReconcileAction::WAIT;
         }
         return ReconcileAction::RESUBMIT;
@@ -140,28 +140,28 @@ struct AlterTablePolicy {
 
     static constexpr TableState done_state = TableState::NORMAL;
 
-    static constexpr const char* resubmit_action = "resubmit SDM alter table replica_count";
+    static constexpr const char* resubmit_action = "resubmit TOPO alter table replica_count";
     static constexpr const char* done_action = "mark table NORMAL, finish change replica count";
-    static constexpr const char* failed_msg = "SDM table alter failed";
+    static constexpr const char* failed_msg = "TOPO table alter failed";
 
-    static Status resubmit(ISdmClient& client, const TableMeta& table) {
+    static Status resubmit(ITopoClient& client, const TableMeta& table) {
         return client.call_alter_table_replica_count(table);
     }
 
-    static ReconcileAction decide(const Status& status, const SdmTableStatus& sdm_status) {
+    static ReconcileAction decide(const Status& status, const TopoTableStatus& topo_status) {
         if (status.code() == StatusCode::TABLE_NOT_FOUND) {
             return ReconcileAction::FAILED;
         }
         if (status.fail()) {
             return ReconcileAction::ERROR;
         }
-        if (is_sdm_phase(sdm_status, SdmTablePhase::READY)) {
+        if (is_topo_phase(topo_status, TopoTablePhase::READY)) {
             return ReconcileAction::DONE;
         }
-        if (is_sdm_phase(sdm_status, SdmTablePhase::FAILED)) {
+        if (is_topo_phase(topo_status, TopoTablePhase::FAILED)) {
             return ReconcileAction::FAILED;
         }
-        if (is_sdm_phase(sdm_status, SdmTablePhase::RESIZING)) {
+        if (is_topo_phase(topo_status, TopoTablePhase::RESIZING)) {
             return ReconcileAction::WAIT;
         }
         return ReconcileAction::RESUBMIT;
@@ -169,8 +169,8 @@ struct AlterTablePolicy {
 };
 
 template <typename Policy>
-void resubmit_or_record_error(CatalogManager& catalog_manager, ISdmClient& sdm_client, const TableMeta& table) {
-    Status resubmit_status = Policy::resubmit(sdm_client, table);
+void resubmit_or_record_error(CatalogManager& catalog_manager, ITopoClient& topo_client, const TableMeta& table) {
+    Status resubmit_status = Policy::resubmit(topo_client, table);
     if (resubmit_status.fail()) {
         keep_table_state_with_error(catalog_manager, table, Policy::source_state, resubmit_status,
                                     Policy::resubmit_action);
@@ -178,37 +178,37 @@ void resubmit_or_record_error(CatalogManager& catalog_manager, ISdmClient& sdm_c
 }
 
 template <typename Policy>
-void reconcile_table(CatalogManager& catalog_manager, ISdmClient& sdm_client, const TableMeta& table) {
-    SdmTableStatus sdm_status;
-    Status status = sdm_client.get_table_status(table, &sdm_status);
-    ReconcileAction action = Policy::decide(status, sdm_status);
+void reconcile_table(CatalogManager& catalog_manager, ITopoClient& topo_client, const TableMeta& table) {
+    TopoTableStatus topo_status;
+    Status status = topo_client.get_table_status(table, &topo_status);
+    ReconcileAction action = Policy::decide(status, topo_status);
 
     switch (action) {
         case ReconcileAction::DONE:
             update_table_state_or_log(catalog_manager, table, Policy::done_state, "", Policy::done_action);
             return;
         case ReconcileAction::RESUBMIT:
-            resubmit_or_record_error<Policy>(catalog_manager, sdm_client, table);
+            resubmit_or_record_error<Policy>(catalog_manager, topo_client, table);
             return;
         case ReconcileAction::FAILED:
             update_table_state_or_log(catalog_manager, table, TableState::FAILED,
-                                      fallback_msg(sdm_status.last_error_msg, Policy::failed_msg), "mark table FAILED");
+                                      fallback_msg(topo_status.last_error_msg, Policy::failed_msg), "mark table FAILED");
             return;
         case ReconcileAction::ERROR:
-            keep_table_state_with_error(catalog_manager, table, Policy::source_state, status, "get SDM table status");
+            keep_table_state_with_error(catalog_manager, table, Policy::source_state, status, "get TOPO table status");
             return;
         case ReconcileAction::WAIT:
             LOG_DEBUG(
-                    "{} table waits SDM convergence, table_id={}, "
-                    "operation_id={}, sdm_phase={}, sdm_last_error={}",
-                    Policy::source_name, table.table_id, table.operation_id, static_cast<int32>(sdm_status.phase),
-                    sdm_status.last_error_msg);
+                    "{} table waits TOPO convergence, table_id={}, "
+                    "operation_id={}, topo_phase={}, topo_last_error={}",
+                    Policy::source_name, table.table_id, table.operation_id, static_cast<int32>(topo_status.phase),
+                    topo_status.last_error_msg);
             return;
     }
 }
 
 template <typename Policy>
-void reconcile_tables(CatalogManager& catalog_manager, ISdmClient& sdm_client) {
+void reconcile_tables(CatalogManager& catalog_manager, ITopoClient& topo_client) {
     std::vector<TableMeta> tables;
     Status status = catalog_manager.list_tables_by_state(Policy::source_state, &tables);
     if (status.fail()) {
@@ -217,23 +217,23 @@ void reconcile_tables(CatalogManager& catalog_manager, ISdmClient& sdm_client) {
     }
 
     for (const TableMeta& table : tables) {
-        reconcile_table<Policy>(catalog_manager, sdm_client, table);
+        reconcile_table<Policy>(catalog_manager, topo_client, table);
     }
 }
 
 }  // namespace
 
-TableDdlReconciler::TableDdlReconciler(CatalogManager* catalog_manager, ISdmClient* sdm_client)
-        : catalog_manager_(catalog_manager), sdm_client_(sdm_client) {}
+TableDdlReconciler::TableDdlReconciler(CatalogManager* catalog_manager, ITopoClient* topo_client)
+        : catalog_manager_(catalog_manager), topo_client_(topo_client) {}
 
 void TableDdlReconciler::run() {
-    if (!catalog_manager_ or !sdm_client_) {
+    if (!catalog_manager_ or !topo_client_) {
         return;
     }
 
-    reconcile_tables<AddTablePolicy>(*catalog_manager_, *sdm_client_);
-    reconcile_tables<AlterTablePolicy>(*catalog_manager_, *sdm_client_);
-    reconcile_tables<DropTablePolicy>(*catalog_manager_, *sdm_client_);
+    reconcile_tables<AddTablePolicy>(*catalog_manager_, *topo_client_);
+    reconcile_tables<AlterTablePolicy>(*catalog_manager_, *topo_client_);
+    reconcile_tables<DropTablePolicy>(*catalog_manager_, *topo_client_);
 }
 
 }  // namespace adviskv::meta

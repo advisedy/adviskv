@@ -7,7 +7,7 @@
 #include "sdk/config.h"
 #include "sdk/model.h"
 #include "sdk/route_cache.h"
-#include "sdk/sdm_route_client.h"
+#include "sdk/topo_route_client.h"
 #include "sdk/storage_client.h"
 
 namespace adviskv::sdk {
@@ -28,7 +28,7 @@ private:
     Status refresh_route(const Key& key, RouteInfo* route);
 
     KVClientConf conf_;
-    SdmRouteClient sdm_route_client_;
+    TopoRouteClient topo_route_client_;
     RouteCache route_cache_;
     StorageClient storage_client_;
 };

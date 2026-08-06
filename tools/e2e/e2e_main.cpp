@@ -13,7 +13,7 @@
 #include "cases/meta_crash_recovery_case.h"
 #include "cases/restart_persistence_case.h"
 #include "cases/scale_to_zero_case.h"
-#include "cases/sdm_crash_recovery_case.h"
+#include "cases/topo_crash_recovery_case.h"
 #include "cases/table_replica_count_resize_case.h"
 #include "cases/table_replica_count_resize_resilience_case.h"
 #include "common/arg_parser.h"
@@ -48,8 +48,8 @@ bool parse_options(int argc, char** argv, std::string* conf_file, adviskv::e2e::
     parser.add_string("case", options->case_name);
     parser.add_string("meta_host", options->meta_host);
     parser.add_int32("meta_port", options->meta_port);
-    parser.add_string("sdm_host", options->sdm_host);
-    parser.add_int32("sdm_port", options->sdm_port);
+    parser.add_string("topo_host", options->topo_host);
+    parser.add_int32("topo_port", options->topo_port);
     parser.add_string("db", options->db);
     parser.add_string("table", options->table);
     parser.add_string("zone", options->zone);
@@ -95,8 +95,8 @@ bool run_case(const adviskv::e2e::Options& options) {
     RUN_CASE("follower_snapshot_catchup_prepare", adviskv::e2e::run_follower_snapshot_catchup_prepare_case)
     RUN_CASE("follower_snapshot_catchup_write_gap", adviskv::e2e::run_follower_snapshot_catchup_write_gap_case)
     RUN_CASE("follower_snapshot_catchup_verify", adviskv::e2e::run_follower_snapshot_catchup_verify_case)
-    RUN_CASE("sdm_crash_seed", adviskv::e2e::run_sdm_crash_seed_case)
-    RUN_CASE("sdm_crash_verify", adviskv::e2e::run_sdm_crash_verify_case)
+    RUN_CASE("topo_crash_seed", adviskv::e2e::run_topo_crash_seed_case)
+    RUN_CASE("topo_crash_verify", adviskv::e2e::run_topo_crash_verify_case)
     RUN_CASE("meta_crash_seed", adviskv::e2e::run_meta_crash_seed_case)
     RUN_CASE("meta_crash_verify", adviskv::e2e::run_meta_crash_verify_case)
     RUN_CASE("scale_to_zero", adviskv::e2e::run_scale_to_zero_case)

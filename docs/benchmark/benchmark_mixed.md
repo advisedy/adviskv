@@ -35,7 +35,7 @@ read_ratio = 0.0, 0.5, 0.8, 0.95, 1.0
 ## 测试环境
 
 - 运行方式：`scripts/bench.sh` 拉起本地集群并运行 `bench_client`。
-- 本地集群：`1 meta + 1 sdm + 5 storage`，所有进程都运行在同一台机器上，并通过 `127.0.0.1/localhost` 通信。
+- 本地集群：`1 meta + 1 topo + 5 storage`，所有进程都运行在同一台机器上，并通过 `127.0.0.1/localhost` 通信。
 - 测试机器：`Mac15,7`，Apple M3 Pro，12 物理核心 / 12 逻辑 CPU，36 GiB 内存。
 - 操作系统：macOS 15.7.4 (24G517)，arm64。
 - 构建方式：Release
@@ -47,7 +47,7 @@ read_ratio = 0.0, 0.5, 0.8, 0.95, 1.0
 - `read_ratio=0.0` 时，`success_qps` 约 8919。
 - `read_ratio=0.8` 时，`success_qps` 约 8230，这是本报告建议作为 mixed 默认读多写少场景引用的点。
 - `read_ratio=1.0` 时，`success_qps` 约 11130。
-- SDK 当前使用整表 route cache，正式 workload 阶段不再对每次请求做 SDM route resolve；所有测试点 `failure=0`。
+- SDK 当前使用整表 route cache，正式 workload 阶段不再对每次请求做 TOPO route resolve；所有测试点 `failure=0`。
 
 ## Read Ratio
 

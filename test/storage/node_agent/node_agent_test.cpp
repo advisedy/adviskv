@@ -13,7 +13,7 @@
 #include <gtest/gtest.h>
 
 #include "common/proto/proto.h"
-#include "sdm.grpc.pb.h"
+#include "topo.grpc.pb.h"
 #include "storage/model/param.h"
 #include "storage/replica/replica_manager.h"
 #include "test/test_env.h"
@@ -23,10 +23,10 @@ namespace fs = std::filesystem;
 namespace adviskv::storage {
 namespace {
 
-class FakeSdmService final : public sdm_rpc::SdmService::Service {
+class FakeTopoService final : public topo_rpc::TopoService::Service {
 public:
-    grpc::Status RegisterNode(grpc::ServerContext*, const sdm_rpc::RegisterNodeRequest* request,
-                              sdm_rpc::RegisterNodeResponse* response) override {
+    grpc::Status RegisterNode(grpc::ServerContext*, const topo_rpc::RegisterNodeRequest* request,
+                              topo_rpc::RegisterNodeResponse* response) override {
         {
             std::lock_guard lock(mutex_);
             ++register_count_;
@@ -43,13 +43,13 @@ public:
         return grpc::Status::OK;
     }
 
-    grpc::Status Heartbeat(grpc::ServerContext*, const sdm_rpc::HeartbeatRequest* request,
-                           sdm_rpc::HeartbeatResponse* response) override {
+    grpc::Status Heartbeat(grpc::ServerContext*, const topo_rpc::HeartbeatRequest* request,
+                           topo_rpc::HeartbeatResponse* response) override {
         {
             std::lock_guard lock(mutex_);
             ++heartbeat_count_;
             last_heartbeat_ = *request;
-            for (const sdm_rpc::ExpectedReplica& expected : next_expects_) {
+            for (const topo_rpc::ExpectedReplica& expected : next_expects_) {
                 *response->add_expects() = expected;
             }
             next_expects_.clear();
@@ -61,7 +61,7 @@ public:
         return grpc::Status::OK;
     }
 
-    void set_next_expects(std::vector<sdm_rpc::ExpectedReplica> expects) {
+    void set_next_expects(std::vector<topo_rpc::ExpectedReplica> expects) {
         std::lock_guard lock(mutex_);
         next_expects_ = std::move(expects);
     }
@@ -118,7 +118,7 @@ public:
         return last_register_dc_;
     }
 
-    sdm_rpc::HeartbeatRequest last_heartbeat() const {
+    topo_rpc::HeartbeatRequest last_heartbeat() const {
         std::lock_guard lock(mutex_);
         return last_heartbeat_;
     }
@@ -133,13 +133,13 @@ private:
     int last_register_port_{0};
     std::string last_register_resource_pool_;
     std::string last_register_dc_;
-    sdm_rpc::HeartbeatRequest last_heartbeat_;
-    std::vector<sdm_rpc::ExpectedReplica> next_expects_;
+    topo_rpc::HeartbeatRequest last_heartbeat_;
+    std::vector<topo_rpc::ExpectedReplica> next_expects_;
     Status next_register_status_{Status::OK()};
     Status next_heartbeat_status_{Status::OK()};
 };
 
-class FakeSdmServer {
+class FakeTopoServer {
 public:
     bool start() {
         grpc::ServerBuilder builder;
@@ -159,13 +159,13 @@ public:
     int port() const {
         return port_;
     }
-    FakeSdmService& service() {
+    FakeTopoService& service() {
         return service_;
     }
 
 private:
     int port_{0};
-    FakeSdmService service_;
+    FakeTopoService service_;
     std::unique_ptr<grpc::Server> server_;
 };
 
@@ -219,14 +219,14 @@ protected:
     void SetUp() override {
         base_dir_ = adviskv::test::make_unique_test_dir("node_agent", sequence_++);
         ASSERT_TRUE(fs::create_directories(base_dir_)) << base_dir_.string();
-        if (!fake_sdm_.start()) {
+        if (!fake_topo_.start()) {
             GTEST_SKIP() << "local gRPC listener is unavailable in this "
                             "environment";
         }
     }
 
     void TearDown() override {
-        fake_sdm_.stop();
+        fake_topo_.stop();
         std::error_code ec;
         fs::remove_all(base_dir_, ec);
     }
@@ -239,7 +239,7 @@ protected:
         conf.resource_pool = "default";
         conf.dc = "dc1";
         conf.manager_host = "127.0.0.1";
-        conf.manager_port = fake_sdm_.port();
+        conf.manager_port = fake_topo_.port();
         conf.heartbeat_interval_ms = 20;
         conf.register_interval_ms = 30 * 1000;
         conf.first_sync_retry_ms = 10;
@@ -281,10 +281,10 @@ protected:
         };
     }
 
-    sdm_rpc::ExpectedReplica make_expected_replica(sdm_rpc::ExpectedReplicaType type, const ReplicaID& replica_id,
+    topo_rpc::ExpectedReplica make_expected_replica(topo_rpc::ExpectedReplicaType type, const ReplicaID& replica_id,
                                                    int32_t port = 50050) const {
         Endpoint endpoint{"127.0.0.1", port};
-        sdm_rpc::ExpectedReplica expected;
+        topo_rpc::ExpectedReplica expected;
         expected.set_type(type);
         encode_pb_replica_id(replica_id, *expected.mutable_replica_id());
         pb::EngineType engine_type_pb;
@@ -296,7 +296,7 @@ protected:
 
     static inline int sequence_{0};
     fs::path base_dir_;
-    FakeSdmServer fake_sdm_;
+    FakeTopoServer fake_topo_;
 };
 
 // 检测 NodeAgent 启动后会注册节点，并周期性上报本地 replica 心跳。
@@ -314,18 +314,18 @@ TEST_F(NodeAgentTest, StartRegistersNodeAndSendsPeriodicHeartbeat) {
     status = agent.start();
     ASSERT_TRUE(status.ok()) << status.msg();
 
-    ASSERT_TRUE(fake_sdm_.service().wait_for_counts(1, 20, Milliseconds(1000)));
+    ASSERT_TRUE(fake_topo_.service().wait_for_counts(1, 20, Milliseconds(1000)));
     agent.stop();
 
-    EXPECT_EQ(fake_sdm_.service().register_count(), 1);
-    EXPECT_GE(fake_sdm_.service().heartbeat_count(), 20);
-    EXPECT_EQ(fake_sdm_.service().last_register_node_id(), "node-1");
-    EXPECT_EQ(fake_sdm_.service().last_register_ip(), "127.0.0.1");
-    EXPECT_EQ(fake_sdm_.service().last_register_port(), 50050);
-    EXPECT_EQ(fake_sdm_.service().last_register_resource_pool(), "default");
-    EXPECT_EQ(fake_sdm_.service().last_register_dc(), "dc1");
+    EXPECT_EQ(fake_topo_.service().register_count(), 1);
+    EXPECT_GE(fake_topo_.service().heartbeat_count(), 20);
+    EXPECT_EQ(fake_topo_.service().last_register_node_id(), "node-1");
+    EXPECT_EQ(fake_topo_.service().last_register_ip(), "127.0.0.1");
+    EXPECT_EQ(fake_topo_.service().last_register_port(), 50050);
+    EXPECT_EQ(fake_topo_.service().last_register_resource_pool(), "default");
+    EXPECT_EQ(fake_topo_.service().last_register_dc(), "dc1");
 
-    sdm_rpc::HeartbeatRequest heartbeat = fake_sdm_.service().last_heartbeat();
+    topo_rpc::HeartbeatRequest heartbeat = fake_topo_.service().last_heartbeat();
     EXPECT_EQ(heartbeat.node_id(), "node-1");
     EXPECT_EQ(heartbeat.ip(), "127.0.0.1");
     EXPECT_EQ(heartbeat.port(), 50050);
@@ -344,9 +344,9 @@ TEST_F(NodeAgentTest, StartRegistersNodeAndSendsPeriodicHeartbeat) {
 TEST_F(NodeAgentTest, HeartbeatAppliesExpectedReplicaCreateAndDelete) {
     ReplicaID create_id{101, 7, 0};
     ReplicaID delete_id{101, 8, 0};
-    fake_sdm_.service().set_next_expects({
-            make_expected_replica(sdm_rpc::PRESENT, create_id),
-            make_expected_replica(sdm_rpc::ABSENT, delete_id),
+    fake_topo_.service().set_next_expects({
+            make_expected_replica(topo_rpc::PRESENT, create_id),
+            make_expected_replica(topo_rpc::ABSENT, delete_id),
     });
 
     std::mutex mutex;
@@ -377,7 +377,7 @@ TEST_F(NodeAgentTest, HeartbeatAppliesExpectedReplicaCreateAndDelete) {
 
     status = agent.start();
     ASSERT_TRUE(status.ok()) << status.msg();
-    ASSERT_TRUE(fake_sdm_.service().wait_for_counts(1, 2, Milliseconds(1000)));
+    ASSERT_TRUE(fake_topo_.service().wait_for_counts(1, 2, Milliseconds(1000)));
     agent.stop();
 
     std::lock_guard lock(mutex);
@@ -394,7 +394,7 @@ TEST_F(NodeAgentTest, HeartbeatAppliesExpectedReplicaCreateAndDelete) {
 
 // 检测 heartbeat 失败时不会立即重新注册节点，只继续按心跳流程重试。
 TEST_F(NodeAgentTest, HeartbeatFailureDoesNotReRegisterImmediately) {
-    fake_sdm_.service().set_next_heartbeat_status(Status::INVALID_ARGUMENT("node not found"));
+    fake_topo_.service().set_next_heartbeat_status(Status::INVALID_ARGUMENT("node not found"));
 
     NodeAgentReplicaOps ops;
     ops.list_replicas = [] { return std::vector<ReplicaPtr>{}; };
@@ -412,16 +412,16 @@ TEST_F(NodeAgentTest, HeartbeatFailureDoesNotReRegisterImmediately) {
 
     status = agent.start();
     ASSERT_TRUE(status.ok()) << status.msg();
-    ASSERT_TRUE(fake_sdm_.service().wait_for_counts(1, 2, Milliseconds(1000)));
+    ASSERT_TRUE(fake_topo_.service().wait_for_counts(1, 2, Milliseconds(1000)));
     agent.stop();
 
-    EXPECT_EQ(fake_sdm_.service().register_count(), 1);
-    EXPECT_GE(fake_sdm_.service().heartbeat_count(), 2);
+    EXPECT_EQ(fake_topo_.service().register_count(), 1);
+    EXPECT_GE(fake_topo_.service().heartbeat_count(), 2);
 }
 
 // 检测首次注册失败后，注册任务会按重试间隔再次发起注册。
 TEST_F(NodeAgentTest, RegisterTaskRetriesAfterFailedRegister) {
-    fake_sdm_.service().set_next_register_status(Status::INVALID_ARGUMENT("node register rejected once"));
+    fake_topo_.service().set_next_register_status(Status::INVALID_ARGUMENT("node register rejected once"));
 
     NodeAgentConf conf = valid_conf();
     conf.register_interval_ms = 30 * 1000;
@@ -433,10 +433,10 @@ TEST_F(NodeAgentTest, RegisterTaskRetriesAfterFailedRegister) {
 
     status = agent.start();
     ASSERT_TRUE(status.ok()) << status.msg();
-    ASSERT_TRUE(fake_sdm_.service().wait_for_counts(2, 0, Milliseconds(1000)));
+    ASSERT_TRUE(fake_topo_.service().wait_for_counts(2, 0, Milliseconds(1000)));
     agent.stop();
 
-    EXPECT_EQ(fake_sdm_.service().register_count(), 2);
+    EXPECT_EQ(fake_topo_.service().register_count(), 2);
 }
 
 }  // namespace

@@ -13,7 +13,7 @@
 namespace adviskv {
 /*
 0 - 999 共用
-1000 - 1999 sdm特有
+1000 - 1999 topo特有
 2000 - 2999 storage特有
 3000 - 3999 meta 特有
 4000 - 4999 sdk特有

@@ -9,8 +9,8 @@ struct BenchOptions {
     std::string meta_host{"127.0.0.1"};
     int32_t meta_port{50048};
 
-    std::string sdm_host{"127.0.0.1"};
-    int32_t sdm_port{50049};
+    std::string topo_host{"127.0.0.1"};
+    int32_t topo_port{50049};
 
     std::string db{"bench_db"};
     std::string table{"bench_table"};

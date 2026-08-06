@@ -80,7 +80,7 @@ Status NodeAgent::init(NodeAgentConf conf) {
 
     const std::string target = conf_.manager_host + ":" + std::to_string(conf_.manager_port);
     channel_ = grpc::CreateChannel(target, grpc::InsecureChannelCredentials());
-    stub_ = sdm_rpc::SdmService::NewStub(channel_);
+    stub_ = topo_rpc::TopoService::NewStub(channel_);
     register_task_ = std::make_unique<RegisterTask>(this, Milliseconds(conf_.first_sync_retry_ms),
                                                     Milliseconds(conf_.register_interval_ms));
     heartbeat_task_ = std::make_unique<HeartbeatTask>(this, Milliseconds(conf_.heartbeat_interval_ms));
@@ -115,7 +115,7 @@ Status NodeAgent::stop() {
 }
 
 Status NodeAgent::heartbeat_once() {
-    sdm_rpc::HeartbeatResponse response;
+    topo_rpc::HeartbeatResponse response;
     Status status = send_heartbeat_once(&response);
     RETURN_IF_INVALID_STATUS(status)
 
@@ -135,10 +135,10 @@ Status NodeAgent::heartbeat_once() {
     return Status::OK();
 }
 
-Status NodeAgent::send_heartbeat_once(sdm_rpc::HeartbeatResponse* response) {
+Status NodeAgent::send_heartbeat_once(topo_rpc::HeartbeatResponse* response) {
     RETURN_IF_NULLPTR(response, "heartbeat response is nullptr")
 
-    sdm_rpc::HeartbeatRequest request = make_heartbeat_request();
+    topo_rpc::HeartbeatRequest request = make_heartbeat_request();
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + Milliseconds(conf_.rpc_timeout_ms));
     grpc::Status grpc_status = stub_->Heartbeat(&context, request, response);
@@ -148,14 +148,14 @@ Status NodeAgent::send_heartbeat_once(sdm_rpc::HeartbeatResponse* response) {
 }
 
 Status NodeAgent::register_node() {
-    sdm_rpc::RegisterNodeRequest request;
+    topo_rpc::RegisterNodeRequest request;
     request.set_node_id(conf_.node_id);
     request.set_ip(conf_.ip);
     request.set_port(conf_.port);
     request.set_resource_pool(conf_.resource_pool);
     request.set_dc(conf_.dc);
 
-    sdm_rpc::RegisterNodeResponse response;
+    topo_rpc::RegisterNodeResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + Milliseconds(conf_.rpc_timeout_ms));
     grpc::Status grpc_status = stub_->RegisterNode(&context, request, &response);
@@ -248,8 +248,8 @@ ReplicaInitParam NodeAgent::make_replica_init_param(const ExpectedReplica& expec
     return param;
 }
 
-sdm_rpc::HeartbeatRequest NodeAgent::make_heartbeat_request() const {
-    sdm_rpc::HeartbeatRequest request;
+topo_rpc::HeartbeatRequest NodeAgent::make_heartbeat_request() const {
+    topo_rpc::HeartbeatRequest request;
     request.set_node_id(conf_.node_id);
     request.set_ip(conf_.ip);
     request.set_port(conf_.port);

@@ -8,13 +8,13 @@
 
 #include "common/model/type.h"
 #include "common/status.h"
-#include "sdm/model/param.h"
+#include "topo/model/param.h"
 #include "storage.grpc.pb.h"
 
 namespace adviskv::tools {
 
 /*
-在最开始的架构里面，是SDM主动给storage发消息，但是后来改版成了node agent，
+在最开始的架构里面，是TOPO主动给storage发消息，但是后来改版成了node agent，
 又不希望这段代码直接删掉，万一以后可以测试用，所以就先放在这里了。
 
 target_include_directories(adviskv_tools_storage_client PUBLIC
@@ -26,9 +26,9 @@ include的路径就用tools/storage_client/xxx这种吧
 
 */
 
-using ::adviskv::sdm::CreateReplicaParam;
-using ::adviskv::sdm::DeleteReplicaParam;
-using ::adviskv::sdm::GetReplicaInfoParam;
+using ::adviskv::topo::CreateReplicaParam;
+using ::adviskv::topo::DeleteReplicaParam;
+using ::adviskv::topo::GetReplicaInfoParam;
 
 struct StorageReplicaInfo {
     ReplicaID replica_id;

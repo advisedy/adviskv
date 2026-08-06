@@ -46,7 +46,7 @@ function(add_adviskv_storage_gtest target_name)
     )
 endfunction()
 
-function(add_adviskv_sdm_gtest target_name)
+function(add_adviskv_topo_gtest target_name)
     add_executable(${target_name}
         ${CMAKE_SOURCE_DIR}/test/test_main.cpp
         ${ARGN}
@@ -55,7 +55,7 @@ function(add_adviskv_sdm_gtest target_name)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/test"
     )
     target_link_libraries(${target_name} PRIVATE
-        adviskv_sdm_test_lib
+        adviskv_topo_test_lib
         GTest::gtest
     )
     target_include_directories(${target_name} PRIVATE
@@ -144,60 +144,60 @@ add_adviskv_storage_gtest(raft_cluster_test
     ${CMAKE_SOURCE_DIR}/test/storage/raft/core/raft_cluster_test.cpp
 )
 
-add_adviskv_sdm_gtest(node_service_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/service/node_service_test.cpp
+add_adviskv_topo_gtest(node_service_test
+    ${CMAKE_SOURCE_DIR}/test/topo/service/node_service_test.cpp
 )
 
-add_adviskv_sdm_gtest(table_service_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/service/table_service_test.cpp
+add_adviskv_topo_gtest(table_service_test
+    ${CMAKE_SOURCE_DIR}/test/topo/service/table_service_test.cpp
 )
 
-add_adviskv_sdm_gtest(route_service_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/service/route_service_test.cpp
+add_adviskv_topo_gtest(route_service_test
+    ${CMAKE_SOURCE_DIR}/test/topo/service/route_service_test.cpp
 )
 
-add_adviskv_sdm_gtest(node_heartbeat_service_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/service/node_heartbeat_service_test.cpp
+add_adviskv_topo_gtest(node_heartbeat_service_test
+    ${CMAKE_SOURCE_DIR}/test/topo/service/node_heartbeat_service_test.cpp
 )
 
-add_adviskv_sdm_gtest(node_reconcile_service_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/service/node_reconcile_service_test.cpp
+add_adviskv_topo_gtest(node_reconcile_service_test
+    ${CMAKE_SOURCE_DIR}/test/topo/service/node_reconcile_service_test.cpp
 )
 
-add_adviskv_sdm_gtest(route_reconcile_service_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/service/route_reconcile_service_test.cpp
+add_adviskv_topo_gtest(route_reconcile_service_test
+    ${CMAKE_SOURCE_DIR}/test/topo/service/route_reconcile_service_test.cpp
 )
 
-add_adviskv_sdm_gtest(table_reconcile_service_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/service/table_reconcile_service_test.cpp
+add_adviskv_topo_gtest(table_reconcile_service_test
+    ${CMAKE_SOURCE_DIR}/test/topo/service/table_reconcile_service_test.cpp
 )
 
-add_adviskv_sdm_gtest(sdm_runtime_index_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/store/sdm_runtime_index_test.cpp
+add_adviskv_topo_gtest(topo_runtime_index_test
+    ${CMAKE_SOURCE_DIR}/test/topo/store/topo_runtime_index_test.cpp
 )
 
-add_adviskv_sdm_gtest(node_selector_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/selector/node_selector/node_selector_test.cpp
+add_adviskv_topo_gtest(node_selector_test
+    ${CMAKE_SOURCE_DIR}/test/topo/selector/node_selector/node_selector_test.cpp
 )
 
-add_adviskv_sdm_gtest(memory_meta_store_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/store/memory_meta_store_test.cpp
+add_adviskv_topo_gtest(memory_meta_store_test
+    ${CMAKE_SOURCE_DIR}/test/topo/store/memory_meta_store_test.cpp
 )
 
-add_adviskv_sdm_gtest(runtime_store_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/store/runtime_store_test.cpp
+add_adviskv_topo_gtest(runtime_store_test
+    ${CMAKE_SOURCE_DIR}/test/topo/store/runtime_store_test.cpp
 )
 
-add_adviskv_sdm_gtest(persistent_meta_store_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/store/persistent_meta_store_test.cpp
+add_adviskv_topo_gtest(persistent_meta_store_test
+    ${CMAKE_SOURCE_DIR}/test/topo/store/persistent_meta_store_test.cpp
 )
 
-add_adviskv_sdm_gtest(sdm_persist_engine_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/persist/sdm_persist_engine_test.cpp
+add_adviskv_topo_gtest(topo_persist_engine_test
+    ${CMAKE_SOURCE_DIR}/test/topo/persist/topo_persist_engine_test.cpp
 )
 
-add_adviskv_sdm_gtest(sdm_store_test
-    ${CMAKE_SOURCE_DIR}/test/sdm/store/sdm_store_test.cpp
+add_adviskv_topo_gtest(topo_store_test
+    ${CMAKE_SOURCE_DIR}/test/topo/store/topo_store_test.cpp
 )
 
 add_adviskv_meta_gtest(meta_persist_engine_test

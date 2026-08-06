@@ -4,7 +4,7 @@ set(META_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/background/table_ddl_reconciler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/persist/meta_persist_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/service/ddl_service.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/service/sdm_client.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/service/topo_client.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/handler/meta_service_impl.cpp
 )
 
