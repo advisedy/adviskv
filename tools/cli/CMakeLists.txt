@@ -1,6 +1,6 @@
 add_executable(adviskvctl
     ${CMAKE_CURRENT_SOURCE_DIR}/src/adviskvctl.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/direct_meta_client.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/direct_catalog_client.cpp
 )
 
 target_link_libraries(adviskvctl PRIVATE

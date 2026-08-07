@@ -5,22 +5,22 @@
 #include <chrono>
 
 #include "e2e_assert.h"
-#include "meta/model/model.h"
+#include "catalog/model/model.h"
 
 namespace adviskv::e2e {
 
 bool create_db(E2EContext* context, std::string* error) {
     const Options& options = context->options();
-    meta_rpc::CreateDBRequest request;
+    catalog_rpc::CreateDBRequest request;
     request.set_db_name(options.db);
     request.set_zone(options.zone);
 
-    meta_rpc::CreateDBResponse response;
+    catalog_rpc::CreateDBResponse response;
     grpc::ClientContext client_context;
     client_context.set_deadline(std::chrono::system_clock::now() +
                                 std::chrono::milliseconds(options.timeout_ms));
     grpc::Status status =
-        context->meta()->CreateDB(&client_context, request, &response);
+        context->catalog()->CreateDB(&client_context, request, &response);
     if (!grpc_ok(status, "CreateDB", error)) {
         return false;
     }
@@ -34,19 +34,19 @@ bool create_db(E2EContext* context, std::string* error) {
 
 bool create_table(E2EContext* context, std::string* error) {
     const Options& options = context->options();
-    meta_rpc::CreateTableRequest request;
+    catalog_rpc::CreateTableRequest request;
     request.set_db_name(options.db);
     request.set_table_name(options.table);
     request.set_shard_count(options.shard_count);
     request.set_replica_count(options.replica_count);
     request.set_resource_pool(options.resource_pool);
 
-    meta_rpc::CreateTableResponse response;
+    catalog_rpc::CreateTableResponse response;
     grpc::ClientContext client_context;
     client_context.set_deadline(std::chrono::system_clock::now() +
                                 std::chrono::milliseconds(options.timeout_ms));
     grpc::Status status =
-        context->meta()->CreateTable(&client_context, request, &response);
+        context->catalog()->CreateTable(&client_context, request, &response);
     if (!grpc_ok(status, "CreateTable", error)) {
         return false;
     }
@@ -60,16 +60,16 @@ bool create_table(E2EContext* context, std::string* error) {
 
 bool drop_table(E2EContext* context, std::string* error) {
     const Options& options = context->options();
-    meta_rpc::DropTableRequest request;
+    catalog_rpc::DropTableRequest request;
     request.set_db_name(options.db);
     request.set_table_name(options.table);
 
-    meta_rpc::DropTableResponse response;
+    catalog_rpc::DropTableResponse response;
     grpc::ClientContext client_context;
     client_context.set_deadline(std::chrono::system_clock::now() +
                                 std::chrono::milliseconds(options.timeout_ms));
     const grpc::Status status =
-        context->meta()->DropTable(&client_context, request, &response);
+        context->catalog()->DropTable(&client_context, request, &response);
     return grpc_ok(status, "DropTable", error) &&
            base_rsp_ok(response.base_rsp().code(), response.base_rsp().msg(),
                        "DropTable", error);
@@ -78,16 +78,16 @@ bool drop_table(E2EContext* context, std::string* error) {
 bool alter_table_replica_count(E2EContext* context, int32_t replica_count,
                                std::string* error) {
     const Options& options = context->options();
-    meta_rpc::AlterTableReplicaCountRequest request;
+    catalog_rpc::AlterTableReplicaCountRequest request;
     request.set_db_name(options.db);
     request.set_table_name(options.table);
     request.set_replica_count(replica_count);
 
-    meta_rpc::AlterTableReplicaCountResponse response;
+    catalog_rpc::AlterTableReplicaCountResponse response;
     grpc::ClientContext client_context;
     client_context.set_deadline(std::chrono::system_clock::now() +
                                 std::chrono::milliseconds(options.timeout_ms));
-    const grpc::Status status = context->meta()->AlterTableReplicaCount(
+    const grpc::Status status = context->catalog()->AlterTableReplicaCount(
         &client_context, request, &response);
     return grpc_ok(status, "AlterTableReplicaCount", error) &&
            base_rsp_ok(response.base_rsp().code(), response.base_rsp().msg(),
@@ -100,16 +100,16 @@ bool wait_table_normal(E2EContext* context) {
     return eventually(
         "table normal", options,
         [&]() {
-            meta_rpc::GetTableRequest request;
+            catalog_rpc::GetTableRequest request;
             request.set_db_name(options.db);
             request.set_table_name(options.table);
 
-            meta_rpc::GetTableResponse response;
+            catalog_rpc::GetTableResponse response;
             grpc::ClientContext client_context;
             client_context.set_deadline(std::chrono::system_clock::now() +
                                         std::chrono::milliseconds(3000));
             const grpc::Status status =
-                context->meta()->GetTable(&client_context, request, &response);
+                context->catalog()->GetTable(&client_context, request, &response);
             std::string error;
             if (!grpc_ok(status, "GetTable", &error)) {
                 return CheckResult::fail(error);
@@ -120,7 +120,7 @@ bool wait_table_normal(E2EContext* context) {
                     response.base_rsp().msg()));
             }
             if (response.table_state() !=
-                pb::MetaTableState::META_TABLE_STATE_NORMAL) {
+                pb::CatalogTableState::CATALOG_TABLE_STATE_NORMAL) {
                 return CheckResult::fail(fmt::format(
                     "table_state={}, last_error={}",
                     static_cast<int32_t>(response.table_state()),
@@ -140,16 +140,16 @@ bool wait_table_replica_count(E2EContext* context, int32_t replica_count) {
     return eventually(
         fmt::format("table replica_count {}", replica_count), options,
         [&]() {
-            meta_rpc::GetTableRequest request;
+            catalog_rpc::GetTableRequest request;
             request.set_db_name(options.db);
             request.set_table_name(options.table);
 
-            meta_rpc::GetTableResponse response;
+            catalog_rpc::GetTableResponse response;
             grpc::ClientContext client_context;
             client_context.set_deadline(std::chrono::system_clock::now() +
                                         std::chrono::milliseconds(3000));
             const grpc::Status status =
-                context->meta()->GetTable(&client_context, request, &response);
+                context->catalog()->GetTable(&client_context, request, &response);
             std::string error;
             if (!grpc_ok(status, "GetTable", &error)) {
                 return CheckResult::fail(error);
@@ -160,7 +160,7 @@ bool wait_table_replica_count(E2EContext* context, int32_t replica_count) {
                     response.base_rsp().msg()));
             }
             if (response.table_state() !=
-                pb::MetaTableState::META_TABLE_STATE_NORMAL) {
+                pb::CatalogTableState::CATALOG_TABLE_STATE_NORMAL) {
                 return CheckResult::fail(fmt::format(
                     "table_state={}, replica_count={}, last_error={}",
                     static_cast<int32_t>(response.table_state()),
@@ -184,16 +184,16 @@ bool wait_table_deleted(E2EContext* context) {
     return eventually(
         "table deleted", options,
         [&]() {
-            meta_rpc::GetTableRequest request;
+            catalog_rpc::GetTableRequest request;
             request.set_db_name(options.db);
             request.set_table_name(options.table);
 
-            meta_rpc::GetTableResponse response;
+            catalog_rpc::GetTableResponse response;
             grpc::ClientContext client_context;
             client_context.set_deadline(std::chrono::system_clock::now() +
                                         std::chrono::milliseconds(3000));
             const grpc::Status status =
-                context->meta()->GetTable(&client_context, request, &response);
+                context->catalog()->GetTable(&client_context, request, &response);
             std::string error;
             if (!grpc_ok(status, "GetTable", &error)) {
                 return CheckResult::fail(error);
@@ -203,7 +203,7 @@ bool wait_table_deleted(E2EContext* context) {
                 return CheckResult::pass(response.base_rsp().msg());
             }
             if (response.table_state() ==
-                pb::MetaTableState::META_TABLE_STATE_DELETED) {
+                pb::CatalogTableState::CATALOG_TABLE_STATE_DELETED) {
                 return CheckResult::pass("table state is DELETED");
             }
             return CheckResult::fail(

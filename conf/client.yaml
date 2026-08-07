@@ -1,7 +1,7 @@
-meta_host: "127.0.0.1"
-meta_port: 50048
+catalog_host: "127.0.0.1"
+catalog_port: 50048
 topo_host: "127.0.0.1"
 topo_port: 50049
-meta_timeout_ms: 3000
+catalog_timeout_ms: 3000
 topo_timeout_ms: 3000
 storage_timeout_ms: 3000

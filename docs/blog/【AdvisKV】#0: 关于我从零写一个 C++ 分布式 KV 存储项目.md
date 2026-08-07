@@ -2,7 +2,8 @@
 
 ## 写在开头的开头
 
-AdvisKV 是我用 C++17 从零写的一个分布式 KV 存储系统原型，包含 Meta、TOPO、Storage、SDK 四个主要模块，覆盖建库建表、路由查询、KV 读写、副本数扩缩容、坏副本替换、Raft、WAL/snapshot 恢复，跑了gtest + E2E 测试和 benchmark。（但是控制面高可用、自动 rebalance、接入rocksdb这些还没实现）
+AdvisKV 是我用 C++17 从零写的一个分布式 KV 存储系统原型，包含 Catalog、TOPO、Storage、SDK 四个主要模块，覆盖建库建表、路由查询、KV 读写、副本数扩缩容、坏副本替换、Raft、WAL/snapshot 恢复，跑了gtest + E2E 测试和 benchmark。（但是控制面高可用、自动 rebalance、接入rocksdb这些还没实现）
+
 
 项目地址：https://github.com/advisedy/adviskv
 
@@ -24,11 +25,11 @@ AdvisKV 是我用 C++17 从零写的一个分布式 KV 存储系统原型，包�
 
 简单来说，AdvisKV 是我用 C++17 写的一个分布式 KV 存储系统原型。实现它的原因，说的功利一点，就是希望可以秋招体面一点。顺带其实也希望可以完成自己的第一个从头开始搞的项目。希望各位不要期望太高，定位并没有多高，就是一个学习向系统的原型罢了。
 
-大概概括这个项目的主线的话，就是 Meta/TOPO 作为控制面维护表、副本和路由的期望状态，Storage 作为数据面负责 KV 读写和 Raft 复制，控制面和数据面通过心跳和 reconciler 不断把系统状态收敛到预期。
+大概概括这个项目的主线的话，就是 Catalog/TOPO 作为控制面维护表、副本和路由的期望状态，Storage 作为数据面负责 KV 读写和 Raft 复制，控制面和数据面通过心跳和 reconciler 不断把系统状态收敛到预期。
 
 这个项目里面大概分成四个模块：
 
-`Meta` 负责DB，Table这些元数据和DDL。
+`Catalog` 负责DB，Table这些目录信息和DDL。
 
 `TOPO` 负责 Storage 节点注册、心跳、ReplicaGroup 编排、期望副本下发和 Route 维护。
 
@@ -36,7 +37,7 @@ AdvisKV 是我用 C++17 从零写的一个分布式 KV 存储系统原型，包�
 
 `SDK` 对外提供基于 `db + table + key` 的put/get/delete 接口。
 
-目前这个项目可以跑通建库建表，路由查询，KV的读操作写操作，副本数调整，自动替换坏了的副本，raft，WAL，snapshot，recover等这些功能，然后目前有两百多个gtest单测，一批E2E测试（例如最基础的端到端 KV 链路，leader崩溃后切主，follower追日志和追snapshot，Meta/TOPO重启恢复啊等等等等），还有benchmark和metrics。
+目前这个项目可以跑通建库建表，路由查询，KV的读操作写操作，副本数调整，自动替换坏了的副本，raft，WAL，snapshot，recover等这些功能，然后目前有两百多个gtest单测，一批E2E测试（例如最基础的端到端 KV 链路，leader崩溃后切主，follower追日志和追snapshot，Catalog/TOPO重启恢复啊等等等等），还有benchmark和metrics。
 
 关于详细的内容和数据这里就不详说了，我更想的其实是写关于这个项目的自我感受（一直以来就是这个样子，所以就不写的那么官方味了）。
 
@@ -133,7 +134,7 @@ int main() {
 
 ## 整体架构的粗略介绍
 
-这个项目主要是分为了四个模块: meta，topo， storage， sdk。
+这个项目主要是分为了四个模块: catalog，topo， storage， sdk。
 
 ### SDK
 
@@ -141,21 +142,21 @@ int main() {
 
 拿 put 操作来说，在当前版本里，sdk 会先向 topo 查询 route，也就是路由表。这个 route 里面包含当前 db/table 对应的 shard 信息，以及每个 shard 下面的 replica 节点信息。sdk 根据 key 算出它应该落在哪一个 shard 上，然后从这个 shard 的 replica 列表里面找到 leader 节点，然后直接给这个节点发送put操作。删除操作也是这个样子。值得一提的是，在我们的V1版本里面，get操作也是只有leader才可以执行。（后续版本会考虑优化这里）
 
-### Meta
+### Catalog
 
 Minimal architecture diagram:
 
-![Meta Minimal Architecture](../assets/meta-minimal-architecture.png)
+![Catalog Minimal Architecture](../assets/meta-minimal-architecture.png)
 
 这个模块主要负责 DDL 和 DB/Table 这些元信息。
 
-创建 table 的时候，请求会先打到 Meta。Meta 收到 CreateTable 之后，会先在自己的 catalog 里面记录这个 table，并把 table 状态标记成创建中的状态。然后 Meta 会向 TOPO 发送 PlaceTable 请求，让 TOPO 去负责后续的 replica 放置和 route 生成。
+创建 table 的时候，请求会先打到 Catalog。Catalog 收到 CreateTable 之后，会先在自己的 catalog 里面记录这个 table，并把 table 状态标记成创建中的状态。然后 Catalog 会向 TOPO 发送 PlaceTable 请求，让 TOPO 去负责后续的 replica 放置和 route 生成。
 
-这里需要注意的是，CreateTable 返回成功并不一定代表这个 table 立刻就已经可以读写了。这个接口本身是一个异步操作，返回的OK只是代表meta这边接受了这个DDL，并不保证DDL最后一定会成功。后续 table 是否真正 ready，主要是取决 Meta 和 TOPO 里的后台 reconciler 能否把状态推进到最终状态。
+这里需要注意的是，CreateTable 返回成功并不一定代表这个 table 立刻就已经可以读写了。这个接口本身是一个异步操作，返回的OK只是代表Catalog这边接受了这个DDL，并不保证DDL最后一定会成功。后续 table 是否真正 ready，主要是取决 Catalog 和 TOPO 里的后台 reconciler 能否把状态推进到最终状态。
 
-后面做副本数调整之后，这里也多了 AlterTableReplicaCount。用户发起 alter_table 的时候，Meta 会先把 catalog 里面的 replica_count 和状态改掉，然后通知 TOPO 去把每个 shard 的目标副本数调到新值。这个过程也不是同步等所有 replica 都调整完，最后还是靠后台 reconciler 推回来。
+后面做副本数调整之后，这里也多了 AlterTableReplicaCount。用户发起 alter_table 的时候，Catalog 会先把 catalog 里面的 replica_count 和状态改掉，然后通知 TOPO 去把每个 shard 的目标副本数调到新值。这个过程也不是同步等所有 replica 都调整完，最后还是靠后台 reconciler 推回来。
 
-而创建db这种操作的话，就不会发送给topo，因为像DB这边的概念，是只有meta才会知晓的概念，topo那边不会在乎db，也不会持久化db。topo侧应当只会关心table，以及对应的shard_count和replica_count来进行编排。虽然sdk通过传递db_name和table_name和hash(key)找到路由表，但是db_name这个其实是附在table上的，所以对于db而言，不需要往topo知道，topo只需要了解到table的内容其实就可以了。
+而创建db这种操作的话，就不会发送给topo，因为像DB这边的概念，是只有Catalog才会知晓的概念，topo那边不会在乎db，也不会持久化db。topo侧应当只会关心table，以及对应的shard_count和replica_count来进行编排。虽然sdk通过传递db_name和table_name和hash(key)找到路由表，但是db_name这个其实是附在table上的，所以对于db而言，不需要往topo知道，topo只需要了解到table的内容其实就可以了。
 
 ### TOPO
 
@@ -177,7 +178,7 @@ Minimal architecture diagram:
 
 ![Storage Minimal Architecture](../assets/storage-minimal-architecture.png)
 
-storage 负责数据的读写，前面的 meta 和 topo 更偏控制面一些，一个负责元信息，一个负责路由和节点状态；storage 这边是真正处理 put/get/delete 请求，以及维护数据副本的地方。
+storage 负责数据的读写，前面的 Catalog 和 topo 更偏控制面一些，一个负责目录信息，一个负责路由和节点状态；storage 这边是真正处理 put/get/delete 请求，以及维护数据副本的地方。
 
 拿 put/delete 操作来说，sdk 直接把请求打到对应 shard 的 leader 所在的 storage 节点上。打向storage写请求之后，这个写请求就会进入 replica 内部，交给 raft 做复制。首先本地会写一条 raft log，然后发送给其他的 follower，等待这个 log 被多数派确认并且提交之后，会 apply 到 KV engine。当前版本里的 KV engine 还是一个比较简单的 map engine，主要是为了先把分布式链路跑通。（后续有考虑接入rocksdb，maybe，maybe考虑）
 
@@ -189,7 +190,7 @@ get操作来说的话，其实目前也只是leader-only的状态，最终的读
 
 其实目前还有很多没有完成的内容，例如
 
-- Meta 和 TOPO 在V1版本里只打算做单进程，没有高可用
+- Catalog 和 TOPO 在V1版本里只打算做单进程，没有高可用
 - Storage侧目前的 kv engine 直接用了map，还没有接入rocksdb
 - 关于 shard 目前不支持 split，也没有实现自动 rebalance
 - 目前只支持 leader put 和 read，不支持follower read

@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>一个 C++17 分布式 KV 存储原型</b><br/>
-  Raft 复制 · Meta/TOPO 控制面 · 分片路由 · WAL/Snapshot 恢复 · E2E & Benchmark
+  Raft 复制 · Catalog/TOPO 控制面 · 分片路由 · WAL/Snapshot 恢复 · E2E & Benchmark
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
 
 ## 项目一句话
 
-AdvisKV 把一套分布式 KV 系统从**控制面到数据面**完整拉通:Meta 管 DDL 与 catalog,TOPO 用 reconciler 编排副本与 route,Storage 跑 Raft/WAL/Snapshot,SDK 走 `db + table + key` 路由到 leader。目前 V1 已在**本地 3 副本**下跑通 DDL、读写、扩缩容、异常副本替换、崩溃恢复、E2E 和 benchmark 全链路。
+AdvisKV 把一套分布式 KV 系统从**控制面到数据面**完整拉通:Catalog 管 DDL 与 DB/Table 目录,TOPO 用 reconciler 编排副本与 route,Storage 跑 Raft/WAL/Snapshot,SDK 走 `db + table + key` 路由到 leader。目前 V1 已在**本地 3 副本**下跑通 DDL、读写、扩缩容、异常副本替换、崩溃恢复、E2E 和 benchmark 全链路。
 
 ## Highlights
 
@@ -43,7 +43,7 @@ AdvisKV 把一套分布式 KV 系统从**控制面到数据面**完整拉通:Met
 </p>
 
 - **Client / SDK**:走 `db + table + key` 路由,后台异步刷新整表路由后直连 Storage 做 `put/get/delete`;RouteCache 采用 COW + atomic snapshot,读路径无锁。
-- **Meta**:DDL / catalog 的单一权威源,建表时把表信息交给 TOPO 编排落地。
+- **Catalog**:DDL / catalog 的单一权威源,建表时把表信息交给 TOPO 编排落地。
 - **TOPO**:reconciler 驱动的控制面,接收 Storage NodeAgent Heartbeat,下发 ExpectedReplica,把 desired state 收敛为 observed state,再对外发布 route。
 - **Storage Raft Group**:多副本 Raft 复制,leader 负责写路径;WAL 顺序落盘、Snapshot install、Log truncate 与 crash recovery 全部覆盖。
 
@@ -61,7 +61,7 @@ AdvisKV 把一套分布式 KV 系统从**控制面到数据面**完整拉通:Met
 更细的模块图:
 - [TOPO 最小架构](docs/assets/topo-minimal-architecture.png)
 - [Storage 最小架构](docs/assets/storage-minimal-architecture.png)
-- [Meta 最小架构](docs/assets/meta-minimal-architecture.png)
+- [Catalog 最小架构](docs/assets/meta-minimal-architecture.png)
 
 ## Quick Start
 
@@ -73,7 +73,7 @@ AdvisKV 把一套分布式 KV 系统从**控制面到数据面**完整拉通:Met
 ./scripts/adviskvctl_demo.sh
 ```
 
-`adviskvctl_demo.sh` 会自动拉起本地 `topo/meta/storage`,并进入交互式 shell:
+`adviskvctl_demo.sh` 会自动拉起本地 `topo/catalog/storage`,并进入交互式 shell:
 
 ```text
 create_db demo_db dc1
@@ -110,7 +110,7 @@ cmake --build build --parallel
 
 ```bash
 BUILD_TYPE=Debug ./scripts/build.sh
-BUILD_TARGETS="meta topo storage adviskvctl" ./scripts/build.sh
+BUILD_TARGETS="catalog topo storage adviskvctl" ./scripts/build.sh
 ```
 
 主要二进制默认位于 `build/bin/`。
@@ -124,7 +124,7 @@ BUILD_TARGETS="meta topo storage adviskvctl" ./scripts/build.sh
 ```
 
 - `run_test.sh`:构建并运行 GoogleTest。
-- `e2e_pytest.sh`:拉起本地多进程集群,验证 Meta → TOPO → Storage → SDK 主链路。
+- `e2e_pytest.sh`:拉起本地多进程集群,验证 Catalog → TOPO → Storage → SDK 主链路。
 - `coverage.sh`:生成覆盖率报告。
 
 E2E 覆盖基础 KV、重启恢复、leader failover、follower catch-up、crash recovery、scale-to-zero、副本数调整和故障场景。
@@ -133,7 +133,7 @@ E2E 覆盖基础 KV、重启恢复、leader failover、follower catch-up、crash
 
 本地端到端 benchmark,链路覆盖 `SDK → TOPO route → Storage leader → Raft/WAL/KV`。结果来自单机多进程集群,只代表当前 V1 的一次测试结果,**不是生产环境性能承诺**。
 
-测试环境:`Mac15,7`,Apple M3 Pro,12 物理核心 / 12 逻辑 CPU,36 GiB 内存;macOS 15.7.4,arm64。本地集群:`1 meta + 1 topo + 5 storage`,所有进程都在同一台机器上,通过 `127.0.0.1/localhost` 通信。
+测试环境:`Mac15,7`,Apple M3 Pro,12 物理核心 / 12 逻辑 CPU,36 GiB 内存;macOS 15.7.4,arm64。本地集群:`1 catalog + 1 topo + 5 storage`,所有进程都在同一台机器上,通过 `127.0.0.1/localhost` 通信。
 
 ![Mixed benchmark](docs/benchmark/assets/mixed_read_ratio_qps.svg)
 
@@ -183,7 +183,7 @@ _(待整理)_
 conf/       本地配置文件
 proto/      gRPC / Protobuf 定义
 scripts/    构建、测试、demo 和 benchmark 脚本
-src/        Meta / TOPO / Storage / SDK 与通用模块
+src/        Catalog / TOPO / Storage / SDK 与通用模块
 tools/      adviskvctl、E2E 客户端、benchmark 客户端、storage 客户端
 test/       GoogleTest 和 Python E2E 测试
 docs/       设计文档、V1 约束、博客与 benchmark
@@ -193,7 +193,7 @@ docs/       设计文档、V1 约束、博客与 benchmark
 
 AdvisKV 当前是 V1 prototype,具备可构建、可运行、可测试的分布式 KV 主链路。以下边界建议在阅读代码或复用思路时保持清醒:
 
-- Meta 和 TOPO 是单进程本地模式,尚未做高可用。
+- Catalog 和 TOPO 是单进程本地模式,尚未做高可用。
 - 更完整的 auto rebalance、复杂成员变更策略、生产级运维仍在演进。
 - route 与 leader 可写路由语义还需要更多故障场景验证。
 - 当前使用 map-based KV engine,未接 RocksDB 等生产级 LSM 引擎;

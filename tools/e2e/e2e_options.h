@@ -9,8 +9,8 @@ namespace adviskv::e2e {
 
 struct Options {
     std::string case_name{"basic_kv"};
-    std::string meta_host{"127.0.0.1"};
-    int32_t meta_port{50048};
+    std::string catalog_host{"127.0.0.1"};
+    int32_t catalog_port{50048};
     std::string topo_host{"127.0.0.1"};
     int32_t topo_port{50049};
     std::string db{"e2e_db"};

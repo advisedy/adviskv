@@ -27,7 +27,7 @@ warmup_requests = 0
 ## 测试环境
 
 - 运行方式：`scripts/bench.sh` 拉起本地集群并运行 `bench_client`。
-- 本地集群：`1 meta + 1 topo + 5 storage`，所有进程都运行在同一台机器上，并通过 `127.0.0.1/localhost` 通信。
+- 本地集群：`1 catalog + 1 topo + 5 storage`，所有进程都运行在同一台机器上，并通过 `127.0.0.1/localhost` 通信。
 - 测试机器：`Mac15,7`，Apple M3 Pro，12 物理核心 / 12 逻辑 CPU，36 GiB 内存。
 - 操作系统：macOS 15.7.4 (24G517)，arm64。
 - 构建方式：Release

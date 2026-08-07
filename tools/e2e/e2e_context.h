@@ -6,7 +6,7 @@
 #include "common/proto/proto.h"
 #include "common/model/type.h"
 #include "e2e_options.h"
-#include "meta.grpc.pb.h"
+#include "catalog.grpc.pb.h"
 #include "sdk/model.h"
 #include "topo.grpc.pb.h"
 
@@ -18,14 +18,14 @@ public:
 
     const Options& options() const { return options_; }
 
-    meta_rpc::MetaService::Stub* meta() {
-        return meta_stub_.get();
+    catalog_rpc::CatalogService::Stub* catalog() {
+        return catalog_stub_.get();
     }
     topo_rpc::TopoService::Stub* topo() { return topo_stub_.get(); }
 
 private:
     Options options_;
-    std::unique_ptr<meta_rpc::MetaService::Stub> meta_stub_;
+    std::unique_ptr<catalog_rpc::CatalogService::Stub> catalog_stub_;
     std::unique_ptr<topo_rpc::TopoService::Stub> topo_stub_;
 };
 

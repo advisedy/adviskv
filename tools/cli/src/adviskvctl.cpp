@@ -16,8 +16,8 @@
 #include "common/model/type.h"
 #include "common/path_util.h"
 #include "common/stable_hash.h"
-#include "direct_meta_client.h"
-#include "meta/model/model.h"
+#include "direct_catalog_client.h"
+#include "catalog/model/model.h"
 #include "sdk/client.h"
 #include "sdk/topo_route_client.h"
 namespace {
@@ -27,12 +27,12 @@ using adviskv::EngineType;
 using adviskv::ShardIndex;
 using adviskv::Status;
 using adviskv::TableID;
-using adviskv::cli::DirectMetaClient;
-using adviskv::cli::MetaCliTarget;
+using adviskv::cli::DirectCatalogClient;
+using adviskv::cli::CatalogCliTarget;
 using adviskv::cli::TableInfo;
 
 struct AdvisKvCtlConfig {
-    MetaCliTarget meta;
+    CatalogCliTarget catalog;
     adviskv::sdk::KVClientConf sdk;
 };
 
@@ -140,19 +140,19 @@ void print_status(const Status& status) {
     fmt::print("ERR code={} msg={}\n", static_cast<int>(status.code()), status.msg());
 }
 
-std::string table_state_to_string(adviskv::meta::TableState state) {
+std::string table_state_to_string(adviskv::catalog::TableState state) {
     switch (state) {
-        case adviskv::meta::TableState::ADDING:
+        case adviskv::catalog::TableState::ADDING:
             return "ADDING";
-        case adviskv::meta::TableState::NORMAL:
+        case adviskv::catalog::TableState::NORMAL:
             return "NORMAL";
-        case adviskv::meta::TableState::FAILED:
+        case adviskv::catalog::TableState::FAILED:
             return "FAILED";
-        case adviskv::meta::TableState::DROPPING:
+        case adviskv::catalog::TableState::DROPPING:
             return "DROPPING";
-        case adviskv::meta::TableState::DELETED:
+        case adviskv::catalog::TableState::DELETED:
             return "DELETED";
-        case adviskv::meta::TableState::ALTERING:
+        case adviskv::catalog::TableState::ALTERING:
             return "ALTERING";
     }
     return "UNKNOWN";
@@ -190,15 +190,15 @@ bool load_config(const std::string& path, AdvisKvCtlConfig* config) {
     try {
         adviskv::ConfMgr::get_instance().LoadFromFile(adviskv::path_from_project_root(path).string());
 
-        config->meta.endpoint.ip = CONF_GET_STR("meta_host");
-        config->meta.endpoint.port = CONF_GET_INT("meta_port");
-        config->meta.timeout_ms = CONF_GET_INT("meta_timeout_ms");
+        config->catalog.endpoint.ip = CONF_GET_STR("catalog_host");
+        config->catalog.endpoint.port = CONF_GET_INT("catalog_port");
+        config->catalog.timeout_ms = CONF_GET_INT("catalog_timeout_ms");
 
         config->sdk.topo_host = CONF_GET_STR("topo_host");
         config->sdk.topo_port = CONF_GET_INT("topo_port");
         config->sdk.topo_timeout_ms = CONF_GET_INT("topo_timeout_ms");
         config->sdk.storage_timeout_ms = CONF_GET_INT("storage_timeout_ms");
-        return config->meta.validate().ok() && config->sdk.validate().ok();
+        return config->catalog.validate().ok() && config->sdk.validate().ok();
     } catch (const std::exception& e) {
         fmt::print(stderr, "load config failed: {}\n", e.what());
         return false;
@@ -207,7 +207,7 @@ bool load_config(const std::string& path, AdvisKvCtlConfig* config) {
 
 class AdvisKvCtl {
 public:
-    explicit AdvisKvCtl(AdvisKvCtlConfig config) : config_(std::move(config)), meta_client_(config_.meta) {
+    explicit AdvisKvCtl(AdvisKvCtlConfig config) : config_(std::move(config)), catalog_client_(config_.catalog) {
     }
 
     bool execute(const std::vector<std::string>& tokens) {
@@ -273,7 +273,7 @@ private:
             return;
         }
         DatabaseID db_id = -1;
-        Status status = meta_client_.create_db(tokens[1], tokens[2], &db_id);
+        Status status = catalog_client_.create_db(tokens[1], tokens[2], &db_id);
         if (status.ok()) {
             fmt::print("OK db_id={}\n", db_id);
         } else {
@@ -287,7 +287,7 @@ private:
             return;
         }
         DatabaseID db_id = -1;
-        Status status = meta_client_.drop_db(tokens[1], &db_id);
+        Status status = catalog_client_.drop_db(tokens[1], &db_id);
         if (status.ok()) {
             fmt::print("OK db_id={}\n", db_id);
         } else {
@@ -315,7 +315,7 @@ private:
         }
         TableID table_id = -1;
         Status status =
-                meta_client_.create_table(tokens[1], tokens[2], shards, replicas, &table_id, tokens[5], engine_type);
+                catalog_client_.create_table(tokens[1], tokens[2], shards, replicas, &table_id, tokens[5], engine_type);
         if (status.ok()) {
             fmt::print("OK table_id={} engine_type={}\n", table_id, static_cast<int>(engine_type));
         } else {
@@ -334,7 +334,7 @@ private:
             return;
         }
         TableID table_id = -1;
-        Status status = meta_client_.alter_table_replica_count(tokens[1], tokens[2], replicas, &table_id);
+        Status status = catalog_client_.alter_table_replica_count(tokens[1], tokens[2], replicas, &table_id);
         if (status.ok()) {
             fmt::print("OK table_id={} replica_count={}\n", table_id, replicas);
         } else {
@@ -343,7 +343,7 @@ private:
     }
 
     bool fetch_table(const std::string& db, const std::string& table, TableInfo* table_info) const {
-        Status status = meta_client_.get_table(db, table, table_info);
+        Status status = catalog_client_.get_table(db, table, table_info);
         if (status.fail()) {
             print_status(status);
             return false;
@@ -386,11 +386,11 @@ private:
         while (std::chrono::steady_clock::now() < deadline) {
             if (!fetch_table(tokens[1], tokens[2], &table_info))
                 return;
-            if (table_info.table_state == adviskv::meta::TableState::NORMAL) {
+            if (table_info.table_state == adviskv::catalog::TableState::NORMAL) {
                 fmt::print("OK table_state=NORMAL\n");
                 return;
             }
-            if (table_info.table_state == adviskv::meta::TableState::FAILED) {
+            if (table_info.table_state == adviskv::catalog::TableState::FAILED) {
                 print_table(table_info);
                 return;
             }
@@ -528,7 +528,7 @@ private:
     }
 
     AdvisKvCtlConfig config_;
-    DirectMetaClient meta_client_;
+    DirectCatalogClient catalog_client_;
 };
 
 bool parse_global_args(int argc, char* argv[], std::string* conf_file, std::vector<std::string>* command_tokens) {
@@ -583,7 +583,7 @@ int main(int argc, char* argv[]) {
     if (!load_config(conf_file, &config))
         return 1;
 
-    fmt::print("connected meta {}:{}, topo {}:{}\n", config.meta.endpoint.ip, config.meta.endpoint.port,
+    fmt::print("connected catalog {}:{}, topo {}:{}\n", config.catalog.endpoint.ip, config.catalog.endpoint.port,
                config.sdk.topo_host, config.sdk.topo_port);
     AdvisKvCtl ctl(std::move(config));
     if (!command_tokens.empty()) {

@@ -7,7 +7,7 @@ AdvisKV benchmark 记录本地 V1 的端到端 KV 表现，链路覆盖 `SDK -> 
 项目使用 `tools/bench/bench_client` 作为 benchmark client，并通过 `scripts/bench.sh` 自动拉起本地集群后运行。默认本地集群为：
 
 ```text
-1 meta + 1 topo + 5 storage
+1 catalog + 1 topo + 5 storage
 ```
 
 单次 benchmark 示例：
@@ -27,7 +27,7 @@ BENCH_LOG_LEVEL=warning \
 
 ## 本次结果
 
-测试环境：`Mac15,7`，Apple M3 Pro，12 物理核心 / 12 逻辑 CPU，36 GiB 内存；macOS 15.7.4，arm64。本地集群：`1 meta + 1 topo + 5 storage`，所有进程都运行在同一台机器上，并通过 `127.0.0.1/localhost` 通信。
+测试环境：`Mac15,7`，Apple M3 Pro，12 物理核心 / 12 逻辑 CPU，36 GiB 内存；macOS 15.7.4，arm64。本地集群：`1 catalog + 1 topo + 5 storage`，所有进程都运行在同一台机器上，并通过 `127.0.0.1/localhost` 通信。
 
 默认场景：
 

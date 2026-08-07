@@ -69,7 +69,7 @@ function(add_adviskv_topo_gtest target_name)
     )
 endfunction()
 
-function(add_adviskv_meta_gtest target_name)
+function(add_adviskv_catalog_gtest target_name)
     add_executable(${target_name}
         ${CMAKE_SOURCE_DIR}/test/test_main.cpp
         ${ARGN}
@@ -78,7 +78,7 @@ function(add_adviskv_meta_gtest target_name)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/test"
     )
     target_link_libraries(${target_name} PRIVATE
-        adviskv_meta_test_lib
+        adviskv_catalog_test_lib
         GTest::gtest
     )
     target_include_directories(${target_name} PRIVATE
@@ -200,18 +200,18 @@ add_adviskv_topo_gtest(topo_store_test
     ${CMAKE_SOURCE_DIR}/test/topo/store/topo_store_test.cpp
 )
 
-add_adviskv_meta_gtest(meta_persist_engine_test
-    ${CMAKE_SOURCE_DIR}/test/meta/persist/meta_persist_engine_test.cpp
+add_adviskv_catalog_gtest(catalog_persist_engine_test
+    ${CMAKE_SOURCE_DIR}/test/catalog/persist/catalog_persist_engine_test.cpp
 )
 
-add_adviskv_meta_gtest(catalog_manager_test
-    ${CMAKE_SOURCE_DIR}/test/meta/catalog/catalog_manager_test.cpp
+add_adviskv_catalog_gtest(catalog_store_test
+    ${CMAKE_SOURCE_DIR}/test/catalog/store/catalog_store_test.cpp
 )
 
-add_adviskv_meta_gtest(ddl_service_test
-    ${CMAKE_SOURCE_DIR}/test/meta/service/ddl_service_test.cpp
+add_adviskv_catalog_gtest(ddl_service_test
+    ${CMAKE_SOURCE_DIR}/test/catalog/service/ddl_service_test.cpp
 )
 
-add_adviskv_meta_gtest(table_ddl_reconciler_test
-    ${CMAKE_SOURCE_DIR}/test/meta/background/table_ddl_reconciler_test.cpp
+add_adviskv_catalog_gtest(table_reconciler_test
+    ${CMAKE_SOURCE_DIR}/test/catalog/background/table_reconciler_test.cpp
 )

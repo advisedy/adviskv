@@ -30,7 +30,7 @@ from scripts.internal.metrics_report import (  # noqa: E402
 
 BENCH_BIN = BIN_DIR / "bench_client"
 TOPO_CONF = ROOT_DIR / "conf" / "topo.yaml"
-META_CONF = ROOT_DIR / "conf" / "meta.yaml"
+CATALOG_CONF = ROOT_DIR / "conf" / "catalog.yaml"
 STORAGE_CONFS = [
     ROOT_DIR / "conf" / "storage-1.yaml",
     ROOT_DIR / "conf" / "storage-2.yaml",
@@ -185,7 +185,7 @@ def materialize_bench_confs(
 ) -> tuple[Path, Path, list[Path]]:
     services = [
         ("topo", TOPO_CONF),
-        ("meta", META_CONF),
+        ("catalog", CATALOG_CONF),
         *[(f"storage-{index}", conf) for index, conf in enumerate(STORAGE_CONFS, 1)],
     ]
     generated: dict[str, Path] = {}
@@ -206,7 +206,7 @@ def materialize_bench_confs(
         )
     return (
         generated["topo"],
-        generated["meta"],
+        generated["catalog"],
         [generated[f"storage-{index}"] for index in range(1, len(STORAGE_CONFS) + 1)],
     )
 
@@ -262,7 +262,7 @@ def run_bench(argv: list[str]) -> None:
 
     if env("SKIP_BUILD", "0") != "1":
         print("[bench] building local cluster and bench_client", flush=True)
-        build_targets("topo meta storage bench_client")
+        build_targets("topo catalog storage bench_client")
     if not BENCH_BIN.exists() or not os.access(BENCH_BIN, os.X_OK):
         raise RuntimeError(f"bench_client not executable: {BENCH_BIN}")
 
@@ -271,7 +271,7 @@ def run_bench(argv: list[str]) -> None:
                    check=True)
 
     reset_run_dirs(conf_dir, data_dir, service_log_dir, process_log_dir)
-    topo_conf, meta_conf, storage_confs = materialize_bench_confs(
+    topo_conf, catalog_conf, storage_confs = materialize_bench_confs(
         conf_dir=conf_dir,
         data_dir=data_dir,
         service_log_dir=service_log_dir,
@@ -279,7 +279,7 @@ def run_bench(argv: list[str]) -> None:
     cluster = cluster_from_confs(
         log_dir=process_log_dir,
         topo_conf=topo_conf,
-        meta_conf=meta_conf,
+        catalog_conf=catalog_conf,
         storage_confs=storage_confs,
         capture_output=True,
     )

@@ -142,7 +142,7 @@ def run_follower_catchup_story(cluster: AdvisKVCluster, *, prepare_case: str,
             cluster.start_service(catching_up_follower)
 
 
-def test_meta_to_storage_basic_kv_chain(cluster: AdvisKVCluster):
+def test_catalog_to_storage_basic_kv_chain(cluster: AdvisKVCluster):
     run_case_and_get_output(
         cluster,
         db="pytest_e2e_db",
@@ -398,25 +398,25 @@ def test_topo_crash_recovery_case(cluster: AdvisKVCluster):
     )
 
 
-def test_meta_crash_recovery_case(cluster: AdvisKVCluster):
-    """Meta 崩溃后重启，验证数据持久化：创建 DB/table 写入数据 → kill Meta → 重启 Meta → 验证数据可读。"""
+def test_catalog_crash_recovery_case(cluster: AdvisKVCluster):
+    """Catalog 崩溃后重启，验证数据持久化：创建 DB/table 写入数据 → kill Catalog → 重启 Catalog → 验证数据可读。"""
     run_case_and_get_output(
         cluster,
-        case="meta_crash_seed",
-        db="pytest_meta_crash_db",
-        table="pytest_meta_crash_table",
+        case="catalog_crash_seed",
+        db="pytest_catalog_crash_db",
+        table="pytest_catalog_crash_table",
         key_count=16,
     )
 
-    cluster.kill_service("meta")
-    cluster.assert_service_stopped("meta")
-    cluster.start_service("meta")
+    cluster.kill_service("catalog")
+    cluster.assert_service_stopped("catalog")
+    cluster.start_service("catalog")
 
     run_case_and_get_output(
         cluster,
-        case="meta_crash_verify",
-        db="pytest_meta_crash_db",
-        table="pytest_meta_crash_table",
+        case="catalog_crash_verify",
+        db="pytest_catalog_crash_db",
+        table="pytest_catalog_crash_table",
         key_count=16,
         timeout_ms=VERIFY_TIMEOUT_MS,
     )

@@ -23,7 +23,7 @@ public:
 
     DEFINE_METHOD(PlaceTable)
     DEFINE_METHOD(DropTable)
-    DEFINE_METHOD(GetTableStatus)  // for meta
+    DEFINE_METHOD(GetTableStatus)  // for catalog
     DEFINE_METHOD(Heartbeat)
     DEFINE_METHOD(RegisterNode)
     DEFINE_METHOD(GetRoute)

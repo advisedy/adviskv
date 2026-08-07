@@ -15,7 +15,7 @@ namespace adviskv::e2e {
 
 // 覆盖 table replica_count 扩缩容闭环：
 // 先以 3 副本建表并写入数据，再依次扩容到 4、扩容到 5、缩容回 3。
-// 每次 alter 后都等待 Meta/TOPO/Storage 收敛到 NORMAL，并验证历史数据仍可读。
+// 每次 alter 后都等待 Catalog/TOPO/Storage 收敛到 NORMAL，并验证历史数据仍可读。
 inline bool run_table_replica_count_resize_case(const Options& options) {
     if (!validate_key_count(options)) {
         return false;

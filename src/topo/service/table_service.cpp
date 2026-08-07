@@ -174,7 +174,7 @@ Status TableService::get_table_meta(const GetTableMetaParam& param, Table* out_t
     return Status::OK();
 }
 
-// 这个接口是给 meta 侧在创建 table 的时候可以及时查看 table
+// 这个接口是给 catalog 侧在创建 table 的时候可以及时查看 table
 // 的信息而写的接口，并不是专门给用户看的
 Status TableService::get_table_status(const GetTableStatusParam& param, Table* out_table) const {
     RETURN_IF_INVALID_PARAM(param)
