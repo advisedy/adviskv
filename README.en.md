@@ -15,7 +15,7 @@
 
 AdvisKV is a from-scratch distributed Key-Value storage prototype built with **C++17 + gRPC + Protobuf + Raft**. Users access data with a `db + table + key` model: `Catalog` manages DDL and the database/table catalog, `Topo` manages Storage nodes, shard replicas, and routes, `Storage` handles KV reads/writes, Raft replication, WAL, snapshots, and local recovery, and `SDK` routes requests to the corresponding shard leader.
 
-The current V1 runs a complete local main path: database/table creation, table sharding, multi-replica placement, replica-count changes, abnormal replica replacement, Raft leader election, log replication, snapshot catch-up, crash recovery, GoogleTest, Python E2E tests, benchmarks, and metrics text reports. The current version and its boundaries are documented in the Status section below.
+The current V1 runs a local main path covering database/table creation, table sharding, multi-replica placement, replica-count changes, abnormal replica replacement, Raft leader election, log replication, snapshot catch-up, and crash recovery. The repository also includes GoogleTest, Python E2E tests, benchmarks, and metrics reports.
 
 ## Implemented so far
 
@@ -120,7 +120,7 @@ E2E tests cover basic KV operations, restart recovery, leader failover, follower
 
 ## Benchmark
 
-The benchmark reports below measure local flows through `SDK -> Topo route -> Storage leader -> Raft/WAL/KV`. Results come from one local V1 test environment and should be treated as local regression and tuning references, not production performance claims.
+The benchmark reports below measure local flows through `SDK -> Topo route -> Storage leader -> Raft/WAL/KV`. The results come from a local multi-process setup and are intended for tuning and regression comparison.
 
 Test environment: `Mac15,7`, Apple M3 Pro, 12 physical cores / 12 logical CPUs, 36 GiB memory, macOS 15.7.4, arm64. Local cluster: `1 catalog + 1 topo + 5 storage`, all processes running on the same machine and communicating through `127.0.0.1/localhost`.
 
@@ -182,13 +182,11 @@ docs/       design notes and V1 constraints
 
 ## Current limitations
 
-AdvisKV is currently a V1 prototype. Its current limitations are:
-
 - Catalog and Topo currently run as single local processes and are not highly available.
-- The current implementation supports replica-count changes and abnormal replica replacement, but not automatic shard rebalancing or more complex membership strategies.
+- The current implementation supports replica-count changes and abnormal replica replacement, but not shard-count changes or automatic rebalancing.
 - Route and writable-leader semantics still need broader failure-scenario validation.
 - Storage currently uses a map-based KV engine and has not integrated LSM engines such as RocksDB.
-- Benchmarks run on a local multi-process setup and are intended for tuning and regression comparison, not for representing real cross-machine network performance.
+- Benchmarks run on a local multi-process setup and are intended for tuning and regression comparison.
 
 ## License
 
