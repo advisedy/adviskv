@@ -1,64 +1,67 @@
+<h1 align="center">AdvisKV</h1>
+
 <p align="center">
-  <img src="docs/assets/adviskv.jpeg" alt="AdvisKV banner" width="960" />
+  <b>一个从零实现的 C++17 分布式 KV 存储原型</b><br/>
+  Catalog/Topo · Raft 副本复制 · 分片路由 · 副本数调整 · WAL/Snapshot 恢复
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C?logo=c%2B%2B&logoColor=white" alt="C++17" />
+  <img src="https://github.com/advisedy/adviskv/actions/workflows/ci.yml/badge.svg" alt="CI" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-2ea44f" alt="Platform macOS and Linux" />
   <img src="https://img.shields.io/badge/Status-V1%20prototype-blue" alt="V1 prototype" />
 </p>
 
 <p align="center">
-  <a href="README.zh-CN.md">中文版本</a>
+  <a href="README.en.md">English</a> ·
+  <a href="#快速开始">快速开始</a> ·
+  <a href="https://www.zhihu.com/column/c_2057637599590797905">设计博客</a> ·
+  <a href="docs/benchmark/README.md">Benchmark</a> ·
+  <a href="#当前状态">当前状态</a>
 </p>
 
-AdvisKV is a distributed Key-Value storage prototype implemented with **C++17 + gRPC + Protobuf + Raft**. It uses a control-plane/data-plane architecture: `Catalog` manages DDL and the database/table catalog, `TOPO` manages Storage node registration, heartbeats, replica-group orchestration, desired replica dispatch, and shard route convergence, `Storage` handles KV reads/writes, Raft replication, WAL, snapshots, and local recovery, and `SDK` exposes `put/get/delete` APIs based on `db + table + key`.
+---
 
-The current V1 runs a complete local main path: database/table creation, table sharding, multi-replica placement, replica-count changes, abnormal replica replacement, route generation, SDK reads/writes, Raft replication, WAL, snapshots, crash recovery, GoogleTest, Python E2E tests, benchmarks, and metrics text reports. It is designed as a runnable prototype for learning distributed KV architecture and local experimentation, not as a production-ready database.
+## 项目简介
 
-## Features
+AdvisKV 是我从零设计并实现的 C++17 分布式 KV 存储原型。用户以 `db + table + key` 的形式访问数据：Catalog 负责库表目录和 DDL，Topo 负责 Storage 节点、分片副本与路由，Storage 基于 Raft 完成数据复制，并通过 WAL/Snapshot 支持持久化与恢复，SDK 根据路由将请求发送到对应分片的 Leader。
 
-- Database/table DDL: create/drop database, create/drop table, and `AlterTableReplicaCount`.
-- Sharded table model: each table is split into shards, and each shard can have multiple Storage replicas.
-- TOPO-driven desired-state orchestration: Storage NodeAgent heartbeats report observed state, and TOPO returns expected replica actions.
-- Replica-count scaling flows, including `0 -> N`, `N -> 0`, and multi-replica resize scenarios.
-- Abnormal replica replacement: TOPO adds new replicas when healthy members are insufficient and cleans up `LOST` / `ERROR` members.
-- SDK route resolution based on `db + table + key`, followed by leader-based `put/get/delete` requests to Storage.
-- Storage replication based on Raft, with WAL, snapshots, and crash recovery.
-- GoogleTest, Python E2E tests, benchmark tooling, and service/SDK metrics reports without a Prometheus dependency.
+当前 V1 已在本地多进程环境下跑通建库建表、KV 读写、副本数调整、异常副本替换、Raft 选主、日志复制与 Snapshot 追赶，以及若干崩溃恢复场景。同时配套了单元测试、E2E 测试、日志和 metrics，用于验证关键状态及故障场景下的行为。
 
-## Architecture
+## 主要实现
 
-```text
-Client / CLI / Benchmark
-        |
-        v
-       SDK
-        |
-        | GetRoute(db, table, key)
-        v
-       TOPO  <-------------------- Storage NodeAgent HeartBeat
-        ^                         |
-        |                         | Apply ExpectedReplica
-        |                         v
-   Catalog  ---- PlaceTable ---- Storage Replica / Raft / WAL / KV
-```
+- **库表、分片与路由**。用户通过 `db + table + key` 访问数据，Catalog 负责库表和 DDL，Topo 维护分片副本与路由，SDK 将请求发送到对应分片的 Leader。
+- **副本数调整与异常副本替换**。`AlterTableReplicaCount` 支持 `0 → N`、`N → 0` 和 `N → M`；副本进入 `LOST` / `ERROR` 后，Topo 会清理旧副本并尝试补充新副本，Storage 侧通过 Raft 成员变更将其加入集群。
+- **Raft 复制与持久化恢复**。Storage 使用 Raft 复制 KV 写入，并配套 WAL、Snapshot、日志追赶和重启恢复。
+- **测试与本地 benchmark**。包含两百多个 GoogleTest 用例和一组 Python E2E 测试，覆盖 Raft 选主、日志与 Snapshot 追赶、副本数调整、scale-to-zero 和崩溃恢复。本地三副本测试中，put P99 约 5.6 ms（约 9.8k QPS），get P99 约 2.2 ms（约 11k QPS）；这些数据仅用于本地调优和回归对比。
 
-Main flows:
+## 架构
 
-```text
-DDL:
-Client -> Catalog CreateTable -> TOPO PlaceTable -> NodeAgent HeartBeat
-       -> Apply ExpectedReplica -> Replica READY -> Route READY -> Catalog NORMAL
+<p align="center">
+  <img src="docs/assets/minimal-overview.png" alt="AdvisKV architecture overview" width="820" />
+</p>
 
-Data:
-SDK -> TOPO GetRoute -> Storage leader Put/Get/Delete -> Raft -> KV StateMachine
-```
+- **Client / SDK**:走 `db + table + key` 路由,后台异步刷新整表路由后直连 Storage 做 `put/get/delete`;RouteCache 采用 COW + atomic snapshot,读路径无锁。
+- **Catalog**:DDL / catalog 的单一权威源,建表时把表信息交给 Topo 编排落地。
+- **Topo**:reconciler 驱动的控制面,接收 Storage NodeAgent Heartbeat,下发 ExpectedReplica,把 desired state 收敛为 observed state,再对外发布 route。
+- **Storage Raft Group**:多副本 Raft 复制,leader 负责写路径;WAL 顺序落盘、Snapshot install、Log truncate 与 crash recovery 全部覆盖。
 
-## Quick Start
+数据面主链路的时序：
 
-Requirements: macOS or Linux, a C++17 compiler, CMake 3.20+, Ninja, Git, and Python 3.
+<p align="center">
+  <img src="docs/assets/put 链路.png" alt="Put request end-to-end timeline" width="880" />
+</p>
+
+
+更细的模块图：
+- [Topo 最小架构](docs/assets/topo-minimal-architecture.png)
+- [Storage 最小架构](docs/assets/storage-minimal-architecture.png)
+- [Catalog 最小架构](docs/assets/meta-minimal-architecture.png)
+
+## 快速开始
+
+准备环境：macOS 或 Linux、C++17 编译器、CMake 3.20+、Ninja、Git、Python 3。
 
 ```bash
 ./scripts/setup.sh
@@ -66,7 +69,7 @@ Requirements: macOS or Linux, a C++17 compiler, CMake 3.20+, Ninja, Git, and Pyt
 ./scripts/adviskvctl_demo.sh
 ```
 
-`adviskvctl_demo.sh` starts a local `topo/catalog/storage` cluster and opens an interactive shell. Example commands:
+`adviskvctl_demo.sh` 会自动拉起本地 `topo/catalog/storage`，并进入交互式 shell：
 
 ```text
 create_db demo_db dc1
@@ -78,37 +81,37 @@ route demo_db demo_table k1
 quit
 ```
 
-Stop local processes:
+停止本地进程：
 
 ```bash
 ./scripts/stop_cluster.sh
 ```
 
-## Build
+## 构建
 
-Recommended script-based build:
+推荐使用脚本构建：
 
 ```bash
 ./scripts/build.sh
 ```
 
-You can also invoke CMake directly:
+也可以直接调用 CMake：
 
 ```bash
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --parallel
 ```
 
-Common build variables:
+常用构建变量：
 
 ```bash
 BUILD_TYPE=Debug ./scripts/build.sh
 BUILD_TARGETS="catalog topo storage adviskvctl" ./scripts/build.sh
 ```
 
-Main binaries are generated under `build/bin/` by default.
+主要二进制默认位于 `build/bin/`。
 
-## Test
+## 测试
 
 ```bash
 ./scripts/run_test.sh
@@ -116,21 +119,21 @@ Main binaries are generated under `build/bin/` by default.
 ./scripts/coverage.sh
 ```
 
-- `run_test.sh`: builds and runs GoogleTest suites.
-- `e2e_pytest.sh`: starts a local multi-process cluster and verifies the Catalog -> TOPO -> Storage -> SDK main path.
-- `coverage.sh`: generates a coverage report.
+- `run_test.sh`:构建并运行 GoogleTest。
+- `e2e_pytest.sh`:拉起本地多进程集群,验证 Catalog → Topo → Storage → SDK 主链路。
+- `coverage.sh`:生成覆盖率报告。
 
-E2E tests cover basic KV operations, restart recovery, leader failover, follower catch-up, crash recovery, scale-to-zero, replica-count changes, and failure scenarios.
+E2E 覆盖基础 KV、重启恢复、leader failover、follower catch-up、crash recovery、scale-to-zero、副本数调整和故障场景。
 
-## Benchmark
+## 基准测试
 
-The benchmark reports below measure local end-to-end flows through `SDK -> TOPO route -> Storage leader -> Raft/WAL/KV`. Results come from one local V1 test environment and should be treated as local regression and tuning references, not production performance claims.
+本地 benchmark 覆盖 `SDK → Topo route → Storage leader → Raft/WAL/KV`。结果来自单机多进程集群，只代表当前 V1 的测试结果，**不是生产环境性能承诺**。
 
-Test environment: `Mac15,7`, Apple M3 Pro, 12 physical cores / 12 logical CPUs, 36 GiB memory, macOS 15.7.4, arm64. Local cluster: `1 catalog + 1 topo + 5 storage`, all processes running on the same machine and communicating through `127.0.0.1/localhost`.
+测试环境：`Mac15,7`、Apple M3 Pro、12 物理核心 / 12 逻辑 CPU、36 GiB 内存；macOS 15.7.4、arm64。本地集群：`1 catalog + 1 topo + 5 storage`，所有进程都在同一台机器上，通过 `127.0.0.1/localhost` 通信。
 
 ![Mixed benchmark](docs/benchmark/assets/mixed_read_ratio_qps.svg)
 
-Default scenario: `threads=16`, `shard_count=2`, `replica_count=3`, `value_size=128`, `requests=30000`.
+默认场景:`threads=16`、`shard_count=2`、`replica_count=3`、`value_size=128`、`requests=30000`。
 
 | Workload | Scenario | success_qps | avg_us | p95_us | p99_us |
 |---|---|---:|---:|---:|---:|
@@ -138,64 +141,62 @@ Default scenario: `threads=16`, `shard_count=2`, `replica_count=3`, `value_size=
 | get | baseline | 11059.01 | 1445.76 | 1905 | 2211 |
 | mixed | read_ratio=0.80 | 8229.54 | 1942.99 | 3358 | 4474 |
 
-Full reports:
+完整报告：
 
 - [Put benchmark](docs/benchmark/benchmark_put.md)
 - [Get benchmark](docs/benchmark/benchmark_get.md)
 - [Mixed benchmark](docs/benchmark/benchmark_mixed.md)
 
-Run a single benchmark:
+运行单次 benchmark：
 
 ```bash
 ./scripts/bench.sh --workload=put --threads=4 --requests=10000 --replica_count=3
 ```
 
-Run a benchmark and generate a metrics text report:
+运行 benchmark 并生成 metrics 文本报告：
 
 ```bash
 ./scripts/bench_metrics.sh --workload=put --threads=4 --requests=10000 --replica_count=3
 ```
 
-`bench_metrics.sh` uses the same arguments as `bench.sh`, samples service `/metrics` endpoints plus the benchmark client's SDK metrics during the run, and prints the report path at the end:
+`bench_metrics.sh` 与 `bench.sh` 使用同一套参数，只是在 benchmark 期间采样服务端 `/metrics` 和 benchmark 客户端里的 SDK metrics，结束后输出报告路径：
 
 ```text
 [bench] metrics report: build/bench_results/<run_id>/metrics_report.txt
 ```
 
-The report lists latency histogram deltas and counter deltas that changed during the run, including `sdk_*` rows from the benchmark client, which makes it useful for local tuning and regression comparison.
+## 设计博客
 
-## Documentation
+- [设计博客专栏](https://www.zhihu.com/column/c_2057637599590797905)
 
-- [scripts/README.md](scripts/README.md): common script entry points.
-- [docs/benchmark/README.md](docs/benchmark/README.md): V1 benchmark entry and result summary.
-- [docs/约束.md](docs/约束.md): V1 API, state, and scale-to-zero semantics.
-- [docs/topo_reconcile_layering.md](docs/topo_reconcile_layering.md): TOPO reconcile layering design.
-- [docs/topo_membership_change_design.md](docs/topo_membership_change_design.md): replica membership change design.
-- [docs/replica_group_service_source_guide.md](docs/replica_group_service_source_guide.md): ReplicaGroupService source guide.
+## 文档
 
-## Project Layout
+- [V1 约束与状态语义](docs/约束.md)：Catalog、Topo 与 Replica 的状态和字段边界。
+- [副本数调整时序](docs/约束2.md)：副本扩容、加入 Raft 和状态收敛的时序记录。
+- [Benchmark 说明](docs/benchmark/README.md)：本地 benchmark 的运行方式和结果说明。
+
+## 项目结构
 
 ```text
-conf/       local config files
-proto/      gRPC / Protobuf definitions
-scripts/    build, test, demo and benchmark scripts
-src/        Catalog, TOPO, Storage, SDK and common modules
-tools/      adviskvctl, e2e client, benchmark client, storage client
-test/       GoogleTest and Python E2E tests
-docs/       design notes and V1 constraints
+conf/       本地配置文件
+proto/      gRPC / Protobuf 定义
+scripts/    构建、测试、demo 和 benchmark 脚本
+src/        Catalog / Topo / Storage / SDK 与通用模块
+tools/      adviskvctl、E2E 客户端、benchmark 客户端、storage 客户端
+test/       GoogleTest 和 Python E2E 测试
+docs/       设计文档、V1 约束、博客与 benchmark
 ```
 
-## Status
+## 当前限制与不足
 
-AdvisKV is currently a V1 prototype. It provides a buildable, runnable, and testable distributed KV main path, but the following boundaries should be kept in mind:
+AdvisKV 当前是 V1 prototype。当前版本存在的限制：
 
-- Catalog and TOPO currently run as single local processes and are not highly available.
-- The main path for replica-count changes and abnormal replica replacement is implemented, but more complete automatic rebalancing, complex membership strategies, and production-grade operations are still out of scope for V1.
-- Route and writable-leader semantics still need broader failure-scenario validation.
-- Storage currently uses a map-based KV engine and has not integrated production-grade LSM engines such as RocksDB.
-- Storage and SDK benchmark metrics can be sampled, while Catalog does not yet expose the same level of metrics or health endpoints.
-- Benchmark results come from local V1 tests and are intended for tuning and regression comparison, not production performance claims.
+- Catalog 和 Topo 目前以单进程本地模式运行，尚未做高可用。
+- 当前支持的是副本数调整和异常副本替换，尚未实现自动分片 Rebalance 和更复杂的成员变更策略。
+- Route 与可写 Leader 的语义还需要更多故障场景验证。
+- Storage 当前使用 map-based KV engine，尚未接入 RocksDB 等生产级 LSM 引擎。
+- Benchmark 来自单机多进程环境，只用于本地调优和回归对比，不能代表真实跨机网络环境下的性能。
 
 ## License
 
-AdvisKV is licensed under the [MIT License](LICENSE).
+AdvisKV 使用 [MIT License](LICENSE)。

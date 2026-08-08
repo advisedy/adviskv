@@ -85,6 +85,7 @@ void ReplicaLoop::sync_submit(Call call) {
                 using T = std::remove_pointer_t<std::decay_t<decltype(concrete_call)>>;
                 if constexpr (std::is_same_v<T, ProposeCall> || std::is_same_v<T, AddMemberCall> ||
                               std::is_same_v<T, RemoveMemberCall>) {
+                    // 这里是需要放到Batch里去处理的，不能直接在loop里处理
                     concrete_call->status = handle_call(*concrete_call);
                 } else {
                     // 创建waiter，把这个task给enqueue
@@ -100,6 +101,7 @@ void ReplicaLoop::sync_submit(Call call) {
             call);
 }
 
+// 正常的创建Waiter，enqueue一个task，task执行完之后调用complete_loop_submit来唤醒waiter
 Status ReplicaLoop::call_in_loop_task(TaskFunc&& task) {
     if (!task) {
         return Status::INVALID_ARGUMENT("empty raft loop task");

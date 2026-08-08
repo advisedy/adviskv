@@ -131,7 +131,7 @@ void ReplicaManager::recover() {
             LOG_WARN("create replica manager data dir failed: {}", e.what());
         }
 
-        const std::vector<std::filesystem::path> meta_paths = meta_persist_.scan_replica_meta_files();
+        std::vector<std::filesystem::path> meta_paths = meta_persist_.scan_replica_meta_files();
         for (const auto& meta_path : meta_paths) {
             ReplicaMetaPayload payload;
             Status status = meta_persist_.load_replica_meta(meta_path, payload);
