@@ -1,0 +1,22 @@
+flowchart LR
+    client["Client / CLI"]
+    topo["Topo"]
+    catalog_file[("Local Catalog Meta File")]
+
+    subgraph catalog["Catalog"]
+        api["CatalogServiceImpl<br/>DdlService"]
+        store["CatalogStore<br/>DB / Table"]
+        reconciler["TableReconciler"]
+        topo_client["TopoClient"]
+        persist["CatalogPersistEngine"]
+
+        api -->|"read / write"| store
+        api -->|"Table DDL"| topo_client
+        reconciler -->|"update state"| store
+        reconciler -->|"check / retry"| topo_client
+        store --> persist
+    end
+
+    client -->|"DDL / GetTable"| api
+    topo_client --> topo
+    persist --> catalog_file

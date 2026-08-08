@@ -1,0 +1,35 @@
+sequenceDiagram
+    participant Client
+    participant API as StorageServiceImpl
+    participant Manager as ReplicaManager
+    participant Replica
+    participant RLoop as ReplicaLoop
+    participant Dispatcher as ReplicaMessageDispatcher
+    participant Persist as PersistEngine
+    participant Peers as Raft Followers
+    participant ApplyTask as ReplicaApplyTask
+    participant Applier as ReplicaApplier
+    participant StateMachine as KvStateMachine
+
+    Client->>API: Put / Delete
+    API->>Manager: get_replica_by_id(replica_id)
+    Manager-->>API: Replica
+    API->>Replica: put() / del()
+    Replica->>RLoop: propose_and_wait(ProposeParam)
+    RLoop->>RLoop: run_raft_step(step)
+    RLoop->>Persist: persist raft effects
+    RLoop->>Dispatcher: send raft messages
+    Dispatcher->>Peers: send raft messages
+    Peers-->>Dispatcher: append responses
+    Dispatcher-->>RLoop: response handlers
+    RLoop-->>Replica: waiter completed
+
+    par request returns
+        Replica-->>API: Status
+        API-->>Client: response
+    and background apply
+        Replica->>ApplyTask: notify_apply_task()
+        ApplyTask->>Applier: apply_committed_entries()
+        Applier->>StateMachine: apply committed entries
+        StateMachine-->>Applier: apply_index advanced
+    end

@@ -1,0 +1,23 @@
+flowchart TB
+    client["KVClient::put(key, value)"]
+    cache["RouteCache::lookup_cached_route(key)"]
+    hit{"cache hit?"}
+    route_client["TopoRouteClient<br/>GetTableRoutes(db, table)"]
+    topo["Topo<br/>return table routes"]
+    routes["Table routes"]
+    publish["RouteCache::publish_table_routes()"]
+    leader["StorageClient::select_leader_replica()"]
+    put["StorageClient::put()"]
+    storage["Storage Leader"]
+
+    client --> cache
+    cache --> hit
+    hit -->|yes| leader
+    hit -->|no| route_client
+    route_client --> topo
+    topo --> routes
+    routes --> publish
+    publish --> leader
+    leader --> put
+    put --> storage
+    publish -.->|refresh route cache| cache

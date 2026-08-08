@@ -91,7 +91,7 @@ BUILD_TARGETS="catalog topo storage adviskvctl" ./scripts/build.sh
 ## 架构
 
 <p align="center">
-  <img src="docs/assets/minimal-overview.png" alt="AdvisKV architecture overview" width="820" />
+  <img src="docs/assets/mermaid/minimal-overview.png" alt="AdvisKV architecture overview" width="820" />
 </p>
 
 | 模块 | 作用 |
@@ -110,14 +110,14 @@ SDK → Topo 路由 → Storage Leader → Raft → WAL / KV StateMachine
 数据面时序：
 
 <p align="center">
-  <img src="docs/assets/put 链路.png" alt="Put request end-to-end timeline" width="880" />
+  <img src="docs/assets/mermaid/put 链路.png" alt="Put request end-to-end timeline" width="880" />
 </p>
 
 模块图：
 
-- [Topo 最小架构](docs/assets/topo-minimal-architecture.png)
-- [Storage 最小架构](docs/assets/storage-minimal-architecture.png)
-- [Catalog 最小架构](docs/assets/meta-minimal-architecture.png)
+- [Topo 最小架构](docs/assets/mermaid/topo-minimal-architecture.png)
+- [Storage 最小架构](docs/assets/mermaid/storage-minimal-architecture.png)
+- [Catalog 最小架构](docs/assets/mermaid/catalog-minimal-architecture.png)
 
 ## 测试
 

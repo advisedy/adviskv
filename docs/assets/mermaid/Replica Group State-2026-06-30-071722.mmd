@@ -1,0 +1,26 @@
+sequenceDiagram
+    participant Catalog
+    participant Topo
+    participant Reconciler as ReplicaGroupService / Plan + Membership Reconciler
+    participant Leader as Storage Leader
+    participant NewNode as New Storage Node
+
+    Catalog->>Topo: AlterTableReplicaCount(replica_count=4)
+    Topo->>Topo: TablePhase=RESIZING, TableSpec.replica_count=4
+    Reconciler->>Reconciler: PlanReconciler, group.target_replica_count=4
+    Reconciler->>Reconciler: MembershipReconciler, healthy_count=3 vs target=4
+    Reconciler->>Reconciler: create new Replica metadata, desired=PRESENT phase=CREATING, member_type=NON_MEMBER
+    Reconciler->>Reconciler: add new rid into desired_members
+
+    NewNode->>Topo: Heartbeat(no new replica)
+    Topo-->>NewNode: PRESENT(new replica), initial_members=desired_members
+    NewNode->>NewNode: create local replica
+    NewNode->>Topo: Heartbeat(new replica READY, NON_MEMBER)
+
+    Leader->>Topo: Heartbeat(leader)
+    Topo-->>Leader: ADD_MEMBER(new replica)
+    Leader->>Leader: Raft config change, add new replica as member
+    NewNode->>Topo: Heartbeat(new replica READY, VOTER)
+
+    Reconciler->>Reconciler: all desired members READY+VOTER
+    Topo->>Topo: TablePhase RESIZING → READY

@@ -1,0 +1,25 @@
+sequenceDiagram
+    participant User as User / CLI
+    participant SDK as KVClient / SDK
+    participant Topo
+    participant Leader as Storage Leader
+    participant Peers as Storage Followers / Raft Peers
+    participant StateMachine as KvStateMachine
+
+    User->>SDK: put(db, table, key, value)
+    SDK->>SDK: RouteCache lookup by key
+
+    alt route missing or stale
+        SDK->>Topo: GetTableRoutes(db, table)
+        Topo-->>SDK: table routes
+    end
+
+    SDK->>Leader: Put(replica_id, key, value)
+    Leader->>Leader: ReplicaManager finds Replica
+    Leader->>Leader: Replica::put -> ProposeCall
+    Leader->>Peers: AppendEntries
+    Peers-->>Leader: AppendEntriesResponse
+    Leader->>Leader: quorum commit
+    Leader-->>SDK: OK / UNKNOWN / NOT_LEADER
+    SDK-->>User: response
+    Leader->>StateMachine: apply committed log

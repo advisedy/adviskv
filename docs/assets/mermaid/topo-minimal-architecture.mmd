@@ -1,0 +1,23 @@
+flowchart TB
+    catalog["Catalog"]
+    sdk["Client / SDK"]
+    storage["Storage Nodes"]
+    local_file[("Local Topo Meta File")]
+
+    subgraph topo["Topo"]
+        api["TopoServiceImpl<br/>gRPC Handler"]
+        services["ServiceManager<br/>Table / Route / Node / ReplicaGroup"]
+        reconcilers["Reconcilers<br/>Placement / Route / Health"]
+        store["TopoStore<br/>Table / Replica / Route / Node / ReplicaGroup"]
+
+        api -->|dispatch| services
+        services -->|run / call| reconcilers
+        services -->|read / write| store
+        reconcilers -->|read / update| store
+    end
+
+    catalog -->|"PlaceTable / DropTable / AlterTableReplicaCount"| api
+    sdk -->|"GetRoute / GetTableRoutes"| api
+    storage -->|"Register / Heartbeat"| api
+    api -->|ExpectedReplica| storage
+    store -->|persist| local_file

@@ -1,0 +1,45 @@
+flowchart LR
+    client["User / CLI"]
+
+    subgraph catalog["Catalog"]
+        catalog_api["CatalogServiceImpl"]
+        ddl["DdlService"]
+        table_reconciler["TableReconciler"]
+        topo_client["TopoClient"]
+        catalog_store["CatalogStore"]
+        catalog_persist["CatalogPersistEngine"]
+
+        catalog_api --> ddl
+        ddl -->|"PlaceTable / DropTable / AlterTableReplicaCount"| topo_client
+        ddl --> catalog_store
+        table_reconciler -->|GetTableStatus| topo_client
+        table_reconciler -->|update state| catalog_store
+        catalog_store --> catalog_persist
+    end
+
+    subgraph topo["Topo"]
+        topo_api["TopoServiceImpl"]
+        manager["ServiceManager"]
+        background["Background Tasks<br/>TableReconcileTask<br/>ReplicaGroupReconcileTask<br/>RouteUpdateCheckTask<br/>HeartBeatCheckTask"]
+        services["TableService<br/>ReplicaGroupService<br/>NodeService<br/>RouteService"]
+        topo_store[("TopoStore")]
+        topo_api --> manager
+        manager --> services
+        background --> services
+        services --> topo_store
+    end
+
+    subgraph storage["Storage"]
+        agent["NodeAgent"]
+        storage_api["StorageServiceImpl"]
+        replica_manager["ReplicaManager"]
+        replica["Replica"]
+        agent --> replica_manager
+        storage_api --> replica_manager
+        replica_manager --> replica
+    end
+
+    client --> catalog_api
+    topo_client -->|"PlaceTable / GetTableStatus / AlterTableReplicaCount"| topo_api
+    agent -->|Register / Heartbeat| topo_api
+    topo_api -->|ExpectedReplica| agent

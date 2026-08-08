@@ -1,0 +1,22 @@
+flowchart TB
+    client["Client / SDK"]
+    topo["Topo"]
+    peers["Other Storage Nodes"]
+    files[("Local Files")]
+
+    subgraph storage_node["Storage Node"]
+        api["StorageServiceImpl<br/>Storage API"]
+        agent["NodeAgent"]
+        manager["ReplicaManager"]
+        replica["Replica"]
+
+        api -->|dispatch| manager
+        agent -->|create / delete replica| manager
+        manager -->|manage / call| replica
+    end
+
+    client -->|"Put / Get / Delete"| api
+    agent <-->|"Heartbeat / ExpectedReplica"| topo
+    peers -->|Raft RPC| api
+    replica -->|replicate| peers
+    replica -->|"persist / recover"| files

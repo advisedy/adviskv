@@ -1,0 +1,29 @@
+sequenceDiagram
+    participant SDK
+    participant API as StorageServiceImpl
+    participant Manager as ReplicaManager
+    participant Replica
+    participant RLoop as ReplicaLoop
+    participant Raft as RaftCore
+    participant Persist as PersistEngine / WAL
+    participant Peers as Raft Followers
+    participant StateMachine as KvStateMachine
+
+    SDK->>API: Put(replica_id, key, value)
+    API->>Manager: get_replica_by_id(replica_id)
+    Manager-->>API: Replica
+    API->>Replica: put(key, value)
+    Replica->>RLoop: ProposeCall(PUT, key, value)
+    RLoop->>Raft: propose_batch()
+    Raft-->>RLoop: RaftEffects(entries, messages)
+    RLoop->>Persist: append_wal_batch(entries) + fsync
+    RLoop->>Peers: async AppendEntries
+    Peers-->>RLoop: AppendEntriesResponse
+    RLoop->>Raft: handle append response
+    Raft-->>RLoop: commit index advanced
+    RLoop-->>Replica: proposal committed
+    Replica-->>API: OK
+    API-->>SDK: PutResponse
+
+    Replica->>StateMachine: notify apply task
+    StateMachine->>StateMachine: apply committed log to KV engine

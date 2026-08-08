@@ -1,0 +1,41 @@
+flowchart TB
+    catalog["Catalog"]
+    node_agent["Storage NodeAgent"]
+
+    subgraph topo["Topo"]
+        api["TopoServiceImpl"]
+        subgraph background["Background Tasks"]
+            replica_task["ReplicaGroupReconcileTask"]
+            heartbeat_task["HeartBeatCheckTask"]
+            route_task["RouteUpdateCheckTask"]
+            table_task["TableReconcileTask"]
+        end
+        manager["ServiceManager"]
+        subgraph core["Core Services"]
+            table["TableService"]
+            replica_group["ReplicaGroupService<br/>Plan / Membership"]
+            node["NodeService"]
+            route["RouteService"]
+        end
+        selector["NodeSelector"]
+        store[("TopoStore")]
+
+        api --> manager
+        replica_task --> manager
+        heartbeat_task --> manager
+        route_task --> manager
+        table_task --> manager
+        manager --> table
+        manager --> replica_group
+        manager --> node
+        manager --> route
+        replica_group -->|select| selector
+        table --> store
+        replica_group --> store
+        node --> store
+        route --> store
+    end
+
+    catalog -->|PlaceTable| api
+    node_agent -->|Heartbeat| api
+    api -->|ExpectedReplica| node_agent

@@ -1,0 +1,27 @@
+sequenceDiagram
+    autonumber
+    participant Client
+    participant SDK
+    participant Catalog
+    participant Topo
+    participant Storage as Storage (leader)
+
+    rect rgb(255, 249, 190)
+        Note over Client,Storage: DDL 链路
+        Client->>Catalog: CreateTable(db, table, replica_count)
+        Catalog->>Topo: PlaceTable(table info)
+        Topo->>Storage: Apply ExpectedReplica
+        Storage-->>Topo: HeartBeat (Replica READY)
+        Topo-->>Catalog: Route READY → NORMAL
+    end
+
+    rect rgb(235, 247, 255)
+        Note over Client,Storage: 数据面链路
+        Client->>SDK: put(db, table, key, value)
+        SDK->>Topo: GetTableRoutes(db, table)
+        Topo-->>SDK: leader endpoint
+        SDK->>Storage: Put(key, value)
+        Storage->>Storage: Raft AppendEntries → WAL → apply
+        Storage-->>SDK: OK
+        SDK-->>Client: OK
+    end

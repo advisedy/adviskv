@@ -1,0 +1,14 @@
+flowchart LR
+    client["Client / SDK"]
+    catalog["Catalog"]
+    topo["Topo"]
+    storage["Storage Raft Group"]
+    persist["WAL / Snapshot"]
+
+    client -->|DDL| catalog
+    catalog -->|"Table Info"| topo
+    client -->|GetRoute| topo
+    topo -->|Route| client
+    client -->|"Put / Get / Delete"| storage
+    storage -->|Heartbeat| topo
+    storage -->|Persist| persist
