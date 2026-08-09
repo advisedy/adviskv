@@ -55,18 +55,6 @@ message GetTableRoutesResponse{
     repeated ShardRoute routes = 4;
 }
 
-message GetShardRouteRequest{
-    int32 table_id = 1;
-    int32 shard_id = 2;
-}
-
-message GetShardRouteResponse{
-    adviskv.pb.BaseRsp base_rsp = 1;
-    int32 table_id = 2;
-    int32 shard_id = 3;
-    repeated RouteReplica replicas = 4;
-}
-
 message RegisterNodeRequest{
     string node_id = 1;
     string ip = 2;
@@ -169,7 +157,6 @@ service TopoService{
     rpc GetRoute(GetRouteRequest) returns (GetRouteResponse);
     rpc GetTableMeta(GetTableMetaRequest) returns (GetTableMetaResponse);
     rpc GetTableRoutes(GetTableRoutesRequest) returns (GetTableRoutesResponse);
-    rpc GetShardRoute(GetShardRouteRequest) returns (GetShardRouteResponse);
     rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
     rpc PlaceTable(PlaceTableRequest) returns (PlaceTableResponse);
     rpc DropTable(DropTableRequest) returns (DropTableResponse);
