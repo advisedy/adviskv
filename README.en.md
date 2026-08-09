@@ -164,8 +164,7 @@ The report lists latency histogram deltas and counter deltas that changed during
 
 - [scripts/README.md](scripts/README.md): common script entry points.
 - [docs/benchmark/README.md](docs/benchmark/README.md): V1 benchmark entry and result summary.
-- [docs/约束.md](docs/约束.md): V1 API, state, and scale-to-zero semantics.
-- [docs/约束2.md](docs/约束2.md): replica-count resize sequence and convergence notes.
+- [docs/接口规范.md](docs/接口规范.md): RPC and SDK interface semantics (Chinese).
 - [Design blog](https://www.zhihu.com/column/c_2057637599590797905): project design notes.
 
 ## Project Layout

@@ -183,8 +183,7 @@ Benchmark 测量的是本地多进程环境中的 `SDK → Topo route → Storag
 
 ## 文档
 
-- [V1 约束与状态语义](docs/约束.md)：Catalog、Topo 和 Replica 的状态与字段边界。
-- [副本数调整时序](docs/约束2.md)：副本扩缩容、加入 Raft 和状态收敛的过程。
+- [接口规范](docs/接口规范.md)：Catalog、Topo、Storage 和 SDK 的 RPC 与调用语义。
 - [Benchmark 说明](docs/benchmark/README.md)：Benchmark 的运行方式和结果说明。
 
 ## 项目结构

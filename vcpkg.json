@@ -7,6 +7,7 @@
         "protobuf",
         "yaml-cpp",
         "grpc",
-        "gtest"
+        "gtest",
+        "nlohmann-json"
     ]
 }

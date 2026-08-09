@@ -113,14 +113,14 @@ public:
 
 }  // namespace
 
-CatalogPersistEngine::CatalogPersistEngine(const std::string& data_dir) : data_dir_(data_dir) {}
+CatalogPersistEngine::CatalogPersistEngine(const std::string& data_dir)
+        : data_dir_(data_dir),
+          catalog_data_path_(data_dir_ + "/catalog_data"),
+          catalog_data_tmp_path_(data_dir_ + "/catalog_data.tmp") {}
 
 CatalogPersistEngine::~CatalogPersistEngine() { close(); }
 
 Status CatalogPersistEngine::init() {
-    catalog_data_path_ = data_dir_ + "/catalog_data";
-    catalog_data_tmp_path_ = data_dir_ + "/catalog_data.tmp";
-
     std::error_code ec;
     std::filesystem::create_directories(data_dir_, ec);
     if (ec) {

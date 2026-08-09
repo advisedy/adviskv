@@ -19,8 +19,12 @@ public:
 
 private:
     std::string data_dir_;
-    std::string catalog_data_path_;
-    std::string catalog_data_tmp_path_;
+    /*
+        catalog_data_path_ = data_dir_ + "/catalog_data";
+        catalog_data_tmp_path_ = data_dir_ + "/catalog_data.tmp";
+    */
+    const std::string catalog_data_path_;
+    const std::string catalog_data_tmp_path_;
 };
 
 }  // namespace adviskv::catalog
