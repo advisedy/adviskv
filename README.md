@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C?logo=c%2B%2B&logoColor=white" alt="C++17" />
   <img src="https://github.com/advisedy/adviskv/actions/workflows/ci.yml/badge.svg" alt="CI" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
-  <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-2ea44f" alt="Platform macOS and Linux" />
+  <img src="https://img.shields.io/badge/Recommended-Linux%20%7C%20Ubuntu%2024.04-2ea44a" alt="Recommended environment: Linux (Ubuntu 24.04)" />
   <img src="https://img.shields.io/badge/Status-V1%20prototype-blue" alt="V1 prototype" />
 </p>
 
@@ -38,7 +38,7 @@ AdvisKV 是我用 C++17 从零实现的分布式 KV 存储原型。客户端以 
 
 ## 快速开始
 
-环境要求：macOS 或 Linux、C++17 编译器、CMake 3.20+、Ninja、Git 和 Python 3。
+环境要求：推荐使用 Linux（Ubuntu 24.04）、C++17 编译器、CMake 3.20+、Ninja、Git 和 Python 3。
 
 首次构建前初始化依赖：
 

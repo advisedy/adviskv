@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C?logo=c%2B%2B&logoColor=white" alt="C++17" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
-  <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-2ea44f" alt="Platform macOS and Linux" />
+  <img src="https://img.shields.io/badge/Recommended-Linux%20%7C%20Ubuntu%2024.04-2ea44a" alt="Recommended environment: Linux (Ubuntu 24.04)" />
   <img src="https://img.shields.io/badge/Status-V1%20prototype-blue" alt="V1 prototype" />
 </p>
 
@@ -54,9 +54,10 @@ SDK -> TOPO GetRoute -> Storage leader Put/Get/Delete -> Raft -> KV StateMachine
 
 ## Quick Start
 
-Requirements: macOS or Linux, a C++17 compiler, CMake 3.20+, Ninja, Git, and Python 3.
+Recommended environment: Linux (Ubuntu 24.04), a C++17 compiler, CMake 3.20+, Ninja, Git, and Python 3.
 
 ```bash
+git submodule update --init --recursive
 ./scripts/setup.sh
 ./scripts/build.sh
 ./scripts/adviskvctl_demo.sh
