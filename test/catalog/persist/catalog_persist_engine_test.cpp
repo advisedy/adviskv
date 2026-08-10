@@ -57,7 +57,7 @@ TEST_F(CatalogPersistEngineTest, SaveAndLoadWithDBAndTable) {
     TableDesc t1{10, 4, 3, 1, "test_db", "users", "pool-a", TableState::NORMAL, "op-users", "", 100, 200};
     TableDesc t2{11,  2,  1, 1, "test_db", "orders", "pool-b", TableState::FAILED, "op-orders", "placement failed",
                  300, 400};
-    t2.engine_type = EngineType::ROCKSDB;
+    t2.engine_type = EngineType::MAP;
     record.table_id2table_desc[10] = t1;
     record.table_id2table_desc[11] = t2;
     record.next_db_id = 3;
@@ -95,7 +95,7 @@ TEST_F(CatalogPersistEngineTest, SaveAndLoadWithDBAndTable) {
     EXPECT_EQ(loaded.table_id2table_desc[11].db_name, "test_db");
     EXPECT_EQ(loaded.table_id2table_desc[11].table_name, "orders");
     EXPECT_EQ(loaded.table_id2table_desc[11].resource_pool, "pool-b");
-    EXPECT_EQ(loaded.table_id2table_desc[11].engine_type, EngineType::ROCKSDB);
+    EXPECT_EQ(loaded.table_id2table_desc[11].engine_type, EngineType::MAP);
     EXPECT_EQ(loaded.table_id2table_desc[11].state, TableState::FAILED);
     EXPECT_EQ(loaded.table_id2table_desc[11].operation_id, "op-orders");
     EXPECT_EQ(loaded.table_id2table_desc[11].last_error_msg, "placement failed");

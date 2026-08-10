@@ -55,7 +55,6 @@ public:
         meta.init_param.engine_type = static_cast<EngineType>(engine_type);
         switch (meta.init_param.engine_type) {
             case EngineType::MAP:
-            case EngineType::ROCKSDB:
                 break;
             default:
                 return Status::ERROR("invalid replica meta engine_type");

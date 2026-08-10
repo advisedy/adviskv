@@ -100,7 +100,6 @@ public:
             table_desc.engine_type = static_cast<EngineType>(engine_type);
             switch (table_desc.engine_type) {
                 case EngineType::MAP:
-                case EngineType::ROCKSDB:
                     break;
                 default:
                     return Status::ERROR("invalid table_desc engine_type");

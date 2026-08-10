@@ -216,5 +216,5 @@ docs/       设计文档、博客与 benchmark
 - Catalog 和 Topo 目前以单进程本地模式运行，控制面还没有高可用。
 - 当前支持副本数调整，不支持分片数变更和自动 Rebalance。
 - 可写 Leader 路由还需要更多故障场景验证。
-- Storage 使用 map-based KV engine，尚未接入 RocksDB 等 LSM 引擎。
+- Storage 使用 map-based KV engine。
 - Benchmark 运行在单机多进程环境中。

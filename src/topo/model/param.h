@@ -32,7 +32,6 @@ struct PlaceTableParam {
         RETURN_IF_INVALID_CONDITION(shard_count > 0, "shard_count should be greater than 0")
         switch (engine_type) {
             case EngineType::MAP:
-            case EngineType::ROCKSDB:
                 break;
             default:
                 return Status::INVALID_ARGUMENT("engine_type should be valid");

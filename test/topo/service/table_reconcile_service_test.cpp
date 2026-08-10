@@ -194,7 +194,7 @@ TEST(TableServiceReconcileTest, CreateTableMaterializesReplicaEngineType) {
     FakeNodeSelector selector(&store);
     ServiceHarness services(&store, &selector);
     PlaceTableParam param = make_place_table_param();
-    param.engine_type = EngineType::ROCKSDB;
+    param.engine_type = EngineType::MAP;
     ASSERT_TRUE(services.table.place_table(param).ok());
 
     ASSERT_TRUE(services.table.reconcile_all().ok());
@@ -203,7 +203,7 @@ TEST(TableServiceReconcileTest, CreateTableMaterializesReplicaEngineType) {
     std::vector<Replica> replicas = list_replicas_or_die(store);
     ASSERT_EQ(replicas.size(), 2U);
     for (const Replica& replica : replicas) {
-        EXPECT_EQ(replica.spec.engine_type, EngineType::ROCKSDB);
+        EXPECT_EQ(replica.spec.engine_type, EngineType::MAP);
     }
 }
 

@@ -77,7 +77,7 @@ protected:
 
         record.tables[202] = Table{
                 202,
-                TableSpec{"orders", 2, "billing", 16, 5, "pool-b", "op-table-2", EngineType::ROCKSDB},
+                TableSpec{"orders", 2, "billing", 16, 5, "pool-b", "op-table-2", EngineType::MAP},
                 table_state,
         };
 
@@ -99,7 +99,7 @@ protected:
                 ReplicaSpec{
                         "dc-b",
                         "node-2",
-                        EngineType::ROCKSDB,
+                        EngineType::MAP,
                 },
                 replica_state,
         };

@@ -84,7 +84,7 @@ TEST(TableServiceTest, PlaceTableConvertsParamToDesiredTableState) {
     ASSERT_TRUE(store.init().ok());
     TableService service(&store);
     PlaceTableParam param = make_place_table_param();
-    param.engine_type = EngineType::ROCKSDB;
+    param.engine_type = EngineType::MAP;
 
     Status status = service.place_table(param);
 
@@ -100,7 +100,7 @@ TEST(TableServiceTest, PlaceTableConvertsParamToDesiredTableState) {
     EXPECT_EQ(stored->spec.shard_count, param.shard_count);
     EXPECT_EQ(stored->spec.resource_pool, param.resource_pool);
     EXPECT_EQ(stored->spec.operation_id, param.operation_id);
-    EXPECT_EQ(stored->spec.engine_type, EngineType::ROCKSDB);
+    EXPECT_EQ(stored->spec.engine_type, EngineType::MAP);
     EXPECT_EQ(stored->state.desired, TableDesired::PRESENT);
     EXPECT_EQ(stored->state.phase, TablePhase::CREATING);
 }

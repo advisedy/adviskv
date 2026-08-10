@@ -21,7 +21,6 @@ enum RaftMemberType {
 
 enum EngineType {
   ENGINE_TYPE_MAP = 0;
-  ENGINE_TYPE_ROCKSDB = 1;
 }
 
 

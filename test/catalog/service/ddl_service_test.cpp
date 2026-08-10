@@ -202,21 +202,21 @@ TEST_F(DdlServiceTest, CreateTableAllowsZeroReplicaCount) {
 
     CreateTableParam param = create_table_param();
     param.replica_count = 0;
-    param.engine_type = EngineType::ROCKSDB;
+    param.engine_type = EngineType::MAP;
     TableDesc created;
     Status status = service.create_table(param, &created);
 
     ASSERT_TRUE(status.ok()) << status.to_string();
     EXPECT_EQ(client.place_table_calls, 1);
     EXPECT_EQ(client.last_place_table.replica_count, 0);
-    EXPECT_EQ(client.last_place_table.engine_type, EngineType::ROCKSDB);
+    EXPECT_EQ(client.last_place_table.engine_type, EngineType::MAP);
     EXPECT_EQ(created.state, TableState::ADDING);
     EXPECT_EQ(created.replica_count, 0);
-    EXPECT_EQ(created.engine_type, EngineType::ROCKSDB);
+    EXPECT_EQ(created.engine_type, EngineType::MAP);
     TableDesc stored;
     ASSERT_TRUE(fixture.catalog.get_table_by_name(db_name_, table_name_, &stored).ok());
     EXPECT_EQ(stored.replica_count, 0);
-    EXPECT_EQ(stored.engine_type, EngineType::ROCKSDB);
+    EXPECT_EQ(stored.engine_type, EngineType::MAP);
     EXPECT_EQ(stored.state, TableState::ADDING);
 }
 

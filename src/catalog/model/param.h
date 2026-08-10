@@ -40,7 +40,6 @@ struct CreateTableParam {
         RETURN_IF_INVALID_CONDITION(replica_count >= 0, "replica count should >= 0")
         switch (engine_type) {
             case EngineType::MAP:
-            case EngineType::ROCKSDB:
                 break;
             default:
                 return Status::INVALID_ARGUMENT("engine_type should be valid");

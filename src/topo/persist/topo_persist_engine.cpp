@@ -169,7 +169,6 @@ private:
         table.spec.engine_type = static_cast<EngineType>(engine_type);
         switch (table.spec.engine_type) {
             case EngineType::MAP:
-            case EngineType::ROCKSDB:
                 break;
             default:
                 return Status::ERROR("invalid table engine_type");
@@ -216,7 +215,6 @@ private:
         replica.spec.engine_type = static_cast<EngineType>(engine_type);
         switch (replica.spec.engine_type) {
             case EngineType::MAP:
-            case EngineType::ROCKSDB:
                 break;
             default:
                 return Status::ERROR("invalid replica engine_type");

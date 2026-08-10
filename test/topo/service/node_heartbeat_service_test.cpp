@@ -286,7 +286,7 @@ TEST(NodeHeartbeatServiceTest, ReplicaGroupServiceBuildsHeartbeatExpectations) {
     ASSERT_TRUE(store_test::put_node(store, make_node("node-a")).ok());
 
     Replica replica = make_replica(ReplicaID{1001, 0, 0}, "node-a");
-    replica.spec.engine_type = EngineType::ROCKSDB;
+    replica.spec.engine_type = EngineType::MAP;
     ASSERT_TRUE(store_test::put_replica(store, replica).ok());
 
     ReplicaGroup group;
@@ -330,7 +330,7 @@ TEST(NodeHeartbeatServiceTest, ReplicaGroupServiceBuildsHeartbeatExpectations) {
     }
     ASSERT_NE(present, nullptr);
     EXPECT_EQ(present->type, ExpectedReplicaType::PRESENT);
-    EXPECT_EQ(present->engine_type, EngineType::ROCKSDB);
+    EXPECT_EQ(present->engine_type, EngineType::MAP);
     EXPECT_EQ(present->initial_members, expected_members);
 
     ASSERT_NE(absent, nullptr);

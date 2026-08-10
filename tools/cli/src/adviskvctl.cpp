@@ -112,17 +112,12 @@ bool parse_engine_type(const std::string& value, EngineType* out) {
         *out = EngineType::MAP;
         return true;
     }
-    if (normalized == "rocksdb") {
-        *out = EngineType::ROCKSDB;
-        return true;
-    }
 
     int32_t parsed = 0;
     if (parse_i32(value, &parsed)) {
         EngineType engine_type = static_cast<EngineType>(parsed);
         switch (engine_type) {
             case EngineType::MAP:
-            case EngineType::ROCKSDB:
                 *out = engine_type;
                 return true;
             default:
@@ -310,7 +305,7 @@ private:
         }
         EngineType engine_type = EngineType::MAP;
         if (tokens.size() == 7 && !parse_engine_type(tokens[6], &engine_type)) {
-            fmt::print("engine_type should be map, rocksdb, 0, or 1\n");
+            fmt::print("engine_type should be map or 0\n");
             return;
         }
         TableID table_id = -1;

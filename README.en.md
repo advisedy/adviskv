@@ -191,7 +191,7 @@ docs/       design notes and V1 constraints
 - Catalog and Topo currently run as single local processes and are not highly available.
 - The current implementation supports replica-count changes and abnormal replica replacement, but not shard-count changes or automatic rebalancing.
 - Route and writable-leader semantics still need broader failure-scenario validation.
-- Storage currently uses a map-based KV engine and has not integrated LSM engines such as RocksDB.
+- Storage currently uses a map-based KV engine.
 - Benchmarks run on a local multi-process setup and are intended for tuning and regression comparison.
 
 ## License
