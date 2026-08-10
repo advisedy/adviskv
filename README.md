@@ -48,6 +48,12 @@ git submodule update --init --recursive
 ./scripts/build.sh
 ```
 
+如果需要运行 Maelstrom 测试，把上面的 setup 命令替换为：
+
+```bash
+./scripts/setup.sh --with-maelstrom-test
+```
+
 启动本地集群并打开 `adviskvctl`：
 
 ```bash
@@ -121,11 +127,18 @@ SDK → Topo 路由 → Storage Leader → Raft → WAL / KV StateMachine
 
 ## 测试
 
-运行 C++ 单元测试：
+运行测试：
 
 ```bash
 ./scripts/run_test.sh
 ```
+
+如果本地已经安装 Maelstrom，还会先运行一个无故障的 3 节点 Raft 测试，再运行一个 5 节点的故障注入压力测试，否则跳过 Maelstrom。
+想要跑 Maelstrom，可以使用
+```bash
+./scripts/setup.sh --with-maelstrom-test
+```
+先安装Maelstrom
 
 运行 Python E2E 测试：
 

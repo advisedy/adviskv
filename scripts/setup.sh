@@ -12,6 +12,19 @@ VCPKG_BINARY_CACHE="$VCPKG_STATE_ROOT/binary-cache"
 VCPKG_BUILDTREES_ROOT="$VCPKG_STATE_ROOT/buildtrees"
 VCPKG_PACKAGES_ROOT="$VCPKG_STATE_ROOT/packages"
 
+WITH_MAELSTROM_TEST=0
+VCPKG_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --with-maelstrom-test)
+      WITH_MAELSTROM_TEST=1
+      ;;
+    *)
+      VCPKG_ARGS+=("$arg")
+      ;;
+  esac
+done
+
 cd "$REPO_ROOT"
 
 if [[ ! -f "$VCPKG_ROOT/bootstrap-vcpkg.sh" ]]; then
@@ -38,6 +51,10 @@ mkdir -p \
   --x-packages-root="$VCPKG_PACKAGES_ROOT" \
   --binarysource=clear \
   --binarysource="files,$VCPKG_BINARY_CACHE,readwrite" \
-  "$@"
+  "${VCPKG_ARGS[@]}"
 
 echo "vcpkg dependencies are ready under $VCPKG_INSTALL_ROOT"
+
+if [[ "$WITH_MAELSTROM_TEST" == "1" ]]; then
+  "$REPO_ROOT/scripts/internal/setup_maelstrom.sh"
+fi

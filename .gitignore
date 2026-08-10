@@ -12,12 +12,8 @@ __pycache__/
 logs/
 example/
 
-# Legacy Maelstrom/Jepsen results (if someone ran maelstrom from repo root).
-store/
-# Default Maelstrom results location used by scripts/run_maelstrom_raft.sh.
-tools/maelstrom_raft/store/
 
-# Maelstrom harness is a JVM download (scripts/setup_maelstrom.sh), not vcpkg.
+tools/maelstrom_raft/store/
 third_party/maelstrom/
 
 .vscode/

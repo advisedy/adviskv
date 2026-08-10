@@ -63,6 +63,12 @@ git submodule update --init --recursive
 ./scripts/adviskvctl_demo.sh
 ```
 
+To prepare the optional Maelstrom test environment, replace the setup command above with:
+
+```bash
+./scripts/setup.sh --with-maelstrom-test
+```
+
 `adviskvctl_demo.sh` starts a local `topo/catalog/storage` cluster and opens an interactive shell. Example commands:
 
 ```text
@@ -113,7 +119,7 @@ Main binaries are generated under `build/bin/` by default.
 ./scripts/coverage.sh
 ```
 
-- `run_test.sh`: builds and runs GoogleTest suites.
+- `run_test.sh`: builds and runs GoogleTest suites; if Maelstrom is installed, it also runs a normal 3-node Raft test followed by a 5-node fault-injection stress test.
 - `e2e_pytest.sh`: starts a local multi-process cluster and verifies the Catalog -> Topo -> Storage -> SDK main path.
 - `coverage.sh`: generates a coverage report.
 
