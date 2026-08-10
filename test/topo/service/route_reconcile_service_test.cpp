@@ -179,7 +179,8 @@ TEST(RouteServiceReconcileTest, ReturnRouteNotReadyWhenLeadersShareMaxTerm) {
     EXPECT_TRUE(route.is_empty());
 }
 
-// 检测多个 leader 的 term 不同时，选择最大 term 的 leader 作为主路由，其余降级为 follower。
+// 检测多个 leader 的 term 不同时，只保留最高 term 的 leader；低 term 的过期
+// leader 不进入 route
 TEST(RouteServiceReconcileTest, MultipleLeadersWithDifferentTermsChooseMaxTermLeader) {
     TopoStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
@@ -210,18 +211,16 @@ TEST(RouteServiceReconcileTest, MultipleLeadersWithDifferentTermsChooseMaxTermLe
     ASSERT_TRUE(
         store_test::get_shard_route(store, test_shard_id(), route).ok());
     ASSERT_FALSE(route.is_empty());
-    ASSERT_EQ(route->replicas.size(), 4U);
+    
+    ASSERT_EQ(route->replicas.size(), 2U);
 
     EXPECT_EQ(route->replicas[0].replica_id.replica_seq, 1);
     EXPECT_EQ(route->replicas[0].role, ReplicaRole::LEADER);
     EXPECT_EQ(route->replicas[0].term, 30);
 
-    EXPECT_EQ(route->replicas[1].replica_id.replica_seq, 0);
+    EXPECT_EQ(route->replicas[1].replica_id.replica_seq, 3);
     EXPECT_EQ(route->replicas[1].role, ReplicaRole::FOLLOWER);
-    EXPECT_EQ(route->replicas[2].replica_id.replica_seq, 2);
-    EXPECT_EQ(route->replicas[2].role, ReplicaRole::FOLLOWER);
-    EXPECT_EQ(route->replicas[3].replica_id.replica_seq, 3);
-    EXPECT_EQ(route->replicas[3].role, ReplicaRole::FOLLOWER);
+    EXPECT_EQ(route->replicas[1].term, 30);
 }
 
 // 检测 leader 切换后，旧路由被删除、新路由被重新发布。

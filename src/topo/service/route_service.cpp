@@ -245,11 +245,9 @@ Status RouteService::check_shard_route(const Table& table, ShardIndex shard_inde
                 return clear_route_and_return(
                         fmt::format("multiple leaders share max term, term={}", leader_entries[0].term));
             }
-
-            for (size_t i = 1; i < leader_entries.size(); i++) {
-                leader_entries[i].role = ReplicaRole::FOLLOWER;
-                follower_entries.push_back(std::move(leader_entries[i]));
-            }
+            // 对于出现了多个leader，但是term不同的情况下，我们选择保住term最高的leader。
+            // 对于其余的leader，我们应该选择不出现在这次的route里面
+            leader_entries.resize(1);
         }
 
         std::sort(follower_entries.begin(), follower_entries.end(), [](const RouteEntry& lhs, const RouteEntry& rhs) {
