@@ -11,7 +11,7 @@
 namespace adviskv::test {
 
 inline std::filesystem::path test_data_dir() {
-    return adviskv::path_from_config("test_data_root");
+    return adviskv::path_from_config("data_dir");
 }
 
 inline std::filesystem::path make_unique_test_dir(const std::string& prefix,

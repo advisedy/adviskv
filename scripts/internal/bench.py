@@ -252,7 +252,7 @@ def run_bench(argv: list[str]) -> None:
     metrics_report_enabled = env("BENCH_METRICS_REPORT", "0") == "1"
     run_id = env("RUN_ID", time.strftime("%Y%m%d_%H%M%S"))
     output_dir = repo_path(
-        env("OUTPUT_DIR", str(BUILD_DIR / "bench_results" / run_id))
+        env("OUTPUT_DIR", str(BUILD_DIR / "bench" / run_id))
     )
     conf_dir = output_dir / "conf"
     data_dir = output_dir / "data"

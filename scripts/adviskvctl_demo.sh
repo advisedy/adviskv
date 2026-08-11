@@ -32,7 +32,10 @@ echo "[demo] stopping stale local processes"
 "$ROOT_DIR/scripts/stop_cluster.sh"
 
 echo "[demo] clearing local demo data"
-rm -rf "$ROOT_DIR/build/runtime" "$BUILD_DIR/runtime"
+rm -rf "$ROOT_DIR/build/demo"
+if [[ "$BUILD_DIR" != "$ROOT_DIR/build" ]]; then
+  rm -rf "$BUILD_DIR/demo"
+fi
 
 require_binary "$BUILD_DIR/bin/topo"
 require_binary "$BUILD_DIR/bin/catalog"

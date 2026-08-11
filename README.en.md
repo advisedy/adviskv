@@ -162,7 +162,7 @@ Run a benchmark and generate a metrics text report:
 `bench_metrics.sh` uses the same arguments as `bench.sh`, samples service `/metrics` endpoints plus the benchmark client's SDK metrics during the run, and prints the report path at the end:
 
 ```text
-[bench] metrics report: build/bench_results/<run_id>/metrics_report.txt
+[bench] metrics report: build/bench/<run_id>/metrics_report.txt
 ```
 
 The report lists latency histogram deltas and counter deltas that changed during the run, including `sdk_*` rows from the benchmark client, which makes it useful for local tuning and regression comparison.
@@ -170,6 +170,7 @@ The report lists latency histogram deltas and counter deltas that changed during
 ## Documentation
 
 - [scripts/README.md](scripts/README.md): common script entry points.
+- [conf/README.md](conf/README.md): conf layout and local run directories (`demo` / `unit_test` / `e2e_test` / `bench`).
 - [docs/benchmark/README.md](docs/benchmark/README.md): V1 benchmark entry and result summary.
 - [docs/接口规范.md](docs/接口规范.md): RPC and SDK interface semantics (Chinese).
 - [Design blog](https://www.zhihu.com/column/c_2057637599590797905): project design notes.
@@ -177,13 +178,14 @@ The report lists latency histogram deltas and counter deltas that changed during
 ## Project Layout
 
 ```text
-conf/       local config files
+conf/       default configs (demo / unit_test); see conf/README.md
 proto/      gRPC / Protobuf definitions
 scripts/    build, test, demo and benchmark scripts
 src/        Catalog, Topo, Storage, SDK and common modules
 tools/      adviskvctl, e2e client, benchmark client, storage client
 test/       GoogleTest and Python E2E tests
 docs/       design notes and V1 constraints
+build/      binaries and local run dirs (demo / unit_test / e2e_test / bench)
 ```
 
 ## Current limitations

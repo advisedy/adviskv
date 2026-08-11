@@ -338,7 +338,7 @@ def cluster_from_confs(
 
 def default_cluster() -> LocalCluster:
     return cluster_from_confs(
-        log_dir=BUILD_DIR / "runtime" / "logs",
+        log_dir=BUILD_DIR / "demo" / "logs",
         topo_conf=ROOT_DIR / "conf" / "topo.yaml",
         catalog_conf=ROOT_DIR / "conf" / "catalog.yaml",
         storage_confs=[

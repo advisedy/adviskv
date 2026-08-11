@@ -1,7 +1,7 @@
 # catalog
 listen_host: "127.0.0.1"
 port: 50048
-data_dir: "build/runtime/data/catalog"
+data_dir: "build/demo/data/catalog"
 
 # topo
 topo_host: "127.0.0.1"
@@ -10,7 +10,7 @@ topo_rpc_timeout_ms: 3000
 
 # log
 logger_name: "catalog_log"
-log_dir: "build/runtime/logs/catalog"
+log_dir: "build/demo/logs/catalog"
 log_filename: "catalog.log"
 log_level: "debug"
 log_to_console: false

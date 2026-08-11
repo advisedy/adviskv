@@ -2,7 +2,7 @@
 # Shared defaults for AdvisKV scripts. Source from other scripts.
 # Day-to-day paths:
 #   .adviskv_deps/   deps (setup.sh)
-#   build/           binaries + runtime (build.sh)
+#   build/           binaries + local runs (demo/unit_test/e2e_test/bench); see conf/README.md
 #   third_party/vcpkg/  vcpkg tool only
 
 if [[ -n "${ADVISKV_ENV_LOADED:-}" ]]; then

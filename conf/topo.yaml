@@ -1,11 +1,11 @@
 listen_host: "127.0.0.1"
 port: 50049
 
-data_dir: "build/runtime/data/topo"
+data_dir: "build/demo/data/topo"
 
 # log
 logger_name: "topo_log"
-log_dir: "build/runtime/logs/topo"
+log_dir: "build/demo/logs/topo"
 log_filename: "topo.log"
 log_level: "debug"
 log_to_console: false

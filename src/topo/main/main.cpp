@@ -77,7 +77,7 @@ void init_metrics() {
 }
 
 std::string get_metastore_data_dir() {
-    return adviskv::path_from_project_root(CONF_GET_STR("data_dir", std::string("build/runtime/data/topo"))).string();
+    return adviskv::path_from_project_root(CONF_GET_STR("data_dir", std::string("build/demo/data/topo"))).string();
 }
 
 }  // namespace

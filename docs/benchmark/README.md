@@ -22,7 +22,7 @@ BENCH_LOG_LEVEL=warning \
   --replica_count=3 \
   --value_size=128 \
   --requests=30000 \
-  --output_json=build/bench_results/mixed_baseline.json
+  --output_json=build/bench/mixed_baseline.json
 ```
 
 ## 本次结果

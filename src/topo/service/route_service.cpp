@@ -162,7 +162,7 @@ Status RouteService::check_shard_route(const Table& table, ShardIndex shard_inde
             route_status = Status::ROUTE_NOT_FOUND(msg);
             ADVISKV_METRICS_COUNTER("topo_route_delete_shard_route_request");
             RETURN_IF_INVALID_STATUS(txn.delete_shard_route(shard_id))
-            LOG_WARN("route not ready, table_id={}, shard_index={}, msg={}", shard_id.table_id, shard_id.shard_index,
+            LOG_WARN("[RouteService] check_shard_route, clear_route_and_return, route not ready, table_id={}, shard_index={}, msg={}", shard_id.table_id, shard_id.shard_index,
                      msg);
             return Status::OK();
         };

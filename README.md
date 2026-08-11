@@ -188,7 +188,7 @@ Benchmark 测量的是本地多进程环境中的 `SDK → Topo route → Storag
 ./scripts/bench_metrics.sh --workload=put --threads=4 --requests=10000 --replica_count=3
 ```
 
-报告默认写入 `build/bench_results/<run_id>/metrics_report.txt`。
+报告默认写入 `build/bench/<run_id>/metrics_report.txt`。
 
 ## 设计博客
 
@@ -197,12 +197,13 @@ Benchmark 测量的是本地多进程环境中的 `SDK → Topo route → Storag
 ## 文档
 
 - [接口规范](docs/接口规范.md)：Catalog、Topo、Storage 和 SDK 的 RPC 与调用语义。
+- [配置](conf/README.md)：`conf/` 与 `build/demo|unit_test|e2e_test|bench` 路径说明。
 - [Benchmark 说明](docs/benchmark/README.md)：Benchmark 的运行方式和结果说明。
 
 ## 项目结构
 
 ```text
-conf/       本地配置文件
+conf/       配置文件
 proto/      gRPC / Protobuf 定义
 scripts/    构建、测试、demo 和 benchmark 脚本
 src/        Catalog / Topo / Storage / SDK 与通用模块

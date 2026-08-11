@@ -5,14 +5,14 @@ port: 50054
 listen_host: "127.0.0.1"
 resource_pool: "default"
 dc: "dc1"
-data_dir: "build/runtime/data/storage-4"
+data_dir: "build/demo/data/storage-4"
 heartbeat_interval_ms: 3000
 node_agent_rpc_timeout_ms: 3000
 raft_rpc_timeout_ms: 1000
 
 #log
 logger_name: "storage-4_log"
-log_dir: "build/runtime/logs/storage-4"
+log_dir: "build/demo/logs/storage-4"
 log_filename: "storage-4.log"
 log_level: "debug"
 log_to_console: false

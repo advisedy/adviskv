@@ -1,7 +1,8 @@
 # Scripts
 
 
-路径约定：依赖在 `.adviskv_deps/`（`setup.sh`），工程默认输出在 `build/`（`build/bin`、`build/runtime`，默认 Debug）。
+路径约定：依赖在 `.adviskv_deps/`（`setup.sh`），工程默认输出在 `build/`（默认 Debug）。
+本地运行目录：`build/demo`、`build/unit_test`、`build/e2e_test`、`build/bench`（可以看 [`conf/README.md`](../conf/README.md)）。
 特例：`build-asan/`、`build-coverage/`。
 这个目录是常用的一些脚本。
 
