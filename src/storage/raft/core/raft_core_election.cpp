@@ -22,6 +22,7 @@ void RaftCore::become_pre_candidate(RaftEffects& effects) {
     if (!membership_.is_voter(self_id_)) return;
     if (election_.is_leader()) return;
 
+    clear_recent_leader_active();
     ReplicaRole old_role = election_.role();
     election_.become_pre_candidate();
     LOG_INFO(
@@ -59,6 +60,7 @@ void RaftCore::send_pre_vote_to(const PeerMember& member, RaftEffects& effects) 
 void RaftCore::become_candidate(RaftEffects& effects) {
     if (ensure_ready().fail()) return;
     if (!membership_.is_voter(self_id_)) return;
+    clear_recent_leader_active();
     Term previous_term = election_.current_term();
     election_.become_candidate();
     LOG_INFO(
@@ -129,6 +131,20 @@ void RaftCore::handle_pre_vote(const PreVoteParam& param, PreVoteResult& result,
         return;
     }
 
+    if (election_.is_leader()) {
+        LOG_DEBUG("[RaftCore Election] replica:{} reject PreVote because self is the current leader, from:{}, "
+                  "request_term:{}, current_term:{}",
+                  self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term());
+        return;
+    }
+
+    if (election_.is_follower() && is_recent_leader_active()) {
+        LOG_DEBUG("[RaftCore Election] replica:{} reject PreVote because recent leader is still active, "
+                  "from:{}, request_term:{}, current_term:{}",
+                  self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term());
+        return;
+    }
+
     // 如果比人家的新 （是一定会新，不包括相等）
     if (later_than_other(param.last_log_term, param.last_log_index)) {
         LOG_DEBUG(
@@ -165,7 +181,7 @@ void RaftCore::handle_pre_vote_response(const ReplicaID& from, const PreVoteResu
             self_id_.to_string(), from.to_string(), election_.current_term(), election_.pre_vote_term(), result.term,
             result.vote_granted);
 
-    if (result.term > election_.pre_vote_term()) {
+    if (result.term > election_.current_term()) {
         become_follower(result.term, effects);
         return;
     }
@@ -324,6 +340,7 @@ void RaftCore::become_follower(Term later_term, RaftEffects& effects) {
     LOG_INFO("[RaftCore Election] replica:{} become follower, old_role:{}, old_term:{}, new_term:{}",
              self_id_.to_string(), to<int32>(election_.role()), election_.current_term(), later_term);
 
+    clear_recent_leader_active();
     heartbeat_tick_trigger_.stop();
     election_tick_trigger_.reset();
 
@@ -338,6 +355,7 @@ void RaftCore::become_leader(RaftEffects& effects) {
 
     LOG_INFO("[RaftCore Election] replica:{} become leader, term:{}, last_log_index:{}, last_log_term:{}",
              self_id_.to_string(), election_.current_term(), raft_log_.last_log_index(), raft_log_.last_log_term());
+    clear_recent_leader_active();
     election_.become_leader();
 
     election_tick_trigger_.stop();

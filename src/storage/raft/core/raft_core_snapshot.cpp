@@ -122,6 +122,7 @@ Status RaftCore::prepare_install_snapshot(const InstallSnapshotParam& param, Raf
     }
 
     election_tick_trigger_.clear();
+    mark_recent_leader_active();
 
     if (param.snapshot_index <= raft_apply_.commit_index()) {
         return Status::ALREADY_EXIST(

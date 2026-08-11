@@ -107,6 +107,7 @@ public:
     int32_t granted_vote_count_for_test() const { return election_.granted_vote_count(); }
 
     void reset_heartbeat_tick_for_test(int32 val) { heartbeat_tick_trigger_.reset(val); }
+    void reset_election_tick_for_test(int32 val) { election_tick_trigger_.reset(val); }
 
     LogIndex next_index_for_test(const ReplicaID& target) const { return replication_.next_index(target); }
 
@@ -126,6 +127,12 @@ private:
 
     Status ensure_ready() const;
     bool later_than_other(Term other_term, LogIndex other_index) const;
+    
+    // recent_leader_active
+    bool is_recent_leader_active() const;
+    void clear_recent_leader_active();
+    void mark_recent_leader_active();
+    
     void record_hard_state(RaftEffects& effects) const;
     const LogEntry* first_unapplied_config_entry() const;
     bool has_unapplied_config_entry() const;
@@ -161,6 +168,8 @@ private:
 
     TickTrigger election_tick_trigger_;
     TickTrigger heartbeat_tick_trigger_;
+
+    bool recent_leader_active_{false};
 
     State state_{State::READY};
 };

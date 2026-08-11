@@ -183,6 +183,7 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param, AppendEntr
 
     result.term = election_.current_term();
     election_tick_trigger_.clear();
+    mark_recent_leader_active();
     LOG_DEBUG(
             "[RaftCore Append] handle_append_entries: clear election_tick_trigger, "
             "cur_cnt:{}, limit_cnt:{}",

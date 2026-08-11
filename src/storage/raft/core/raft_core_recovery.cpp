@@ -10,6 +10,7 @@ void RaftCore::update_membership(const std::vector<RaftMember>& members) { membe
 
 void RaftCore::enter_recovering() {
     state_ = State::RECOVERING;
+    clear_recent_leader_active();
     election_.become_follower(election_.current_term());
     election_tick_trigger_.stop();
     heartbeat_tick_trigger_.stop();

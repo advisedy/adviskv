@@ -59,6 +59,16 @@ bool RaftCore::later_than_other(Term other_term, LogIndex other_index) const {
     return raft_log_.last_log_index() > other_index;
 }
 
+bool RaftCore::is_recent_leader_active() const {
+    return recent_leader_active_;
+}
+
+void RaftCore::clear_recent_leader_active() {
+    recent_leader_active_ = false;
+}
+
+void RaftCore::mark_recent_leader_active() { recent_leader_active_ = true; }
+
 Status RaftCore::ensure_ready() const {
     if (state_ == State::RECOVERING) {
         return Status::IS_RECOVERING("raft node is recovering");
@@ -79,6 +89,7 @@ void RaftCore::step_down_if_become_non_member() {
     if (membership_.member_type(self_id_) != RaftMemberType::NON_MEMBER) {
         return;
     }
+    clear_recent_leader_active();
     if (!election_.is_follower()) {
         election_.become_follower(election_.current_term());
     }
