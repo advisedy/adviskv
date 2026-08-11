@@ -22,6 +22,7 @@ public:
     DEFINE_METHOD(DeleteReplica)
     DEFINE_METHOD(GetReplicaInfo)
     DEFINE_METHOD(RequestVote)
+    DEFINE_METHOD(PreVote)
     DEFINE_METHOD(AppendEntries)
     DEFINE_METHOD(InstallSnapshot)
     DEFINE_METHOD(TestGetReplicaState)

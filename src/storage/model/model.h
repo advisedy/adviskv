@@ -91,6 +91,9 @@ struct RequestVoteResult {
     bool vote_granted{false};
 };
 
+using PreVoteParam = RequestVoteParam;
+using PreVoteResult = RequestVoteResult;
+
 struct AppendEntriesParam {
     ReplicaID from_replica_id;
     ReplicaID to_replica_id;
@@ -132,6 +135,7 @@ struct InstallSnapshotContext {
 
 enum class RaftMessageType : uint8_t {
     REQUEST_VOTE,
+    PRE_VOTE,
     APPEND_ENTRIES,
     INSTALL_SNAPSHOT,
 };

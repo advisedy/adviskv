@@ -40,6 +40,11 @@ struct VoteResponseEvent {
     RequestVoteResult result;
 };
 
+struct PreVoteResponseEvent {
+    ReplicaID from;
+    PreVoteResult result;
+};
+
 struct SnapshotResponseEvent {
     ReplicaID from;
     InstallSnapshotParam sent_param;
@@ -64,12 +69,18 @@ struct PublishSnapshotEvent {
     std::vector<RaftMember> members;
 };
 
-using Event = std::variant<TickEvent, AppendResponseEvent, VoteResponseEvent, SnapshotResponseEvent,
-                           AppendSendFailedEvent, SnapshotSendFailedEvent, PublishSnapshotEvent>;
+using Event = std::variant<TickEvent, AppendResponseEvent, VoteResponseEvent, PreVoteResponseEvent,
+                           SnapshotResponseEvent, AppendSendFailedEvent, SnapshotSendFailedEvent, PublishSnapshotEvent>;
 
 struct RequestVoteCall {
     RequestVoteParam param;
     RequestVoteResult result{};
+    Status status{Status::OK()};
+};
+
+struct PreVoteCall {
+    PreVoteParam param;
+    PreVoteResult result{};
     Status status{Status::OK()};
 };
 
@@ -127,9 +138,10 @@ struct RemoveMemberCall {
     Status status{Status::OK()};
 };
 
-using Call = std::variant<RequestVoteCall*, AppendEntriesCall*, BuildReadIndexCall*, PrepareInstallSnapshotCall*,
-                          CommitInstallSnapshotCall*, AppendResponseCall*, SnapshotResponseCall*,
-                          SnapshotSendFailedCall*, ProposeCall*, AddMemberCall*, RemoveMemberCall*>;
+using Call = std::variant<RequestVoteCall*, PreVoteCall*, AppendEntriesCall*, BuildReadIndexCall*,
+                          PrepareInstallSnapshotCall*, CommitInstallSnapshotCall*, AppendResponseCall*,
+                          SnapshotResponseCall*, SnapshotSendFailedCall*, ProposeCall*, AddMemberCall*,
+                          RemoveMemberCall*>;
 
 struct Waiter {
     std::mutex mutex;
@@ -186,6 +198,7 @@ private:
     Status handle_event(const TickEvent& event);
     Status handle_event(const AppendResponseEvent& event);
     Status handle_event(const VoteResponseEvent& event);
+    Status handle_event(const PreVoteResponseEvent& event);
     Status handle_event(const SnapshotResponseEvent& event);
     Status handle_event(const AppendSendFailedEvent& event);
     Status handle_event(const SnapshotSendFailedEvent& event);
@@ -193,6 +206,7 @@ private:
 
     // 关于handle_call的返回值最终会回落到call->status里
     Status handle_call(RequestVoteCall& call);
+    Status handle_call(PreVoteCall& call);
     Status handle_call(AppendEntriesCall& call);
     Status handle_call(BuildReadIndexCall& call);
     Status handle_call(PrepareInstallSnapshotCall& call);

@@ -78,6 +78,20 @@ message RequestVoteResponse{
   bool vote_granted = 3;
 }
 
+message PreVoteRequest{
+  adviskv.pb.ReplicaID from = 1;
+  adviskv.pb.ReplicaID to = 2;
+  int64 term = 3;
+  int64 last_log_index = 4;
+  int64 last_log_term = 5;
+}
+
+message PreVoteResponse{
+  adviskv.pb.BaseRsp base_rsp = 1;
+  int64 term = 2;
+  bool vote_granted = 3;
+}
+
 message LogEntry{
   int64 term = 1;
   int64 index = 2;
@@ -149,6 +163,7 @@ service StorageService {
   rpc GetReplicaInfo(GetReplicaInfoRequest) returns (GetReplicaInfoResponse);
 
   rpc RequestVote(RequestVoteRequest) returns(RequestVoteResponse);
+  rpc PreVote(PreVoteRequest) returns(PreVoteResponse);
   rpc AppendEntries(AppendEntriesRequest) returns(AppendEntriesResponse);
   rpc InstallSnapshot(InstallSnapshotRequest) returns(InstallSnapshotResponse);
 

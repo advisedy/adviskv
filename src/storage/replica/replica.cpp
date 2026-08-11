@@ -268,6 +268,17 @@ Status Replica::handle_request_vote(const RequestVoteParam& param, RequestVoteRe
     return Status::OK();
 }
 
+Status Replica::handle_pre_vote(const PreVoteParam& param, PreVoteResult& result) {
+    RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
+    RETURN_IF_INVALID_STATUS(ensure_local_state_running())
+
+    PreVoteCall call{param};
+    loop_->sync_submit(&call);
+    RETURN_IF_INVALID_STATUS(call.status)
+    result = call.result;
+    return Status::OK();
+}
+
 Status Replica::handle_append_entries(const AppendEntriesParam& param, AppendEntriesResult& result) {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
     RETURN_IF_INVALID_STATUS(ensure_local_state_running())

@@ -51,6 +51,41 @@ Status GrpcRaftRpcTransport::request_vote(const PeerMember& target, const Reques
     return Status::OK();
 }
 
+Status GrpcRaftRpcTransport::pre_vote(const PeerMember& target, const PreVoteParam& param, int32_t timeout_ms,
+                                      PreVoteResult& result) const {
+    rpc::PreVoteRequest request;
+    encode_pb_replica_id(param.from_replica_id, *request.mutable_from());
+    encode_pb_replica_id(param.to_replica_id, *request.mutable_to());
+
+    request.set_term(param.term);
+    request.set_last_log_index(param.last_log_index);
+    request.set_last_log_term(param.last_log_term);
+
+    rpc::PreVoteResponse response;
+    grpc::ClientContext context;
+    context.set_deadline(get_system_clock_now() + Milliseconds(timeout_ms));
+
+    grpc::Status grpc_status = stub_for(target)->PreVote(&context, request, &response);
+    if (!grpc_status.ok()) {
+        LOG_WARN(
+                "[GrpcRaftRpcTransport] pre_vote failed, target:{}, from:{}, to:{}, term:{}, "
+                "last_log_index:{}, last_log_term:{}, grpc_code:{}, grpc_message:{}",
+                target.to_string(), param.from_replica_id.to_string(), param.to_replica_id.to_string(), param.term,
+                param.last_log_index, param.last_log_term, static_cast<int>(grpc_status.error_code()),
+                grpc_status.error_message());
+        return Status::RPC_ERROR(fmt::format("grpc failed: {}", grpc_status.error_message()));
+    }
+
+    result.term = response.term();
+    result.vote_granted = response.vote_granted();
+    LOG_DEBUG(
+            "[GrpcRaftRpcTransport] pre_vote response, target:{}, from:{}, to:{}, request_term:{}, "
+            "response_term:{}, vote_granted:{}",
+            target.to_string(), param.from_replica_id.to_string(), param.to_replica_id.to_string(), param.term,
+            result.term, result.vote_granted);
+    return Status::OK();
+}
+
 Status GrpcRaftRpcTransport::append_entries(const PeerMember& target, const AppendEntriesParam& param,
                                             int32_t timeout_ms, AppendEntriesResult& result) const {
     rpc::AppendEntriesRequest request;

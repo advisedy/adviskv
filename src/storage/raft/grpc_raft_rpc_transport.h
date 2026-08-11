@@ -17,6 +17,9 @@ public:
     Status request_vote(const PeerMember& target, const RequestVoteParam& param, int32_t timeout_ms,
                         RequestVoteResult& result) const override;
 
+    Status pre_vote(const PeerMember& target, const PreVoteParam& param, int32_t timeout_ms,
+                    PreVoteResult& result) const override;
+
     Status append_entries(const PeerMember& target, const AppendEntriesParam& param, int32_t timeout_ms,
                           AppendEntriesResult& result) const override;
 

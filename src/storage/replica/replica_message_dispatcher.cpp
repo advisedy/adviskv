@@ -69,6 +69,18 @@ void ReplicaMessageDispatcher::send_task(RaftMessage msg) {
             }
             break;
         }
+        case RaftMessageType::PRE_VOTE: {
+            ADVISKV_METRICS_TIMER("storage_raft_flush_messages_pre_vote");
+
+            PreVoteResult result;
+            Status status = sender_.send_pre_vote(msg.target, msg.vote_param, result);
+            if (status.ok()) {
+                callback(PreVoteResponseEvent{msg.target.replica_id, result});
+            } else {
+                LOG_WARN("[flush_messages] send_pre_vote failed: {}", status.msg());
+            }
+            break;
+        }
         case RaftMessageType::APPEND_ENTRIES: {
             AppendEntriesResult result;
             Status status = sender_.send_append_entries(msg.target, msg.append_param, result);

@@ -192,6 +192,15 @@ Status ReplicaLoop::handle_event(const VoteResponseEvent& event) {
     return status;
 }
 
+Status ReplicaLoop::handle_event(const PreVoteResponseEvent& event) {
+    Status status = run_step([this, &event](RaftEffects& effects) {
+        context_.raft_core.handle_pre_vote_response(event.from, event.result, effects);
+        return Status::OK();
+    });
+    resolve_pending_proposals();
+    return status;
+}
+
 Status ReplicaLoop::handle_event(const SnapshotResponseEvent& event) {
     Status status = run_step([this, &event](RaftEffects& effects) {
         context_.raft_core.handle_install_snapshot_response(event.from, event.sent_param, event.result, effects);
@@ -249,6 +258,23 @@ Status ReplicaLoop::handle_call(RequestVoteCall& call) {
         context_.raft_core.handle_request_vote(call.param, call.result, effects);
         LOG_DEBUG(
                 "[ReplicaLoop] handle RequestVote finished, replica_id:{}, from:{}, request_term:{}, "
+                "response_term:{}, vote_granted:{}",
+                context_.replica_id.to_string(), call.param.from_replica_id.to_string(), call.param.term,
+                call.result.term, call.result.vote_granted);
+        return Status::OK();
+    });
+}
+
+Status ReplicaLoop::handle_call(PreVoteCall& call) {
+    return run_step([this, &call](RaftEffects& effects) {
+        LOG_DEBUG(
+                "[ReplicaLoop] handle PreVote, replica_id:{}, from:{}, term:{}, last_log_index:{}, "
+                "last_log_term:{}",
+                context_.replica_id.to_string(), call.param.from_replica_id.to_string(), call.param.term,
+                call.param.last_log_index, call.param.last_log_term);
+        context_.raft_core.handle_pre_vote(call.param, call.result, effects);
+        LOG_DEBUG(
+                "[ReplicaLoop] handle PreVote finished, replica_id:{}, from:{}, request_term:{}, "
                 "response_term:{}, vote_granted:{}",
                 context_.replica_id.to_string(), call.param.from_replica_id.to_string(), call.param.term,
                 call.result.term, call.result.vote_granted);
