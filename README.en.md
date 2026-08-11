@@ -178,14 +178,13 @@ The report lists latency histogram deltas and counter deltas that changed during
 ## Project Layout
 
 ```text
-conf/       default configs (demo / unit_test); see conf/README.md
+conf/       local config files
 proto/      gRPC / Protobuf definitions
 scripts/    build, test, demo and benchmark scripts
 src/        Catalog, Topo, Storage, SDK and common modules
 tools/      adviskvctl, e2e client, benchmark client, storage client
 test/       GoogleTest and Python E2E tests
 docs/       design notes and V1 constraints
-build/      binaries and local run dirs (demo / unit_test / e2e_test / bench)
 ```
 
 ## Current limitations
