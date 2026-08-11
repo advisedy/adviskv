@@ -161,6 +161,8 @@ std::string replica_role_to_string(adviskv::ReplicaRole role) {
             return "LEADER";
         case adviskv::ReplicaRole::CANDIDATE:
             return "CANDIDATE";
+        case adviskv::ReplicaRole::PRE_CANDIDATE:
+            return "PRE_CANDIDATE";
     }
     return "UNKNOWN";
 }

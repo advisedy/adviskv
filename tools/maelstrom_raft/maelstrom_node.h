@@ -62,6 +62,8 @@ private:
     void on_cas(const std::string& src, const Json& body);
     void on_raft_request_vote(const std::string& src, const Json& body);
     void on_raft_request_vote_ok(const std::string& src, const Json& body);
+    void on_raft_pre_vote(const std::string& src, const Json& body);
+    void on_raft_pre_vote_ok(const std::string& src, const Json& body);
     void on_raft_append_entries(const std::string& src, const Json& body);
     void on_raft_append_entries_ok(const std::string& src, const Json& body);
     void on_raft_install_snapshot(const std::string& src, const Json& body);

@@ -22,6 +22,11 @@ class BlockingInstallSnapshotTransport final : public IRaftRpcTransport {
         return Status::ERROR("unused");
     }
 
+    Status pre_vote(const PeerMember&, const PreVoteParam&, int32_t,
+                    PreVoteResult&) const override {
+        return Status::ERROR("unused");
+    }
+
     Status append_entries(const PeerMember&, const AppendEntriesParam&, int32_t,
                           AppendEntriesResult&) const override {
         return Status::ERROR("unused");

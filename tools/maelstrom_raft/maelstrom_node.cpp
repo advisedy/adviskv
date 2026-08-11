@@ -126,6 +126,10 @@ void MaelstromRaftNode::handle_msg(const Json& msg) {
         on_raft_request_vote(src, body);
     } else if (type == "raft_request_vote_ok") {
         on_raft_request_vote_ok(src, body);
+    } else if (type == "raft_pre_vote") {
+        on_raft_pre_vote(src, body);
+    } else if (type == "raft_pre_vote_ok") {
+        on_raft_pre_vote_ok(src, body);
     } else if (type == "raft_append_entries") {
         on_raft_append_entries(src, body);
     } else if (type == "raft_append_entries_ok") {
@@ -397,6 +401,77 @@ void MaelstromRaftNode::on_raft_request_vote_ok(const std::string&, const Json& 
     Status status = drive_effects(std::move(effects));
     if (status.fail()) {
         LOG_WARN("handle_vote_response effects failed: {}", status.to_string());
+    }
+    apply_committed_unlocked();
+    complete_pending_clients_unlocked();
+    if (!core_->is_leader()) {
+        fail_all_pending_reads_unlocked("stepped down");
+    } else {
+        complete_pending_reads_unlocked();
+    }
+}
+
+void MaelstromRaftNode::on_raft_pre_vote(const std::string& src, const Json& body) {
+    std::lock_guard lock(mutex_);
+    if (!core_) return;
+
+    storage::PreVoteParam param;
+    param.from_replica_id = replica_of(src);
+    param.to_replica_id = self_id_;
+    param.term = body.at("term").get<int64_t>();
+    param.last_log_index = body.at("last_log_index").get<int64_t>();
+    param.last_log_term = body.at("last_log_term").get<int64_t>();
+
+    storage::PreVoteResult result;
+    storage::RaftEffects effects;
+    core_->handle_pre_vote(param, result, effects);
+    Status status = drive_effects(std::move(effects));
+    if (status.fail()) {
+        LOG_WARN("handle_pre_vote effects failed: {}", status.to_string());
+    }
+    apply_committed_unlocked();
+    complete_pending_clients_unlocked();
+    if (!core_->is_leader()) {
+        fail_all_pending_reads_unlocked("stepped down");
+    } else {
+        complete_pending_reads_unlocked();
+    }
+
+    Json resp = Json::object();
+    resp["type"] = "raft_pre_vote_ok";
+    resp["in_reply_to"] = body.at("msg_id").get<int64_t>();
+    resp["msg_id"] = next_msg_id_unlocked();
+    resp["term"] = result.term;
+    resp["vote_granted"] = result.vote_granted;
+
+    Json msg = Json::object();
+    msg["src"] = node_id_;
+    msg["dest"] = src;
+    msg["body"] = std::move(resp);
+    send_raw(std::move(msg));
+}
+
+void MaelstromRaftNode::on_raft_pre_vote_ok(const std::string&, const Json& body) {
+    std::lock_guard lock(mutex_);
+    if (!core_) return;
+    const int64_t in_reply_to = body.at("in_reply_to").get<int64_t>();
+    auto it = pending_rpcs_.find(in_reply_to);
+    if (it == pending_rpcs_.end()) {
+        LOG_DEBUG("stale raft_pre_vote_ok in_reply_to={}", in_reply_to);
+        return;
+    }
+    PendingRpc pending = it->second;
+    pending_rpcs_.erase(it);
+
+    storage::PreVoteResult result;
+    result.term = body.at("term").get<int64_t>();
+    result.vote_granted = body.at("vote_granted").get<bool>();
+
+    storage::RaftEffects effects;
+    core_->handle_pre_vote_response(pending.target, result, effects);
+    Status status = drive_effects(std::move(effects));
+    if (status.fail()) {
+        LOG_WARN("handle_pre_vote_response effects failed: {}", status.to_string());
     }
     apply_committed_unlocked();
     complete_pending_clients_unlocked();
@@ -782,6 +857,13 @@ std::vector<int64_t> MaelstromRaftNode::send_raft_messages_unlocked(std::vector<
                 body["term"] = message.vote_param.term;
                 body["last_log_index"] = message.vote_param.last_log_index;
                 body["last_log_term"] = message.vote_param.last_log_term;
+                break;
+            }
+            case storage::RaftMessageType::PRE_VOTE: {
+                body["type"] = "raft_pre_vote";
+                body["term"] = message.pre_vote_param.term;
+                body["last_log_index"] = message.pre_vote_param.last_log_index;
+                body["last_log_term"] = message.pre_vote_param.last_log_term;
                 break;
             }
             case storage::RaftMessageType::APPEND_ENTRIES: {

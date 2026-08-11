@@ -374,6 +374,23 @@ class RaftCluster {
                 break;
             }
 
+            case RaftMessageType::PRE_VOTE: {
+                PreVoteResult result;
+                RaftEffects target_effects;
+                cores_[target_idx]->handle_pre_vote(msg.pre_vote_param, result,
+                                                    target_effects);
+                Status target_status =
+                    drive_raft_effects(target_idx, std::move(target_effects));
+                ASSERT_TRUE(target_status.ok()) << target_status.to_string();
+                RaftEffects response_effects;
+                cores_[source_idx]->handle_pre_vote_response(
+                    msg.target.replica_id, result, response_effects);
+                Status status =
+                    drive_raft_effects(source_idx, std::move(response_effects));
+                ASSERT_TRUE(status.ok()) << status.to_string();
+                break;
+            }
+
             case RaftMessageType::APPEND_ENTRIES: {
                 AppendEntriesResult result;
                 RaftEffects effects;

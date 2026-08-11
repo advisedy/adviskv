@@ -522,4 +522,95 @@ TEST_F(RaftCoreTest, PrepareInstallSnapshotRejectsCommittedSnapshot) {
     ASSERT_EQ(core.last_log_index(), 3);
 }
 
+TEST_F(RaftCoreTest, PreVoteDoesNotBumpReceiverTerm) {
+    ReplicaID peer_id{101, 7, 1};
+    std::vector<PeerMember> members{
+        PeerMember{"peer", peer_id, {}},
+        PeerMember{"self", replica_id_, {}},
+    };
+    RaftCore core{replica_id_, members};
+    core.update_raft_meta(RaftMeta{5, std::nullopt});
+
+    PreVoteResult result;
+    RaftEffects effects;
+    core.handle_pre_vote(PreVoteParam{peer_id, replica_id_, 6, 0, 0}, result, effects);
+
+    EXPECT_TRUE(result.vote_granted);
+    EXPECT_EQ(result.term, 5);
+    EXPECT_EQ(core.current_term(), 5);
+    EXPECT_EQ(core.role(), ReplicaRole::FOLLOWER);
+    EXPECT_FALSE(effects.hard_state.has_value());
+}
+
+TEST_F(RaftCoreTest, PreVoteQuorumStartsRealElection) {
+    ReplicaID peer0{101, 7, 0};
+    ReplicaID peer1{101, 7, 1};
+    std::vector<PeerMember> members{
+        PeerMember{"self", replica_id_, {}},
+        PeerMember{"p0", peer0, {}},
+        PeerMember{"p1", peer1, {}},
+    };
+    RaftCore core{replica_id_, members};
+    core.update_raft_meta(RaftMeta{2, std::nullopt});
+
+    RaftEffects start_effects;
+    core.become_pre_candidate_for_test(start_effects);
+    ASSERT_TRUE(core.is_pre_candidate_for_test());
+    ASSERT_EQ(core.role(), ReplicaRole::PRE_CANDIDATE);
+    ASSERT_EQ(core.pre_vote_term_for_test(), 3);
+    ASSERT_EQ(core.current_term(), 2);
+
+    int pre_vote_msgs = 0;
+    for (const RaftMessage& msg : start_effects.messages) {
+        if (msg.type == RaftMessageType::PRE_VOTE) {
+            ++pre_vote_msgs;
+            EXPECT_EQ(msg.pre_vote_param.term, 3);
+        }
+    }
+    EXPECT_EQ(pre_vote_msgs, 2);
+
+    RaftEffects resp_effects;
+    core.handle_pre_vote_response(peer0, PreVoteResult{2, true}, resp_effects);
+
+    EXPECT_FALSE(core.is_pre_candidate_for_test());
+    EXPECT_EQ(core.role(), ReplicaRole::CANDIDATE);
+    EXPECT_EQ(core.current_term(), 3);
+    EXPECT_TRUE(resp_effects.hard_state.has_value());
+
+    int request_vote_msgs = 0;
+    for (const RaftMessage& msg : resp_effects.messages) {
+        if (msg.type == RaftMessageType::REQUEST_VOTE) {
+            ++request_vote_msgs;
+            EXPECT_EQ(msg.vote_param.term, 3);
+        }
+    }
+    EXPECT_EQ(request_vote_msgs, 2);
+}
+
+TEST_F(RaftCoreTest, FailedPreVoteDoesNotStartCandidate) {
+    ReplicaID peer0{101, 7, 0};
+    ReplicaID peer1{101, 7, 1};
+    std::vector<PeerMember> members{
+        PeerMember{"self", replica_id_, {}},
+        PeerMember{"p0", peer0, {}},
+        PeerMember{"p1", peer1, {}},
+    };
+    RaftCore core{replica_id_, members};
+    core.update_raft_meta(RaftMeta{2, std::nullopt});
+
+    RaftEffects start_effects;
+    core.become_pre_candidate_for_test(start_effects);
+    ASSERT_TRUE(core.is_pre_candidate_for_test());
+    ASSERT_EQ(core.role(), ReplicaRole::PRE_CANDIDATE);
+
+    RaftEffects resp_effects;
+    core.handle_pre_vote_response(peer0, PreVoteResult{2, false}, resp_effects);
+    core.handle_pre_vote_response(peer1, PreVoteResult{2, false}, resp_effects);
+
+    EXPECT_TRUE(core.is_pre_candidate_for_test());
+    EXPECT_EQ(core.role(), ReplicaRole::PRE_CANDIDATE);
+    EXPECT_EQ(core.current_term(), 2);
+    EXPECT_FALSE(resp_effects.hard_state.has_value());
+}
+
 }  // namespace adviskv::storage
