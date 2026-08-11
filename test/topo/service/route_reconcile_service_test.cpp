@@ -141,6 +141,38 @@ TEST(RouteServiceReconcileTest, PutShardRouteWhenLeaderCountEqualsOne) {
     EXPECT_EQ(route->replicas[2].role, ReplicaRole::FOLLOWER);
 }
 
+// candidate 处于选举中，不能作为可写路由或 follower 路由暴露给客户端。
+TEST(RouteServiceReconcileTest, CandidateIsExcludedFromRoute) {
+    TopoStore store{MemoryMetaStoreParam{}};
+    ASSERT_TRUE(store.init().ok());
+    put_test_table(store);
+    put_nodes(store, 3);
+    ASSERT_TRUE(
+        store_test::put_replica(
+            store, make_replica(0, "node-0", 18080, ReplicaRole::LEADER, 20))
+            .ok());
+    ASSERT_TRUE(
+        store_test::put_replica(
+            store, make_replica(1, "node-1", 18081, ReplicaRole::CANDIDATE, 21))
+            .ok());
+    ASSERT_TRUE(
+        store_test::put_replica(
+            store, make_replica(2, "node-2", 18082, ReplicaRole::FOLLOWER, 20))
+            .ok());
+
+    TestRouteService ctrl(&store);
+    ASSERT_TRUE(ctrl.check_shard_route_test(make_table(), K_TEST_SHARD_INDEX).ok());
+
+    ShardRouteOr route;
+    ASSERT_TRUE(store_test::get_shard_route(store, test_shard_id(), route).ok());
+    ASSERT_FALSE(route.is_empty());
+    ASSERT_EQ(route->replicas.size(), 2U);
+    EXPECT_EQ(route->replicas[0].replica_id.replica_seq, 0);
+    EXPECT_EQ(route->replicas[0].role, ReplicaRole::LEADER);
+    EXPECT_EQ(route->replicas[1].replica_id.replica_seq, 2);
+    EXPECT_EQ(route->replicas[1].role, ReplicaRole::FOLLOWER);
+}
+
 // 检测多个 leader 拥有相同最大 term 时，路由被删除（无法确定谁是真正的 leader）。
 TEST(RouteServiceReconcileTest, ReturnRouteNotReadyWhenLeadersShareMaxTerm) {
     TopoStore store{MemoryMetaStoreParam{}};

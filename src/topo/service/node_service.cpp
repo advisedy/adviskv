@@ -173,7 +173,10 @@ Status NodeService::apply_reported_replicas(TopoStoreTxn& txn, const HeartBeatPa
             continue;
         }
         if (replica->spec.assign_node_id != param.node_id) {
-            LOG_WARN("[NodeService] replica:assign_node_id != node_id");
+            LOG_WARN(
+                    "[NodeService] heartbeat reported replica on unexpected node, replica_id:{}, "
+                    "expected_node_id:{}, reported_node_id:{}",
+                    key.to_string(), replica->spec.assign_node_id, param.node_id);
             continue;
         }
 
@@ -186,7 +189,7 @@ Status NodeService::apply_reported_replicas(TopoStoreTxn& txn, const HeartBeatPa
         RETURN_IF_INVALID_STATUS(txn.put_replica(*replica))
 
         if (replica->state.observed_raft_role == ReplicaRole::LEADER) {
-            LOG_DEBUG("[NodeService] replica_id:{} is leader", replica->replica_id.to_string());
+            LOG_DEBUG("[NodeService] replica_id:{} is leader, term:{}", replica->replica_id.to_string(), info.term);
             RETURN_IF_INVALID_STATUS(project_leader_membership(txn, info))
         }
     }

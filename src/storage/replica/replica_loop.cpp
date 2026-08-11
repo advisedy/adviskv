@@ -241,7 +241,17 @@ Status ReplicaLoop::handle_event(const PublishSnapshotEvent& event) {
 
 Status ReplicaLoop::handle_call(RequestVoteCall& call) {
     return run_step([this, &call](RaftEffects& effects) {
+        LOG_DEBUG(
+                "[ReplicaLoop] handle RequestVote, replica_id:{}, from:{}, term:{}, last_log_index:{}, "
+                "last_log_term:{}",
+                context_.replica_id.to_string(), call.param.from_replica_id.to_string(), call.param.term,
+                call.param.last_log_index, call.param.last_log_term);
         context_.raft_core.handle_request_vote(call.param, call.result, effects);
+        LOG_DEBUG(
+                "[ReplicaLoop] handle RequestVote finished, replica_id:{}, from:{}, request_term:{}, "
+                "response_term:{}, vote_granted:{}",
+                context_.replica_id.to_string(), call.param.from_replica_id.to_string(), call.param.term,
+                call.result.term, call.result.vote_granted);
         return Status::OK();
     });
 }

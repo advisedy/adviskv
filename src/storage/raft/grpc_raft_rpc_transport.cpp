@@ -5,6 +5,7 @@
 #include <fmt/format.h>
 #include <grpcpp/create_channel.h>
 
+#include "common/log.h"
 #include "common/proto/proto.h"
 #include "storage/proto/storage_model_proto.h"
 
@@ -31,11 +32,22 @@ Status GrpcRaftRpcTransport::request_vote(const PeerMember& target, const Reques
 
     grpc::Status grpc_status = stub_for(target)->RequestVote(&context, request, &response);
     if (!grpc_status.ok()) {
+        LOG_WARN(
+                "[GrpcRaftRpcTransport] request_vote failed, target:{}, from:{}, to:{}, term:{}, "
+                "last_log_index:{}, last_log_term:{}, grpc_code:{}, grpc_message:{}, grpc_details:{}",
+                target.to_string(), param.from_replica_id.to_string(), param.to_replica_id.to_string(), param.term,
+                param.last_log_index, param.last_log_term, static_cast<int>(grpc_status.error_code()),
+                grpc_status.error_message(), grpc_status.error_details());
         return Status::RPC_ERROR(fmt::format("grpc failed: {}", grpc_status.error_message()));
     }
 
     result.term = response.term();
     result.vote_granted = response.vote_granted();
+    LOG_DEBUG(
+            "[GrpcRaftRpcTransport] request_vote response, target:{}, from:{}, to:{}, request_term:{}, "
+            "response_term:{}, vote_granted:{}",
+            target.to_string(), param.from_replica_id.to_string(), param.to_replica_id.to_string(), param.term,
+            result.term, result.vote_granted);
     return Status::OK();
 }
 
@@ -63,12 +75,24 @@ Status GrpcRaftRpcTransport::append_entries(const PeerMember& target, const Appe
 
     grpc::Status grpc_status = stub_for(target)->AppendEntries(&context, request, &response);
     if (!grpc_status.ok()) {
+        LOG_WARN(
+                "[GrpcRaftRpcTransport] append_entries failed, target:{}, from:{}, to:{}, term:{}, "
+                "prev_log_index:{}, prev_log_term:{}, leader_commit:{}, entries_size:{}, grpc_code:{}, "
+                "grpc_message:{}, grpc_details:{}",
+                target.to_string(), param.from_replica_id.to_string(), param.to_replica_id.to_string(), param.term,
+                param.prev_log_index, param.prev_log_term, param.leader_commit, param.entries.size(),
+                static_cast<int>(grpc_status.error_code()), grpc_status.error_message(), grpc_status.error_details());
         return Status::RPC_ERROR(grpc_status.error_message());
     }
 
     result.term = response.term();
     result.success = response.success();
     result.last_log_index = response.last_log_index();
+    LOG_DEBUG(
+            "[GrpcRaftRpcTransport] append_entries response, target:{}, from:{}, to:{}, request_term:{}, "
+            "response_term:{}, success:{}, last_log_index:{}, entries_size:{}",
+            target.to_string(), param.from_replica_id.to_string(), param.to_replica_id.to_string(), param.term,
+            result.term, result.success, result.last_log_index, param.entries.size());
     return Status::OK();
 }
 
@@ -91,6 +115,13 @@ Status GrpcRaftRpcTransport::install_snapshot_chunk(const PeerMember& target, co
 
     grpc::Status grpc_status = stub_for(target)->InstallSnapshot(&context, request, &response);
     if (!grpc_status.ok()) {
+        LOG_WARN(
+                "[GrpcRaftRpcTransport] install_snapshot_chunk failed, target:{}, from:{}, to:{}, term:{}, "
+                "snapshot_index:{}, snapshot_term:{}, offset:{}, data_size:{}, done:{}, grpc_code:{}, "
+                "grpc_message:{}, grpc_details:{}",
+                target.to_string(), param.from_replica_id.to_string(), param.to_replica_id.to_string(), param.term,
+                param.snapshot_index, param.snapshot_term, param.offset, param.data.size(), param.done,
+                static_cast<int>(grpc_status.error_code()), grpc_status.error_message(), grpc_status.error_details());
         return Status::RPC_ERROR(grpc_status.error_message());
     }
 
@@ -112,6 +143,7 @@ rpc::StorageService::StubInterface* GrpcRaftRpcTransport::stub_for(const PeerMem
         return it->second.get();
     }
 
+    LOG_DEBUG("[GrpcRaftRpcTransport] create raft rpc stub, target:{}", target);
     auto channel = grpc::CreateChannel(target, grpc::InsecureChannelCredentials());
     auto stub = rpc::StorageService::NewStub(channel);
     auto* raw = stub.get();

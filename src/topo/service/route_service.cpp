@@ -36,7 +36,8 @@ Status RouteService::get_route(const GetRouteParam& param, ShardRoute* out) cons
     ShardID shard_id;
     if (param.use_id) {
         TableOr table;
-        Status status = store_->read_with([&](const TopoStoreTxn& txn) { return txn.get_table(param.table_id, table); });
+        Status status =
+                store_->read_with([&](const TopoStoreTxn& txn) { return txn.get_table(param.table_id, table); });
         RETURN_IF_INVALID_STATUS(status)
         if (table.is_empty()) {
             return Status::TABLE_NOT_FOUND(fmt::format("table_id {} not found", param.table_id));
@@ -162,8 +163,9 @@ Status RouteService::check_shard_route(const Table& table, ShardIndex shard_inde
             route_status = Status::ROUTE_NOT_FOUND(msg);
             ADVISKV_METRICS_COUNTER("topo_route_delete_shard_route_request");
             RETURN_IF_INVALID_STATUS(txn.delete_shard_route(shard_id))
-            LOG_WARN("[RouteService] check_shard_route, clear_route_and_return, route not ready, table_id={}, shard_index={}, msg={}", shard_id.table_id, shard_id.shard_index,
-                     msg);
+            LOG_WARN(
+                    "[RouteService] check_shard_route, clear_route_and_return, route not ready, table_id={}, shard_index={}, msg={}",
+                    shard_id.table_id, shard_id.shard_index, msg);
             return Status::OK();
         };
 
@@ -229,8 +231,10 @@ Status RouteService::check_shard_route(const Table& table, ShardIndex shard_inde
             entry.term = replica.state.term;
             if (entry.role == ReplicaRole::LEADER) {
                 leader_entries.push_back(std::move(entry));
-            } else {
+            } else if (entry.role == ReplicaRole::FOLLOWER) {
                 follower_entries.push_back(std::move(entry));
+            } else {
+                // 是 CANDIDATE, continue;
             }
         }
 

@@ -343,15 +343,22 @@ grpc::Status StorageServiceImpl::RequestVote(grpc::ServerContext* context, const
         return grpc::Status::OK;
     }
     ReplicaID replica_id{request->to().table_id(), request->to().shard_index(), request->to().replica_seq()};
+    ReplicaID from_replica_id{request->from().table_id(), request->from().shard_index(), request->from().replica_seq()};
+
+    LOG_DEBUG(
+            "[StorageService] RequestVote request, from:{}, to:{}, term:{}, last_log_index:{}, last_log_term:{}",
+            from_replica_id.to_string(), replica_id.to_string(), request->term(), request->last_log_index(),
+            request->last_log_term());
 
     ReplicaPtr&& replica = replica_manager_->get_replica_by_id(replica_id);
     if (!replica) {
+        LOG_WARN("[StorageService] RequestVote target replica not found, from:{}, to:{}, term:{}",
+                 from_replica_id.to_string(), replica_id.to_string(), request->term());
         fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND, "target replica not found"});
         return grpc::Status::OK;
     }
     RequestVoteParam param;
-    param.from_replica_id =
-            ReplicaID{request->from().table_id(), request->from().shard_index(), request->from().replica_seq()};
+    param.from_replica_id = from_replica_id;
     param.to_replica_id = replica_id;
     param.term = request->term();
     param.last_log_index = request->last_log_index();
@@ -365,6 +372,12 @@ grpc::Status StorageServiceImpl::RequestVote(grpc::ServerContext* context, const
         response->set_term(result.term);
         response->set_vote_granted(result.vote_granted);
     }
+    LOG_DEBUG(
+            "[StorageService] RequestVote response, from:{}, to:{}, request_term:{}, response_term:{}, "
+            "vote_granted:{}, status:{}",
+            from_replica_id.to_string(), replica_id.to_string(), param.term, result.term, result.vote_granted,
+            status.to_string());
+
     return grpc::Status::OK;
 }
 
