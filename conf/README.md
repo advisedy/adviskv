@@ -1,7 +1,7 @@
 # conf
 
 - `catalog.yaml` / `topo.yaml` / `storage-*.yaml`：拉起 demo 集群用的
-- `client.yaml`：`adviskvctl` 用的，去连接 demo 集群
+- `adviskvctl.yaml`：`adviskvctl` 用的，去连接 demo 集群
 - `test.yaml`：单测用的
 
 里面的 `data_dir`、`log_dir` 都是相对项目根目录的路径。

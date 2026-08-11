@@ -38,9 +38,9 @@ struct AdvisKvCtlConfig {
 
 void print_usage() {
     fmt::print(
-            "usage: adviskvctl [--conf=<client.yaml>]\n"
+            "usage: adviskvctl [--conf=<adviskvctl.yaml>]\n"
             "\n"
-            "Defaults to conf/client.yaml and enters interactive shell.\n");
+            "Defaults to conf/adviskvctl.yaml and enters interactive shell.\n");
 }
 
 void print_help() {
@@ -529,7 +529,7 @@ private:
 bool parse_global_args(int argc, char* argv[], std::string* conf_file, std::vector<std::string>* command_tokens) {
     if (conf_file == nullptr || command_tokens == nullptr)
         return false;
-    *conf_file = "conf/client.yaml";
+    *conf_file = "conf/adviskvctl.yaml";
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--help" || arg == "-h") {

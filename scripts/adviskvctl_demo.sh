@@ -10,7 +10,7 @@ case "$BUILD_DIR" in
   *) BUILD_DIR="$ROOT_DIR/$BUILD_DIR" ;;
 esac
 ADVISKVCTL="$BUILD_DIR/bin/adviskvctl"
-CLIENT_CONF="${CLIENT_CONF:-conf/client.yaml}"
+CLIENT_CONF="${CLIENT_CONF:-conf/adviskvctl.yaml}"
 
 cleanup() {
   echo

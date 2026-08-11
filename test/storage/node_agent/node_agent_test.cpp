@@ -186,8 +186,8 @@ NodeAgentConf make_valid_conf_for_validation() {
     conf.port = 50050;
     conf.resource_pool = "default";
     conf.dc = "dc1";
-    conf.manager_host = "127.0.0.1";
-    conf.manager_port = 50049;
+    conf.topo_host = "127.0.0.1";
+    conf.topo_port = 50049;
     conf.heartbeat_interval_ms = 20;
     conf.register_interval_ms = 30 * 1000;
     conf.first_sync_retry_ms = 10;
@@ -206,7 +206,7 @@ TEST(NodeAgentConfTest, RejectsInvalidConfig) {
     EXPECT_TRUE(conf.validate().fail());
 
     conf = make_valid_conf_for_validation();
-    conf.manager_port = 0;
+    conf.topo_port = 0;
     EXPECT_TRUE(conf.validate().fail());
 
     conf = make_valid_conf_for_validation();
@@ -238,8 +238,8 @@ protected:
         conf.port = 50050;
         conf.resource_pool = "default";
         conf.dc = "dc1";
-        conf.manager_host = "127.0.0.1";
-        conf.manager_port = fake_topo_.port();
+        conf.topo_host = "127.0.0.1";
+        conf.topo_port = fake_topo_.port();
         conf.heartbeat_interval_ms = 20;
         conf.register_interval_ms = 30 * 1000;
         conf.first_sync_retry_ms = 10;

@@ -121,8 +121,8 @@ def write_storage_config(index: int) -> None:
         resource_pool: "{DEFAULT_RESOURCE_POOL}"
         dc: "{DEFAULT_ZONE}"
         data_dir: "{DATA_DIR / name}"
-        manager_host: "{LOCALHOST}"
-        manager_port: {TOPO_PORT}
+        topo_host: "{LOCALHOST}"
+        topo_port: {TOPO_PORT}
         heartbeat_interval_ms: 3000
         node_agent_rpc_timeout_ms: 3000
         enable_test_api: true

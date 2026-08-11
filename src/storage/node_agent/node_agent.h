@@ -43,8 +43,8 @@ struct NodeAgentConf {
     std::string resource_pool{"default"};
     std::string dc;
 
-    std::string manager_host;
-    int32_t manager_port{-1};
+    std::string topo_host;
+    int32_t topo_port{-1};
 
     int32_t heartbeat_interval_ms{3000};
     int32_t register_interval_ms{30 * 1000};
@@ -58,8 +58,8 @@ struct NodeAgentConf {
         RETURN_IF_INVALID_CONDITION(port > 0, "port should > 0")
         RETURN_IF_INVALID_CONDITION(!resource_pool.empty(), "resource_pool should not empty")
         RETURN_IF_INVALID_CONDITION(!dc.empty(), "dc should not empty")
-        RETURN_IF_INVALID_CONDITION(!manager_host.empty(), "manager_host should not empty")
-        RETURN_IF_INVALID_CONDITION(manager_port > 0, "manager_port should > 0")
+        RETURN_IF_INVALID_CONDITION(!topo_host.empty(), "topo_host should not empty")
+        RETURN_IF_INVALID_CONDITION(topo_port > 0, "topo_port should > 0")
         RETURN_IF_INVALID_CONDITION(heartbeat_interval_ms > 0, "heartbeat_interval_ms should > 0")
         RETURN_IF_INVALID_CONDITION(register_interval_ms > 0, "register_interval_ms should > 0")
         RETURN_IF_INVALID_CONDITION(first_sync_retry_ms > 0, "first_sync_retry_ms should > 0")

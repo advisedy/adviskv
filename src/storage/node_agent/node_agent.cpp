@@ -78,7 +78,7 @@ Status NodeAgent::init(NodeAgentConf conf) {
 
     conf_ = std::move(conf);
 
-    const std::string target = conf_.manager_host + ":" + std::to_string(conf_.manager_port);
+    const std::string target = conf_.topo_host + ":" + std::to_string(conf_.topo_port);
     channel_ = grpc::CreateChannel(target, grpc::InsecureChannelCredentials());
     stub_ = topo_rpc::TopoService::NewStub(channel_);
     register_task_ = std::make_unique<RegisterTask>(this, Milliseconds(conf_.first_sync_retry_ms),
