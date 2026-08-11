@@ -8,6 +8,7 @@ enum class ReplicaRole : int8_t {
     FOLLOWER = 0,
     LEADER = 1,
     CANDIDATE = 2,
+    PRE_CANDIDATE = 3,
 };
 
 inline bool decode_replica_role(int32_t value, ReplicaRole& out) {
@@ -20,6 +21,9 @@ inline bool decode_replica_role(int32_t value, ReplicaRole& out) {
             return true;
         case 2:
             out = ReplicaRole::CANDIDATE;
+            return true;
+        case 3:
+            out = ReplicaRole::PRE_CANDIDATE;
             return true;
         default:
             return false;

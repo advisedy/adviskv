@@ -31,10 +31,12 @@ public:
 
     // 处理别的 replica 发过来的 Raft RPC 请求
     void handle_request_vote(const RequestVoteParam& param, RequestVoteResult& result, RaftEffects& effects);
+    void handle_pre_vote(const PreVoteParam& param, PreVoteResult& result, RaftEffects& effects);
     void handle_append_entries(const AppendEntriesParam& param, AppendEntriesResult& result, RaftEffects& effects);
 
     // 处理自己发出去的 Raft RPC 的 response
     void handle_vote_response(const ReplicaID& from, const RequestVoteResult& result, RaftEffects& effects);
+    void handle_pre_vote_response(const ReplicaID& from, const PreVoteResult& result, RaftEffects& effects);
     Status handle_append_response(const ReplicaID& from, const AppendEntriesParam& sent_param,
                                   const AppendEntriesResult& result, RaftEffects& effects);
     void handle_append_send_failed(const ReplicaID& from, const AppendEntriesParam& sent_param, const Status& status);
@@ -99,6 +101,10 @@ public:
     }
 
     void become_candidate_for_test(RaftEffects& effects) { become_candidate(effects); }
+    void become_pre_candidate_for_test(RaftEffects& effects) { become_pre_candidate(effects); }
+    bool is_pre_candidate_for_test() const { return election_.is_pre_candidate(); }
+    Term pre_vote_term_for_test() const { return election_.pre_vote_term(); }
+    int32_t granted_vote_count_for_test() const { return election_.granted_vote_count(); }
 
     void reset_heartbeat_tick_for_test(int32 val) { heartbeat_tick_trigger_.reset(val); }
 
@@ -129,7 +135,9 @@ private:
     void become_follower(Term later_term, RaftEffects& effects);
     void become_leader(RaftEffects& effects);
     void become_candidate(RaftEffects& effects);
+    void become_pre_candidate(RaftEffects& effects);
     void send_request_vote_to(const PeerMember& member, RaftEffects& effects);
+    void send_pre_vote_to(const PeerMember& member, RaftEffects& effects);
     void step_down_if_become_non_member();
 
     // 日志复制相关

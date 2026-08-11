@@ -16,6 +16,9 @@ inline bool decode_pb_raft_role(pb::RaftRole in, ReplicaRole& out) {
         case pb::RaftRole::RAFT_ROLE_CANDIDATE:
             out = ReplicaRole::CANDIDATE;
             return true;
+        case pb::RaftRole::RAFT_ROLE_PRE_CANDIDATE:
+            out = ReplicaRole::PRE_CANDIDATE;
+            return true;
         default:
             return false;
     }
@@ -31,6 +34,9 @@ inline bool encode_pb_raft_role(ReplicaRole in, pb::RaftRole& out) {
             return true;
         case ReplicaRole::CANDIDATE:
             out = pb::RaftRole::RAFT_ROLE_CANDIDATE;
+            return true;
+        case ReplicaRole::PRE_CANDIDATE:
+            out = pb::RaftRole::RAFT_ROLE_PRE_CANDIDATE;
             return true;
         default:
             return false;

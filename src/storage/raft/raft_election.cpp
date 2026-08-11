@@ -14,11 +14,15 @@ const std::optional<ReplicaID>& RaftElection::voted_for() const { return voted_f
 
 bool RaftElection::is_follower() const { return role_ == ReplicaRole::FOLLOWER; }
 
+bool RaftElection::is_pre_candidate() const { return role_ == ReplicaRole::PRE_CANDIDATE; }
+
 bool RaftElection::is_candidate() const { return role_ == ReplicaRole::CANDIDATE; }
 
 bool RaftElection::is_leader() const { return role_ == ReplicaRole::LEADER; }
 
-int32_t RaftElection::granted_vote_count() const { return static_cast<int32_t>(granted_voters_.size()); }
+int32_t RaftElection::granted_vote_count() const { return to<int32_t>(granted_voters_.size()); }
+
+int32_t RaftElection::pre_vote_granted_count() const { return to<int32_t>(pre_vote_granted_voters_.size()); }
 
 RaftMeta RaftElection::hard_state() const { return RaftMeta{current_term_, voted_for_}; }
 
@@ -28,6 +32,7 @@ void RaftElection::update_meta(const RaftMeta& meta) {
 }
 
 void RaftElection::become_candidate() {
+    pre_vote_granted_voters_.clear();
     role_ = ReplicaRole::CANDIDATE;
     current_term_++;
     voted_for_ = self_id_;
@@ -41,6 +46,7 @@ bool RaftElection::become_follower(Term later_term) {
 
     role_ = ReplicaRole::FOLLOWER;
     granted_voters_.clear();
+    pre_vote_granted_voters_.clear();
 
     if (later_term == current_term_) {
         return false;
@@ -56,6 +62,13 @@ void RaftElection::become_leader() {
     granted_voters_.clear();
 }
 
+void RaftElection::become_pre_candidate() {
+    role_ = ReplicaRole::PRE_CANDIDATE;
+    granted_voters_.clear();
+    pre_vote_granted_voters_.clear();
+    pre_vote_granted_voters_.insert(self_id_);
+}
+
 bool RaftElection::can_grant_vote_to(const ReplicaID& candidate) const {
     return !voted_for_.has_value() || voted_for_.value() == candidate;
 }
@@ -69,5 +82,11 @@ bool RaftElection::grant_vote_to(const ReplicaID& candidate) {
 }
 
 bool RaftElection::record_vote_granted_from(const ReplicaID& voter) { return granted_voters_.insert(voter).second; }
+
+bool RaftElection::record_pre_vote_granted_from(const ReplicaID& voter) {
+    return pre_vote_granted_voters_.insert(voter).second;
+}
+
+Term RaftElection::pre_vote_term() const { return current_term_ + 1; }
 
 }  // namespace adviskv::storage

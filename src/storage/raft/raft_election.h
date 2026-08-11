@@ -18,10 +18,12 @@ public:
     const std::optional<ReplicaID>& voted_for() const;
 
     bool is_follower() const;
+    bool is_pre_candidate() const;
     bool is_candidate() const;
     bool is_leader() const;
 
     int32_t granted_vote_count() const;
+    int32_t pre_vote_granted_count() const;
     RaftMeta hard_state() const;
 
     void update_meta(const RaftMeta& meta);
@@ -32,6 +34,10 @@ public:
     bool can_grant_vote_to(const ReplicaID& candidate) const;
     bool grant_vote_to(const ReplicaID& candidate);
     bool record_vote_granted_from(const ReplicaID& voter);
+    bool record_pre_vote_granted_from(const ReplicaID& voter);
+
+    Term pre_vote_term() const;
+    void become_pre_candidate();
 
 private:
     ReplicaID self_id_;
@@ -41,6 +47,7 @@ private:
     std::optional<ReplicaID> voted_for_;
 
     std::unordered_set<ReplicaID, ReplicaIDHash> granted_voters_;
+    std::unordered_set<ReplicaID, ReplicaIDHash> pre_vote_granted_voters_;
 };
 
 }  // namespace adviskv::storage

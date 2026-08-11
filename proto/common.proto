@@ -11,6 +11,7 @@ enum RaftRole {
   RAFT_ROLE_FOLLOWER = 0;
   RAFT_ROLE_LEADER = 1;
   RAFT_ROLE_CANDIDATE = 2;
+  RAFT_ROLE_PRE_CANDIDATE = 3;
 }
 
 enum RaftMemberType {

@@ -79,6 +79,8 @@ Status RouteService::get_route(const GetRouteParam& param, ShardRoute* out) cons
                 route_res.append("role: leader.");
             } else if (one.role == ReplicaRole::CANDIDATE) {
                 route_res.append("role: candidate.");
+            } else if (one.role == ReplicaRole::PRE_CANDIDATE) {
+                route_res.append("role: pre-candidate.");
             } else {
                 route_res.append("role: follower.");
             }
@@ -231,10 +233,12 @@ Status RouteService::check_shard_route(const Table& table, ShardIndex shard_inde
             entry.term = replica.state.term;
             if (entry.role == ReplicaRole::LEADER) {
                 leader_entries.push_back(std::move(entry));
-            } else if (entry.role == ReplicaRole::FOLLOWER) {
+            } else if (entry.role == ReplicaRole::FOLLOWER || entry.role == ReplicaRole::PRE_CANDIDATE) {
+                // 对于 PRE_CANDIDATE，route 给客户端时当 follower
+                entry.role = ReplicaRole::FOLLOWER;
                 follower_entries.push_back(std::move(entry));
             } else {
-                // 是 CANDIDATE, continue;
+                // CANDIDATE 不进 route
             }
         }
 
