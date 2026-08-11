@@ -32,6 +32,16 @@ Status RaftSender::send_request_vote(const PeerMember& member, const RequestVote
     return transport_->request_vote(member, param, timeout_ms_, result);
 }
 
+Status RaftSender::send_pre_vote(const PeerMember& member, const PreVoteParam& param, PreVoteResult& result) const {
+    LOG_DEBUG(
+            "[Raft Sender] replica:{} send pre-vote to replica:{}, msg:[term:{}, "
+            "last_log_index:{}, last_log_term:{} ]",
+            param.from_replica_id.to_string(), param.to_replica_id.to_string(), param.term, param.last_log_index,
+            param.last_log_term);
+
+    return transport_->pre_vote(member, param, timeout_ms_, result);
+}
+
 Status RaftSender::send_append_entries(const PeerMember& member, const AppendEntriesParam& param,
                                        AppendEntriesResult& result) const {
     ADVISKV_METRICS_TIMER("storage_raft_append_entries_rpc");

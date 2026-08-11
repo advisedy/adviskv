@@ -18,6 +18,8 @@ public:
 
     Status send_request_vote(const PeerMember& member, const RequestVoteParam& param, RequestVoteResult& result) const;
 
+    Status send_pre_vote(const PeerMember& member, const PreVoteParam& param, PreVoteResult& result) const;
+
     Status send_append_entries(const PeerMember& member, const AppendEntriesParam& param,
                                AppendEntriesResult& result) const;
 

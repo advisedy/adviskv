@@ -73,7 +73,7 @@ void ReplicaMessageDispatcher::send_task(RaftMessage msg) {
             ADVISKV_METRICS_TIMER("storage_raft_flush_messages_pre_vote");
 
             PreVoteResult result;
-            Status status = sender_.send_pre_vote(msg.target, msg.vote_param, result);
+            Status status = sender_.send_pre_vote(msg.target, msg.pre_vote_param, result);
             if (status.ok()) {
                 callback(PreVoteResponseEvent{msg.target.replica_id, result});
             } else {

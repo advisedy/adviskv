@@ -91,6 +91,7 @@ struct RequestVoteResult {
     bool vote_granted{false};
 };
 
+// 注意这里虽然内容是一样的，但是 term 代表的含义是下一任打算要候选的 term
 using PreVoteParam = RequestVoteParam;
 using PreVoteResult = RequestVoteResult;
 
@@ -144,6 +145,7 @@ struct RaftMessage {
     RaftMessageType type;
     PeerMember target;
     RequestVoteParam vote_param{};
+    PreVoteParam pre_vote_param{};
     AppendEntriesParam append_param{};
     InstallSnapshotParam snapshot_param{};
 
@@ -153,6 +155,10 @@ struct RaftMessage {
                 return fmt::format("[type:request_vote, target:{}, term:{}, last_log:{}:{}]",
                                    target.replica_id.to_string(), vote_param.term, vote_param.last_log_index,
                                    vote_param.last_log_term);
+            case RaftMessageType::PRE_VOTE:
+                return fmt::format("[type:pre_vote, target:{}, term:{}, last_log:{}:{}]",
+                                   target.replica_id.to_string(), pre_vote_param.term, pre_vote_param.last_log_index,
+                                   pre_vote_param.last_log_term);
             case RaftMessageType::APPEND_ENTRIES:
                 return fmt::format(
                         "[type:append_entries, target:{}, term:{}, prev:{}:{}, "
