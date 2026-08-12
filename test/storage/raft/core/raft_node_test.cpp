@@ -613,4 +613,61 @@ TEST_F(RaftCoreTest, FailedPreVoteDoesNotStartCandidate) {
     EXPECT_FALSE(resp_effects.hard_state.has_value());
 }
 
+TEST_F(RaftCoreTest, RecentLeaderActiveRejectsUpToDatePreVoteUntilTimeout) {
+    ReplicaID leader_id{101, 7, 1};
+    ReplicaID candidate_id{101, 7, 0};
+    std::vector<PeerMember> members{
+        PeerMember{"candidate", candidate_id, {}},
+        PeerMember{"leader", leader_id, {}},
+        PeerMember{"self", replica_id_, {}},
+    };
+    RaftCore core{replica_id_, members};
+    core.update_raft_meta(RaftMeta{1, std::nullopt});
+
+    AppendEntriesResult append_result;
+    RaftEffects append_effects;
+    core.handle_append_entries(AppendEntriesParam{leader_id, replica_id_, 1, {}, 0, 0, 0}, append_result,
+                               append_effects);
+    ASSERT_TRUE(append_result.success);
+
+    PreVoteResult result;
+    RaftEffects effects;
+    core.handle_pre_vote(PreVoteParam{candidate_id, replica_id_, 2, 0, 0}, result, effects);
+    EXPECT_FALSE(result.vote_granted);
+    EXPECT_EQ(core.current_term(), 1);
+    EXPECT_EQ(core.role(), ReplicaRole::FOLLOWER);
+
+    RaftEffects timeout_effects;
+    core.reset_election_tick_for_test(0);
+    core.tick(timeout_effects);
+    ASSERT_EQ(core.role(), ReplicaRole::PRE_CANDIDATE);
+
+    result = PreVoteResult{};
+    effects = RaftEffects{};
+    core.handle_pre_vote(PreVoteParam{candidate_id, replica_id_, 2, 0, 0}, result, effects);
+    EXPECT_TRUE(result.vote_granted);
+}
+
+TEST_F(RaftCoreTest, PreVoteResponseAtCurrentTermUpdatesCandidate) {
+    ReplicaID peer_id{101, 7, 1};
+    std::vector<PeerMember> members{
+        PeerMember{"self", replica_id_, {}},
+        PeerMember{"peer", peer_id, {}},
+    };
+    RaftCore core{replica_id_, members};
+    core.update_raft_meta(RaftMeta{2, std::nullopt});
+
+    RaftEffects start_effects;
+    core.become_pre_candidate_for_test(start_effects);
+    ASSERT_EQ(core.role(), ReplicaRole::PRE_CANDIDATE);
+
+    RaftEffects response_effects;
+    core.handle_pre_vote_response(peer_id, PreVoteResult{3, false}, response_effects);
+
+    EXPECT_EQ(core.role(), ReplicaRole::FOLLOWER);
+    EXPECT_EQ(core.current_term(), 3);
+    ASSERT_TRUE(response_effects.hard_state.has_value());
+    EXPECT_EQ(response_effects.hard_state->current_term, 3);
+}
+
 }  // namespace adviskv::storage

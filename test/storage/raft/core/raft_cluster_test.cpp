@@ -720,6 +720,25 @@ TEST_F(RaftClusterTest, SingleLeaderElection_3Nodes) {
         ASSERT_TRUE(tick_until_all_committed(idx));
     }
 }
+// 正常 3 节点下，日志都一致，follower发起pre-vote后无法拿到quorum，保持PRE_CANDIDATE
+TEST_F(RaftClusterTest, HealthyLeaderNotDisplacedByEqualLogPreVote) {
+    create_and_set_0_leader(3);
+    ASSERT_EQ(cluster_.leader_idx(), 0);
+
+    tick_heartbeat(0);
+    EXPECT_EQ(cluster_.route_messages_from_to(0, RaftMessageType::APPEND_ENTRIES, {1, 2}), 2);
+
+    const Term leader_term = cluster_.core_ptr(0)->current_term();
+    RaftEffects pre_vote_effects;
+    cluster_.core_ptr(1)->become_pre_candidate_for_test(pre_vote_effects);
+    ASSERT_TRUE(cluster_.drive_raft_effects(1, std::move(pre_vote_effects)).ok());
+
+    EXPECT_EQ(cluster_.route_messages_from_to(1, RaftMessageType::PRE_VOTE, {0, 2}), 2);
+    EXPECT_EQ(cluster_.core_ptr(0)->role(), ReplicaRole::LEADER);
+    EXPECT_EQ(cluster_.core_ptr(0)->current_term(), leader_term);
+    EXPECT_EQ(cluster_.core_ptr(1)->role(), ReplicaRole::PRE_CANDIDATE);
+    EXPECT_EQ(cluster_.core_ptr(1)->current_term(), leader_term);
+}
 
 // 检测进行了写操作之后，正常情况下大家都是可以commit的
 TEST_F(RaftClusterTest, BasicLogReplication_3Nodes) {

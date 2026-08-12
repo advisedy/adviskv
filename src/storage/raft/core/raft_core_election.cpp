@@ -138,10 +138,11 @@ void RaftCore::handle_pre_vote(const PreVoteParam& param, PreVoteResult& result,
         return;
     }
 
-    if (election_.is_follower() && is_recent_leader_active()) {
+    if (is_recent_leader_active()) {
         LOG_DEBUG("[RaftCore Election] replica:{} reject PreVote because recent leader is still active, "
-                  "from:{}, request_term:{}, current_term:{}",
-                  self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term());
+                  "from:{}, request_term:{}, current_term:{}, role:{}",
+                  self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term(),
+                  to<int32>(election_.role()));
         return;
     }
 
@@ -183,6 +184,15 @@ void RaftCore::handle_pre_vote_response(const ReplicaID& from, const PreVoteResu
 
     if (result.term > election_.current_term()) {
         become_follower(result.term, effects);
+        return;
+    }
+
+    // 比自己当前 term 还旧的 pre-vote 回复直接丢掉。
+    if (result.term < election_.current_term()) {
+        LOG_DEBUG(
+                "[RaftCore Election] replica:{} ignore stale PreVote response, from:{}, "
+                "response_term:{}, current_term:{}",
+                self_id_.to_string(), from.to_string(), result.term, election_.current_term());
         return;
     }
 

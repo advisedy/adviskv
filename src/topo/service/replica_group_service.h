@@ -24,7 +24,10 @@ inline bool is_healthy(const Replica& replica) {
            replica.state.phase != ReplicaPhase::DELETED;
 }
 
-Status select_remove_member_victim(const TopoStoreTxn& txn, const ReplicaGroup& group, Optional<ReplicaID>& victim);
+// 从 replica group 的 desired_members 里按优先级挑 count 个待删的 replica。
+// filter_healthy 代表是否跳过健康副本
+Status select_remove_member_victims(const TopoStoreTxn& txn, const ReplicaGroup& group, int32_t count,
+                                    bool filter_healthy, std::vector<ReplicaID>& victims);
 
 class ReplicaGroupService {
 public:

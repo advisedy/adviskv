@@ -1,6 +1,9 @@
 #include "topo/service/replica_group_service.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <unordered_set>
+#include <vector>
 
 #include "common/define.h"
 #include "common/func.h"
@@ -14,22 +17,66 @@
 
 namespace adviskv::topo {
 
-// 挑选出来第一个bad的replica，如果都没有的话，就直接找最后一个
-Status select_remove_member_victim(const TopoStoreTxn& txn, const ReplicaGroup& group, Optional<ReplicaID>& victim) {
-    victim.reset();
+namespace {
+
+enum class RemoveVictimClass {
+    BAD = 0,
+    NON_MEMBER = 1,
+    NON_LEADER = 2,
+    LEADER = 3,  // 最后才动 leader
+};
+
+RemoveVictimClass get_remove_victim_class_from_replica(const ReplicaOr& replica_or) {
+    if (replica_or.is_empty()) {
+        return RemoveVictimClass::BAD;
+    }
+    const Replica& replica = replica_or.value();
+    if (replica.state.phase == ReplicaPhase::LOST || replica.state.phase == ReplicaPhase::ERROR) {
+        return RemoveVictimClass::BAD;
+    }
+    if (replica.state.observed_member_type == RaftMemberType::NON_MEMBER) {
+        return RemoveVictimClass::NON_MEMBER;
+    }
+    if (replica.state.observed_raft_role == ReplicaRole::LEADER) {
+        return RemoveVictimClass::LEADER;
+    }
+    return RemoveVictimClass::NON_LEADER;
+}
+
+}  // namespace
+
+Status select_remove_member_victims(const TopoStoreTxn& txn, const ReplicaGroup& group, int32_t count,
+                                    bool filter_healthy, std::vector<ReplicaID>& victims) {
+    victims.clear();
+    if (count <= 0 || group.desired_members.empty()) {
+        return Status::OK();
+    }
+
+    std::vector<std::pair<RemoveVictimClass, ReplicaID>> ranked;
+    ranked.reserve(group.desired_members.size());
     for (const ReplicaID& rid : group.desired_members) {
         ReplicaOr replica_or;
         RETURN_IF_INVALID_STATUS(txn.get_replica(rid, replica_or))
-        // 先优先默认找第一个bad的replica
-        if (replica_or.is_empty() || replica_or->state.phase == ReplicaPhase::LOST ||
-            replica_or->state.phase == ReplicaPhase::ERROR) {
-            victim = rid;
-            return Status::OK();
+        RemoveVictimClass cls = get_remove_victim_class_from_replica(replica_or);
+        if (filter_healthy && cls != RemoveVictimClass::BAD) {
+            continue;
         }
+        ranked.emplace_back(cls, rid);
     }
-    // 都没有的话，就直接找最后一个
-    if (static_cast<int32_t>(group.desired_members.size()) > group.target_replica_count) {
-        victim = group.desired_members.back();
+
+    std::sort(
+            ranked.begin(), ranked.end(),
+            [](const std::pair<RemoveVictimClass, ReplicaID>& lhs, const std::pair<RemoveVictimClass, ReplicaID>& rhs) {
+                if (lhs.first != rhs.first) {
+                    return lhs.first < rhs.first;
+                }
+                return lhs.second.replica_seq > rhs.second.replica_seq;
+            });
+
+    size_t n = std::min(to<size_t>(count), ranked.size());
+    victims.reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+        victims.push_back(ranked[i].second);
     }
     return Status::OK();
 }
@@ -166,9 +213,18 @@ Status append_reconfig_command_for_leader(const TopoStoreTxn& txn, const HeartBe
           victim = 尾部最后的那个 replica
           add_target = 尾部最后的那个 replica, because READY+NON_MEMBER
           add_target == victim，所以进行特判一下，如果两个相同的话，就把add_target的取消掉
+          由于之前判断 add_target 的逻辑只是通过 READY + NON_MEMBER筛选，所以有可能会和victim撞车
           */
+
+        // 关于这里 filter 的逻辑，只有当我们目前的desired_members 的数量超过了 target 的，才会也把 health
+        // 的纳入考虑范围，否则就不会。
+        bool include_healthy = static_cast<int32_t>(group.desired_members.size()) > group.target_replica_count;
+        std::vector<ReplicaID> victims;
+        RETURN_IF_INVALID_STATUS(select_remove_member_victims(txn, group, 1, !include_healthy, victims))
         Optional<ReplicaID> victim;
-        RETURN_IF_INVALID_STATUS(select_remove_member_victim(txn, group, victim))
+        if (!victims.empty()) {
+            victim = victims.front();
+        }
         if (victim.has_value() && add_target.has_value() && add_target.value() == victim.value()) {
             add_target.reset();
         }

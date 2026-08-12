@@ -108,8 +108,13 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
                 bad_members.push_back(rid);
             }
         }
-        RETURN_IF_INVALID_STATUS(select_remove_member_victim(txn, current_group, remove_victim))
-        if (remove_victim.has_value()) {
+        // 关于这里 filter 的逻辑，只有当我们目前的desired_members 的数量超过了 target 的，才会也把 health
+        // 的纳入考虑范围，否则就不会。
+        bool include_healthy = to<int32_t>(current_group.desired_members.size()) > current_group.target_replica_count;
+        std::vector<ReplicaID> victims;
+        RETURN_IF_INVALID_STATUS(select_remove_member_victims(txn, current_group, 1, !include_healthy, victims))
+        if (!victims.empty()) {
+            remove_victim = victims.front();
             ReplicaOr victim_or;
             RETURN_IF_INVALID_STATUS(txn.get_replica(remove_victim.value(), victim_or))
             remove_victim_is_non_member =
@@ -327,6 +332,7 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
     });
 }
 
+// 此时说明target_replica_count = 0 或者 mode是BOOSTRAP那个
 Status ReplicaGroupMembershipReconciler::remove_members(const ReplicaGroup& group, int32_t count_to_remove) {
     RETURN_IF_INVALID_CONDITION(count_to_remove > 0, "count_to_remove must be > 0")
 
@@ -341,12 +347,23 @@ Status ReplicaGroupMembershipReconciler::remove_members(const ReplicaGroup& grou
         if (actual_remove_count <= 0) return Status::OK();
 
         std::vector<ReplicaID> victims;
-        victims.reserve(actual_remove_count);
-        for (int i = 0; i < actual_remove_count; ++i) {
-            // TODO111 这里好像我们得判断一下是不是leader对吗？ 否则会有短暂的窗口有问题？
-            victims.push_back(current.desired_members.back());
-            current.desired_members.pop_back();
+        RETURN_IF_INVALID_STATUS(select_remove_member_victims(txn, current, actual_remove_count, false, victims))
+        if (victims.empty()) {
+            return Status::OK();
         }
+
+        {
+            std::unordered_set<ReplicaID, ReplicaIDHash> victim_set(victims.begin(), victims.end());
+            std::vector<ReplicaID> keep_members;
+            keep_members.reserve(current.desired_members.size());
+            std::for_each(current.desired_members.begin(), current.desired_members.end(), [&](const ReplicaID& rid) {
+                if (!victim_set.count(rid)) {
+                    keep_members.push_back(rid);
+                }
+            });
+            current.desired_members = std::move(keep_members);
+        }
+
         LOG_DEBUG("[ReplicaGroupMembershipReconciler] remove_members, selected victims, shard_id:{}, victim_count:{}",
                   current.shard_id.to_string(), victims.size());
 
