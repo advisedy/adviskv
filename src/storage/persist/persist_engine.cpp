@@ -151,6 +151,7 @@ public:
         buf.write(entry.value);
         encode_peer_member(entry.config_member, buf);
         encode_replica_id(entry.config_replica_id, buf);
+        buf.write(entry.request_id);
     }
 
     Status decode_payload(DecodeBuffer& buf, ObjectType& entry) const {
@@ -167,6 +168,7 @@ public:
         entry.op_type = static_cast<WriteOpType>(op_type);
         RETURN_IF_INVALID_STATUS(decode_peer_member(buf, entry.config_member))
         RETURN_IF_INVALID_STATUS(decode_replica_id(buf, entry.config_replica_id))
+        RETURN_IF_INVALID_READ(buf, entry.request_id)
         return Status::OK();
     }
 };
@@ -467,6 +469,61 @@ Status PersistEngine::for_each_snapshot_kv(const KvVisitor& fn) const {
     return Status::OK();
 }
 
+Status PersistEngine::for_each_snapshot_request(const RequestVisitor& fn) const {
+    if (!fn) {
+        return Status::INVALID_ARGUMENT("request visitor is empty");
+    }
+
+    int fd = ::open(snapshot_path_.c_str(), O_RDONLY);
+    if (fd < 0) {
+        if (errno == ENOENT) {
+            return Status::OK();
+        }
+        return Status::ERROR("fd < 0");
+    }
+    auto fd_guard = Defer([&fd]() {
+        if (fd != -1) {
+            ::close(fd);
+            fd = -1;
+        }
+    });
+
+    //TODOaaa：这里的接口设计有点奇怪呢，应该在
+    //snapshot那边的header预留下来kv_count的off
+    //和request_count的off比较好
+    int32 kv_count{0};
+    RETURN_IF_INVALID_STATUS(read_snapshot_header(fd, nullptr, kv_count))
+    for (int i = 0; i < kv_count; i++) {
+        Key key;
+        Value value;
+        RETURN_IF_INVALID_STATUS(func::read_string(fd, key))
+        RETURN_IF_INVALID_STATUS(func::read_string(fd, value))
+    }
+
+    int32 request_count{0};
+    RETURN_IF_INVALID_STATUS(func::read_value(fd, request_count))
+    if (request_count < 0) {
+        return Status::ERROR("invalid snapshot request_count");
+    }
+    for (int i = 0; i < request_count; i++) {
+        RequestRecord record;
+        int32 op_type{0};
+        RETURN_IF_INVALID_STATUS(func::read_string(fd, record.request_id))
+        RETURN_IF_INVALID_STATUS(func::read_value(fd, op_type))
+        if (!is_valid_wal_op_type(op_type) ||
+            (op_type != static_cast<int32>(WriteOpType::PUT) && op_type != static_cast<int32>(WriteOpType::DEL))) {
+            return Status::ERROR("invalid snapshot request op_type");
+        }
+        record.op = static_cast<WriteOpType>(op_type);
+        RETURN_IF_INVALID_STATUS(func::read_string(fd, record.key))
+        RETURN_IF_INVALID_STATUS(func::read_string(fd, record.value))
+        RETURN_IF_INVALID_STATUS(func::read_value(fd, record.index))
+        RETURN_IF_INVALID_STATUS(func::read_value(fd, record.term))
+        RETURN_IF_INVALID_STATUS(fn(record))
+    }
+    return Status::OK();
+}
+
 Status PersistEngine::read_snapshot_chunk(uint64 offset, size_t max_bytes, std::string& data, bool& eof) const {
     LOG_DEBUG("replica_id:{}, persist engine read snapshot chunk, offset:{}", replica_id_.to_string(), offset);
     data.clear();
@@ -558,7 +615,7 @@ Status PersistEngine::write_snapshot(const StateMachine& state_machine, const st
 
     RETURN_IF_INVALID_STATUS(func::atomic_replace_file(snapshot_path_, [&](int fd) -> Status {
         // payload_len + apply_index + apply_term + member_count +
-        // [member...] + kv_count + [k1, v1] + [k2, v2]
+        // [member...] + kv_count + [k1, v1] + request_count + [request records]
         RETURN_IF_INVALID_STATUS(func::write_value<int64>(fd, 0))
         RETURN_IF_INVALID_STATUS(func::write_value(fd, apply_index))
         RETURN_IF_INVALID_STATUS(func::write_value(fd, apply_term))
@@ -581,6 +638,27 @@ Status PersistEngine::write_snapshot(const StateMachine& state_machine, const st
             return Status::OK();
         }))
 
+        off_t request_count_pos = ::lseek(fd, 0, SEEK_CUR);
+        if (request_count_pos < 0) {
+            return Status::ERROR("lseek snapshot request_count pos failed");
+        }
+        RETURN_IF_INVALID_STATUS(func::write_value<int32>(fd, 0))
+
+        int32 request_count = 0;
+        RETURN_IF_INVALID_STATUS(state_machine.for_each_request([&](const RequestRecord& record) -> Status {
+            if (record.request_id.empty()) {
+                return Status::INVALID_ARGUMENT("cannot snapshot an empty request_id");
+            }
+            RETURN_IF_INVALID_STATUS(func::write_string(fd, record.request_id))
+            RETURN_IF_INVALID_STATUS(func::write_value<int32>(fd, static_cast<int32>(record.op)))
+            RETURN_IF_INVALID_STATUS(func::write_string(fd, record.key))
+            RETURN_IF_INVALID_STATUS(func::write_string(fd, record.value))
+            RETURN_IF_INVALID_STATUS(func::write_value(fd, record.index))
+            RETURN_IF_INVALID_STATUS(func::write_value(fd, record.term))
+            ++request_count;
+            return Status::OK();
+        }))
+
         off_t end_pos = ::lseek(fd, 0, SEEK_END);
         if (end_pos < 0) {
             return Status::ERROR("lseek snapshot end failed");
@@ -597,6 +675,11 @@ Status PersistEngine::write_snapshot(const StateMachine& state_machine, const st
             return Status::ERROR("lseek snapshot kv_count failed");
         }
         RETURN_IF_INVALID_STATUS(func::write_value(fd, kv_count))
+
+        if (::lseek(fd, request_count_pos, SEEK_SET) < 0) {
+            return Status::ERROR("lseek snapshot request_count failed");
+        }
+        RETURN_IF_INVALID_STATUS(func::write_value(fd, request_count))
 
         return Status::OK();
     }))

@@ -14,6 +14,7 @@ struct WriteProposal {
     WriteOpType op{WriteOpType::NONE};
     Key key;
     Value value;
+    std::string request_id;
 };
 
 struct NoopProposal {};
@@ -27,8 +28,8 @@ struct ConfigChangeProposal {
 struct ProposeParam {
     std::variant<WriteProposal, NoopProposal, ConfigChangeProposal> payload;
 
-    static ProposeParam write(WriteOpType op, Key key, Value value) {
-        return ProposeParam{WriteProposal{op, std::move(key), std::move(value)}};
+    static ProposeParam write(WriteOpType op, Key key, Value value, std::string request_id = {}) {
+        return ProposeParam{WriteProposal{op, std::move(key), std::move(value), std::move(request_id)}};
     }
 
     static ProposeParam noop() { return ProposeParam{NoopProposal{}}; }
@@ -49,6 +50,7 @@ struct ProposeParam {
 struct PutParam {
     const Key& key;
     const Value& value;
+    std::string request_id{};
 
     Status validate() const { return Status::OK(); }
 };
@@ -60,6 +62,7 @@ struct GetParam {
 
 struct DelParam {
     const Key& key;
+    std::string request_id{};
     Status validate() const { return Status::OK(); }
 };
 

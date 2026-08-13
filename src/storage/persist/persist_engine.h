@@ -33,6 +33,7 @@ public:
 
     Status load_snapshot_meta(SnapshotPtr& snap) const;
     Status for_each_snapshot_kv(const KvVisitor& fn) const;
+    Status for_each_snapshot_request(const RequestVisitor& fn) const;
     Status read_snapshot_chunk(uint64 offset, size_t max_bytes, std::string& data, bool& eof) const;
     Status append_snapshot_chunk(const InstallSnapshotParam& param);
     Status finish_snapshot_receive();

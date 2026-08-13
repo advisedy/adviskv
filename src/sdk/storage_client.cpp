@@ -48,7 +48,8 @@ rpc::StorageService::Stub* StorageClient::make_stub(const Endpoint& endpoint) co
     return raw;
 }
 
-Status StorageClient::put(const RouteInfo& route, const Key& key, const Value& value) const {
+Status StorageClient::put(const RouteInfo& route, const Key& key, const Value& value,
+                          const std::string& request_id, int32_t timeout_ms) const {
     ADVISKV_METRICS_TIMER("sdk_storage_put");
     ADVISKV_METRICS_COUNTER("sdk_storage_put_request");
 
@@ -73,10 +74,12 @@ Status StorageClient::put(const RouteInfo& route, const Key& key, const Value& v
     encode_pb_replica_id(leader.replica_id, *request.mutable_replica_id());
     request.set_key(key);
     request.set_value(value);
+    request.set_request_id(request_id);
 
     rpc::PutResponse response;
     grpc::ClientContext context;
-    context.set_deadline(std::chrono::system_clock::now() + Milliseconds(conf_.storage_timeout_ms));
+    int32 real_timeout_ms = timeout_ms > 0 ? timeout_ms : conf_.storage_timeout_ms;
+    context.set_deadline(std::chrono::system_clock::now() + Milliseconds(real_timeout_ms));
 
     grpc::Status grpc_status;
     {
@@ -92,8 +95,8 @@ Status StorageClient::put(const RouteInfo& route, const Key& key, const Value& v
                         leader.endpoint.ip, leader.endpoint.port, route.table_id, route.shard_id,
                         leader.replica_id.to_string(), key, static_cast<int>(grpc_status.error_code()),
                         grpc_status.error_message());
-        return Status::ERROR(fmt::format("Storage Put RPC failed, grpc code = {}, msg = {}",
-                                         static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
+        return Status::RPC_ERROR(fmt::format("Storage Put RPC failed, grpc code = {}, msg = {}",
+                                             static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
     }
     if (Status status = decode_base_rsp_status(response.base_rsp()); status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
@@ -108,7 +111,8 @@ Status StorageClient::put(const RouteInfo& route, const Key& key, const Value& v
     return Status::OK();
 }
 
-Status StorageClient::del(const RouteInfo& route, const Key& key) const {
+Status StorageClient::del(const RouteInfo& route, const Key& key, const std::string& request_id,
+                          int32_t timeout_ms) const {
     ADVISKV_METRICS_TIMER("sdk_storage_delete");
     ADVISKV_METRICS_COUNTER("sdk_storage_delete_request");
 
@@ -132,10 +136,12 @@ Status StorageClient::del(const RouteInfo& route, const Key& key) const {
     rpc::DeleteRequest request;
     encode_pb_replica_id(leader.replica_id, *request.mutable_replica_id());
     request.set_key(key);
+    request.set_request_id(request_id);
 
     rpc::DeleteResponse response;
     grpc::ClientContext context;
-    context.set_deadline(std::chrono::system_clock::now() + Milliseconds(conf_.storage_timeout_ms));
+    int32 real_timeout_ms = timeout_ms > 0 ? timeout_ms : conf_.storage_timeout_ms;
+    context.set_deadline(std::chrono::system_clock::now() + Milliseconds(real_timeout_ms));
 
     grpc::Status grpc_status;
     {
@@ -151,8 +157,9 @@ Status StorageClient::del(const RouteInfo& route, const Key& key) const {
                         leader.endpoint.ip, leader.endpoint.port, route.table_id, route.shard_id,
                         leader.replica_id.to_string(), key, static_cast<int>(grpc_status.error_code()),
                         grpc_status.error_message());
-        return Status::ERROR(fmt::format("Storage Delete RPC failed, grpc code = {}, msg = {}",
-                                         static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
+        return Status::RPC_ERROR(
+                fmt::format("Storage Delete RPC failed, grpc code = {}, msg = {}",
+                            static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
     }
     if (Status status = decode_base_rsp_status(response.base_rsp()); status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,

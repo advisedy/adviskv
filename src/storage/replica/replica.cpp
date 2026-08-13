@@ -101,7 +101,8 @@ Status Replica::put(const PutParam& param) {
         }
     }
 
-    ProposeCall call{ProposeParam::write(WriteOpType::PUT, param.key, param.value), K_REPLICA_PROPOSAL_COMMIT_TIMEOUT};
+    ProposeCall call{ProposeParam::write(WriteOpType::PUT, param.key, param.value, param.request_id),
+                     K_REPLICA_PROPOSAL_COMMIT_TIMEOUT};
     loop_->sync_submit(&call);
     RETURN_IF_INVALID_STATUS(call.status)
 
@@ -224,7 +225,8 @@ Status Replica::del(const DelParam& param) {
         }
     }
 
-    ProposeCall call{ProposeParam::write(WriteOpType::DEL, param.key, ""), K_REPLICA_PROPOSAL_COMMIT_TIMEOUT};
+    ProposeCall call{ProposeParam::write(WriteOpType::DEL, param.key, "", param.request_id),
+                     K_REPLICA_PROPOSAL_COMMIT_TIMEOUT};
     loop_->sync_submit(&call);
     RETURN_IF_INVALID_STATUS(call.status)
 
@@ -410,8 +412,12 @@ Status Replica::recover() {
     if (result.snapshot) {
         std::lock_guard lock(state_machine_mutex_);
         RETURN_IF_INVALID_STATUS(
-                fault_if_fail(state_machine_->restore(result.snapshot, [this](const KvVisitor& visitor) -> Status {
+        fault_if_fail(state_machine_->restore(
+                result.snapshot, [this](const KvVisitor& visitor) -> Status {
                     return persist_->for_each_snapshot_kv(visitor);
+                },
+                [this](const RequestVisitor& visitor) -> Status {
+                    return persist_->for_each_snapshot_request(visitor);
                 })))
     }
 

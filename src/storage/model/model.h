@@ -57,6 +57,9 @@ struct LogEntry {
     Value value{""};
     PeerMember config_member;
     ReplicaID config_replica_id;
+    // 和 operation_id 概念不一样，这个rqeuest_id只是针对 put 和 del 实现的
+    // config change 或则 none 就也是空的
+    std::string request_id;
 
     LogEntry() = default;
     LogEntry(Term term, LogIndex index, WriteOpType op_type, Key key, Value value)
@@ -65,15 +68,15 @@ struct LogEntry {
     bool operator==(const LogEntry& other) const {
         return term == other.term && index == other.index && op_type == other.op_type && key == other.key &&
                value == other.value && config_member == other.config_member &&
-               config_replica_id == other.config_replica_id;
+               config_replica_id == other.config_replica_id && request_id == other.request_id;
     }
     DEFINE_OPERATOR_NOT_EQUAL(LogEntry)
 
     std::string to_string() const {
         return fmt::format(
-                "[term:{}, index:{}, key:{}, value:{}, op_type:{}, "
+                "[term:{}, index:{}, key:{}, value:{}, op_type:{}, request_id:{}, "
                 "config_member:{}, config_replica_id:{}]",
-                term, index, key, value, to<int32>(op_type), config_member.replica_id.to_string(),
+                term, index, key, value, to<int32>(op_type), request_id, config_member.replica_id.to_string(),
                 config_replica_id.to_string());
     }
 };

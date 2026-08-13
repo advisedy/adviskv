@@ -55,6 +55,7 @@ inline bool decode_pb_log_entry(const rpc::LogEntry& in, LogEntry& out) {
     }
     out.key = in.key();
     out.value = in.value();
+    out.request_id = in.request_id();
 
     if (!decode_pb_peer_member(in.config_member(), out.config_member)) {
         return false;
@@ -76,6 +77,7 @@ inline bool encode_pb_log_entry(const LogEntry& in, rpc::LogEntry& out) {
     out.set_op_type(op_type);
     out.set_key(in.key);
     out.set_value(in.value);
+    out.set_request_id(in.request_id);
     if (!encode_pb_peer_member(in.config_member, *out.mutable_config_member())) {
         return false;
     }

@@ -19,8 +19,10 @@ public:
     Status init();
 
     Status put(const Key& key, const Value& value);
+    Status put(const Key& key, const Value& value, const std::string& request_id);
     Status get(const Key& key, Value* value);
     Status del(const Key& key);
+    Status del(const Key& key, const std::string& request_id);
 
 private:
     static bool should_invalidate_route(const Status& status);

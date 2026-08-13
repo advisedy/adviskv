@@ -17,9 +17,10 @@ class StorageClient {
 public:
     explicit StorageClient(const KVClientConf& conf);
 
-    Status put(const RouteInfo& route, const Key& key, const Value& value) const;
+    Status put(const RouteInfo& route, const Key& key, const Value& value, const std::string& request_id,
+               int32 timeout_ms = 0) const;
     Status get(const RouteInfo& route, const Key& key, Value* value) const;
-    Status del(const RouteInfo& route, const Key& key) const;
+    Status del(const RouteInfo& route, const Key& key, const std::string& request_id, int32 timeout_ms = 0) const;
 
 private:
     static Status select_leader_replica(const RouteInfo& route, RouteReplica* replica);

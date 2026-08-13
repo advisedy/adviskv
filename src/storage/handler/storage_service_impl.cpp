@@ -117,7 +117,7 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context, const rpc::Pu
     }
 
     // replica内部执行put操作
-    PutParam param{request->key(), request->value()};
+    PutParam param{request->key(), request->value(), request->request_id()};
     status = replica->put(param);
 
     if (!status.ok()) {
@@ -203,7 +203,7 @@ grpc::Status StorageServiceImpl::Delete(grpc::ServerContext* context, const rpc:
         return grpc::Status::OK;
     }
 
-    status = replica->del(DelParam{request->key()});
+    status = replica->del(DelParam{request->key(), request->request_id()});
 
     if (!status.ok()) {
         LOG_WARN(
