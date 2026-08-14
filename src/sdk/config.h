@@ -29,16 +29,25 @@ struct KVClientConf {
     std::string table_name;
     std::string topo_host{"127.0.0.1"};
     int32_t topo_port{50051};
-    int32_t topo_timeout_ms{2000};
-    int32_t storage_timeout_ms{3000};
+    
+    int32_t rpc_timeout_ms{1000}; // 单次 RPC 超时时间
+    int32_t write_timeout_ms{3000}; // 一次 put/del（包含路由刷新和重试）的总耗时
+    int32_t read_timeout_ms{3000}; // 一次 get（包含路由刷新和重试）的总耗时
+    int32_t max_retries{3}; // 一次 put/del/get 的额外重试次数
+    int32_t route_max_retries{1}; // 一次请求中最多重新拉取 route 的次数
+    int32_t retry_delay_ms{20}; // 第一次重试前的等待时间，后续每次翻倍
     int32_t route_shard_refresh_interval_ms{3000};  // 后台task刷新路由缓存的interval
     LogOptions log;
 
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(!topo_host.empty(), "topo_host should not empty")
         RETURN_IF_INVALID_CONDITION(topo_port > 0, "topo_port should > 0")
-        RETURN_IF_INVALID_CONDITION(topo_timeout_ms > 0, "topo_timeout_ms should > 0")
-        RETURN_IF_INVALID_CONDITION(storage_timeout_ms > 0, "storage_timeout_ms should > 0")
+        RETURN_IF_INVALID_CONDITION(rpc_timeout_ms > 0, "rpc_timeout_ms should > 0")
+        RETURN_IF_INVALID_CONDITION(write_timeout_ms > 0, "write_timeout_ms should > 0")
+        RETURN_IF_INVALID_CONDITION(read_timeout_ms > 0, "read_timeout_ms should > 0")
+        RETURN_IF_INVALID_CONDITION(max_retries >= 0, "max_retries should >= 0")
+        RETURN_IF_INVALID_CONDITION(route_max_retries >= 0, "route_max_retries should >= 0")
+        RETURN_IF_INVALID_CONDITION(retry_delay_ms >= 0, "retry_delay_ms should >= 0")
         RETURN_IF_INVALID_CONDITION(route_shard_refresh_interval_ms >= 0, "route_shard_refresh_interval_ms should >= 0")
         return Status::OK();
     }

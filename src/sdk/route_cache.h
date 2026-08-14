@@ -22,7 +22,7 @@ public:
     void stop();
 
     Status resolve_route(const Key& key, RouteInfo* route);
-    Status refresh();
+    Status refresh(Milliseconds timeout = Milliseconds::zero());
 
 private:
     struct TableRouteSnapshot;

@@ -1,15 +1,16 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
 #include "common/model/type.h"
 #include "common/status.h"
+#include "common/types.h"
 #include "sdk/config.h"
 #include "sdk/model.h"
 #include "sdk/route_cache.h"
-#include "sdk/topo_route_client.h"
 #include "sdk/storage_client.h"
-
+#include "sdk/topo_route_client.h"
 namespace adviskv::sdk {
 
 class KVClient {
@@ -25,9 +26,38 @@ public:
     Status del(const Key& key, const std::string& request_id);
 
 private:
-    static bool should_invalidate_route(const Status& status);
-    Status resolve_route(const Key& key, RouteInfo* route);
-    Status refresh_route(const Key& key, RouteInfo* route);
+    enum class Operation {
+        PUT,
+        DELETE,
+        GET,
+    };
+
+    struct RequestPolicy {
+        Operation operation;
+        const std::string& request_id;
+
+        bool is_write_request() const {
+            return operation == Operation::PUT || operation == Operation::DELETE;
+        }
+    };
+
+    static std::string_view operation_name(Operation operation);
+    static void record_result(Operation operation, const Status& status);
+    // write_uncertain：本请求过程中是否出现过写结果未决；决定是否收成 UNKNOWN。
+    static Status finalize_status(const RequestPolicy& policy, Status status, bool write_uncertain);
+
+    template <typename Send, typename Refresh>
+    Status execute_with_retry(const RequestPolicy& policy, SteadyClock::time_point deadline, Send&& send,
+                              Refresh&& refresh);
+
+    Milliseconds remaining_rpc_timeout(SteadyClock::time_point deadline) const;
+
+    Status resolve_route(const Key& key, RouteInfo* route, SteadyClock::time_point deadline);
+    Status refresh_route(const Key& key, RouteInfo* route, SteadyClock::time_point deadline);
+
+    template <typename Send>
+    Status run_kv_request(Operation operation, const Key& key, Milliseconds total_timeout,
+                          const std::string& request_id, Send&& send);
 
     KVClientConf conf_;
     TopoRouteClient topo_route_client_;

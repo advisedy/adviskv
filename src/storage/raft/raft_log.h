@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <optional>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "common/model/type.h"
@@ -32,6 +34,7 @@ public:
     Term term_at(LogIndex index) const;
 
     const LogEntry* entry_at(LogIndex index) const;
+    const LogEntry* find_entry_by_request_id(const std::string& request_id) const;
     std::vector<LogEntry> entries_from(LogIndex index) const;
     std::vector<LogEntry> entries_from(LogIndex index, int64 max_count) const;
 
@@ -46,7 +49,10 @@ public:
     void update_entries(const std::vector<LogEntry>& entries);
 
 private:
+    void rebuild_request_index();
+
     std::vector<LogEntry> log_entries_;
+    std::unordered_map<std::string, LogIndex> request_id_to_index_;
 
     LogIndex snapshot_index_{0};
     Term snapshot_term_{0};

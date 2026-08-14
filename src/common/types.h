@@ -35,4 +35,6 @@ using Milliseconds = std::chrono::milliseconds;
 using Microseconds = std::chrono::microseconds;
 using Seconds = std::chrono::seconds;
 
+using SteadyClock = std::chrono::steady_clock;
+
 }  // namespace adviskv

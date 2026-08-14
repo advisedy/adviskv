@@ -49,7 +49,7 @@ rpc::StorageService::Stub* StorageClient::make_stub(const Endpoint& endpoint) co
 }
 
 Status StorageClient::put(const RouteInfo& route, const Key& key, const Value& value,
-                          const std::string& request_id, int32_t timeout_ms) const {
+                          const std::string& request_id, Milliseconds timeout) const {
     ADVISKV_METRICS_TIMER("sdk_storage_put");
     ADVISKV_METRICS_COUNTER("sdk_storage_put_request");
 
@@ -78,8 +78,8 @@ Status StorageClient::put(const RouteInfo& route, const Key& key, const Value& v
 
     rpc::PutResponse response;
     grpc::ClientContext context;
-    int32 real_timeout_ms = timeout_ms > 0 ? timeout_ms : conf_.storage_timeout_ms;
-    context.set_deadline(std::chrono::system_clock::now() + Milliseconds(real_timeout_ms));
+    Milliseconds real_timeout = timeout > Milliseconds::zero() ? timeout : Milliseconds(conf_.rpc_timeout_ms);
+    context.set_deadline(std::chrono::system_clock::now() + real_timeout);
 
     grpc::Status grpc_status;
     {
@@ -112,7 +112,7 @@ Status StorageClient::put(const RouteInfo& route, const Key& key, const Value& v
 }
 
 Status StorageClient::del(const RouteInfo& route, const Key& key, const std::string& request_id,
-                          int32_t timeout_ms) const {
+                          Milliseconds timeout) const {
     ADVISKV_METRICS_TIMER("sdk_storage_delete");
     ADVISKV_METRICS_COUNTER("sdk_storage_delete_request");
 
@@ -140,8 +140,8 @@ Status StorageClient::del(const RouteInfo& route, const Key& key, const std::str
 
     rpc::DeleteResponse response;
     grpc::ClientContext context;
-    int32 real_timeout_ms = timeout_ms > 0 ? timeout_ms : conf_.storage_timeout_ms;
-    context.set_deadline(std::chrono::system_clock::now() + Milliseconds(real_timeout_ms));
+    Milliseconds real_timeout = timeout > Milliseconds::zero() ? timeout : Milliseconds(conf_.rpc_timeout_ms);
+    context.set_deadline(std::chrono::system_clock::now() + real_timeout);
 
     grpc::Status grpc_status;
     {
@@ -174,7 +174,7 @@ Status StorageClient::del(const RouteInfo& route, const Key& key, const std::str
     return Status::OK();
 }
 
-Status StorageClient::get(const RouteInfo& route, const Key& key, Value* value) const {
+Status StorageClient::get(const RouteInfo& route, const Key& key, Value* value, Milliseconds timeout) const {
     RETURN_IF_NULLPTR(value, "value should not be nullptr")
     RouteReplica leader;
     Status status = select_leader_replica(route, &leader);
@@ -195,7 +195,8 @@ Status StorageClient::get(const RouteInfo& route, const Key& key, Value* value) 
 
     rpc::GetResponse response;
     grpc::ClientContext context;
-    context.set_deadline(std::chrono::system_clock::now() + Milliseconds(conf_.storage_timeout_ms));
+    Milliseconds real_timeout = timeout > Milliseconds::zero() ? timeout : Milliseconds(conf_.rpc_timeout_ms);
+    context.set_deadline(std::chrono::system_clock::now() + real_timeout);
 
     grpc::Status grpc_status = stub->Get(&context, request, &response);
     if (!grpc_status.ok()) {
@@ -206,8 +207,8 @@ Status StorageClient::get(const RouteInfo& route, const Key& key, Value* value) 
                         leader.endpoint.ip, leader.endpoint.port, route.table_id, route.shard_id,
                         leader.replica_id.to_string(), key, static_cast<int>(grpc_status.error_code()),
                         grpc_status.error_message());
-        return Status::ERROR(fmt::format("Storage Get RPC failed, grpc code = {}, msg = {}",
-                                         static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
+        return Status::RPC_ERROR(fmt::format("Storage Get RPC failed, grpc code = {}, msg = {}",
+                                             static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
     }
 
     if (Status status = decode_base_rsp_status(response.base_rsp()); status.fail()) {

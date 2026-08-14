@@ -16,7 +16,8 @@ class TopoRouteClient {
 public:
     explicit TopoRouteClient(const KVClientConf& conf);
 
-    Status get_table_routes(TableRouteInfo* table_routes) const;
+    Status get_table_routes(TableRouteInfo* table_routes,
+                            Milliseconds timeout = Milliseconds::zero()) const;
 
 private:
     KVClientConf conf_;

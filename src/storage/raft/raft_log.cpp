@@ -53,6 +53,17 @@ const LogEntry* RaftLog::entry_at(LogIndex index) const {
     return &log_entries_[offset];
 }
 
+const LogEntry* RaftLog::find_entry_by_request_id(const std::string& request_id) const {
+    if (request_id.empty()) {
+        return nullptr;
+    }
+    auto it = request_id_to_index_.find(request_id);
+    if (it == request_id_to_index_.end()) {
+        return nullptr;
+    }
+    return entry_at(it->second);
+}
+
 std::vector<LogEntry> RaftLog::entries_from(LogIndex index) const {
     return entries_from(index, last_log_index() - index + 1);
 }
@@ -84,6 +95,7 @@ LogIndex RaftLog::append_new_entry(Term term, const ProposeParam& param) {
         entry.op_type = write->op;
         entry.key = write->key;
         entry.value = write->value;
+        entry.request_id = write->request_id;
     } else if (const auto* config = std::get_if<ConfigChangeProposal>(&param.payload)) {
         entry.op_type = config->op;
         entry.config_member = config->member;
@@ -93,6 +105,9 @@ LogIndex RaftLog::append_new_entry(Term term, const ProposeParam& param) {
     }
 
     LogIndex new_index = entry.index;
+    if (!entry.request_id.empty()) {
+        request_id_to_index_.emplace(entry.request_id, new_index);
+    }
     log_entries_.push_back(std::move(entry));
     return new_index;
 }
@@ -152,6 +167,7 @@ Status RaftLog::append_entries_from_leader(const std::vector<LogEntry>& entries,
         }
     }
     log_entries_ = std::move(updated_entries);
+    rebuild_request_index();
     return Status::OK();
 }
 
@@ -180,6 +196,7 @@ Status RaftLog::truncate(LogIndex new_snapshot_index) {
 
     snapshot_index_ = new_snapshot_index;
     snapshot_term_ = new_snapshot_term;
+    rebuild_request_index();
     return Status::OK();
 }
 
@@ -210,10 +227,24 @@ RaftLog::InstallSnapshotResult RaftLog::install_snapshot(LogIndex new_snapshot_i
     snapshot_index_ = new_snapshot_index;
     snapshot_term_ = new_snapshot_term;
     log_entries_ = result.retained_entries;
+    rebuild_request_index();
 
     return result;
 }
 
-void RaftLog::update_entries(const std::vector<LogEntry>& entries) { log_entries_ = entries; }
+void RaftLog::update_entries(const std::vector<LogEntry>& entries) {
+    log_entries_ = entries;
+    rebuild_request_index();
+}
+
+void RaftLog::rebuild_request_index() {
+    request_id_to_index_.clear();
+    request_id_to_index_.reserve(log_entries_.size());
+    for (const LogEntry& entry : log_entries_) {
+        if (!entry.request_id.empty()) {
+            request_id_to_index_.emplace(entry.request_id, entry.index);
+        }
+    }
+}
 
 }  // namespace adviskv::storage

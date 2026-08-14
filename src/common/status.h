@@ -44,7 +44,9 @@ namespace adviskv {
     X(NOT_YET_COMMIT, 2001) /*请求已被leader接受，但返回时尚未确认提交，结果未决*/ \
     X(IS_RECOVERING, 2002)                                                         \
     X(NOT_VOTER, 2003)                                                             \
-    X(UNKNOWN, 4000)      /*SDK 对外语义：请求结果未知，调用方应重试或读校验*/     \
+    X(READ_INDEX_NOT_READY, 2004) /*线性一致读的read_index还没有准备好*/       \
+    X(UNKNOWN, 4000)      /*SDK 对外语义：写请求结果未知，调用方应重试或读校验*/ \
+    X(SDK_TRY_AGAIN, 4001) /*本次请求未完成，可以安全重试，目前对于读操作暴露*/ \
     X(GET_EOF, 5000)      /*读到了eof*/                                            \
     X(PARTIAL_READ, 5001) /*读取到一半遇到eof*/
 

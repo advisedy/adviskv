@@ -23,7 +23,7 @@ TopoRouteClient::TopoRouteClient(const KVClientConf& conf) : conf_(conf) {
     stub_ = topo_rpc::TopoService::NewStub(channel_);
 }
 
-Status TopoRouteClient::get_table_routes(TableRouteInfo* table_routes) const {
+Status TopoRouteClient::get_table_routes(TableRouteInfo* table_routes, Milliseconds timeout) const {
     RETURN_IF_NULLPTR(table_routes, "table_routes should not be nullptr")
 
     topo_rpc::GetTableRoutesRequest request;
@@ -32,7 +32,8 @@ Status TopoRouteClient::get_table_routes(TableRouteInfo* table_routes) const {
 
     topo_rpc::GetTableRoutesResponse response;
     grpc::ClientContext context;
-    context.set_deadline(std::chrono::system_clock::now() + Milliseconds(conf_.topo_timeout_ms));
+    Milliseconds real_timeout = timeout > Milliseconds::zero() ? timeout : Milliseconds(conf_.rpc_timeout_ms);
+    context.set_deadline(std::chrono::system_clock::now() + real_timeout);
 
     grpc::Status grpc_status = stub_->GetTableRoutes(&context, request, &response);
     if (!grpc_status.ok()) {

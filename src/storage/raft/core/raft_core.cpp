@@ -48,6 +48,14 @@ RaftMemberType RaftCore::member_type(const ReplicaID& replica_id) const { return
 
 std::vector<RaftMember> RaftCore::raft_members() const { return membership_.raft_members(); }
 
+std::optional<LogEntry> RaftCore::find_log_entry_by_request_id(const std::string& request_id) const {
+    const LogEntry* entry = raft_log_.find_entry_by_request_id(request_id);
+    if (entry == nullptr) {
+        return std::nullopt;
+    }
+    return *entry;
+}
+
 bool RaftCore::is_recovering() const { return state_ == State::RECOVERING; }
 
 bool RaftCore::is_ready() const { return state_ == State::READY; }

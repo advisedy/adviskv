@@ -17,7 +17,7 @@ Status RaftCore::build_append_entries_for_read(RaftEffects& effects, LogIndex& r
 
     if (!election_.is_leader()) return Status::NOT_LEADER("not leader");
     if (!has_committed_current_term_entry()) {
-        return Status::NOT_YET_COMMIT("current term entry is not committed");
+        return Status::READ_INDEX_NOT_READY("current term entry is not committed");
     }
 
     read_term = election_.current_term();

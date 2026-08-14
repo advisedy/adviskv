@@ -72,13 +72,13 @@ Status RouteCache::resolve_route(const Key& key, RouteInfo* route) {
     return status;
 }
 
-Status RouteCache::refresh() {
+Status RouteCache::refresh(Milliseconds timeout) {
     ADVISKV_METRICS_TIMER("sdk_route_cache_refresh_table_routes");
     ADVISKV_METRICS_COUNTER("sdk_route_cache_refresh_table_routes_request");
     RETURN_IF_NULLPTR(route_client_, "route client is nullptr")
 
     TableRouteInfo table_routes;
-    Status status = route_client_->get_table_routes(&table_routes);
+    Status status = route_client_->get_table_routes(&table_routes, timeout);
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("sdk_route_cache_refresh_table_routes_failure");
         ADVISKV_SDK_LOG(LogLevel::WARN, "refresh table routes failed, db={}, table={}, status={}", conf_.db_name,
