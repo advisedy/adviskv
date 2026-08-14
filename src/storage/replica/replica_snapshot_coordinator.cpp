@@ -170,50 +170,54 @@ void ReplicaSnapshotCoordinator::try_take_snapshot() {
     }
     if (last_apply_index - snapshot_index < K_RAFT_DO_SNAPSHOT_LIMIT) return;
 
-    std::lock_guard snapshot_lock(context_.persist_snapshot_mutex);
-    std::lock_guard state_machine_lock(context_.state_machine_mutex);
-    {
-        std::lock_guard lock(context_.raft_core_mutex);
-        last_apply_index = context_.raft_core.last_applied();
-        snapshot_index = context_.raft_core.snapshot_index();
-    }
-    if (last_apply_index - snapshot_index < K_RAFT_DO_SNAPSHOT_LIMIT) return;
-
-    LOG_INFO(
-            "[Replica Snapshot] replica_id:{} try take snapshot start, "
-            "snapshot_index:{}, snapshot_term:{}",
-            context_.replica_id.to_string(), context_.state_machine.apply_index(), context_.state_machine.apply_term());
-
     InstallSnapshotContext install_context;
-    install_context.snapshot_index = context_.state_machine.apply_index();
-    install_context.snapshot_term = context_.state_machine.apply_term();
+    Status status;
     {
-        std::lock_guard lock(context_.raft_core_mutex);
-        install_context.snapshot_members = context_.raft_core.raft_members();
-    }
-
-    Status status = context_.persist.write_snapshot(context_.state_machine, install_context.snapshot_members);
-
-    if (status.ok()) {
-        status = publish_ready_snapshot(install_context);
-        if (status.fail()) {
-            LOG_WARN(
-                    "[Replica Snapshot] replica:try_take_snapshot publish ready "
-                    "snapshot failed, snapshot_index:{}, status:{}",
-                    install_context.snapshot_index, status.to_string());
-            context_.enter_faulted();
-            return;
+        std::lock_guard snapshot_lock(context_.persist_snapshot_mutex);
+        std::lock_guard state_machine_lock(context_.state_machine_mutex);
+        {
+            std::lock_guard lock(context_.raft_core_mutex);
+            last_apply_index = context_.raft_core.last_applied();
+            snapshot_index = context_.raft_core.snapshot_index();
         }
+        if (last_apply_index - snapshot_index < K_RAFT_DO_SNAPSHOT_LIMIT) return;
 
         LOG_INFO(
-                "[Replica Snapshot] replica_id:{} try take snapshot finish, "
+                "[Replica Snapshot] replica_id:{} try take snapshot start, "
                 "snapshot_index:{}, snapshot_term:{}",
-                context_.replica_id.to_string(), install_context.snapshot_index, install_context.snapshot_term);
+                context_.replica_id.to_string(), context_.state_machine.apply_index(),
+                context_.state_machine.apply_term());
 
-    } else {
+        install_context.snapshot_index = context_.state_machine.apply_index();
+        install_context.snapshot_term = context_.state_machine.apply_term();
+        {
+            std::lock_guard lock(context_.raft_core_mutex);
+            install_context.snapshot_members = context_.raft_core.raft_members();
+        }
+
+        status = context_.persist.write_snapshot(context_.state_machine, install_context.snapshot_members);
+    }
+
+    if (status.fail()) {
         LOG_WARN("[Replica Snapshot] replica:try_take_snapshot: status:{}", status.to_string());
         context_.enter_faulted();
+        return;
     }
+
+    status = publish_ready_snapshot(install_context);
+    if (status.fail()) {
+        LOG_WARN(
+                "[Replica Snapshot] replica:try_take_snapshot publish ready "
+                "snapshot failed, snapshot_index:{}, status:{}",
+                install_context.snapshot_index, status.to_string());
+        context_.enter_faulted();
+        return;
+    }
+
+    LOG_INFO(
+            "[Replica Snapshot] replica_id:{} try take snapshot finish, "
+            "snapshot_index:{}, snapshot_term:{}",
+            context_.replica_id.to_string(), install_context.snapshot_index, install_context.snapshot_term);
 }
 
 }  // namespace adviskv::storage

@@ -8,7 +8,7 @@ dc: "dc1"
 data_dir: "build/demo/data/storage-6"
 heartbeat_interval_ms: 3000
 node_agent_rpc_timeout_ms: 3000
-raft_rpc_timeout_ms: 1000
+raft_rpc_timeout_ms: 3000
 
 #log
 logger_name: "storage-6_log"
