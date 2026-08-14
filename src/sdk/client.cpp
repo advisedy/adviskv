@@ -118,7 +118,6 @@ Status KVClient::finalize_status(const RequestPolicy& policy, Status status, boo
 template <typename Send, typename Refresh>
 Status KVClient::execute_with_retry(const RequestPolicy& policy, SteadyClock::time_point deadline, Send&& send,
                                     Refresh&& refresh) {
-    const std::string_view operation = operation_name(policy.operation);
     const int64_t max_storage_attempts = static_cast<int64_t>(conf_.max_retries) + 1;
     const bool is_write = policy.is_write_request();
 

@@ -137,9 +137,13 @@ Status ReplicaSnapshotCoordinator::finish_install_snapshot(const InstallSnapshot
     {
         std::lock_guard lock(context_.state_machine_mutex);
         RETURN_IF_INVALID_STATUS(
-                context_.fault_if_fail(context_.state_machine.restore(snap, [this](const KvVisitor& visitor) -> Status {
-                    return context_.persist.for_each_snapshot_kv(visitor);
-                })))
+                context_.fault_if_fail(context_.state_machine.restore(
+                        snap, [this](const KvVisitor& visitor) -> Status {
+                            return context_.persist.for_each_snapshot_kv(visitor);
+                        },
+                        [this](const RequestVisitor& visitor) -> Status {
+                            return context_.persist.for_each_snapshot_request(visitor);
+                        })))
     }
     RETURN_IF_INVALID_STATUS(publish_ready_snapshot(install_context))
 

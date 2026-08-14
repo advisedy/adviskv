@@ -56,6 +56,10 @@ Status KvStateMachine::apply(const LogEntry& entry) {
     ADVISKV_METRICS_COUNTER("storage_state_machine_apply_request");
     record_state_machine_apply_op(entry.op_type);
 
+    if (!entry.request_id.empty() && entry.op_type != WriteOpType::PUT && entry.op_type != WriteOpType::DEL) {
+        return Status::INVALID_ARGUMENT("request_id is only valid for PUT or DEL");
+    }
+
     Status status{Status::OK()};
     switch (entry.op_type) {
         case WriteOpType::PUT: {
@@ -85,12 +89,19 @@ Status KvStateMachine::apply(const LogEntry& entry) {
             return Status{StatusCode::ERROR};
         }
     }
+
+    if (!entry.request_id.empty() && (entry.op_type == WriteOpType::PUT || entry.op_type == WriteOpType::DEL)) {
+        request_records_.emplace(entry.request_id,
+                                 RequestRecord{entry.request_id, entry.op_type, entry.key, entry.value, entry.index,
+                                               entry.term});
+    }
     apply_term_ = entry.term;
     apply_index_ = entry.index;
     ADVISKV_METRICS_COUNTER("storage_state_machine_apply_success");
     return Status::OK();
 }
-Status KvStateMachine::restore(const SnapshotPtr& snap, const KvForEach& for_each_kv) {
+Status KvStateMachine::restore(const SnapshotPtr& snap, const KvForEach& for_each_kv,
+                               const RequestForEach& for_each_request) {
     if (!snap) {
         return Status{StatusCode::ERROR, "snapshot is nullptr"};
     }
@@ -99,8 +110,18 @@ Status KvStateMachine::restore(const SnapshotPtr& snap, const KvForEach& for_eac
     }
 
     engine_->clear();
+    request_records_.clear();
     RETURN_IF_INVALID_STATUS(
             for_each_kv([this](const Key& key, const Value& value) -> Status { return engine_->put(key, value); }))
+
+    RETURN_IF_INVALID_STATUS(for_each_request([this](const RequestRecord& record) -> Status {
+        if (record.request_id.empty()) {
+            return Status::INVALID_ARGUMENT("snapshot contains an empty request_id");
+        }
+        request_records_[record.request_id] = record;
+        return Status::OK();
+    }))
+
 
     apply_index_ = snap->apply_index;
     apply_term_ = snap->apply_term;
@@ -116,6 +137,28 @@ Status KvStateMachine::for_each_kv(const std::function<Status(const Key&, const 
         return Status{StatusCode::ERROR, "engine is nullptr"};
     }
     return engine_->for_each_kv(fn);
+}
+
+Status KvStateMachine::find_request(const std::string& request_id, RequestRecord& record) const {
+    if (request_id.empty()) {
+        return Status::INVALID_ARGUMENT("request_id is empty");
+    }
+    auto it = request_records_.find(request_id);
+    if (it == request_records_.end()) {
+        return Status::INVALID_ARGUMENT("request_id not found");
+    }
+    record = it->second;
+    return Status::OK();
+}
+
+Status KvStateMachine::for_each_request(const std::function<Status(const RequestRecord&)>& fn) const {
+    if (!fn) {
+        return Status::INVALID_ARGUMENT("request visitor is empty");
+    }
+    for (const auto& [_, record] : request_records_) {
+        RETURN_IF_INVALID_STATUS(fn(record))
+    }
+    return Status::OK();
 }
 
 }  // namespace adviskv::storage

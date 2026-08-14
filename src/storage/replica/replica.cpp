@@ -200,7 +200,8 @@ Status Replica::get(const GetParam& param, Value& value) {
     std::lock_guard lock(state_machine_mutex_);
     RETURN_IF_INVALID_STATUS(fault_if_fail(applier_->apply_committed_entries()))
     if (state_machine_->apply_index() < read_index) {
-        return Status::NOT_YET_COMMIT("state machine not yet apply");
+        // 因为这个地方算是防御性，所以如果不满足就不返回 NOT_YET_COMMIT 了，当成故障处理吧
+        return Status::ERROR("state machine not yet apply");
     }
 
     Status status = state_machine_->get(param.key, value);
