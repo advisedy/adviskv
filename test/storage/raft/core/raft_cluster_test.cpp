@@ -1465,7 +1465,7 @@ TEST_F(RaftClusterTest, ReadIndexRequiresCommittedCurrentTermEntry) {
     Status status = cluster_.core_ptr(2)->build_append_entries_for_read(
         read_effects, read_index, read_term);
 
-    EXPECT_EQ(status.code(), StatusCode::NOT_YET_COMMIT);
+    EXPECT_EQ(status.code(), StatusCode::READ_INDEX_NOT_READY);
     EXPECT_TRUE(read_effects.messages.empty());
 
     LogIndex current_term_idx = cluster_.core_ptr(2)->last_log_index();

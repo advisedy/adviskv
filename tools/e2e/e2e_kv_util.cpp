@@ -79,8 +79,7 @@ sdk::KVClient make_kv_client(const Options& options) {
     conf.table_name = options.table;
     conf.topo_host = options.topo_host;
     conf.topo_port = options.topo_port;
-    conf.topo_timeout_ms = options.sdk_timeout_ms;
-    conf.storage_timeout_ms = options.sdk_timeout_ms;
+    conf.rpc_timeout_ms = options.sdk_rpc_timeout_ms;
     conf.log.level = options.sdk_log_level;
     if (options.enable_sdk_log_callback) {
         conf.log.callback = [](sdk::LogLevel level, std::string_view message) {

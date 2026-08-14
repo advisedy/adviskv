@@ -91,9 +91,8 @@ Status KvStateMachine::apply(const LogEntry& entry) {
     }
 
     if (!entry.request_id.empty() && (entry.op_type == WriteOpType::PUT || entry.op_type == WriteOpType::DEL)) {
-        request_records_.emplace(entry.request_id,
-                                 RequestRecord{entry.request_id, entry.op_type, entry.key, entry.value, entry.index,
-                                               entry.term});
+        request_records_.emplace(entry.request_id, RequestRecord{entry.request_id, entry.op_type, entry.key,
+                                                                 entry.value, entry.index, entry.term});
     }
     apply_term_ = entry.term;
     apply_index_ = entry.index;
@@ -111,17 +110,21 @@ Status KvStateMachine::restore(const SnapshotPtr& snap, const KvForEach& for_eac
 
     engine_->clear();
     request_records_.clear();
-    RETURN_IF_INVALID_STATUS(
-            for_each_kv([this](const Key& key, const Value& value) -> Status { return engine_->put(key, value); }))
 
-    RETURN_IF_INVALID_STATUS(for_each_request([this](const RequestRecord& record) -> Status {
-        if (record.request_id.empty()) {
-            return Status::INVALID_ARGUMENT("snapshot contains an empty request_id");
-        }
-        request_records_[record.request_id] = record;
-        return Status::OK();
-    }))
+    if (for_each_kv) {
+        RETURN_IF_INVALID_STATUS(
+                for_each_kv([this](const Key& key, const Value& value) -> Status { return engine_->put(key, value); }))
+    }
 
+    if (for_each_request) {
+        RETURN_IF_INVALID_STATUS(for_each_request([this](const RequestRecord& record) -> Status {
+            if (record.request_id.empty()) {
+                return Status::INVALID_ARGUMENT("snapshot contains an empty request_id");
+            }
+            request_records_[record.request_id] = record;
+            return Status::OK();
+        }))
+    }
 
     apply_index_ = snap->apply_index;
     apply_term_ = snap->apply_term;
@@ -145,7 +148,7 @@ Status KvStateMachine::find_request(const std::string& request_id, RequestRecord
     }
     auto it = request_records_.find(request_id);
     if (it == request_records_.end()) {
-        return Status::INVALID_ARGUMENT("request_id not found");
+        return Status::KEY_NOT_FOUND("request_id not found");
     }
     record = it->second;
     return Status::OK();

@@ -86,6 +86,7 @@ protected:
         buf.write(entry.config_replica_id.table_id);
         buf.write(entry.config_replica_id.shard_index);
         buf.write(entry.config_replica_id.replica_seq);
+        buf.write(entry.request_id);
         return buf.take();
     }
 
@@ -152,6 +153,7 @@ TEST_F(PersistEngineTest, AppendWalBatchAndReadBackEntries) {
         EXPECT_EQ(actual[i].op_type, expected[i].op_type);
         EXPECT_EQ(actual[i].key, expected[i].key);
         EXPECT_EQ(actual[i].value, expected[i].value);
+        EXPECT_EQ(actual[i].request_id, expected[i].request_id);
     }
 }
 

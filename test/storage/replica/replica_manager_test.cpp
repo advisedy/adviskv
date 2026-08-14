@@ -141,7 +141,7 @@ TEST_F(ReplicaManagerTest, DeleteReplicaShutsDownExistingReferences) {
     ASSERT_TRUE(manager.delete_replica(replica_id).ok());
     EXPECT_FALSE(fs::exists(replica_dir));
 
-    Status status = replica->put(PutParam{"after-delete", "value"});
+    Status status = replica->put(PutParam{"after-delete", "value", "after-delete-request"});
     EXPECT_EQ(status.code(), StatusCode::ERROR);
 
     Replica::ReplicaStateForTest state{};

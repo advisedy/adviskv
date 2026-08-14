@@ -193,8 +193,12 @@ bool load_config(const std::string& path, AdvisKvCtlConfig* config) {
 
         config->sdk.topo_host = CONF_GET_STR("topo_host");
         config->sdk.topo_port = CONF_GET_INT("topo_port");
-        config->sdk.topo_timeout_ms = CONF_GET_INT("topo_timeout_ms");
-        config->sdk.storage_timeout_ms = CONF_GET_INT("storage_timeout_ms");
+        config->sdk.rpc_timeout_ms = CONF_GET_INT("rpc_timeout_ms");
+        config->sdk.write_timeout_ms = CONF_GET_INT("write_timeout_ms");
+        config->sdk.read_timeout_ms = CONF_GET_INT("read_timeout_ms", 3000);
+        config->sdk.max_retries = CONF_GET_INT("max_retries");
+        config->sdk.route_max_retries = CONF_GET_INT("route_max_retries");
+        config->sdk.retry_delay_ms = CONF_GET_INT("retry_delay_ms", 20);
         return config->catalog.validate().ok() && config->sdk.validate().ok();
     } catch (const std::exception& e) {
         fmt::print(stderr, "load config failed: {}\n", e.what());

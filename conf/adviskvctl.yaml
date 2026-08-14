@@ -3,5 +3,9 @@ catalog_port: 50048
 topo_host: "127.0.0.1"
 topo_port: 50049
 catalog_timeout_ms: 3000
-topo_timeout_ms: 3000
-storage_timeout_ms: 3000
+rpc_timeout_ms: 3000
+write_timeout_ms: 3000
+read_timeout_ms: 3000
+max_retries: 3
+route_max_retries: 1
+retry_delay_ms: 20

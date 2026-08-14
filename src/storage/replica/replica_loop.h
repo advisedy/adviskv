@@ -4,9 +4,10 @@
 #include <condition_variable>
 #include <cstddef>
 #include <functional>
-#include <map>
 #include <memory>
 #include <mutex>
+#include <string>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -155,7 +156,6 @@ struct TimeoutWaiter {
     std::condition_variable cv;
     bool done{false};
     bool cancelled{false};
-    LogIndex index{0};
     Status status{Status::OK()};
 };
 
@@ -167,6 +167,13 @@ struct ProposalBatchItem {
 struct ConfigChangeItem {
     std::function<Status(RaftEffects&)> step;
     std::shared_ptr<Waiter> waiter;
+};
+
+struct InflightProposal {
+    WriteProposal proposal;
+    LogIndex index{0};
+    bool committed{false};
+    std::vector<std::shared_ptr<TimeoutWaiter>> waiters;
 };
 
 using SubmitQueueItem = std::variant<ProposalBatchItem, ConfigChangeItem>;
@@ -221,8 +228,8 @@ private:
     Status run_step(RaftStepFunc&& step);
     Status persist_raft_effects(const RaftEffects& effects);
 
-    void resolve_pending_proposals();
-    void fail_all_pending_proposals(const Status& status);
+    void resolve_inflight_proposals();
+    void fail_all_inflight_proposals(const Status& status);
 
     Status enqueue_proposal_and_wait(ProposeParam param, Milliseconds timeout);
     Status enqueue_config_change_and_wait(RaftStepFunc&& step);
@@ -244,7 +251,7 @@ private:
     BatchDispatchQueue<SubmitQueueItem> submit_queue_;
     bool running_{false};
 
-    std::multimap<LogIndex, std::shared_ptr<TimeoutWaiter>> pending_proposals_;
+    std::unordered_map<std::string, InflightProposal> inflight_;
 };
 
 }  // namespace adviskv::storage

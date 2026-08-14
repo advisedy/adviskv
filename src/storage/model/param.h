@@ -15,6 +15,16 @@ struct WriteProposal {
     Key key;
     Value value;
     std::string request_id;
+
+    bool operator==(const WriteProposal other) const{
+        if(!(op == other.op)) return false;
+        if(!(key == other.key)) return false;
+        if(!(value == other.value)) return false;
+        if(!(request_id == other.request_id)) return false;
+        return true;
+    }
+
+    DEFINE_OPERATOR_NOT_EQUAL(WriteProposal)
 };
 
 struct NoopProposal {};
@@ -52,7 +62,12 @@ struct PutParam {
     const Value& value;
     std::string request_id{};
 
-    Status validate() const { return Status::OK(); }
+    Status validate() const {
+        if (request_id.empty()) {
+            return Status::INVALID_ARGUMENT("request_id is required for put");
+        }
+        return Status::OK();
+    }
 };
 
 struct GetParam {
@@ -63,7 +78,13 @@ struct GetParam {
 struct DelParam {
     const Key& key;
     std::string request_id{};
-    Status validate() const { return Status::OK(); }
+
+    Status validate() const {
+        if (request_id.empty()) {
+            return Status::INVALID_ARGUMENT("request_id is required for delete");
+        }
+        return Status::OK();
+    }
 };
 
 struct ReplicaRuntimeOptions {

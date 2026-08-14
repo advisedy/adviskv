@@ -24,7 +24,7 @@ struct Options {
     int32_t concurrency{4};        // topo并发测试的worker数量
     int32_t timeout_ms{60000};      // 等待类操作的总超时时间
     int32_t poll_interval_ms{500};  // 两次重试之间sleep多久。
-    int32_t sdk_timeout_ms{3000};   // sdk的内部一次RPC的请求超时
+    int32_t sdk_rpc_timeout_ms{3000};   // SDK 的单次 RPC 超时
     sdk::LogLevel sdk_log_level{sdk::LogLevel::INFO};
     bool enable_sdk_log_callback{true};  // 是否允许sdk内部的日志输出
 };

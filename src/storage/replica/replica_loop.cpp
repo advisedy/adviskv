@@ -55,7 +55,7 @@ void ReplicaLoop::stop() {
     for (auto& item : queued_submissions) {
         fail_submit_queue_item(item, stopped);
     }
-    fail_all_pending_proposals(stopped);
+    fail_all_inflight_proposals(stopped);
 }
 
 void ReplicaLoop::async_submit(Event event) {
@@ -171,7 +171,7 @@ Status ReplicaLoop::handle_event(const TickEvent& event) {
         context_.raft_core.tick(effects);
         return Status::OK();
     });
-    resolve_pending_proposals();
+    resolve_inflight_proposals();
     return status;
 }
 
@@ -179,7 +179,7 @@ Status ReplicaLoop::handle_event(const AppendResponseEvent& event) {
     Status status = run_step([this, &event](RaftEffects& effects) {
         return context_.raft_core.handle_append_response(event.from, event.sent_param, event.result, effects);
     });
-    resolve_pending_proposals();
+    resolve_inflight_proposals();
     return status;
 }
 
@@ -188,7 +188,7 @@ Status ReplicaLoop::handle_event(const VoteResponseEvent& event) {
         context_.raft_core.handle_vote_response(event.from, event.result, effects);
         return Status::OK();
     });
-    resolve_pending_proposals();
+    resolve_inflight_proposals();
     return status;
 }
 
@@ -197,7 +197,7 @@ Status ReplicaLoop::handle_event(const PreVoteResponseEvent& event) {
         context_.raft_core.handle_pre_vote_response(event.from, event.result, effects);
         return Status::OK();
     });
-    resolve_pending_proposals();
+    resolve_inflight_proposals();
     return status;
 }
 
@@ -206,7 +206,7 @@ Status ReplicaLoop::handle_event(const SnapshotResponseEvent& event) {
         context_.raft_core.handle_install_snapshot_response(event.from, event.sent_param, event.result, effects);
         return Status::OK();
     });
-    resolve_pending_proposals();
+    resolve_inflight_proposals();
     return status;
 }
 
@@ -215,7 +215,7 @@ Status ReplicaLoop::handle_event(const AppendSendFailedEvent& event) {
         context_.raft_core.handle_append_send_failed(event.from, event.sent_param, event.status);
         return Status::OK();
     });
-    resolve_pending_proposals();
+    resolve_inflight_proposals();
     return status;
 }
 
@@ -224,7 +224,7 @@ Status ReplicaLoop::handle_event(const SnapshotSendFailedEvent& event) {
         context_.raft_core.handle_install_snapshot_send_failed(event.from, event.sent_param, event.status);
         return Status::OK();
     });
-    resolve_pending_proposals();
+    resolve_inflight_proposals();
     return status;
 }
 
@@ -244,7 +244,7 @@ Status ReplicaLoop::handle_event(const PublishSnapshotEvent& event) {
             return status;
         }
     }
-    resolve_pending_proposals();
+    resolve_inflight_proposals();
     return Status::OK();
 }
 
@@ -369,31 +369,31 @@ Status ReplicaLoop::persist_raft_effects(const RaftEffects& effects) {
     return Status::OK();
 }
 // 只有在runner内部访问，目前并没有并发方面的危险
-void ReplicaLoop::resolve_pending_proposals() {
-    LogIndex commit_index;
+void ReplicaLoop::resolve_inflight_proposals() {
+    LogIndex commit_index{0};
+    LogIndex last_applied{0};
     {
         std::lock_guard lock(context_.raft_core_mutex);
         commit_index = context_.raft_core.commit_index();
+        last_applied = context_.raft_core.last_applied();
     }
 
-    for (auto it = pending_proposals_.begin(); it != pending_proposals_.end();) {
-        LogIndex log_index = it->first;
-        std::shared_ptr<TimeoutWaiter>& waiter = it->second;
+    for (auto it = inflight_.begin(); it != inflight_.end();) {
+        InflightProposal& proposal = it->second;
+        if (!proposal.committed && proposal.index > 0 && proposal.index <= commit_index) {
+            proposal.committed = true;
+            for (const auto& waiter : proposal.waiters) {
+                if (!complete_proposal_commit(waiter, Status::OK())) {
+                    ADVISKV_METRICS_COUNTER("storage_replica_request_commit_after_timeout");
+                }
+            }
+        }
 
-        bool cancelled = false;
-        {
-            std::lock_guard lock(waiter->mutex);
-            cancelled = waiter->cancelled;
+        if (proposal.committed && proposal.index > 0 && proposal.index <= last_applied) {
+            it = inflight_.erase(it);
+        } else {
+            ++it;
         }
-        if (cancelled) {
-            it = pending_proposals_.erase(it);
-            continue;
-        }
-        if (log_index > commit_index) {
-            break;
-        }
-        complete_proposal_commit(waiter, Status::OK());
-        it = pending_proposals_.erase(it);
     }
 
     bool is_leader;
@@ -402,24 +402,27 @@ void ReplicaLoop::resolve_pending_proposals() {
         is_leader = context_.raft_core.is_leader();
     }
     if (!is_leader) {
-        fail_all_pending_proposals(Status::NOT_LEADER("leader changed before proposal committed"));
+        fail_all_inflight_proposals(Status::NOT_LEADER("leader changed before proposal committed"));
     }
 }
 
-void ReplicaLoop::fail_all_pending_proposals(const Status& status) {
-    for (auto& [_, waiter] : pending_proposals_) {
-        complete_proposal_commit(waiter, status);
+void ReplicaLoop::fail_all_inflight_proposals(const Status& status) {
+    for (auto& [_, proposal] : inflight_) {
+        for (const auto& waiter : proposal.waiters) {
+            complete_proposal_commit(waiter, status);
+        }
     }
-    pending_proposals_.clear();
+    inflight_.clear();
 }
 
 void ReplicaLoop::on_submit_queue_ready(std::vector<SubmitQueueItem> items) {
     if (items.empty()) {
         return;
     }
-    if (!enqueue([this, items = std::move(items)]() mutable { drain_submit_queue(std::move(items)); })) {
+    auto queued_items = std::make_shared<std::vector<SubmitQueueItem>>(std::move(items));
+    if (!enqueue([this, queued_items]() mutable { drain_submit_queue(std::move(*queued_items)); })) {
         Status stopped = Status::ERROR("raft loop is stopped");
-        for (auto& item : items) {
+        for (auto& item : *queued_items) {
             fail_submit_queue_item(item, stopped);
         }
     }
@@ -454,7 +457,7 @@ void ReplicaLoop::drain_submit_queue(std::vector<SubmitQueueItem> items) {
 
         ConfigChangeItem& config_item = std::get<ConfigChangeItem>(items[i]);
         Status status = run_step(std::move(config_item.step));
-        resolve_pending_proposals();
+        resolve_inflight_proposals();
         complete_loop_submit(config_item.waiter, status);
         if (status.fail()) {
             fail_submit_queue_items(items, i + 1, status);
@@ -470,10 +473,95 @@ Status ReplicaLoop::propose_batch_from_queue(std::vector<ProposalBatchItem>& act
         return Status::OK();
     }
 
-    std::vector<ProposeParam> params;
-    params.reserve(active_items.size());
-    for (const ProposalBatchItem& item : active_items) {
-        params.push_back(item.param);
+    // 代码逻辑懒得拆开了，直接一口气在这里做完了，也直观一点，不想再多helper了
+    // 首先是把active_items里面request_id之前就遇到过的给筛选出来，
+    // 然后对于第一次遇见的跑一次raft_core.propose_batch，更新inflight里面的index，
+    // 这样就可以在resolve里面和commit_index比较大小，从而知道结果
+
+    std::vector<size_t> candidate_item_indexs;
+
+    // 先把里面request_id已经遇到过的筛选出来
+    for (size_t i = 0; i < active_items.size(); ++i) {
+        ProposalBatchItem& item = active_items[i];
+        const auto* write = std::get_if<WriteProposal>(&item.param.payload);
+        if (write == nullptr || write->request_id.empty()) {
+            complete_proposal_commit(item.waiter,
+                                     Status::INVALID_ARGUMENT("request_id is required for every write proposal"));
+            continue;
+        }
+
+        RequestRecord committed_record;
+        Status find_status;
+        {
+            std::lock_guard lock(context_.state_machine_mutex);
+            find_status = context_.state_machine.find_request(write->request_id, committed_record);
+        }
+        if (find_status.ok()) {
+            Status status = committed_record.matches(*write)
+                                    ? Status::OK()
+                                    : Status::INVALID_ARGUMENT("request_id was reused with a different write");
+            complete_proposal_commit(item.waiter, status);
+
+            continue;
+        } else if (find_status.code() != StatusCode::KEY_NOT_FOUND) {
+            complete_proposal_commit(item.waiter, find_status);
+            continue;
+        }
+
+        // 说明在状态机里面没有找到request_id对应的操作
+        // 去检查一下inflight里面有没有
+        if (auto inflight_it = inflight_.find(write->request_id); inflight_it != inflight_.end()) {
+            InflightProposal& proposal = inflight_it->second;
+            if ((*write) != proposal.proposal) {
+                complete_proposal_commit(item.waiter,
+                                         Status::INVALID_ARGUMENT("request_id was reused with a different write"));
+            } else if (proposal.committed) {
+                ADVISKV_METRICS_COUNTER("storage_replica_request_pending_deduplicated");
+                complete_proposal_commit(item.waiter, Status::OK());
+            } else {
+                ADVISKV_METRICS_COUNTER("storage_replica_request_pending_deduplicated");
+                proposal.waiters.push_back(item.waiter);
+            }
+            continue;
+        }
+
+        // 说明是第一次看到该 request_id
+        InflightProposal proposal;
+        proposal.proposal = *write;
+        proposal.waiters.push_back(item.waiter);
+        inflight_.emplace(write->request_id, std::move(proposal));
+        candidate_item_indexs.push_back(i);
+    }
+
+    std::vector<ProposeParam> params;  // 代表真正需要走进Raft的proposal的params
+    params.reserve(candidate_item_indexs.size());
+    for (size_t item_index : candidate_item_indexs) {
+        params.push_back(active_items[item_index].param);
+    }
+
+    // 一个lambda，作用是把candidate_item_indexs里
+    // 面对应的waitter都设置status，并且inflight里面的都删掉
+    auto fail_new_candidates = [&](const Status& status) {
+        for (size_t item_index : candidate_item_indexs) {
+            ProposalBatchItem& item = active_items[item_index];
+            const auto* write = std::get_if<WriteProposal>(&item.param.payload);
+            if (write == nullptr) {
+                continue;
+            }
+
+            if (auto inflight_it = inflight_.find(write->request_id); inflight_it != inflight_.end()) {
+                for (const auto& waiter : inflight_it->second.waiters) {
+                    IGNORE_RESULT(complete_proposal_commit(waiter, status))
+                }
+                inflight_.erase(inflight_it);
+            }
+        }
+    };
+
+    if (params.empty()) {
+        resolve_inflight_proposals();
+        active_items.clear();
+        return Status::OK();
     }
 
     std::vector<std::pair<Status, LogIndex>> results;
@@ -483,51 +571,61 @@ Status ReplicaLoop::propose_batch_from_queue(std::vector<ProposalBatchItem>& act
     });
 
     if (step_status.fail()) {
-        for (auto& item : active_items) {
-            complete_proposal_commit(item.waiter, step_status);
-        }
-        resolve_pending_proposals();
+        fail_new_candidates(step_status);
+        resolve_inflight_proposals();
         active_items.clear();
         return step_status;
     }
 
-    if (results.size() != active_items.size()) {
+    if (results.size() != candidate_item_indexs.size()) {
         Status status = Status::ERROR("proposal batch result size mismatch");
-        for (auto& item : active_items) {
-            IGNORE_RESULT(complete_proposal_commit(item.waiter, status))
-        }
-        resolve_pending_proposals();
+        fail_new_candidates(status);
+        resolve_inflight_proposals();
         active_items.clear();
         return status;
     }
 
-    LogIndex commit_index;
-    {
-        std::lock_guard lock(context_.raft_core_mutex);
-        commit_index = context_.raft_core.commit_index();
-    }
+    // 到此，成功执行完了raft_core的propose_batch
 
-    for (size_t i = 0; i < active_items.size(); i++) {
-        ProposalBatchItem& item = active_items[i];
-        Status status = results[i].first;
-        LogIndex index = results[i].second;
-        {
-            std::lock_guard lock(item.waiter->mutex);
-            item.waiter->index = index;
+    for (size_t candidate_index = 0; candidate_index < candidate_item_indexs.size(); candidate_index++) {
+        ProposalBatchItem& item = active_items[candidate_item_indexs[candidate_index]];
+        Status status = results[candidate_index].first;
+        LogIndex index = results[candidate_index].second;
+
+        const auto* write = std::get_if<WriteProposal>(&item.param.payload);
+        if (write == nullptr || write->request_id.empty()) {
+            complete_proposal_commit(item.waiter,
+                                     Status::INVALID_ARGUMENT("request_id is required for every write proposal"));
+            continue;
         }
 
+        auto inflight_it = inflight_.find(write->request_id);
+        if (inflight_it == inflight_.end()) {
+            complete_proposal_commit(item.waiter, Status::ERROR("inflight proposal is missing"));
+            continue;
+        }
+
+        InflightProposal& proposal = inflight_it->second;
         if (status.fail()) {
-            complete_proposal_commit(item.waiter, status);
-        } else if (index <= 0) {
-            complete_proposal_commit(item.waiter, Status::ERROR("invalid proposed log index"));
-        } else if (commit_index >= index) {
-            complete_proposal_commit(item.waiter, Status::OK());
-        } else {
-            pending_proposals_.emplace(index, item.waiter);
+            for (const auto& waiter : proposal.waiters) {
+                complete_proposal_commit(waiter, status);
+            }
+            inflight_.erase(inflight_it);
+            continue;
         }
+        if (index <= 0) {
+            Status invalid_index = Status::ERROR("invalid proposed log index");
+            for (const auto& waiter : proposal.waiters) {
+                complete_proposal_commit(waiter, invalid_index);
+            }
+            inflight_.erase(inflight_it);
+            continue;
+        }
+
+        proposal.index = index;
     }
 
-    resolve_pending_proposals();
+    resolve_inflight_proposals();
     active_items.clear();
     return Status::OK();
 }
@@ -541,10 +639,11 @@ void ReplicaLoop::complete_loop_submit(const std::shared_ptr<Waiter>& waiter, co
     waiter->cv.notify_one();
 }
 
+// 返回 true，代表本次操作唤醒了waiter
 bool ReplicaLoop::complete_proposal_commit(const std::shared_ptr<TimeoutWaiter>& waiter, const Status& status) {
     {
         std::lock_guard lock(waiter->mutex);
-        if (waiter->cancelled) {
+        if (waiter->cancelled || waiter->done) {
             return false;
         }
         waiter->status = status;

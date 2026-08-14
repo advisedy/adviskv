@@ -89,9 +89,10 @@ struct RequestRecord {
     LogIndex index{0};
     Term term{0};
 
-    bool matches(const LogEntry& entry) const {
+    bool matches(const auto& entry) const {
         return request_id == entry.request_id && op == entry.op_type && key == entry.key && value == entry.value;
     }
+
 };
 
 struct RequestVoteParam {
