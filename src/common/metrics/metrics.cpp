@@ -95,6 +95,12 @@ public:
         counters_[name] += delta;
     }
 
+    int64_t counter_value(const std::string& name) const {
+        std::lock_guard lock(mutex_);
+        auto it = counters_.find(name);
+        return it == counters_.end() ? 0 : it->second;
+    }
+
     void reset() {
         std::lock_guard lock(mutex_);
         latencies_.clear();
@@ -282,6 +288,8 @@ void AdvisMetrics::record_latency(const std::string& name, int64_t latency_us) {
 }
 
 void AdvisMetrics::record_counter(const std::string& name, int64_t delta) { registry_->record_counter(name, delta); }
+
+int64_t AdvisMetrics::counter_value(const std::string& name) const { return registry_->counter_value(name); }
 
 void AdvisMetrics::reset() { registry_->reset(); }
 

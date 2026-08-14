@@ -298,13 +298,58 @@ TEST_F(ReplicaTest, SingleReplicaPutAndGetAfterElection) {
     ASSERT_NE(replica, nullptr);
     ASSERT_EQ(replica->get_role(), ReplicaRole::LEADER);
 
-    Status status = replica->put(PutParam{"k1", "v1"});
+    Status status = replica->put(PutParam{"k1", "v1", "single-replica-put"});
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     Value value;
     status = replica->get(GetParam{"k1"}, value);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(value, "v1");
+}
+
+// 同一个 request_id 的重试必须复用已经存在的 proposal，不能再次追加业务日志；
+// 如果 request_id 被用于不同写入，则应在 Replica 层直接拒绝。
+TEST_F(ReplicaTest, RequestIdRetryIsIdempotentAndConflictsAreRejected) {
+    ReplicaManager manager(base_dir_.string());
+    ReplicaPtr replica = add_single_replica(manager);
+    ASSERT_NE(replica, nullptr);
+
+    manager.start_tick();
+    replica = wait_until_leader(manager);
+    ASSERT_NE(replica, nullptr);
+    ASSERT_EQ(replica->get_role(), ReplicaRole::LEADER);
+
+    constexpr const char* request_id = "replica-idempotent-request";
+    Status status = replica->put(PutParam{"idempotent-key", "v1", request_id});
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+
+    status = replica->put(PutParam{"idempotent-key", "v1", request_id});
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+
+    status = replica->put(PutParam{"idempotent-key", "v2", request_id});
+    ASSERT_EQ(status.code(), StatusCode::INVALID_ARGUMENT)
+            << test::status_debug_string(status);
+
+    Value value;
+    status = replica->get(GetParam{"idempotent-key"}, value);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    EXPECT_EQ(value, "v1");
+
+    PersistEngine wal_reader(base_dir_.string(), replica_id_);
+    ASSERT_TRUE(wal_reader.init().ok());
+    std::vector<LogEntry> entries;
+    ASSERT_TRUE(wal_reader.read_wal_batch(entries).ok());
+
+    int request_entry_count = 0;
+    for (const LogEntry& entry : entries) {
+        if (entry.request_id == request_id) {
+            ++request_entry_count;
+            EXPECT_EQ(entry.op_type, WriteOpType::PUT);
+            EXPECT_EQ(entry.key, "idempotent-key");
+            EXPECT_EQ(entry.value, "v1");
+        }
+    }
+    EXPECT_EQ(request_entry_count, 1);
 }
 
 // 单节点replica正常写入超过snapshot阈值后，通过后台tick自然触发snapshot。
@@ -323,6 +368,7 @@ TEST_F(ReplicaTest, TakesSnapshotNaturallyAfterEnoughAppliedLogs) {
         Status status = replica->put(PutParam{
             "snapshot-auto-" + std::to_string(i),
             "value-" + std::to_string(i),
+            "snapshot-auto-request-" + std::to_string(i),
         });
         ASSERT_TRUE(status.ok())
             << test::status_debug_string(status) << ", index=" << i;
@@ -361,7 +407,7 @@ TEST_F(ReplicaTest, RecoverRestoresDataFromPersistedState) {
         ASSERT_NE(replica, nullptr);
         ASSERT_EQ(replica->get_role(), ReplicaRole::LEADER);
 
-        Status status = replica->put(PutParam{"persisted", "v"});
+        Status status = replica->put(PutParam{"persisted", "v", "persisted-request"});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     }
 
@@ -418,7 +464,7 @@ TEST_F(ReplicaTest, WalCatchupRecoveryRejectsRequestsUntilEntriesApplied) {
     Value value;
     Status status = replica->get(GetParam{"k1"}, value);
     EXPECT_EQ(status.code(), StatusCode::IS_RECOVERING);
-    status = replica->put(PutParam{"blocked", "value"});
+    status = replica->put(PutParam{"blocked", "value", "blocked-request"});
     EXPECT_EQ(status.code(), StatusCode::IS_RECOVERING);
 
     AppendEntriesResult result;

@@ -26,6 +26,7 @@ public:
     void stop();
     void record_latency(const std::string& name, int64_t latency_us);
     void record_counter(const std::string& name, int64_t delta = 1);
+    int64_t counter_value(const std::string& name) const;
     void reset();
     std::string dump_prometheus() const;
 

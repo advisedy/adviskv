@@ -30,7 +30,12 @@ struct BenchOptions {
     int64_t warmup_requests{0};
 
     int32_t timeout_ms{60000};
-    int32_t sdk_timeout_ms{3000};
+    int32_t sdk_rpc_timeout_ms{3000};
+    int32_t sdk_write_timeout_ms{3000};
+    int32_t sdk_read_timeout_ms{3000};
+    int32_t sdk_max_retries{3};
+    int32_t sdk_route_max_retries{1};
+    int32_t sdk_retry_delay_ms{20};
 
     std::string output_json;
 

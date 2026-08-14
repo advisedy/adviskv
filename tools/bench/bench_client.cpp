@@ -42,6 +42,7 @@ struct BenchResult {
     double attempted_qps{0.0};
     double success_qps{0.0};
     double failure_rate{0.0};
+    int64_t sdk_unknown_final{0};
     LatencyRecorder::LatencySummary latency;
 };
 
@@ -65,7 +66,12 @@ bool parse_args(int argc, char** argv, BenchOptions* options) {
     parser.add_int32("value_size", options->value_size);
     parser.add_int64("warmup_requests", options->warmup_requests);
     parser.add_int32("timeout_ms", options->timeout_ms);
-    parser.add_int32("sdk_timeout_ms", options->sdk_timeout_ms);
+    parser.add_int32("sdk_rpc_timeout_ms", options->sdk_rpc_timeout_ms);
+    parser.add_int32("sdk_write_timeout_ms", options->sdk_write_timeout_ms);
+    parser.add_int32("sdk_read_timeout_ms", options->sdk_read_timeout_ms);
+    parser.add_int32("sdk_max_retries", options->sdk_max_retries);
+    parser.add_int32("sdk_route_max_retries", options->sdk_route_max_retries);
+    parser.add_int32("sdk_retry_delay_ms", options->sdk_retry_delay_ms);
     parser.add_string("output_json", options->output_json);
     parser.add_string("metrics_http_host", options->metrics_http_host);
     parser.add_int32("metrics_http_port", options->metrics_http_port);
@@ -95,7 +101,11 @@ bool validate_options(const BenchOptions& options) {
     }
     if (options.catalog_port <= 0 || options.topo_port <= 0 ||
         options.timeout_ms <= 0 || options.shard_count <= 0 ||
-        options.replica_count < 0 || options.sdk_timeout_ms <= 0 ||
+        options.replica_count < 0 || options.sdk_rpc_timeout_ms <= 0 ||
+        options.sdk_write_timeout_ms <= 0 || options.sdk_read_timeout_ms <= 0 ||
+        options.sdk_max_retries < 0 ||
+        options.sdk_route_max_retries < 0 ||
+        options.sdk_retry_delay_ms < 0 ||
         options.metrics_http_port < 0 || options.metrics_hold_seconds < 0) {
         fmt::print(stderr,
                    "ports, timeout, shard/replica counts, and metrics config "
@@ -161,7 +171,7 @@ e2e::Options to_e2e_options(const BenchOptions& options) {
     e2e_options.replica_count = options.replica_count;
     e2e_options.key_count = static_cast<int32_t>(options.key_count);
     e2e_options.timeout_ms = options.timeout_ms;
-    e2e_options.sdk_timeout_ms = options.sdk_timeout_ms;
+    e2e_options.sdk_rpc_timeout_ms = options.sdk_rpc_timeout_ms;
     e2e_options.sdk_log_level = sdk::LogLevel::WARN;
     e2e_options.enable_sdk_log_callback = false;
     return e2e_options;
@@ -187,8 +197,12 @@ sdk::KVClient make_client(const BenchOptions& options) {
     conf.table_name = options.table;
     conf.topo_host = options.topo_host;
     conf.topo_port = options.topo_port;
-    conf.topo_timeout_ms = options.sdk_timeout_ms;
-    conf.storage_timeout_ms = options.sdk_timeout_ms;
+    conf.rpc_timeout_ms = options.sdk_rpc_timeout_ms;
+    conf.write_timeout_ms = options.sdk_write_timeout_ms;
+    conf.read_timeout_ms = options.sdk_read_timeout_ms;
+    conf.max_retries = options.sdk_max_retries;
+    conf.route_max_retries = options.sdk_route_max_retries;
+    conf.retry_delay_ms = options.sdk_retry_delay_ms;
     conf.log.level = sdk::LogLevel::WARN;
     return sdk::KVClient(conf);
 }
@@ -235,19 +249,19 @@ bool should_read(const BenchOptions& options, std::mt19937_64& rng) {
 }
 
 Status execute_one(sdk::KVClient* client, const BenchOptions& options,
-                   int64_t request_id, bool read_request) {
+                   int64_t request_id, bool read_request, const char* phase) {
     int64_t key_index = request_id % options.key_count;
     Key key = make_key(key_index);
     if (read_request) {
         Value value;
         return client->get(key, &value);
     }
-    return client->put(key, make_value(options, request_id));
+    return client->put(key, make_value(options, request_id), fmt::format("bench-{}-{}", phase, request_id));
 }
 
 void run_worker(const BenchOptions& options, std::atomic<int64_t>* next_request,
                 int64_t request_count, BenchStats* stats, bool record_stats,
-                int32_t worker_id) {
+                int32_t worker_id, const char* phase) {
     sdk::KVClient client = make_client(options);
     std::mt19937_64 rng(static_cast<uint64_t>(
         Clock::now().time_since_epoch().count() + worker_id));
@@ -261,7 +275,7 @@ void run_worker(const BenchOptions& options, std::atomic<int64_t>* next_request,
         bool read_request = should_read(options, rng);
 
         auto start = Clock::now();
-        Status status = execute_one(&client, options, request_id, read_request);
+        Status status = execute_one(&client, options, request_id, read_request, phase);
         if (!record_stats) {
             continue;
         }
@@ -289,6 +303,7 @@ BenchResult run_phase(const BenchOptions& options, int64_t request_count,
                                          : "bench_stage_warmup_start");
 
     BenchStats stats;
+    const char* phase = record_stats ? "workload" : "warmup";
     std::atomic<int64_t> next_request{0};
     std::vector<std::thread> workers;
     workers.reserve(static_cast<size_t>(options.threads));
@@ -298,7 +313,7 @@ BenchResult run_phase(const BenchOptions& options, int64_t request_count,
         int32 worker_id = i;
         workers.emplace_back([&, worker_id]() -> void {
             run_worker(options, &next_request, request_count, &stats,
-                       record_stats, worker_id);
+                       record_stats, worker_id, phase);
         });
     }
     for (std::thread& worker : workers) {
@@ -346,6 +361,7 @@ bool write_json(const BenchOptions& options, const BenchResult& result) {
         << fmt::format("  \"attempted_qps\": {:.6f},\n", result.attempted_qps)
         << fmt::format("  \"success_qps\": {:.6f},\n", result.success_qps)
         << fmt::format("  \"failure_rate\": {:.6f},\n", result.failure_rate)
+        << fmt::format("  \"sdk_unknown_final\": {},\n", result.sdk_unknown_final)
         << "  \"latency_us\": {\n"
         << fmt::format("    \"count\": {},\n", result.latency.count)
         << fmt::format("    \"min\": {},\n", result.latency.min_us)
@@ -367,6 +383,7 @@ void print_result(const BenchOptions& options, const BenchResult& result) {
         "  success: {}\n"
         "  failure: {}\n"
         "  failure_rate: {:.4f}\n"
+        "  sdk_unknown_final: {}\n"
         "  elapsed_s: {:.6f}\n"
         "  attempted_qps: {:.2f}\n"
         "  success_qps: {:.2f}\n"
@@ -377,7 +394,7 @@ void print_result(const BenchOptions& options, const BenchResult& result) {
         "  p99_us: {}\n"
         "  max_us: {}\n",
         options.workload, options.threads, result.requests, result.success,
-        result.failure, result.failure_rate, result.elapsed_s,
+        result.failure, result.failure_rate, result.sdk_unknown_final, result.elapsed_s,
         result.attempted_qps, result.success_qps, result.latency.min_us,
         result.latency.avg_us, result.latency.p50_us, result.latency.p95_us,
         result.latency.p99_us, result.latency.max_us);
@@ -418,6 +435,10 @@ int main(int argc, char** argv) {
 
     adviskv::bench::BenchResult result =
         adviskv::bench::run_phase(options, options.requests, true);
+    auto& metrics = adviskv::AdvisMetrics::get_instance();
+    result.sdk_unknown_final =
+            metrics.counter_value("sdk_put_unknown_final") +
+            metrics.counter_value("sdk_delete_unknown_final");
     adviskv::bench::print_result(options, result);
     bool write_json_ok = false;
     {

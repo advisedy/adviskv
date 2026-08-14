@@ -89,8 +89,13 @@ struct RequestRecord {
     LogIndex index{0};
     Term term{0};
 
-    bool matches(const auto& entry) const {
+    bool matches(const LogEntry& entry) const {
         return request_id == entry.request_id && op == entry.op_type && key == entry.key && value == entry.value;
+    }
+
+    template<typename Other>
+    bool matches(const Other& other) const {
+        return request_id == other.request_id && op == other.op && key == other.key && value == other.value;
     }
 
 };
