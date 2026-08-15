@@ -226,18 +226,21 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param, AppendEntr
                 param.leader_commit)
     } else {
         RaftLog::AppendEntriesResult append_result;
-        Status append_status = raft_log_.append_entries_from_leader(param.entries, append_result);
-        if (append_status.fail()) {
-            LOG_WARN(
-                    "[RaftCore Append] storage raft handle append entries failed, "
-                    "msg={}",
-                    append_status.msg());
-            return;
-        }
-        if (append_result.entries_to_rewrite.has_value()) {
-            effects.entries_to_rewrite = std::move(append_result.entries_to_rewrite.value());
-        } else {
-            effects.entries_to_append = std::move(append_result.entries_to_append);
+        {
+            ADVISKV_METRICS_TIMER("storage_raft_handle_append_entries_log");
+            Status append_status = raft_log_.append_entries_from_leader(param.entries, append_result);
+            if (append_status.fail()) {
+                LOG_WARN(
+                        "[RaftCore Append] storage raft handle append entries failed, "
+                        "msg={}",
+                        append_status.msg());
+                return;
+            }
+            if (append_result.entries_to_rewrite.has_value()) {
+                effects.entries_to_rewrite = std::move(append_result.entries_to_rewrite.value());
+            } else {
+                effects.entries_to_append = std::move(append_result.entries_to_append);
+            }
         }
         LOG_DEBUG(
                 "[RaftCore Append] handle_append_entries: effects finish, "
@@ -246,7 +249,10 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param, AppendEntr
     }
 
     // 不管是否有entry，也就是不管是日志追加还是心跳，都会需要更新commit_idx
-    raft_apply_.advance_commit_index_from_leader(param.leader_commit);
+    {
+        ADVISKV_METRICS_TIMER("storage_raft_handle_append_entries_commit");
+        raft_apply_.advance_commit_index_from_leader(param.leader_commit);
+    }
     finish_recovering();
 
     result.success = true;

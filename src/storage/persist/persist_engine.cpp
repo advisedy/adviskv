@@ -298,6 +298,7 @@ Status PersistEngine::read_wal_batch(std::vector<LogEntry>& entries) {
 }
 
 Status PersistEngine::rewrite_wal(const std::vector<LogEntry>& entries) {
+    ADVISKV_METRICS_TIMER("storage_persist_rewrite_wal");
     std::unique_lock lock{mutex_};
     return rewrite_wal_unlocked(entries);
 }
@@ -342,12 +343,18 @@ Status PersistEngine::rewrite_wal_unlocked(const std::vector<LogEntry>& entries)
         }
     });
 
-    for (const LogEntry& entry : entries) {
-        RETURN_IF_INVALID_STATUS(write_wal_to_disk(fd, entry))
+    {
+        ADVISKV_METRICS_TIMER("storage_persist_rewrite_wal_write");
+        for (const LogEntry& entry : entries) {
+            RETURN_IF_INVALID_STATUS(write_wal_to_disk(fd, entry))
+        }
     }
 
-    if (::fsync(fd) != 0) {
-        return Status::ERROR("failed to fsync wal tmp file");
+    {
+        ADVISKV_METRICS_TIMER("storage_persist_rewrite_wal_fsync");
+        if (::fsync(fd) != 0) {
+            return Status::ERROR("failed to fsync wal tmp file");
+        }
     }
     if (::close(fd) != 0) {
         fd = -1;
@@ -366,7 +373,10 @@ Status PersistEngine::rewrite_wal_unlocked(const std::vector<LogEntry>& entries)
     if (::rename(tmp_path.c_str(), wal_path_.c_str()) != 0) {
         return Status::ERROR("failed to rename wal tmp file");
     }
-    RETURN_IF_INVALID_STATUS(func::fsync_dir(dir_path_))
+    {
+        ADVISKV_METRICS_TIMER("storage_persist_rewrite_wal_dir_fsync");
+        RETURN_IF_INVALID_STATUS(func::fsync_dir(dir_path_))
+    }
 
     wal_fd_ = ::open(wal_path_.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (wal_fd_ < 0) {

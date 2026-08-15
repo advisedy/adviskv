@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -55,7 +54,6 @@ public:
     bool is_leader() const;
     RaftMemberType member_type(const ReplicaID& replica_id) const;
     std::vector<RaftMember> raft_members() const;
-    std::optional<LogEntry> find_log_entry_by_request_id(const std::string& request_id) const;
 
     bool is_recovering() const;
     bool is_ready() const;

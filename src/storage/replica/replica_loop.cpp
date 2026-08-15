@@ -283,6 +283,7 @@ Status ReplicaLoop::handle_call(PreVoteCall& call) {
 }
 
 Status ReplicaLoop::handle_call(AppendEntriesCall& call) {
+    ADVISKV_METRICS_TIMER("storage_replica_append_entries_raft_step_execute");
     return run_step([this, &call](RaftEffects& effects) {
         context_.raft_core.handle_append_entries(call.param, call.result, effects);
         return Status::OK();
