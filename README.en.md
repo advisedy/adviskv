@@ -6,23 +6,24 @@
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C?logo=c%2B%2B&logoColor=white" alt="C++17" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
   <img src="https://img.shields.io/badge/Recommended-Linux%20%7C%20Ubuntu%2024.04-2ea44a" alt="Recommended environment: Linux (Ubuntu 24.04)" />
-  <img src="https://img.shields.io/badge/Status-V1%20prototype-blue" alt="V1 prototype" />
+  <img src="https://img.shields.io/badge/Status-v0.1.0-blue" alt="Status v0.1.0" />
 </p>
 
 <p align="center">
   <a href="README.md">中文版本</a>
 </p>
 
-AdvisKV is a from-scratch distributed Key-Value storage prototype built with **C++17 + gRPC + Protobuf + Raft**. Users access data with a `db + table + key` model: `Catalog` manages DDL and the database/table catalog, `Topo` manages Storage nodes, shard replicas, and routes, `Storage` handles KV reads/writes, Raft replication, WAL, snapshots, and local recovery, and `SDK` routes requests to the corresponding shard leader.
+AdvisKV is a distributed Key-Value storage system built from scratch with **C++17 + gRPC + Protobuf + Raft**. Users access data with a `db + table + key` model: `Catalog` manages databases, tables, and DDL, `Topo` manages Storage nodes, shard replicas, and routes, `Storage` replicates KV writes with Raft and uses WAL / snapshots for persistence and recovery, and the SDK sends requests to the corresponding shard leader.
 
-The current V1 runs a local main path covering database/table creation, table sharding, multi-replica placement, replica-count changes, abnormal replica replacement, Raft leader election, log replication, snapshot catch-up, and crash recovery. The repository also includes GoogleTest, Python E2E tests, benchmarks, and metrics reports.
+The current release is **v0.1.0**. It supports the main distributed KV path in a local multi-process environment, including database/table creation, sharding, replica-count changes, abnormal replica replacement, Raft leader election, log replication, snapshot catch-up, and restart recovery. Detailed scope and follow-up work are listed in the [version notes](docs/版本.md).
 
-## Implemented so far
+## Supported in v0.1.0
 
-- Database/table model, sharding, and routing: users access data with `db + table + key`; Catalog manages databases, tables, and DDL, Topo maintains shard replicas and routes, and the SDK sends requests to the corresponding shard leader.
-- Replica-count changes and abnormal replica replacement: `AlterTableReplicaCount` supports `0 -> N`, `N -> 0`, and `N -> M`; Topo cleans up `LOST` / `ERROR` replicas and attempts to add replacements through Raft membership changes.
-- Raft replication and persistence recovery: Storage replicates KV writes with Raft and includes WAL, snapshots, log catch-up, and restart recovery.
-- Tests and local benchmarks: more than two hundred GoogleTest cases and Python E2E tests cover Raft leader election, log and snapshot catch-up, replica-count changes, scale-to-zero, and crash recovery. In a local three-replica test, put reached about 9.8k QPS with a 5.6 ms P99, while get reached about 11k QPS with a 2.2 ms P99. These numbers are for local tuning and regression comparison only.
+- **Database/table model, sharding, and routing**: supports database creation, table creation, and basic DDL. The SDK resolves routes with `db + table + key` and sends requests to the corresponding shard leader.
+- **Online replica-count changes and abnormal replica replacement**: `AlterTableReplicaCount` supports starting with zero replicas, scaling down to zero, and `N -> M` changes. When a replica enters `LOST` or `ERROR`, Topo cleans it up and adds a replacement; Storage uses Raft membership changes to add the new replica.
+- **Raft replication and recovery**: Storage replicates KV writes with Raft. KV state, Raft state, and request records are written to WAL and included in snapshots; after a restart, Storage restores them into memory and continues with subsequent WAL entries. The election path also implements PreVote to reduce interference from an old leader after it reconnects.
+- **SDK retries and idempotency**: the SDK supports route refresh and request retries. Put/Delete can carry a `request_id`, so retrying the same write does not execute it twice. If the final commit status cannot be confirmed, the SDK returns `UNKNOWN`. The retry acceptance results for leader failover are in the [SDK retry acceptance report](docs/v0.1.0/retry.md).
+- **Testing and observability**: GoogleTest covers Raft, Replica, WAL, and Snapshot modules; Python E2E tests cover the multi-process path; services and the SDK expose logs and metrics. Local benchmark results are in the [v0.1.0 benchmark report](docs/v0.1.0/benchmark/README.md).
 
 ## Architecture
 
@@ -81,6 +82,15 @@ route demo_db demo_table k1
 quit
 ```
 
+The local demo covers database/table creation, KV reads and writes, and route changes after `demo kill`:
+
+<p align="center">
+  <video src="docs/assets/adviskvctl_demo_video.mp4" controls width="720">
+    If your browser cannot play the embedded video, open the
+    <a href="docs/assets/adviskvctl_demo_video.mp4">adviskvctl demo video</a>.
+  </video>
+</p>
+
 Stop local processes:
 
 ```bash
@@ -123,7 +133,7 @@ Main binaries are generated under `build/bin/` by default.
 - `e2e_pytest.sh`: starts a local multi-process cluster and verifies the Catalog -> Topo -> Storage -> SDK main path.
 - `coverage.sh`: generates a coverage report.
 
-E2E tests cover basic KV operations, restart recovery, leader failover, follower catch-up, crash recovery, scale-to-zero, replica-count changes, and failure scenarios.
+The repository contains more than two hundred GoogleTest cases. E2E tests cover basic KV operations, restart recovery, Raft leader election, log and snapshot catch-up, replica-count changes, scale-to-zero, and failure-recovery scenarios.
 
 ## Benchmark
 
@@ -131,7 +141,7 @@ The benchmark reports below measure local flows through `SDK -> Topo route -> St
 
 Test environment: `Mac15,7`, Apple M3 Pro, 12 physical cores / 12 logical CPUs, 36 GiB memory, macOS 15.7.4, arm64. Local cluster: `1 catalog + 1 topo + 5 storage`, all processes running on the same machine and communicating through `127.0.0.1/localhost`.
 
-![Mixed benchmark](docs/benchmark/assets/mixed_read_ratio_qps.svg)
+![Mixed benchmark](docs/v0.1.0/benchmark/assets/mixed_read_ratio_qps.svg)
 
 Default scenario: `threads=16`, `shard_count=2`, `replica_count=3`, `value_size=128`, `requests=30000`.
 
@@ -143,9 +153,9 @@ Default scenario: `threads=16`, `shard_count=2`, `replica_count=3`, `value_size=
 
 Full reports:
 
-- [Put benchmark](docs/benchmark/benchmark_put.md)
-- [Get benchmark](docs/benchmark/benchmark_get.md)
-- [Mixed benchmark](docs/benchmark/benchmark_mixed.md)
+- [Put benchmark](docs/v0.1.0/benchmark/benchmark_put.md)
+- [Get benchmark](docs/v0.1.0/benchmark/benchmark_get.md)
+- [Mixed benchmark](docs/v0.1.0/benchmark/benchmark_mixed.md)
 
 Run a single benchmark:
 
@@ -171,7 +181,9 @@ The report lists latency histogram deltas and counter deltas that changed during
 
 - [scripts/README.md](scripts/README.md): common script entry points.
 - [conf/README.md](conf/README.md): conf layout and local run directories (`demo` / `unit_test` / `e2e_test` / `bench`).
-- [docs/benchmark/README.md](docs/benchmark/README.md): V1 benchmark entry and result summary.
+- [v0.1.0 version notes](docs/版本.md): current features, validation results, and follow-up plans (Chinese).
+- [docs/v0.1.0/benchmark/README.md](docs/v0.1.0/benchmark/README.md): v0.1.0 benchmark entry and result summary.
+- [docs/v0.1.0/retry.md](docs/v0.1.0/retry.md): SDK retry and leader failover acceptance results.
 - [docs/接口规范.md](docs/接口规范.md): RPC and SDK interface semantics (Chinese).
 - [Design blog](https://www.zhihu.com/column/c_2057637599590797905): project design notes.
 
@@ -184,14 +196,18 @@ scripts/    build, test, demo and benchmark scripts
 src/        Catalog, Topo, Storage, SDK and common modules
 tools/      adviskvctl, e2e client, benchmark client, storage client
 test/       GoogleTest and Python E2E tests
-docs/       design notes and V1 constraints
+docs/       design notes, version notes and benchmarks
 ```
 
 ## Current limitations
 
-- Catalog and Topo currently run as single local processes and are not highly available.
-- The current implementation supports replica-count changes and abnormal replica replacement, but not shard-count changes or automatic rebalancing.
-- Storage currently uses a map-based KV engine.
+The following limitations apply to **v0.1.0** and are also listed in the [version notes](docs/版本.md):
+
+- `request_id` has no TTL yet; a retention period such as 30 minutes may be added later.
+- The KV engine currently uses an in-memory Map. WAL and snapshots persist KV state, Raft state, and request records, and Storage loads them back into memory during recovery. A more mature persistent storage engine may be added later.
+- During abnormal replica replacement, if the old replica recovers after the replacement has become a voter, the current behavior removes the new replica; this policy still needs improvement.
+- Shard splitting and dynamic rebalancing are not supported; the shard count is fixed when a table is created.
+- Catalog and Topo are still single processes and do not yet provide control-plane high availability.
 
 ## License
 

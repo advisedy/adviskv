@@ -1,6 +1,6 @@
-# AdvisKV V1 Mixed Benchmark
+# AdvisKV v0.1.0 Mixed Benchmark
 
-这份报告记录 AdvisKV V1 在本地环境下的 `mixed` benchmark，用于观察当前混合读写链路的吞吐和延迟表现，并验证在压测环境下能否稳定完成请求。
+这份报告记录 AdvisKV v0.1.0 在本地环境下的 `mixed` benchmark，用于观察当前混合读写链路的吞吐和延迟表现，并验证在压测环境下能否稳定完成请求。
 
 ## 测试范围
 
@@ -40,7 +40,7 @@ read_ratio = 0.0, 0.5, 0.8, 0.95, 1.0
 - 操作系统：macOS 15.7.4 (24G517)，arm64。
 - 构建方式：Release
 - 生成时间：`20260707_191428`。
-- 原始结果：[`benchmark_results/mixed_v1_snapshot.csv`](benchmark_results/mixed_v1_snapshot.csv)。
+- 原始结果：[`benchmark_results/mixed_v0.1.0_snapshot.csv`](benchmark_results/mixed_v0.1.0_snapshot.csv)。
 
 ## 结果摘要
 

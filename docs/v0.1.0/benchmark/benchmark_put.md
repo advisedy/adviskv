@@ -1,6 +1,6 @@
-# AdvisKV V1 Put Benchmark
+# AdvisKV v0.1.0 Put Benchmark
 
-这份报告记录 AdvisKV V1 在本地环境下的 `put` benchmark，用于观察当前写链路的吞吐和延迟表现，并验证在压测环境下能否稳定完成请求。
+这份报告记录 AdvisKV v0.1.0 在本地环境下的 `put` benchmark，用于观察当前写链路的吞吐和延迟表现，并验证在压测环境下能否稳定完成请求。
 
 ## 测试范围
 
@@ -42,7 +42,7 @@ warmup_requests = 0
 - 操作系统：macOS 15.7.4 (24G517)，arm64。
 - 构建方式：Release
 - 生成时间：`20260707_191428`。
-- 原始结果：[`benchmark_results/put_v1_snapshot.csv`](benchmark_results/put_v1_snapshot.csv)。
+- 原始结果：[`benchmark_results/put_v0.1.0_snapshot.csv`](benchmark_results/put_v0.1.0_snapshot.csv)。
 
 ## 结果摘要
 
