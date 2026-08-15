@@ -76,10 +76,7 @@ quit
 本地演示：
 
 <p align="center">
-  <video src="docs/assets/adviskvctl_demo_video.mp4" controls width="720">
-    浏览器若无法内嵌播放，请打开
-    <a href="docs/assets/adviskvctl_demo_video.mp4">adviskvctl 演示视频</a>。
-  </video>
+  <img src="docs/assets/adviskvctl_demo.gif" alt="adviskvctl demo" width="960" />
 </p>
 
 Demo 退出时会清理本地进程；也可以手动执行：
