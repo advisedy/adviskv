@@ -16,6 +16,7 @@
 | `e2e_pytest.sh` | 构建 + e2e测试 |
 | `coverage.sh` | 执行覆盖率测试 |
 | `bench.sh` | 自动拉起集群（配置来自conf目录）并运行 `bench_client`。 |
+| `failover_bench.sh` | kill 当前 Raft leader，并生成 `failover_result.json` 查看切主窗口、失败率和 `UNKNOWN` 统计。 |
 | `bench_metrics.sh` | `bench.sh` + 生成 `metrics` 报告 |
 | `adviskvctl_demo.sh` | 一个交互式demo，会自动拉起集群，可输入 `create_db`, `create_table`, `put`, `get` ... |
 | `stop_cluster.sh` | 停止拉起来的集群 |

@@ -740,6 +740,87 @@ TEST_F(RaftClusterTest, HealthyLeaderNotDisplacedByEqualLogPreVote) {
     EXPECT_EQ(cluster_.core_ptr(1)->current_term(), leader_term);
 }
 
+// 旧 Leader 被隔离后，多数派选出新 Leader；旧 Leader 恢复时应该因为收到
+// 更高 term 的消息退回 follower，不能再触发一次无意义的切主。
+TEST_F(RaftClusterTest, OldLeaderReturnsAfterMajorityFailoverWithoutSecondElection) {
+    create_and_set_0_leader(3);
+    ASSERT_TRUE(tick_until_all_committed(1));
+    ASSERT_EQ(cluster_.leader_idx(), 0);
+
+    constexpr int old_leader_idx = 0;
+    const Term old_term = cluster_.core_ptr(old_leader_idx)->current_term();
+
+    cluster_.isolate(old_leader_idx);
+    ASSERT_TRUE(cluster_.tick_until_stable());
+
+    const int new_leader_idx = cluster_.leader_idx();
+    ASSERT_NE(new_leader_idx, -1);
+    ASSERT_NE(new_leader_idx, old_leader_idx);
+    const Term new_term = cluster_.core_ptr(new_leader_idx)->current_term();
+    ASSERT_GT(new_term, old_term);
+
+    auto [status, committed_idx] = cluster_.propose(
+        new_leader_idx, WriteOpType::PUT, "majority-key", "majority-value");
+    ASSERT_TRUE(status.ok()) << status.to_string();
+    ASSERT_TRUE(tick_until_all_committed(committed_idx));
+
+    // 旧 Leader 在网络分区期间仍可能保持 LEADER 身份，但不能自行抬高 term。
+    for (int i = 0; i < 100; ++i) {
+        cluster_.tick_node(old_leader_idx);
+    }
+    EXPECT_EQ(cluster_.core_ptr(old_leader_idx)->role(), ReplicaRole::LEADER);
+    EXPECT_EQ(cluster_.core_ptr(old_leader_idx)->current_term(), old_term);
+
+    cluster_.restore(old_leader_idx);
+    bool old_leader_stepped_down = false;
+    for (int i = 0; i < 30; ++i) {
+        cluster_.tick_all();
+        ASSERT_LE(cluster_.leader_count(), 1);
+        if (cluster_.core_ptr(old_leader_idx)->role() == ReplicaRole::FOLLOWER) {
+            old_leader_stepped_down = true;
+        }
+    }
+
+    ASSERT_TRUE(old_leader_stepped_down);
+    ASSERT_EQ(cluster_.leader_idx(), new_leader_idx);
+    ASSERT_EQ(cluster_.core_ptr(new_leader_idx)->current_term(), new_term);
+    ASSERT_EQ(cluster_.core_ptr(old_leader_idx)->role(), ReplicaRole::FOLLOWER);
+}
+
+// PreVote 真正保护的是隔离分区里的非 Leader 节点：它反复超时也只能发起
+// PRE_VOTE，不能把 current_term 抬高；恢复后这些请求不会把多数派 Leader
+// 打回 follower，也不会制造第二次选举。
+TEST_F(RaftClusterTest, PartitionedFollowerPreVoteDoesNotDisturbMajorityLeader) {
+    create_and_set_0_leader(3);
+    ASSERT_TRUE(tick_until_all_committed(1));
+    ASSERT_EQ(cluster_.leader_idx(), 0);
+
+    constexpr int leader_idx = 0;
+    constexpr int partitioned_follower_idx = 1;
+    const Term stable_term = cluster_.core_ptr(leader_idx)->current_term();
+
+    cluster_.isolate(partitioned_follower_idx);
+    for (int i = 0; i < 200; ++i) {
+        cluster_.tick_all();
+    }
+
+    ASSERT_EQ(cluster_.core_ptr(leader_idx)->role(), ReplicaRole::LEADER);
+    ASSERT_EQ(cluster_.core_ptr(leader_idx)->current_term(), stable_term);
+    ASSERT_EQ(cluster_.core_ptr(partitioned_follower_idx)->current_term(), stable_term);
+    ASSERT_EQ(cluster_.core_ptr(partitioned_follower_idx)->role(), ReplicaRole::PRE_CANDIDATE);
+
+    cluster_.restore(partitioned_follower_idx);
+    for (int i = 0; i < 30; ++i) {
+        cluster_.tick_all();
+        ASSERT_EQ(cluster_.leader_count(), 1);
+        ASSERT_EQ(cluster_.leader_idx(), leader_idx);
+        ASSERT_EQ(cluster_.core_ptr(leader_idx)->current_term(), stable_term);
+    }
+
+    ASSERT_EQ(cluster_.core_ptr(partitioned_follower_idx)->role(), ReplicaRole::FOLLOWER);
+    ASSERT_EQ(cluster_.core_ptr(partitioned_follower_idx)->current_term(), stable_term);
+}
+
 // 检测进行了写操作之后，正常情况下大家都是可以commit的
 TEST_F(RaftClusterTest, BasicLogReplication_3Nodes) {
     create_and_stabilize(3);

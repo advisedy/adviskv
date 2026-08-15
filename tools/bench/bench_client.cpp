@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <fstream>
 #include <limits>
+#include <mutex>
 #include <random>
 #include <string>
 #include <thread>
@@ -27,6 +28,45 @@ namespace adviskv::bench {
 namespace {
 
 using Clock = std::chrono::steady_clock;
+using WallClock = std::chrono::system_clock;
+
+int64_t wall_time_ns() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+               WallClock::now().time_since_epoch())
+        .count();
+}
+
+class RequestTraceWriter {
+   public:
+    explicit RequestTraceWriter(const std::string& path) : path_(path) {
+        if (!path_.empty()) {
+            output_.open(path_, std::ios::out | std::ios::trunc);
+        }
+    }
+
+    bool valid() const { return path_.empty() || output_.is_open(); }
+
+    void record(int64_t request_id, bool read_request, int64_t start_ns,
+                int64_t end_ns, const Status& status) {
+        if (path_.empty()) {
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        output_ << "{\"request_id\":" << request_id
+                << ",\"read\":" << (read_request ? "true" : "false")
+                << ",\"start_unix_ns\":" << start_ns
+                << ",\"end_unix_ns\":" << end_ns
+                << ",\"ok\":" << (status.ok() ? "true" : "false")
+                << ",\"status_code\":"
+                << static_cast<int32_t>(status.code()) << "}\n";
+    }
+
+   private:
+    std::string path_;
+    std::ofstream output_;
+    std::mutex mutex_;
+};
 
 struct BenchStats {
     std::atomic<int64_t> success{0};
@@ -35,6 +75,7 @@ struct BenchStats {
 };
 
 struct BenchResult {
+    bool ok{true};
     int64_t requests{0};
     int64_t success{0};
     int64_t failure{0};
@@ -43,6 +84,7 @@ struct BenchResult {
     double success_qps{0.0};
     double failure_rate{0.0};
     int64_t sdk_unknown_final{0};
+    int64_t sdk_route_refreshes{0};
     LatencyRecorder::LatencySummary latency;
 };
 
@@ -72,7 +114,11 @@ bool parse_args(int argc, char** argv, BenchOptions* options) {
     parser.add_int32("sdk_max_retries", options->sdk_max_retries);
     parser.add_int32("sdk_route_max_retries", options->sdk_route_max_retries);
     parser.add_int32("sdk_retry_delay_ms", options->sdk_retry_delay_ms);
+    parser.add_int32("sdk_route_shard_refresh_interval_ms",
+                     options->sdk_route_shard_refresh_interval_ms);
     parser.add_string("output_json", options->output_json);
+    parser.add_string("workload_ready_file", options->workload_ready_file);
+    parser.add_string("request_trace_jsonl", options->request_trace_jsonl);
     parser.add_string("metrics_http_host", options->metrics_http_host);
     parser.add_int32("metrics_http_port", options->metrics_http_port);
     parser.add_string("metrics_http_path", options->metrics_http_path);
@@ -106,6 +152,7 @@ bool validate_options(const BenchOptions& options) {
         options.sdk_max_retries < 0 ||
         options.sdk_route_max_retries < 0 ||
         options.sdk_retry_delay_ms < 0 ||
+        options.sdk_route_shard_refresh_interval_ms < 0 ||
         options.metrics_http_port < 0 || options.metrics_hold_seconds < 0) {
         fmt::print(stderr,
                    "ports, timeout, shard/replica counts, and metrics config "
@@ -203,6 +250,8 @@ sdk::KVClient make_client(const BenchOptions& options) {
     conf.max_retries = options.sdk_max_retries;
     conf.route_max_retries = options.sdk_route_max_retries;
     conf.retry_delay_ms = options.sdk_retry_delay_ms;
+    conf.route_shard_refresh_interval_ms =
+        options.sdk_route_shard_refresh_interval_ms;
     conf.log.level = sdk::LogLevel::WARN;
     return sdk::KVClient(conf);
 }
@@ -261,7 +310,8 @@ Status execute_one(sdk::KVClient* client, const BenchOptions& options,
 
 void run_worker(const BenchOptions& options, std::atomic<int64_t>* next_request,
                 int64_t request_count, BenchStats* stats, bool record_stats,
-                int32_t worker_id, const char* phase) {
+                int32_t worker_id, const char* phase,
+                RequestTraceWriter* trace_writer) {
     sdk::KVClient client = make_client(options);
     std::mt19937_64 rng(static_cast<uint64_t>(
         Clock::now().time_since_epoch().count() + worker_id));
@@ -275,7 +325,9 @@ void run_worker(const BenchOptions& options, std::atomic<int64_t>* next_request,
         bool read_request = should_read(options, rng);
 
         auto start = Clock::now();
+        const int64_t start_ns = wall_time_ns();
         Status status = execute_one(&client, options, request_id, read_request, phase);
+        const int64_t end_ns = wall_time_ns();
         if (!record_stats) {
             continue;
         }
@@ -288,6 +340,10 @@ void run_worker(const BenchOptions& options, std::atomic<int64_t>* next_request,
             stats->success.fetch_add(1);
         } else {
             stats->failure.fetch_add(1);
+        }
+        if (trace_writer != nullptr) {
+            trace_writer->record(request_id, read_request, start_ns, end_ns,
+                                 status);
         }
     }
 }
@@ -303,6 +359,16 @@ BenchResult run_phase(const BenchOptions& options, int64_t request_count,
                                          : "bench_stage_warmup_start");
 
     BenchStats stats;
+    RequestTraceWriter trace_writer(record_stats ? options.request_trace_jsonl
+                                                 : "");
+    if (!trace_writer.valid()) {
+        fmt::print(stderr, "failed to open request_trace_jsonl '{}'\n",
+                   options.request_trace_jsonl);
+        record_stage_result(record_stats ? "workload" : "warmup", false);
+        BenchResult result;
+        result.ok = false;
+        return result;
+    }
     const char* phase = record_stats ? "workload" : "warmup";
     std::atomic<int64_t> next_request{0};
     std::vector<std::thread> workers;
@@ -313,7 +379,8 @@ BenchResult run_phase(const BenchOptions& options, int64_t request_count,
         int32 worker_id = i;
         workers.emplace_back([&, worker_id]() -> void {
             run_worker(options, &next_request, request_count, &stats,
-                       record_stats, worker_id, phase);
+                       record_stats, worker_id, phase,
+                       record_stats ? &trace_writer : nullptr);
         });
     }
     for (std::thread& worker : workers) {
@@ -362,6 +429,8 @@ bool write_json(const BenchOptions& options, const BenchResult& result) {
         << fmt::format("  \"success_qps\": {:.6f},\n", result.success_qps)
         << fmt::format("  \"failure_rate\": {:.6f},\n", result.failure_rate)
         << fmt::format("  \"sdk_unknown_final\": {},\n", result.sdk_unknown_final)
+        << fmt::format("  \"sdk_route_refreshes\": {},\n",
+                       result.sdk_route_refreshes)
         << "  \"latency_us\": {\n"
         << fmt::format("    \"count\": {},\n", result.latency.count)
         << fmt::format("    \"min\": {},\n", result.latency.min_us)
@@ -384,6 +453,7 @@ void print_result(const BenchOptions& options, const BenchResult& result) {
         "  failure: {}\n"
         "  failure_rate: {:.4f}\n"
         "  sdk_unknown_final: {}\n"
+        "  sdk_route_refreshes: {}\n"
         "  elapsed_s: {:.6f}\n"
         "  attempted_qps: {:.2f}\n"
         "  success_qps: {:.2f}\n"
@@ -394,7 +464,8 @@ void print_result(const BenchOptions& options, const BenchResult& result) {
         "  p99_us: {}\n"
         "  max_us: {}\n",
         options.workload, options.threads, result.requests, result.success,
-        result.failure, result.failure_rate, result.sdk_unknown_final, result.elapsed_s,
+        result.failure, result.failure_rate, result.sdk_unknown_final,
+        result.sdk_route_refreshes, result.elapsed_s,
         result.attempted_qps, result.success_qps, result.latency.min_us,
         result.latency.avg_us, result.latency.p50_us, result.latency.p95_us,
         result.latency.p99_us, result.latency.max_us);
@@ -433,12 +504,39 @@ int main(int argc, char** argv) {
         fmt::print("warmup done\n");
     }
 
+    const int64_t route_refresh_baseline =
+        adviskv::AdvisMetrics::get_instance().counter_value(
+            "sdk_route_cache_refresh_table_routes_request");
+
+    if (!options.workload_ready_file.empty()) {
+        std::ofstream ready(options.workload_ready_file,
+                            std::ios::out | std::ios::trunc);
+        if (!ready) {
+            fmt::print(stderr, "failed to open workload_ready_file '{}'\n",
+                       options.workload_ready_file);
+            return 1;
+        }
+        ready << adviskv::bench::wall_time_ns() << '\n';
+        ready.flush();
+        if (!ready.good()) {
+            fmt::print(stderr, "failed to write workload_ready_file '{}'\n",
+                       options.workload_ready_file);
+            return 1;
+        }
+    }
+
     adviskv::bench::BenchResult result =
         adviskv::bench::run_phase(options, options.requests, true);
+    if (!result.ok) {
+        return 1;
+    }
     auto& metrics = adviskv::AdvisMetrics::get_instance();
     result.sdk_unknown_final =
             metrics.counter_value("sdk_put_unknown_final") +
             metrics.counter_value("sdk_delete_unknown_final");
+    result.sdk_route_refreshes =
+        metrics.counter_value("sdk_route_cache_refresh_table_routes_request") -
+        route_refresh_baseline;
     adviskv::bench::print_result(options, result);
     bool write_json_ok = false;
     {

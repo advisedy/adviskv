@@ -22,11 +22,21 @@ key_count       = 1000
 warmup_requests = 0
 ```
 
+## UNKNOWN / 重试指标
+
+写请求使用稳定的 `request_id`。SDK 在收到 `NOT_YET_COMMIT` 或可能已经被服务端接收的写 RPC 传输错误后，会在写请求总耗时和最大重试次数限制内使用相同 ID 退避重试。首次重试等待时间由 `retry_delay_ms` 指定，之后每次翻倍，并受请求总耗时限制。正式 workload 输出以下指标；这些值按正式阶段开始前的 baseline 做差分，不包含 warmup 和准备数据阶段：
+
+| 指标 | 含义 |
+|---|---|
+| `sdk_unknown_final` | 重试预算耗尽后仍返回 `UNKNOWN` 的请求数 |
+
+验收时同时比较业务请求延迟和结果可靠性：`sdk_unknown_final / requests` 应显著下降，`p99_us` 的增长应在可接受范围内。
+
 本次只测试 `put`，每组只改变一个参数：`threads`、`shard_count`、`replica_count`、`value_size`。
 
 ## 测试环境
 
-- 运行方式：`scripts/bench.sh` 拉起本地集群并运行 `bench_client`。
+- 运行方式：`scripts/bench_metrics.sh` 拉起本地集群、运行 `bench_client` 并生成 metrics 报告。
 - 本地集群：`1 catalog + 1 topo + 5 storage`，所有进程都运行在同一台机器上，并通过 `127.0.0.1/localhost` 通信。
 - 测试机器：`Mac15,7`，Apple M3 Pro，12 物理核心 / 12 逻辑 CPU，36 GiB 内存。
 - 操作系统：macOS 15.7.4 (24G517)，arm64。
@@ -101,12 +111,11 @@ warmup_requests = 0
 
 ```bash
 BENCH_LOG_LEVEL=warning \
-  ./scripts/bench.sh \
+  ./scripts/bench_metrics.sh \
   --workload=put \
   --threads=16 \
   --shard_count=2 \
   --replica_count=3 \
   --value_size=128 \
-  --requests=30000 \
-  --output_json=build/bench/put_baseline.json
+  --requests=30000
 ```

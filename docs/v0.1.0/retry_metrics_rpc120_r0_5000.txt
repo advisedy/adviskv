@@ -1,0 +1,200 @@
+AdvisKV metrics report
+started_at: 2026-08-15 22:13:07
+duration_s: 42.3
+samples: 280
+notes:
+  - Latency rows are timer histograms exported as *_latency_us.
+  - count is the timed-event count; qps is timed events per second.
+  - avg_us is computed from histogram sum/count and uses microseconds.
+  - pXX_us<= is the histogram bucket upper bound containing that percentile.
+  - Counter rows are *_total deltas over this benchmark run.
+
+Latency histograms
+  target        metric                                            count  qps     avg_us       p50_us<=  p95_us<=  p99_us<=
+  ------------  ------------------------------------------------  -----  ------  -----------  --------  --------  --------
+  bench-client  bench_stage_prepare_table                         1      0.02    9084597.00   -         -         -       
+  bench-client  bench_stage_workload                              1      0.02    30801523.00  -         -         -       
+  bench-client  bench_stage_write_json                            1      0.02    1.00         10        10        10      
+  bench-client  sdk_put                                           5000   119.55  98341.97     250000    250000    250000  
+  bench-client  sdk_put_route_resolve                             5000   119.55  43.11        10        10        75      
+  bench-client  sdk_put_storage                                   5000   119.55  98286.46     250000    250000    250000  
+  bench-client  sdk_route_cache_lookup                            5016   119.93  3.56         10        10        25      
+  bench-client  sdk_route_cache_refresh_table_routes              192    4.59    10225.91     20000     50000     50000   
+  bench-client  sdk_storage_put                                   5000   119.55  98281.02     250000    250000    250000  
+  bench-client  sdk_storage_put_rpc                               5000   119.55  98218.87     250000    250000    250000  
+  storage-1     storage_persist_append_wal_batch                  2817   66.92   6480.42      10000     20000     50000   
+  storage-1     storage_persist_rewrite_wal                       4      0.10    25965.00     50000     50000     50000   
+  storage-1     storage_persist_rewrite_wal_dir_fsync             4      0.10    7309.25      5000      20000     20000   
+  storage-1     storage_persist_rewrite_wal_fsync                 4      0.10    6111.25      10000     10000     10000   
+  storage-1     storage_persist_rewrite_wal_write                 4      0.10    5280.00      5000      20000     20000   
+  storage-1     storage_persist_write_snapshot                    4      0.10    147119.50    100000    500000    500000  
+  storage-1     storage_raft_append_entries_handler               3239   76.94   22839.66     20000     100000    250000  
+  storage-1     storage_raft_handle_append_entries_commit         3229   76.71   0.17         10        10        10      
+  storage-1     storage_raft_handle_append_entries_log            3145   74.71   2205.83      2000      10000     20000   
+  storage-1     storage_raft_log_copy_entries                     3145   74.71   1596.68      1000      10000     20000   
+  storage-1     storage_raft_log_merge_entries                    3145   74.71   106.41       50        250       2000    
+  storage-1     storage_replica_append_entries_raft_step_execute  3229   76.71   7970.71      10000     20000     50000   
+  storage-1     storage_replica_apply_committed_entries           874    20.76   8691.97      100       100000    250000  
+  storage-1     storage_replica_async_apply_committed             3842   91.27   6021.29      10        50000     100000  
+  storage-1     storage_replica_handle_append_entries_raft_step   3229   76.71   22714.87     20000     100000    250000  
+  storage-1     storage_replica_raft_loop_step                    4469   106.16  5789.48      10000     20000     50000   
+  storage-1     storage_replica_take_snapshot                     4      0.10    221086.00    250000    500000    500000  
+  storage-1     storage_state_machine_apply                       4201   99.80   19.19        10        50        200     
+  storage-1     storage_state_machine_capture_snapshot            4      0.10    4116.25      5000      10000     10000   
+  storage-2     storage_persist_append_wal_batch                  2814   66.78   6633.27      10000     20000     50000   
+  storage-2     storage_persist_rewrite_wal                       4      0.09    24593.50     20000     50000     50000   
+  storage-2     storage_persist_rewrite_wal_dir_fsync             4      0.09    4060.25      5000      10000     10000   
+  storage-2     storage_persist_rewrite_wal_fsync                 4      0.09    8375.50      10000     20000     20000   
+  storage-2     storage_persist_rewrite_wal_write                 4      0.09    9565.00      10000     50000     50000   
+  storage-2     storage_persist_write_snapshot                    4      0.09    82232.25     100000    250000    250000  
+  storage-2     storage_raft_append_entries_handler               3245   77.00   24039.04     20000     100000    250000  
+  storage-2     storage_raft_flush_messages_pre_vote              4      0.09    3315.00      2000      10000     10000   
+  storage-2     storage_raft_handle_append_entries_commit         3245   77.00   0.32         10        10        10      
+  storage-2     storage_raft_handle_append_entries_log            3151   74.77   2178.24      2000      10000     20000   
+  storage-2     storage_raft_log_copy_entries                     3151   74.77   1578.43      1000      10000     20000   
+  storage-2     storage_raft_log_merge_entries                    3151   74.77   114.51       50        250       5000    
+  storage-2     storage_replica_append_entries_raft_step_execute  3245   77.00   8029.05      10000     20000     50000   
+  storage-2     storage_replica_apply_committed_entries           828    19.65   10161.28     100       100000    250000  
+  storage-2     storage_replica_async_apply_committed             4112   97.58   5788.58      10        50000     100000  
+  storage-2     storage_replica_handle_append_entries_raft_step   3245   77.00   23830.32     20000     100000    250000  
+  storage-2     storage_replica_raft_loop_step                    4564   108.30  5736.23      10000     20000     50000   
+  storage-2     storage_replica_take_snapshot                     4      0.09    191219.00    250000    500000    500000  
+  storage-2     storage_state_machine_apply                       4206   99.81   19.06        10        50        150     
+  storage-2     storage_state_machine_capture_snapshot            4      0.09    10367.25     10000     20000     20000   
+  storage-3     storage_persist_append_wal_batch                  3056   72.45   6705.62      10000     20000     50000   
+  storage-3     storage_persist_rewrite_wal                       4      0.09    26544.50     20000     100000    100000  
+  storage-3     storage_persist_rewrite_wal_dir_fsync             4      0.09    7817.50      10000     20000     20000   
+  storage-3     storage_persist_rewrite_wal_fsync                 4      0.09    6617.50      10000     10000     10000   
+  storage-3     storage_persist_rewrite_wal_write                 4      0.09    9409.75      5000      50000     50000   
+  storage-3     storage_persist_write_snapshot                    4      0.09    97653.00     100000    250000    250000  
+  storage-3     storage_put_handler                               5000   118.54  332720.09    250000    -         -       
+  storage-3     storage_raft_append_entries_rpc                   6487   153.80  39737.68     50000     250000    250000  
+  storage-3     storage_raft_flush_messages_pre_vote              2      0.05    3738.00      5000      10000     10000   
+  storage-3     storage_raft_flush_messages_request_vote          2      0.05    2085.00      1000      5000      5000    
+  storage-3     storage_replica_apply_committed_entries           2248   53.30   139.41       50        250       5000    
+  storage-3     storage_replica_async_apply_committed             6396   151.64  2502.54      50        20000     50000   
+  storage-3     storage_replica_raft_loop_step                    10684  253.31  2612.51      25        20000     50000   
+  storage-3     storage_replica_request_record_check              4758   112.81  21.38        10        10        250     
+  storage-3     storage_replica_request_record_lookup             4758   112.81  2.28         10        10        25      
+  storage-3     storage_replica_take_snapshot                     4      0.09    359170.50    100000    -         -       
+  storage-3     storage_state_machine_apply                       4323   102.49  20.08        25        50        150     
+  storage-3     storage_state_machine_capture_snapshot            4      0.09    8777.00      5000      50000     50000   
+  topo          topo_metastore_commit_snapshot                    45     1.07    11773.42     10000     50000     100000  
+  topo          topo_persist_save_topo_meta                       45     1.07    11755.69     10000     50000     100000  
+  topo          topo_route_check_shard_route                      14     0.33    657.36       50        10000     10000   
+  topo          topo_store_write_with                             162    3.85    3414.07      50        20000     50000   
+
+Counters
+  target        metric                                                 delta     rate/s   
+  ------------  -----------------------------------------------------  --------  ---------
+  bench-client  bench_stage_prepare_table_done                         1         0.02     
+  bench-client  bench_stage_prepare_table_start                        1         0.02     
+  bench-client  bench_stage_prepare_table_success                      1         0.02     
+  bench-client  bench_stage_workload_done                              1         0.02     
+  bench-client  bench_stage_workload_start                             1         0.02     
+  bench-client  bench_stage_workload_success                           1         0.02     
+  bench-client  bench_stage_write_json_done                            1         0.02     
+  bench-client  bench_stage_write_json_start                           1         0.02     
+  bench-client  bench_stage_write_json_success                         1         0.02     
+  bench-client  sdk_put_failure                                        2536      60.64    
+  bench-client  sdk_put_request                                        5000      119.55   
+  bench-client  sdk_put_success                                        2464      58.91    
+  bench-client  sdk_put_unknown_final                                  2536      60.64    
+  bench-client  sdk_route_cache_hit                                    5000      119.55   
+  bench-client  sdk_route_cache_miss                                   16        0.38     
+  bench-client  sdk_route_cache_refresh_background                     176       4.21     
+  bench-client  sdk_route_cache_refresh_table_routes_request           192       4.59     
+  bench-client  sdk_route_cache_refresh_table_routes_success           192       4.59     
+  bench-client  sdk_route_cache_table_routes_update                    192       4.59     
+  bench-client  sdk_route_resolve_refresh_on_miss                      16        0.38     
+  bench-client  sdk_storage_put_request                                5000      119.55   
+  bench-client  sdk_storage_put_rpc_failure                            2536      60.64    
+  storage-1     storage_persist_append_wal_batch_entry                 4456      105.86   
+  storage-1     storage_persist_append_wal_batch_request               2817      66.92    
+  storage-1     storage_persist_append_wal_batch_success               2817      66.92    
+  storage-1     storage_persist_snapshot_bytes_written                 20467691  486224.74
+  storage-1     storage_persist_snapshot_request_records_written       10041     238.53   
+  storage-1     storage_persist_write_snapshot_request                 4         0.10     
+  storage-1     storage_raft_append_entries_handler_replica_not_found  10        0.24     
+  storage-1     storage_raft_append_entries_handler_request            3240      76.97    
+  storage-1     storage_raft_handle_append_entries_success             3229      76.71    
+  storage-1     storage_replica_apply_committed_entries_request        874       20.76    
+  storage-1     storage_replica_apply_entry                            4201      99.80    
+  storage-1     storage_replica_apply_entry_success                    4201      99.80    
+  storage-1     storage_replica_async_apply_committed_none             2968      70.51    
+  storage-1     storage_replica_async_apply_committed_request          3842      91.27    
+  storage-1     storage_replica_async_apply_committed_success          874       20.76    
+  storage-1     storage_replica_raft_loop_step_request                 4469      106.16   
+  storage-1     storage_replica_raft_loop_step_success                 4469      106.16   
+  storage-1     storage_replica_take_snapshot_request                  4         0.10     
+  storage-1     storage_state_machine_apply_none                       1         0.02     
+  storage-1     storage_state_machine_apply_put                        4200      99.77    
+  storage-1     storage_state_machine_apply_request                    4201      99.80    
+  storage-1     storage_state_machine_apply_success                    4201      99.80    
+  storage-1     storage_state_machine_request_record_insert            4200      99.77    
+  storage-2     storage_persist_append_wal_batch_entry                 4462      105.88   
+  storage-2     storage_persist_append_wal_batch_request               2814      66.78    
+  storage-2     storage_persist_append_wal_batch_success               2814      66.78    
+  storage-2     storage_persist_snapshot_bytes_written                 20469511  485738.23
+  storage-2     storage_persist_snapshot_request_records_written       10093     239.51   
+  storage-2     storage_persist_write_snapshot_request                 4         0.09     
+  storage-2     storage_raft_append_entries_handler_request            3245      77.00    
+  storage-2     storage_raft_handle_append_entries_success             3245      77.00    
+  storage-2     storage_replica_apply_committed_entries_request        828       19.65    
+  storage-2     storage_replica_apply_entry                            4206      99.81    
+  storage-2     storage_replica_apply_entry_success                    4206      99.81    
+  storage-2     storage_replica_async_apply_committed_none             3284      77.93    
+  storage-2     storage_replica_async_apply_committed_request          4112      97.58    
+  storage-2     storage_replica_async_apply_committed_success          828       19.65    
+  storage-2     storage_replica_raft_loop_step_request                 4564      108.30   
+  storage-2     storage_replica_raft_loop_step_success                 4564      108.30   
+  storage-2     storage_replica_take_snapshot_request                  4         0.09     
+  storage-2     storage_state_machine_apply_none                       1         0.02     
+  storage-2     storage_state_machine_apply_put                        4205      99.78    
+  storage-2     storage_state_machine_apply_request                    4206      99.81    
+  storage-2     storage_state_machine_apply_success                    4206      99.81    
+  storage-2     storage_state_machine_request_record_insert            4205      99.78    
+  storage-3     storage_persist_append_wal_batch_entry                 4759      112.83   
+  storage-3     storage_persist_append_wal_batch_request               3057      72.48    
+  storage-3     storage_persist_append_wal_batch_success               3056      72.45    
+  storage-3     storage_persist_snapshot_bytes_written                 20466956  485248.30
+  storage-3     storage_persist_snapshot_request_records_written       10020     237.56   
+  storage-3     storage_persist_write_snapshot_request                 4         0.09     
+  storage-3     storage_put_handler_failure                            1082      25.65    
+  storage-3     storage_put_handler_not_yet_commit                     1082      25.65    
+  storage-3     storage_put_handler_request                            5000      118.54   
+  storage-3     storage_put_handler_success                            3918      92.89    
+  storage-3     storage_raft_append_entries_rpc_accepted               6477      153.56   
+  storage-3     storage_raft_append_entries_rpc_entry                  220041    5216.92  
+  storage-3     storage_raft_append_entries_rpc_heartbeat              178       4.22     
+  storage-3     storage_raft_append_entries_rpc_log                    6317      149.77   
+  storage-3     storage_raft_append_entries_rpc_rejected               10        0.24     
+  storage-3     storage_raft_append_entries_rpc_request                6495      153.99   
+  storage-3     storage_raft_append_entries_rpc_success                6487      153.80   
+  storage-3     storage_raft_commit_index_advance                      2735      64.84    
+  storage-3     storage_raft_committed_entry                           4325      102.54   
+  storage-3     storage_raft_handle_append_response_reject             10        0.24     
+  storage-3     storage_raft_handle_append_response_success            6274      148.75   
+  storage-3     storage_replica_apply_committed_entries_request        2248      53.30    
+  storage-3     storage_replica_apply_entry                            4323      102.49   
+  storage-3     storage_replica_apply_entry_success                    4323      102.49   
+  storage-3     storage_replica_async_apply_committed_none             4148      98.34    
+  storage-3     storage_replica_async_apply_committed_request          6397      151.67   
+  storage-3     storage_replica_async_apply_committed_success          2248      53.30    
+  storage-3     storage_replica_raft_loop_step_request                 10685     253.33   
+  storage-3     storage_replica_raft_loop_step_success                 10684     253.31   
+  storage-3     storage_replica_request_commit_after_timeout           406       9.63     
+  storage-3     storage_replica_request_record_check_request           4758      112.81   
+  storage-3     storage_replica_request_record_miss                    4758      112.81   
+  storage-3     storage_replica_take_snapshot_request                  4         0.09     
+  storage-3     storage_state_machine_apply_none                       1         0.02     
+  storage-3     storage_state_machine_apply_put                        4322      102.47   
+  storage-3     storage_state_machine_apply_request                    4323      102.49   
+  storage-3     storage_state_machine_apply_success                    4323      102.49   
+  storage-3     storage_state_machine_request_record_insert            4322      102.47   
+  topo          topo_metastore_commit_snapshot_request                 45        1.07     
+  topo          topo_persist_save_topo_meta_request                    45        1.07     
+  topo          topo_route_check_shard_route_request                   14        0.33     
+  topo          topo_route_delete_shard_route_request                  2         0.05     
+  topo          topo_route_put_shard_route_request                     12        0.29     
+  topo          topo_store_write_with_request                          162       3.85     

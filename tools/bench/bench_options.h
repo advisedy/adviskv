@@ -36,8 +36,11 @@ struct BenchOptions {
     int32_t sdk_max_retries{3};
     int32_t sdk_route_max_retries{1};
     int32_t sdk_retry_delay_ms{20};
+    int32_t sdk_route_shard_refresh_interval_ms{3000};
 
     std::string output_json;
+    std::string workload_ready_file;
+    std::string request_trace_jsonl;
 
     std::string metrics_http_host{"127.0.0.1"};
     int32_t metrics_http_port{0};

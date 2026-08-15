@@ -34,7 +34,7 @@ read_ratio = 0.0, 0.5, 0.8, 0.95, 1.0
 
 ## 测试环境
 
-- 运行方式：`scripts/bench.sh` 拉起本地集群并运行 `bench_client`。
+- 运行方式：`scripts/bench_metrics.sh` 拉起本地集群、运行 `bench_client` 并生成 metrics 报告。
 - 本地集群：`1 catalog + 1 topo + 5 storage`，所有进程都运行在同一台机器上，并通过 `127.0.0.1/localhost` 通信。
 - 测试机器：`Mac15,7`，Apple M3 Pro，12 物理核心 / 12 逻辑 CPU，36 GiB 内存。
 - 操作系统：macOS 15.7.4 (24G517)，arm64。
@@ -67,13 +67,12 @@ read_ratio = 0.0, 0.5, 0.8, 0.95, 1.0
 
 ```bash
 BENCH_LOG_LEVEL=warning \
-  ./scripts/bench.sh \
+  ./scripts/bench_metrics.sh \
   --workload=mixed \
   --read_ratio=0.80 \
   --threads=16 \
   --shard_count=2 \
   --replica_count=3 \
   --value_size=128 \
-  --requests=30000 \
-  --output_json=build/bench/mixed_baseline.json
+  --requests=30000
 ```

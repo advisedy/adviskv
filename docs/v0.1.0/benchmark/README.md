@@ -4,7 +4,7 @@ AdvisKV benchmark 记录本地 V1 的端到端 KV 表现，链路覆盖 `SDK -> 
 
 ## 运行方式
 
-项目使用 `tools/bench/bench_client` 作为 benchmark client，并通过 `scripts/bench.sh` 自动拉起本地集群后运行。默认本地集群为：
+项目使用 `tools/bench/bench_client` 作为 benchmark client，并通过 `scripts/bench_metrics.sh` 自动拉起本地集群、运行 benchmark 并生成 metrics 报告。默认本地集群为：
 
 ```text
 1 catalog + 1 topo + 5 storage
@@ -14,15 +14,14 @@ AdvisKV benchmark 记录本地 V1 的端到端 KV 表现，链路覆盖 `SDK -> 
 
 ```bash
 BENCH_LOG_LEVEL=warning \
-  ./scripts/bench.sh \
+  ./scripts/bench_metrics.sh \
   --workload=mixed \
   --read_ratio=0.80 \
   --threads=16 \
   --shard_count=2 \
   --replica_count=3 \
   --value_size=128 \
-  --requests=30000 \
-  --output_json=build/bench/mixed_baseline.json
+  --requests=30000
 ```
 
 ## 本次结果
