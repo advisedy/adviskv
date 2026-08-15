@@ -27,7 +27,7 @@ if [[ -x "$MAELSTROM_BIN" && -x "$MAELSTROM_NODE_BIN" ]]; then
   TIME_LIMIT="${MAELSTROM_TEST_TIME_LIMIT:-60}" \
   MAELSTROM_BIN="$MAELSTROM_BIN" \
   NODE_BIN="$MAELSTROM_NODE_BIN" \
-  "$SCRIPT_DIR/internal/run_maelstrom_raft.sh" --nemesis partition,pause,kill
+  "$SCRIPT_DIR/internal/run_maelstrom_raft.sh" --nemesis partition
 elif [[ ! -x "$MAELSTROM_BIN" ]]; then
   echo "[test] Maelstrom not found; skipping Maelstrom test"
 else

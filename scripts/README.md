@@ -12,7 +12,7 @@
 | --- | --- |
 | `setup.sh` | 准备本地依赖；使用 `--with-maelstrom-test` 时额外安装 Maelstrom 测试工具。 |
 | `build.sh` | 构建项目；可通过 `BUILD_TARGETS=...` 做局部构建。 |
-| `run_test.sh` | 构建 + C++ 测试；检测到 Maelstrom 时额外运行 3 节点正常测试和 5 节点故障注入压力测试。 |
+| `run_test.sh` | 构建 + C++ 测试；检测到 Maelstrom 时额外运行 3 节点无故障测试和 5 节点网络分区（`--nemesis partition`）压力测试。 |
 | `e2e_pytest.sh` | 构建 + e2e测试 |
 | `coverage.sh` | 执行覆盖率测试 |
 | `bench.sh` | 自动拉起集群（配置来自conf目录）并运行 `bench_client`。 |

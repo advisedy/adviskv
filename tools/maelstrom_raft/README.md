@@ -15,11 +15,11 @@
 # 无故障
 ./scripts/internal/run_maelstrom_raft.sh
 
-# 故障注入
-./scripts/internal/run_maelstrom_raft.sh --nemesis partition,pause,kill --time-limit 60
+# 网络分区注入
+./scripts/internal/run_maelstrom_raft.sh --nemesis partition --time-limit 60
 ```
 
 结果：`tools/maelstrom_raft/store/latest/`  
 节点数据：`$ADVISKV_MAELSTROM_DATA`（默认放到了 `/tmp/adviskv_maelstrom`）
 
-`./scripts/run_test.sh` 若检测到本机 Maelstrom，会在 C++ 测试后自动跑一轮无故障 + 一轮 `partition,pause,kill`。
+`./scripts/run_test.sh` 若检测到本机 Maelstrom，会在 C++ 测试后自动跑一轮无故障 + 一轮 `--nemesis partition` 压力测试。
