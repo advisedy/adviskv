@@ -12,6 +12,7 @@
 #include "common/model/type.h"
 #include "common/optional.h"
 #include "common/status.h"
+#include "common/stable_hash.h"
 
 namespace adviskv::storage {
 
@@ -84,20 +85,37 @@ struct LogEntry {
 struct RequestRecord {
     std::string request_id;
     WriteOpType op{WriteOpType::NONE};
-    Key key;
-    Value value;
-    LogIndex index{0};
-    Term term{0};
+    uint64_t payload_hash{0};
+
+    static uint64_t request_payload_hash(WriteOpType op, const Key& key, const Value& value) {
+        StableHash64 hash;
+        // Include field lengths to make the serialized input unambiguous.
+        hash.append_uint64(1);  // fingerprint format version
+        hash.append_uint64(static_cast<uint32_t>(op));
+        hash.append_uint64(static_cast<uint64_t>(key.size()));
+        hash.append(key);
+        hash.append_uint64(static_cast<uint64_t>(value.size()));
+        hash.append(value);
+        return hash.get_hash();
+    }
 
     bool matches(const LogEntry& entry) const {
-        return request_id == entry.request_id && op == entry.op_type && key == entry.key && value == entry.value;
+        return request_id == entry.request_id && op == entry.op_type &&
+               payload_hash == request_payload_hash(entry.op_type, entry.key, entry.value);
     }
 
     template<typename Other>
     bool matches(const Other& other) const {
-        return request_id == other.request_id && op == other.op && key == other.key && value == other.value;
+        return request_id == other.request_id && op == other.op &&
+               payload_hash == request_payload_hash(other.op, other.key, other.value);
     }
+};
 
+struct SnapshotData {
+    LogIndex apply_index{0};
+    Term apply_term{0};
+    std::vector<KV> kvs;
+    std::vector<RequestRecord> request_records;
 };
 
 struct RequestVoteParam {

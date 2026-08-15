@@ -43,6 +43,15 @@ class KvStateMachineTest : public ::testing::Test {
     fs::path base_dir_;
 };
 
+TEST_F(KvStateMachineTest, StableHashCanBeCleared) {
+    StableHash64 hash;
+    hash.append("value");
+    hash.clear();
+
+    StableHash64 fresh_hash;
+    EXPECT_EQ(hash.get_hash(), fresh_hash.get_hash());
+}
+
 // 测试PUT/DEL/NONE三种操作对状态机水位的更新是否正确
 TEST_F(KvStateMachineTest, ApplyPutDeleteAndNoneUpdateState) {
     KvStateMachine state_machine(EngineType::MAP);
@@ -109,6 +118,31 @@ TEST_F(KvStateMachineTest, SnapshotAndRestoreRoundTrip) {
     EXPECT_EQ(value, "2");
 }
 
+TEST_F(KvStateMachineTest, CapturedSnapshotIsIndependentFromLaterApply) {
+    KvStateMachine source(EngineType::MAP);
+    ASSERT_TRUE(source.apply(make_entry(4, 10, WriteOpType::PUT, "before", "v1")).ok());
+
+    SnapshotData snapshot_data;
+    ASSERT_TRUE(source.capture_snapshot(snapshot_data).ok());
+    ASSERT_TRUE(source.apply(make_entry(4, 11, WriteOpType::PUT, "after", "v2")).ok());
+
+    PersistEngine persist = make_engine();
+    ASSERT_TRUE(persist.init().ok());
+    ASSERT_TRUE(persist.write_snapshot(snapshot_data).ok());
+
+    SnapshotPtr snapshot = std::make_shared<Snapshot>();
+    ASSERT_TRUE(persist.load_snapshot_meta(snapshot).ok());
+    EXPECT_EQ(snapshot->apply_index, 10);
+    EXPECT_EQ(snapshot->apply_term, 4);
+
+    std::vector<KV> kvs;
+    ASSERT_TRUE(persist.for_each_snapshot_kv([&kvs](const Key& key, const Value& value) {
+                     kvs.emplace_back(key, value);
+                     return Status::OK();
+                 }).ok());
+    EXPECT_EQ(kvs, (std::vector<KV>{{"before", "v1"}}));
+}
+
 // restore应替换状态机中的全部数据，旧key应被清除，新key应可读
 TEST_F(KvStateMachineTest, RestoreReplacesExistingData) {
     KvStateMachine state_machine(EngineType::MAP);
@@ -155,9 +189,19 @@ TEST_F(KvStateMachineTest, RequestIdIsRecordedOnApply) {
 
     RequestRecord record;
     ASSERT_TRUE(state_machine.find_request("request-1", record).ok());
-    EXPECT_EQ(record.index, 1);
-    EXPECT_EQ(record.key, "idempotent-key");
-    EXPECT_EQ(record.value, "v1");
+    EXPECT_EQ(record.op, WriteOpType::PUT);
+    EXPECT_EQ(record.payload_hash,
+              RequestRecord::request_payload_hash(WriteOpType::PUT, "idempotent-key", "v1"));
+    EXPECT_TRUE(record.matches(first));
+
+    LogEntry different = first;
+    different.value = "different-value";
+    EXPECT_FALSE(record.matches(different));
+
+    different = first;
+    different.op_type = WriteOpType::DEL;
+    different.value.clear();
+    EXPECT_FALSE(record.matches(different));
 
     // 若同 request_id 的日志再次出现，状态机仍按 entry 执行（不在此层跳过）。
     LogEntry again = first;
@@ -171,8 +215,8 @@ TEST_F(KvStateMachineTest, RequestIdIsRecordedOnApply) {
     EXPECT_EQ(value, "v2");
     // 首次登记保留，便于 loop 用“第一次已 apply 的内容”做冲突判断。
     ASSERT_TRUE(state_machine.find_request("request-1", record).ok());
-    EXPECT_EQ(record.index, 1);
-    EXPECT_EQ(record.value, "v1");
+    EXPECT_EQ(record.payload_hash,
+              RequestRecord::request_payload_hash(WriteOpType::PUT, "idempotent-key", "v1"));
 }
 
 TEST_F(KvStateMachineTest, SnapshotRestoresRequestIdRecords) {
@@ -196,8 +240,10 @@ TEST_F(KvStateMachineTest, SnapshotRestoresRequestIdRecords) {
 
     RequestRecord record;
     ASSERT_TRUE(restored.find_request("snap-request", record).ok());
-    EXPECT_EQ(record.key, "snap-key");
-    EXPECT_EQ(record.value, "snap-value");
+    EXPECT_EQ(record.op, WriteOpType::PUT);
+    EXPECT_EQ(record.payload_hash,
+              RequestRecord::request_payload_hash(WriteOpType::PUT, "snap-key", "snap-value"));
+    EXPECT_TRUE(record.matches(entry));
     EXPECT_TRUE(restored.apply(entry).ok());
     Value value;
     ASSERT_TRUE(restored.get("snap-key", value).ok());

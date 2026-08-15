@@ -9,6 +9,7 @@ data_dir: "build/demo/data/storage-4"
 heartbeat_interval_ms: 3000
 node_agent_rpc_timeout_ms: 3000
 raft_rpc_timeout_ms: 3000
+raft_do_snapshot_limit: 1000
 
 #log
 logger_name: "storage-4_log"

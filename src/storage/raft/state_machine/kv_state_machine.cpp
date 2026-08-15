@@ -1,6 +1,7 @@
 #include "storage/raft/state_machine/kv_state_machine.h"
 
 #include <memory>
+#include <utility>
 
 #include "common/define.h"
 #include "common/metrics/metrics.h"
@@ -91,8 +92,13 @@ Status KvStateMachine::apply(const LogEntry& entry) {
     }
 
     if (!entry.request_id.empty() && (entry.op_type == WriteOpType::PUT || entry.op_type == WriteOpType::DEL)) {
-        request_records_.emplace(entry.request_id, RequestRecord{entry.request_id, entry.op_type, entry.key,
-                                                                 entry.value, entry.index, entry.term});
+        auto result = request_records_.emplace(
+                entry.request_id,
+                RequestRecord{entry.request_id, entry.op_type,
+                              RequestRecord::request_payload_hash(entry.op_type, entry.key, entry.value)});
+        if (result.second) {
+            ADVISKV_METRICS_COUNTER("storage_state_machine_request_record_insert");
+        }
     }
     apply_term_ = entry.term;
     apply_index_ = entry.index;
@@ -134,6 +140,26 @@ LogIndex KvStateMachine::apply_index() const { return apply_index_; }
 LogIndex KvStateMachine::apply_term() const { return apply_term_; }
 
 Status KvStateMachine::get(const Key& key, Value& value) const { return engine_->get(key, value); }
+
+Status KvStateMachine::capture_snapshot(SnapshotData& snapshot) const {
+    ADVISKV_METRICS_TIMER("storage_state_machine_capture_snapshot");
+
+    if (!engine_) {
+        return Status{StatusCode::ERROR, "engine is nullptr"};
+    }
+
+    SnapshotData data;
+    data.apply_index = apply_index_;
+    data.apply_term = apply_term_;
+    data.kvs = engine_->dump_all();
+    data.request_records.reserve(request_records_.size());
+    for (const auto& [_, record] : request_records_) {
+        data.request_records.push_back(record);
+    }
+
+    snapshot = std::move(data);
+    return Status::OK();
+}
 
 Status KvStateMachine::for_each_kv(const std::function<Status(const Key&, const Value&)>& fn) const {
     if (!engine_) {

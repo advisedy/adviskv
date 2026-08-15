@@ -38,6 +38,7 @@ public:
     Status append_snapshot_chunk(const InstallSnapshotParam& param);
     Status finish_snapshot_receive();
 
+    Status write_snapshot(const SnapshotData& snapshot, const std::vector<RaftMember>& members = {});
     Status write_snapshot(const StateMachine& state_machine, const std::vector<RaftMember>& members = {});
     Status clear_wal();
 

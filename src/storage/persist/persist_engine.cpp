@@ -515,10 +515,7 @@ Status PersistEngine::for_each_snapshot_request(const RequestVisitor& fn) const 
             return Status::ERROR("invalid snapshot request op_type");
         }
         record.op = static_cast<WriteOpType>(op_type);
-        RETURN_IF_INVALID_STATUS(func::read_string(fd, record.key))
-        RETURN_IF_INVALID_STATUS(func::read_string(fd, record.value))
-        RETURN_IF_INVALID_STATUS(func::read_value(fd, record.index))
-        RETURN_IF_INVALID_STATUS(func::read_value(fd, record.term))
+        RETURN_IF_INVALID_STATUS(func::read_value(fd, record.payload_hash))
         RETURN_IF_INVALID_STATUS(fn(record))
     }
     return Status::OK();
@@ -603,9 +600,12 @@ Status PersistEngine::finish_snapshot_receive() {
 }
 
 // 只把状态机内容落成 snapshot 文件，不修改 WAL
-Status PersistEngine::write_snapshot(const StateMachine& state_machine, const std::vector<RaftMember>& members) {
-    LogIndex apply_index = state_machine.apply_index();
-    Term apply_term = state_machine.apply_term();
+Status PersistEngine::write_snapshot(const SnapshotData& snapshot, const std::vector<RaftMember>& members) {
+    ADVISKV_METRICS_COUNTER("storage_persist_write_snapshot_request");
+    ADVISKV_METRICS_TIMER("storage_persist_write_snapshot");
+
+    LogIndex apply_index = snapshot.apply_index;
+    Term apply_term = snapshot.apply_term;
 
     LOG_DEBUG(
             "[PersistEngine] write_snapshot, replica_id:{}, persist engine start to write snapshot, "
@@ -631,12 +631,11 @@ Status PersistEngine::write_snapshot(const StateMachine& state_machine, const st
         RETURN_IF_INVALID_STATUS(func::write_value<int32>(fd, 0))
 
         int32 kv_count = 0;
-        RETURN_IF_INVALID_STATUS(state_machine.for_each_kv([&](const Key& k, const Value& v) -> Status {
+        for (const auto& [k, v] : snapshot.kvs) {
             RETURN_IF_INVALID_STATUS(func::write_string(fd, k))
             RETURN_IF_INVALID_STATUS(func::write_string(fd, v))
             ++kv_count;
-            return Status::OK();
-        }))
+        }
 
         off_t request_count_pos = ::lseek(fd, 0, SEEK_CUR);
         if (request_count_pos < 0) {
@@ -645,24 +644,22 @@ Status PersistEngine::write_snapshot(const StateMachine& state_machine, const st
         RETURN_IF_INVALID_STATUS(func::write_value<int32>(fd, 0))
 
         int32 request_count = 0;
-        RETURN_IF_INVALID_STATUS(state_machine.for_each_request([&](const RequestRecord& record) -> Status {
+        for (const RequestRecord& record : snapshot.request_records) {
             if (record.request_id.empty()) {
                 return Status::INVALID_ARGUMENT("cannot snapshot an empty request_id");
             }
             RETURN_IF_INVALID_STATUS(func::write_string(fd, record.request_id))
             RETURN_IF_INVALID_STATUS(func::write_value<int32>(fd, static_cast<int32>(record.op)))
-            RETURN_IF_INVALID_STATUS(func::write_string(fd, record.key))
-            RETURN_IF_INVALID_STATUS(func::write_string(fd, record.value))
-            RETURN_IF_INVALID_STATUS(func::write_value(fd, record.index))
-            RETURN_IF_INVALID_STATUS(func::write_value(fd, record.term))
+            RETURN_IF_INVALID_STATUS(func::write_value(fd, record.payload_hash))
             ++request_count;
-            return Status::OK();
-        }))
+        }
+        ADVISKV_METRICS_COUNTER("storage_persist_snapshot_request_records_written", request_count);
 
         off_t end_pos = ::lseek(fd, 0, SEEK_END);
         if (end_pos < 0) {
             return Status::ERROR("lseek snapshot end failed");
         }
+        ADVISKV_METRICS_COUNTER("storage_persist_snapshot_bytes_written", static_cast<int64_t>(end_pos));
 
         int64 payload_len = static_cast<int64>(end_pos) - sizeof(int64);  // 这个len是没有算上自己的
 
@@ -690,6 +687,12 @@ Status PersistEngine::write_snapshot(const StateMachine& state_machine, const st
             "snapshot_term:{}",
             replica_id_.to_string(), apply_index, apply_term);
     return Status::OK();
+}
+
+Status PersistEngine::write_snapshot(const StateMachine& state_machine, const std::vector<RaftMember>& members) {
+    SnapshotData snapshot;
+    RETURN_IF_INVALID_STATUS(state_machine.capture_snapshot(snapshot))
+    return write_snapshot(snapshot, members);
 }
 
 Status PersistEngine::save_raft_meta(const RaftMeta& meta) {

@@ -81,7 +81,8 @@ Status Replica::init(const ReplicaInitParam& param) {
     applier_ = std::make_unique<ReplicaApplier>(*context_);
     apply_task_ = std::make_unique<ReplicaApplyTask>(this);
     read_index_checker_ = std::make_unique<ReplicaReadIndexChecker>(*context_, *loop_);
-    snapshot_coordinator_ = std::make_unique<ReplicaSnapshotCoordinator>(*context_, *loop_);
+    snapshot_coordinator_ = std::make_unique<ReplicaSnapshotCoordinator>(*context_, *loop_,
+                                                                          param.runtime.raft_do_snapshot_limit);
 
     loop_->start();
     message_dispatcher_->start();

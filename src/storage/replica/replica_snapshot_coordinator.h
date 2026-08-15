@@ -13,7 +13,7 @@ class ReplicaLoop;
 // 负责 follower 接收 leader 快照，以及本地自然生成快照。
 class ReplicaSnapshotCoordinator {
 public:
-    ReplicaSnapshotCoordinator(ReplicaContext& context, ReplicaLoop& loop);
+    ReplicaSnapshotCoordinator(ReplicaContext& context, ReplicaLoop& loop, int32_t raft_do_snapshot_limit);
 
     Status handle_install_snapshot(const InstallSnapshotParam& param);
     void try_take_snapshot();
@@ -34,6 +34,7 @@ private:
 
     ReplicaContext& context_;
     ReplicaLoop& loop_;
+    int32_t raft_do_snapshot_limit_;
     Optional<ReceivingSnapshotSession> receiving_snapshot_;
 };
 

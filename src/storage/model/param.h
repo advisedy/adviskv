@@ -90,9 +90,11 @@ struct DelParam {
 struct ReplicaRuntimeOptions {
     std::string data_dir;
     int32_t raft_rpc_timeout_ms{1000};
+    int32_t raft_do_snapshot_limit{1000};
 
     bool operator==(const ReplicaRuntimeOptions& other) const {
-        return data_dir == other.data_dir && raft_rpc_timeout_ms == other.raft_rpc_timeout_ms;
+        return data_dir == other.data_dir && raft_rpc_timeout_ms == other.raft_rpc_timeout_ms &&
+               raft_do_snapshot_limit == other.raft_do_snapshot_limit;
     }
 
     DEFINE_OPERATOR_NOT_EQUAL(ReplicaRuntimeOptions)

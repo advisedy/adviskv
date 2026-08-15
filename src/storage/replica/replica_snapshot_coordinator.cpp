@@ -7,20 +7,17 @@
 
 #include "common/define.h"
 #include "common/log.h"
+#include "common/metrics/metrics.h"
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/core/raft_core.h"
 #include "storage/raft/state_machine/state_machine.h"
 #include "storage/replica/replica_loop.h"
 
 namespace adviskv::storage {
-namespace {
 
-constexpr int K_RAFT_DO_SNAPSHOT_LIMIT = 1000;
-
-}  // namespace
-
-ReplicaSnapshotCoordinator::ReplicaSnapshotCoordinator(ReplicaContext& context, ReplicaLoop& loop)
-        : context_(context), loop_(loop) {}
+ReplicaSnapshotCoordinator::ReplicaSnapshotCoordinator(ReplicaContext& context, ReplicaLoop& loop,
+                                                       int32_t raft_do_snapshot_limit)
+        : context_(context), loop_(loop), raft_do_snapshot_limit_(raft_do_snapshot_limit) {}
 
 Status ReplicaSnapshotCoordinator::handle_install_snapshot(const InstallSnapshotParam& param) {
     if (param.offset == 0) {
@@ -168,34 +165,46 @@ void ReplicaSnapshotCoordinator::try_take_snapshot() {
         last_apply_index = context_.raft_core.last_applied();
         snapshot_index = context_.raft_core.snapshot_index();
     }
-    if (last_apply_index - snapshot_index < K_RAFT_DO_SNAPSHOT_LIMIT) return;
+    if (last_apply_index - snapshot_index < raft_do_snapshot_limit_) return;
+
+    ADVISKV_METRICS_COUNTER("storage_replica_take_snapshot_request");
+    ADVISKV_METRICS_TIMER("storage_replica_take_snapshot");
 
     InstallSnapshotContext install_context;
+    SnapshotData snapshot_data;
     Status status;
     {
         std::lock_guard snapshot_lock(context_.persist_snapshot_mutex);
-        std::lock_guard state_machine_lock(context_.state_machine_mutex);
         {
-            std::lock_guard lock(context_.raft_core_mutex);
-            last_apply_index = context_.raft_core.last_applied();
-            snapshot_index = context_.raft_core.snapshot_index();
+            // 实际的写在锁外面
+            std::lock_guard state_machine_lock(context_.state_machine_mutex);
+            {
+                std::lock_guard lock(context_.raft_core_mutex);
+                last_apply_index = context_.raft_core.last_applied();
+                snapshot_index = context_.raft_core.snapshot_index();
+            }
+            if (last_apply_index - snapshot_index < raft_do_snapshot_limit_) return;
+
+            LOG_INFO(
+                    "[Replica Snapshot] replica_id:{} try take snapshot start, "
+                    "snapshot_index:{}, snapshot_term:{}",
+                    context_.replica_id.to_string(), context_.state_machine.apply_index(),
+                    context_.state_machine.apply_term());
+
+            status = context_.state_machine.capture_snapshot(snapshot_data);
+            if (status.ok()) {
+                install_context.snapshot_index = snapshot_data.apply_index;
+                install_context.snapshot_term = snapshot_data.apply_term;
+                {
+                    std::lock_guard lock(context_.raft_core_mutex);
+                    install_context.snapshot_members = context_.raft_core.raft_members();
+                }
+            }
         }
-        if (last_apply_index - snapshot_index < K_RAFT_DO_SNAPSHOT_LIMIT) return;
 
-        LOG_INFO(
-                "[Replica Snapshot] replica_id:{} try take snapshot start, "
-                "snapshot_index:{}, snapshot_term:{}",
-                context_.replica_id.to_string(), context_.state_machine.apply_index(),
-                context_.state_machine.apply_term());
-
-        install_context.snapshot_index = context_.state_machine.apply_index();
-        install_context.snapshot_term = context_.state_machine.apply_term();
-        {
-            std::lock_guard lock(context_.raft_core_mutex);
-            install_context.snapshot_members = context_.raft_core.raft_members();
+        if (status.ok()) {
+            status = context_.persist.write_snapshot(snapshot_data, install_context.snapshot_members);
         }
-
-        status = context_.persist.write_snapshot(context_.state_machine, install_context.snapshot_members);
     }
 
     if (status.fail()) {

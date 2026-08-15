@@ -490,13 +490,19 @@ Status ReplicaLoop::propose_batch_from_queue(std::vector<ProposalBatchItem>& act
             continue;
         }
 
+        ADVISKV_METRICS_COUNTER("storage_replica_request_record_check_request");
         RequestRecord committed_record;
         Status find_status;
         {
+            ADVISKV_METRICS_TIMER("storage_replica_request_record_check");
             std::lock_guard lock(context_.state_machine_mutex);
-            find_status = context_.state_machine.find_request(write->request_id, committed_record);
+            {
+                ADVISKV_METRICS_TIMER("storage_replica_request_record_lookup");
+                find_status = context_.state_machine.find_request(write->request_id, committed_record);
+            }
         }
         if (find_status.ok()) {
+            ADVISKV_METRICS_COUNTER("storage_replica_request_record_hit");
             Status status = committed_record.matches(*write)
                                     ? Status::OK()
                                     : Status::INVALID_ARGUMENT("request_id was reused with a different write");
@@ -504,9 +510,11 @@ Status ReplicaLoop::propose_batch_from_queue(std::vector<ProposalBatchItem>& act
 
             continue;
         } else if (find_status.code() != StatusCode::KEY_NOT_FOUND) {
+            ADVISKV_METRICS_COUNTER("storage_replica_request_record_error");
             complete_proposal_commit(item.waiter, find_status);
             continue;
         }
+        ADVISKV_METRICS_COUNTER("storage_replica_request_record_miss");
 
         // 说明在状态机里面没有找到request_id对应的操作
         // 去检查一下inflight里面有没有

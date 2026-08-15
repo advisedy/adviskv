@@ -33,6 +33,9 @@ public:
     virtual LogIndex apply_term() const = 0;
     virtual Status get(const Key& key, Value& value) const = 0;
 
+    // 需要在状态机锁内调用，返回状态机快照数据
+    virtual Status capture_snapshot(SnapshotData& snapshot) const = 0;
+
     // 状态机给外部提供的一个接口，传递一个函数，可以操作状态机内部持有的KV
     virtual Status for_each_kv(const std::function<Status(const Key&, const Value&)>& fn) const = 0;
 

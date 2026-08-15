@@ -97,9 +97,13 @@ int main(int argc, char* argv[]) {
 
         std::string data_dir = adviskv::path_from_config("data_dir").string();
         int32_t listen_port = CONF_GET_INT("port");
-        int32_t raft_rpc_timeout_ms = CONF_GET_INT("raft_rpc_timeout_ms", 1000);
+        ReplicaRuntimeOptions runtime_options{
+                std::move(data_dir),
+                CONF_GET_INT("raft_rpc_timeout_ms", 1000),
+                CONF_GET_INT("raft_do_snapshot_limit", 1000),
+        };
 
-        auto replica_manager = std::make_unique<ReplicaManager>(std::move(data_dir), raft_rpc_timeout_ms);
+        auto replica_manager = std::make_unique<ReplicaManager>(std::move(runtime_options));
         ReplicaManager* replica_manager_ptr = replica_manager.get();
 
         replica_manager->recover();

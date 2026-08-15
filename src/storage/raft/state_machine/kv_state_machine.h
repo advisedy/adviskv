@@ -21,6 +21,7 @@ public:
     LogIndex apply_index() const override;
     LogIndex apply_term() const override;
     Status get(const Key& key, Value& value) const override;
+    Status capture_snapshot(SnapshotData& snapshot) const override;
 
     Status for_each_kv(const std::function<Status(const Key&, const Value&)>& fn) const override;
     Status find_request(const std::string& request_id, RequestRecord& record) const override;
