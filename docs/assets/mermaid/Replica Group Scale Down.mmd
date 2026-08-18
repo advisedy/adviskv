@@ -1,0 +1,42 @@
+%% Replica group scale-down: 4 -> 3, remove D
+sequenceDiagram
+    participant Catalog
+    participant Topo
+    participant Reconciler as ReplicaGroupService / Plan + Membership Reconciler
+    participant Leader as Storage Leader
+    participant OtherNodes as Other Storage Nodes (A/B/C)
+    participant RemovedNode as Removed Storage Node (D)
+
+    Catalog->>Topo: AlterTableReplicaCount(replica_count=3)
+    Topo->>Topo: TablePhase=RESIZING, TableSpec.replica_count=3
+    Reconciler->>Reconciler: target=3, desired_members=[A,B,C,D]
+    Reconciler->>Reconciler: select D as victim, keep D in desired_members until NON_MEMBER
+
+    loop Leader heartbeat until D is observed as NON_MEMBER
+        Leader->>Topo: Heartbeat(full_membership=[A,B,C,D])
+        Topo-->>Leader: REMOVE_MEMBER(D), may be returned again because storage is idempotent
+        Leader->>Leader: ensure_remove_member(D)
+        Leader->>OtherNodes: replicate REMOVE_MEMBER log
+        Leader->>RemovedNode: replicate REMOVE_MEMBER log
+        OtherNodes-->>Leader: append responses
+        RemovedNode-->>Leader: append response
+        Leader->>Leader: commit REMOVE_MEMBER log
+        Leader->>Leader: apply log: membership_.remove_member(D)
+        OtherNodes->>OtherNodes: apply committed log
+        RemovedNode->>RemovedNode: apply committed log: D -> NON_MEMBER
+        Leader->>Topo: Heartbeat(full_membership=[A,B,C])
+    end
+
+    Topo->>Topo: project leader membership, D.observed_member_type=NON_MEMBER
+    Reconciler->>Reconciler: remove D from desired_members
+    Reconciler->>Reconciler: D.desired=ABSENT, D.phase=DELETING
+
+    RemovedNode->>Topo: Heartbeat(D still exists, READY, NON_MEMBER)
+    Topo-->>RemovedNode: ABSENT(D)
+    RemovedNode->>RemovedNode: ReplicaManager::delete_replica(D)
+    RemovedNode->>Topo: Heartbeat(D absent)
+    Topo->>Topo: observed_no_exist=true, D.phase=DELETED
+    Reconciler->>Reconciler: cleanup_group deletes D metadata
+
+    Reconciler->>Reconciler: all desired members A/B/C are READY+VOTER
+    Topo->>Topo: TablePhase RESIZING -> READY

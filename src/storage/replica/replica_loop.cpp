@@ -516,10 +516,24 @@ Status ReplicaLoop::propose_batch_from_queue(std::vector<ProposalBatchItem>& act
             continue;
         }
         ADVISKV_METRICS_COUNTER("storage_replica_request_record_miss");
-
         // 说明在状态机里面没有找到request_id对应的操作
-        // 去检查一下inflight里面有没有
-        if (auto inflight_it = inflight_.find(write->request_id); inflight_it != inflight_.end()) {
+        // 这里分成两个情况，batch里有request_id重复的，或者没有重复的
+        // 所以如果inflight和raftlog里面都没有的话，就代表是第一次见的新的写操作
+        // 否则说明这个写操作之前出现过，这里有可能是因为当前 leader
+        // 之前执行过那个写操作还没有apply，也有可能是切主前的还没apply的 log
+        // 留下来的（后者就需要查询raftlog了，因为inflight只是记录本机的）
+        auto inflight_it = inflight_.find(write->request_id);
+        if (inflight_it == inflight_.end()) {
+            std::lock_guard lock(context_.raft_core_mutex);
+            if (const LogEntry* entry = context_.raft_core.find_request(write->request_id)) {
+                InflightProposal proposal;
+                proposal.proposal = WriteProposal{entry->op_type, entry->key, entry->value, entry->request_id};
+                proposal.index = entry->index;
+                proposal.committed = entry->index > 0 && entry->index <= context_.raft_core.commit_index();
+                inflight_it = inflight_.emplace(write->request_id, std::move(proposal)).first;
+            }
+        }
+        if (inflight_it != inflight_.end()) {
             InflightProposal& proposal = inflight_it->second;
             if ((*write) != proposal.proposal) {
                 complete_proposal_commit(item.waiter,

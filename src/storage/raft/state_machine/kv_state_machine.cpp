@@ -61,6 +61,17 @@ Status KvStateMachine::apply(const LogEntry& entry) {
         return Status::INVALID_ARGUMENT("request_id is only valid for PUT or DEL");
     }
 
+    if (!entry.request_id.empty() && (entry.op_type == WriteOpType::PUT || entry.op_type == WriteOpType::DEL)) {
+        RequestRecord existing;
+        if (find_request(entry.request_id, existing).ok()) {
+            ADVISKV_METRICS_COUNTER("storage_state_machine_apply_request_id_skipped");
+            apply_term_ = entry.term;
+            apply_index_ = entry.index;
+            ADVISKV_METRICS_COUNTER("storage_state_machine_apply_success");
+            return Status::OK();
+        }
+    }
+
     Status status{Status::OK()};
     switch (entry.op_type) {
         case WriteOpType::PUT: {

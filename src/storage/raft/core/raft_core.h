@@ -60,6 +60,7 @@ public:
 
     // apply 相关的推进
     std::vector<LogEntry> extract_committed_entries();
+    const LogEntry* find_request(const std::string& request_id) const;
     void advance_last_applied(LogIndex applied);
     Status apply_config_entry(const LogEntry& entry);
 

@@ -139,10 +139,10 @@ struct RemoveMemberCall {
     Status status{Status::OK()};
 };
 
-using Call = std::variant<RequestVoteCall*, PreVoteCall*, AppendEntriesCall*, BuildReadIndexCall*,
-                          PrepareInstallSnapshotCall*, CommitInstallSnapshotCall*, AppendResponseCall*,
-                          SnapshotResponseCall*, SnapshotSendFailedCall*, ProposeCall*, AddMemberCall*,
-                          RemoveMemberCall*>;
+using Call =
+        std::variant<RequestVoteCall*, PreVoteCall*, AppendEntriesCall*, BuildReadIndexCall*,
+                     PrepareInstallSnapshotCall*, CommitInstallSnapshotCall*, AppendResponseCall*,
+                     SnapshotResponseCall*, SnapshotSendFailedCall*, ProposeCall*, AddMemberCall*, RemoveMemberCall*>;
 
 struct Waiter {
     std::mutex mutex;
@@ -251,6 +251,10 @@ private:
     BatchDispatchQueue<SubmitQueueItem> submit_queue_;
     bool running_{false};
 
+    // inflight里面的元素的生命周期是根据apply判断的
+    // commit过也依旧不会析构，只不过会返回客户端结果而已
+    // 按 request_id 维护起来的本机正在追踪的还没 apply 的同一批request_id 的写
+    // 操作，把他们的 waiter 挂在一起
     std::unordered_map<std::string, InflightProposal> inflight_;
 };
 

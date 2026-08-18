@@ -178,8 +178,7 @@ TEST_F(KvStateMachineTest, RestoreReplacesExistingData) {
     EXPECT_EQ(value, "y");
 }
 
-// 状态机不对 request_id 做 apply 侧幂等/冲突拦截；只在成功 apply 后登记，
-// 供 ReplicaLoop 查询与 snapshot 使用。
+// apply 时登记 request_id；同一 request_id 再次出现则跳过业务写，但仍推进 apply 水位。
 TEST_F(KvStateMachineTest, RequestIdIsRecordedOnApply) {
     KvStateMachine state_machine(EngineType::MAP);
 
@@ -203,17 +202,17 @@ TEST_F(KvStateMachineTest, RequestIdIsRecordedOnApply) {
     different.value.clear();
     EXPECT_FALSE(record.matches(different));
 
-    // 若同 request_id 的日志再次出现，状态机仍按 entry 执行（不在此层跳过）。
     LogEntry again = first;
     again.term = 2;
     again.index = 2;
     again.value = "v2";
     ASSERT_TRUE(state_machine.apply(again).ok());
+    EXPECT_EQ(state_machine.apply_index(), 2);
+    EXPECT_EQ(state_machine.apply_term(), 2);
 
     Value value;
     ASSERT_TRUE(state_machine.get("idempotent-key", value).ok());
-    EXPECT_EQ(value, "v2");
-    // 首次登记保留，便于 loop 用“第一次已 apply 的内容”做冲突判断。
+    EXPECT_EQ(value, "v1");
     ASSERT_TRUE(state_machine.find_request("request-1", record).ok());
     EXPECT_EQ(record.payload_hash,
               RequestRecord::request_payload_hash(WriteOpType::PUT, "idempotent-key", "v1"));

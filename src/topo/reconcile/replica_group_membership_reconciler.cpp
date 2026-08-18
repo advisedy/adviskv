@@ -410,7 +410,8 @@ Status ReplicaGroupMembershipReconciler::remove_specific_members(const ReplicaGr
         for (const ReplicaID& rid : victims) {
             victim_set.insert(rid);
         }
-
+        
+        //开始在desired_members里移除victims
         ReplicaGroup current = current_or.value();
         std::vector<ReplicaID> kept_members;
         kept_members.reserve(current.desired_members.size());
@@ -428,6 +429,8 @@ Status ReplicaGroupMembershipReconciler::remove_specific_members(const ReplicaGr
                 "[ReplicaGroupMembershipReconciler] remove_specific_members, remove victims from desired members, shard_id:{}, victim_count:{}, kept_member_count:{}",
                 current.shard_id.to_string(), victims.size(), current.desired_members.size());
 
+        // 刚刚是在逻辑上删除Replica，desired_members里面不再有了。
+        // 然后把Replica的内容更改下，让storage那边在物理层面删掉
         for (const ReplicaID& rid : victims) {
             ReplicaOr replica_or;
             RETURN_IF_INVALID_STATUS(txn.get_replica(rid, replica_or))

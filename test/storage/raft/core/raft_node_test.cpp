@@ -279,6 +279,44 @@ TEST_F(RaftCoreTest,
     ASSERT_EQ(actual_entries, expected_entries);
 }
 
+TEST_F(RaftCoreTest, FindRequestTracksLogOverwrite) {
+    LogEntry kept = make_entry(1, 1, WriteOpType::PUT, "k1", "v1");
+    kept.request_id = "req-kept";
+    LogEntry old_conflict = make_entry(1, 2, WriteOpType::PUT, "k2", "old");
+    old_conflict.request_id = "req-old";
+    LogEntry replacement = make_entry(2, 2, WriteOpType::PUT, "k2", "new");
+    replacement.request_id = "req-new";
+
+    ReplicaID leader_id{101, 7, 1};
+    RaftCore core{replica_id_,
+                  {PeerMember{"leader", leader_id, {}}, PeerMember{"self", replica_id_, {}}}};
+    core.update_raft_meta(RaftMeta{2, std::nullopt});
+    core.update_log_entries({kept, old_conflict});
+
+    const LogEntry* found = core.find_request("req-kept");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->index, 1);
+    found = core.find_request("req-old");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->index, 2);
+    EXPECT_EQ(core.find_request("req-new"), nullptr);
+
+    AppendEntriesResult result;
+    RaftEffects effects;
+    core.handle_append_entries(
+            AppendEntriesParam{leader_id, replica_id_, 2, {replacement}, 1, 1, 2}, result, effects);
+    ASSERT_TRUE(result.success);
+
+    found = core.find_request("req-kept");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->index, 1);
+    EXPECT_EQ(core.find_request("req-old"), nullptr);
+    found = core.find_request("req-new");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->index, 2);
+    EXPECT_EQ(found->value, "new");
+}
+
 TEST_F(RaftCoreTest, RequestVoteFromNonVoterDoesNotBumpTerm) {
     ReplicaID leader_id{101, 7, 1};
     ReplicaID alien_id{101, 7, 9};

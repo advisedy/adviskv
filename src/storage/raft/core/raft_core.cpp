@@ -83,6 +83,10 @@ void RaftCore::record_hard_state(RaftEffects& effects) const { effects.hard_stat
 
 std::vector<LogEntry> RaftCore::extract_committed_entries() { return raft_apply_.extract_committed_entries(); }
 
+const LogEntry* RaftCore::find_request(const std::string& request_id) const {
+    return raft_log_.find_request(request_id);
+}
+
 void RaftCore::advance_last_applied(LogIndex applied) { raft_apply_.advance_last_applied(applied); }
 
 void RaftCore::step_down_if_become_non_member() {

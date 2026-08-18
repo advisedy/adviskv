@@ -263,6 +263,10 @@ Status append_reconfig_command_for_leader(const TopoStoreTxn& txn, const HeartBe
 ReplicaGroupService::ReplicaGroupService(TopoStore* store, NodeSelector* selector)
         : store_(store), selector_(selector) {}
 
+// 关于这个构建心跳result，分成两个阶段，首先是把期望在但是不在，和期望不在但是在的expected_replicas构成
+// 然后再调用append_reconfig_command_for_leader，负责去把ExpectedReplicaType是ADD_MEMBER或者REMOVE_MEMBER的expected_replicas的构建出来
+// 注意，这里期望在但是不在的replica，和ADD_MEMBER的replica不会冲突。因为代码判断走的是先是期望在并且也在（READY +
+// NON_MEMBER）的才会进行下一步，所以相当于比如在扩容场景下就是分成了两个阶段
 Status ReplicaGroupService::build_heartbeat_result(const HeartBeatParam& param, HeartBeatResult& result) const {
     RETURN_IF_INVALID_PARAM(param)
     RETURN_IF_NULLPTR(store_, "store is nullptr")

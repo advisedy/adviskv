@@ -352,6 +352,85 @@ TEST_F(ReplicaTest, RequestIdRetryIsIdempotentAndConflictsAreRejected) {
     EXPECT_EQ(request_entry_count, 1);
 }
 
+// 未 apply 的 WAL 里已有 request_id 时，当选后的相同重试不应再追加业务日志。
+TEST_F(ReplicaTest, RecoveredUnappliedRequestIdRetryDoesNotAppend) {
+    constexpr const char* request_id = "recovered-unapplied-request";
+    LogEntry recovered = make_entry(1, 1, WriteOpType::PUT, "recovered-key", "v1");
+    recovered.request_id = request_id;
+    {
+        PersistEngine writer(base_dir_.string(), replica_id_);
+        ASSERT_TRUE(writer.init().ok());
+        ASSERT_TRUE(writer.append_wal_batch({recovered}).ok());
+        ASSERT_TRUE(writer.close().ok());
+    }
+
+    ReplicaManager manager(base_dir_.string());
+    ReplicaPtr replica = add_single_replica(manager);
+    ASSERT_NE(replica, nullptr);
+    manager.recover();
+    manager.start_tick();
+    replica = wait_until_leader(manager);
+    ASSERT_NE(replica, nullptr);
+    ASSERT_EQ(replica->get_role(), ReplicaRole::LEADER);
+
+    Status status = replica->put(PutParam{"recovered-key", "v1", request_id});
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+
+    status = replica->put(PutParam{"recovered-key", "v2", request_id});
+    EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT)
+            << test::status_debug_string(status);
+
+    Value value;
+    status = replica->get(GetParam{"recovered-key"}, value);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    EXPECT_EQ(value, "v1");
+
+    PersistEngine wal_reader(base_dir_.string(), replica_id_);
+    ASSERT_TRUE(wal_reader.init().ok());
+    std::vector<LogEntry> entries;
+    ASSERT_TRUE(wal_reader.read_wal_batch(entries).ok());
+
+    int request_entry_count = 0;
+    for (const LogEntry& entry : entries) {
+        if (entry.request_id == request_id) {
+            ++request_entry_count;
+            EXPECT_EQ(entry.op_type, WriteOpType::PUT);
+            EXPECT_EQ(entry.key, "recovered-key");
+            EXPECT_EQ(entry.value, "v1");
+        }
+    }
+    EXPECT_EQ(request_entry_count, 1);
+}
+
+// log 里已有两条相同 request_id 时，apply 只执行第一条，后面的写不能把值盖回去。
+TEST_F(ReplicaTest, DuplicateRequestIdInLogKeepsFirstApply) {
+    constexpr const char* request_id = "duplicate-log-request";
+    LogEntry first = make_entry(1, 1, WriteOpType::PUT, "dup-key", "v1");
+    first.request_id = request_id;
+    LogEntry second = make_entry(1, 2, WriteOpType::PUT, "dup-key", "v2");
+    second.request_id = request_id;
+    {
+        PersistEngine writer(base_dir_.string(), replica_id_);
+        ASSERT_TRUE(writer.init().ok());
+        ASSERT_TRUE(writer.append_wal_batch({first, second}).ok());
+        ASSERT_TRUE(writer.close().ok());
+    }
+
+    ReplicaManager manager(base_dir_.string());
+    ReplicaPtr replica = add_single_replica(manager);
+    ASSERT_NE(replica, nullptr);
+    manager.recover();
+    manager.start_tick();
+    replica = wait_until_leader(manager);
+    ASSERT_NE(replica, nullptr);
+    ASSERT_EQ(replica->get_role(), ReplicaRole::LEADER);
+
+    Value value;
+    Status status = replica->get(GetParam{"dup-key"}, value);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    EXPECT_EQ(value, "v1");
+}
+
 // 单节点replica正常写入超过snapshot阈值后，通过后台tick自然触发snapshot。
 // 这个测试不手动调用do_snapshot/truncate_log，覆盖Replica::try_take_snapshot的真实链路。
 TEST_F(ReplicaTest, TakesSnapshotNaturallyAfterEnoughAppliedLogs) {
