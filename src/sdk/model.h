@@ -47,8 +47,9 @@ inline Status check_table_routes_is_valid(TableRouteInfo& table) {
 
 inline size_t locate_route(const TableRouteInfo& table, std::string_view key) {
     std::vector<ShardRange> ranges;
-    for (RouteInfo& route : table.routes)
+    for (const RouteInfo& route : table.routes) {
         ranges.push_back({route.shard_id, route.hash_range});
+    }
     return find_shard_range(ranges, hash_bucket_for_key(key));
 }
 }  // namespace adviskv::sdk

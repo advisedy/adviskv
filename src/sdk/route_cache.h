@@ -32,7 +32,7 @@ private:
     void store_snapshot(std::shared_ptr<TableRouteSnapshot> snapshot);
 
     Status lookup_cached_route(const Key& key, RouteInfo* route) const;
-    Status publish_table_routes(const TableRouteInfo& table_routes);
+    Status publish_table_routes(TableRouteInfo table_routes);
 
     KVClientConf conf_;
     const TopoRouteClient* route_client_{nullptr};

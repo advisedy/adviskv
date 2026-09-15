@@ -62,13 +62,13 @@ Status TopoRouteClient::get_table_routes(TableRouteInfo* table_routes, Milliseco
     TableRouteInfo next;
     next.table_id = response.table_id();
     next.shard_count = shard_count;
-    next.routes.resize(to<size_t>(shard_count));
+    next.routes.reserve(to<size_t>(shard_count));
 
     int32 decoded_count{0};
     for (const auto& route_pb : response.routes()) {
         ShardIndex shard_id = route_pb.shard_id();
         RETURN_IF_INVALID_CONDITION(
-                shard_id >= 0 && shard_id < shard_count,
+                shard_id >= 0,
                 fmt::format("table route shard_id invalid, shard_id={}, shard_count={}", shard_id, shard_count))
         RETURN_IF_INVALID_CONDITION(route_pb.replicas_size() > 0,
                                     fmt::format("table route replicas should not empty, shard_id={}", shard_id))
@@ -76,11 +76,15 @@ Status TopoRouteClient::get_table_routes(TableRouteInfo* table_routes, Milliseco
         RouteInfo route;
         route.table_id = next.table_id;
         route.shard_id = shard_id;
+        route.hash_range = {route_pb.hash_range().start(), route_pb.hash_range().end()};
         route.replicas.reserve(route_pb.replicas_size());
         for (const auto& replica_pb : route_pb.replicas()) {
             RouteReplica route_replica;
             RETURN_IF_INVALID_CONDITION(decode_pb_replica_id(replica_pb.replica_id(), route_replica.replica_id),
                                         "route replica id is not valid")
+            RETURN_IF_INVALID_CONDITION(route_replica.replica_id.table_id == next.table_id &&
+                                        route_replica.replica_id.shard_index == shard_id,
+                                        "route replica belongs to another shard")
             route_replica.endpoint = Endpoint{replica_pb.endpoint().ip(), replica_pb.endpoint().port()};
             ReplicaRole role = ReplicaRole::FOLLOWER;
             RETURN_IF_INVALID_CONDITION(decode_pb_raft_role(replica_pb.role(), role), "route replica role is not valid")
@@ -88,7 +92,7 @@ Status TopoRouteClient::get_table_routes(TableRouteInfo* table_routes, Milliseco
             route.replicas.push_back(std::move(route_replica));
         }
 
-        next.routes[to<size_t>(shard_id)] = std::move(route);
+        next.routes.push_back(std::move(route));
         ++decoded_count;
     }
 
@@ -96,6 +100,7 @@ Status TopoRouteClient::get_table_routes(TableRouteInfo* table_routes, Milliseco
             decoded_count == shard_count,
             fmt::format("table routes count mismatch, routes={}, shard_count={}", decoded_count, shard_count))
 
+    RETURN_IF_INVALID_STATUS(check_table_routes_is_valid(next))
     *table_routes = std::move(next);
     return Status::OK();
 }

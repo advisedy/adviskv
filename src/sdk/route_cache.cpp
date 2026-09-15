@@ -10,7 +10,6 @@
 #include "common/background_task.h"
 #include "common/define.h"
 #include "common/metrics/metrics.h"
-#include "common/stable_hash.h"
 #include "sdk/log.h"
 #include "sdk/topo_route_client.h"
 
@@ -19,8 +18,8 @@ namespace adviskv::sdk {
 struct RouteCache::TableRouteSnapshot {
     TableID table_id{-1};
     int32_t shard_count{0};
+    std::vector<ShardRange> shard_ranges;
     std::vector<RouteInfo> routes;
-    // TODO 以后弄version，以免总是这样一直返回整个table的routes
 };
 
 class RouteCache::RefreshTask : public BackgroundTask {
@@ -87,7 +86,7 @@ Status RouteCache::refresh(Milliseconds timeout) {
     }
 
     ADVISKV_METRICS_COUNTER("sdk_route_cache_refresh_table_routes_success");
-    return publish_table_routes(table_routes);
+    return publish_table_routes(std::move(table_routes));
 }
 
 std::shared_ptr<RouteCache::TableRouteSnapshot> RouteCache::load_snapshot() const {
@@ -106,34 +105,32 @@ Status RouteCache::lookup_cached_route(const Key& key, RouteInfo* route) const {
         return Status::ROUTE_NOT_FOUND("route cache is not ready");
     }
 
-    // TODO 以后尝试TOPO那边传递过来ranges
-    ShardIndex shard_id = stable_shard_index(key, snapshot->shard_count);
-    if (shard_id < 0 || to<size_t>(shard_id) >= snapshot->routes.size()) {
-        return Status::ROUTE_NOT_FOUND(fmt::format("route cache shard_id invalid, shard_id={}, shard_count={}",
-                                                   shard_id, snapshot->shard_count));
+    size_t pos = find_shard_range(snapshot->shard_ranges, hash_bucket_for_key(key));
+    if (pos >= snapshot->routes.size()) {
+        return Status::ROUTE_NOT_FOUND("key is outside the cached hash ranges");
     }
 
-    const RouteInfo& cached = snapshot->routes[to<size_t>(shard_id)];
+    const RouteInfo& cached = snapshot->routes[pos];
     if (cached.replicas.empty()) {
-        return Status::ROUTE_NOT_FOUND(fmt::format("route cache shard {} is not ready", shard_id));
+        return Status::ROUTE_NOT_FOUND("route cache shard is not ready");
     }
 
     *route = cached;
     return Status::OK();
 }
 
-Status RouteCache::publish_table_routes(const TableRouteInfo& table_routes) {
-    RETURN_IF_INVALID_CONDITION(table_routes.table_id >= 0, "table_id invalid")
-    RETURN_IF_INVALID_CONDITION(table_routes.shard_count > 0, "shard_count invalid")
-    RETURN_IF_INVALID_CONDITION(to<int32_t>(table_routes.routes.size()) == table_routes.shard_count,
-                                fmt::format("table routes size mismatch, routes={}, shard_count={}",
-                                            table_routes.routes.size(), table_routes.shard_count))
+Status RouteCache::publish_table_routes(TableRouteInfo table_routes) {
+    RETURN_IF_INVALID_STATUS(check_table_routes_is_valid(table_routes))
 
     auto next = std::make_shared<TableRouteSnapshot>();
     next->table_id = table_routes.table_id;
     next->shard_count = table_routes.shard_count;
-    next->routes = table_routes.routes;
-    store_snapshot(next);
+    next->routes = std::move(table_routes.routes);
+    next->shard_ranges.reserve(next->routes.size());
+    for (const auto& route : next->routes) {
+        next->shard_ranges.push_back({route.shard_id, route.hash_range});
+    }
+    store_snapshot(std::move(next));
     ADVISKV_METRICS_COUNTER("sdk_route_cache_table_routes_update");
     return Status::OK();
 }
