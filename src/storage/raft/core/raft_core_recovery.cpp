@@ -9,7 +9,7 @@ void RaftCore::update_log_entries(const std::vector<LogEntry>& entries) { raft_l
 void RaftCore::update_membership(const std::vector<RaftMember>& members) { membership_.update_raft_members(members); }
 
 void RaftCore::enter_recovering() {
-    state_ = State::RECOVERING;
+    recovering_ = true;
     clear_recent_leader_active();
     election_.become_follower(election_.current_term());
     election_tick_trigger_.stop();
@@ -17,9 +17,9 @@ void RaftCore::enter_recovering() {
 }
 
 void RaftCore::finish_recovering() {
-    if (state_ != State::RECOVERING) return;
+    if (!recovering_) return;
 
-    state_ = State::READY;
+    recovering_ = false;
     election_tick_trigger_.reset();
 }
 

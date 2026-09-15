@@ -48,9 +48,9 @@ RaftMemberType RaftCore::member_type(const ReplicaID& replica_id) const { return
 
 std::vector<RaftMember> RaftCore::raft_members() const { return membership_.raft_members(); }
 
-bool RaftCore::is_recovering() const { return state_ == State::RECOVERING; }
+bool RaftCore::is_recovering() const { return recovering_; }
 
-bool RaftCore::is_ready() const { return state_ == State::READY; }
+bool RaftCore::is_ready() const { return !recovering_; }
 
 bool RaftCore::later_than_other(Term other_term, LogIndex other_index) const {
     if (raft_log_.last_log_term() != other_term) {
@@ -70,11 +70,8 @@ void RaftCore::clear_recent_leader_active() {
 void RaftCore::mark_recent_leader_active() { recent_leader_active_ = true; }
 
 Status RaftCore::ensure_ready() const {
-    if (state_ == State::RECOVERING) {
+    if (recovering_) {
         return Status::IS_RECOVERING("raft node is recovering");
-    }
-    if (state_ != State::READY) {
-        return Status::NOT_INIT("raft node is not ready");
     }
     return Status::OK();
 }

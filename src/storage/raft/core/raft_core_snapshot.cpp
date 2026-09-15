@@ -133,7 +133,7 @@ Status RaftCore::prepare_install_snapshot(const InstallSnapshotParam& param, Raf
                             raft_apply_.last_applied()));
     }
 
-    if (state_ == State::READY && param.snapshot_index <= raft_log_.last_log_index() &&
+    if (!recovering_ && param.snapshot_index <= raft_log_.last_log_index() &&
         raft_log_.term_at(param.snapshot_index) == param.snapshot_term) {
         return Status::ALREADY_EXIST(
                 fmt::format("[RaftCore Snapshot] follower already has the log, "

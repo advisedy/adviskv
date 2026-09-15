@@ -121,11 +121,6 @@ public:
     }
     ///////////////////////////////////////
 private:
-    enum class State {
-        READY,
-        RECOVERING,
-    };
-
     Status ensure_ready() const;
     bool later_than_other(Term other_term, LogIndex other_index) const;
     
@@ -171,8 +166,7 @@ private:
     TickTrigger heartbeat_tick_trigger_;
 
     bool recent_leader_active_{false};
-
-    State state_{State::READY};
+    bool recovering_{false};
 };
 
 }  // namespace adviskv::storage
