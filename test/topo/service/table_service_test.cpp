@@ -28,7 +28,11 @@ void put_ready_table(TopoStore& store) {
     TableState state{};
     state.desired = TableDesired::PRESENT;
     state.phase = TablePhase::READY;
-    Table table{1001, TableSpec{"orders", 11, "commerce", 3, 2, "pool-a", "create-table-1001"}, state};
+    Table table{1001,
+                TableSpec{"orders", 11, "commerce", 3, 2, "pool-a", "create-table-1001", EngineType::MAP,
+                          make_shard_ranges(3)},
+                state};
+    table.spec.shard_ranges = make_shard_ranges(3);
     ASSERT_TRUE(store_test::put_table(store, table).ok());
 
     for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count; ++shard_index) {
@@ -98,6 +102,7 @@ TEST(TableServiceTest, PlaceTableConvertsParamToDesiredTableState) {
     EXPECT_EQ(stored->spec.db_id, param.db_id);
     EXPECT_EQ(stored->spec.replica_count, param.replica_count);
     EXPECT_EQ(stored->spec.shard_count, param.shard_count);
+    ASSERT_TRUE(check_shard_ranges_is_valid(stored->spec.shard_count, stored->spec.shard_ranges).ok());
     EXPECT_EQ(stored->spec.resource_pool, param.resource_pool);
     EXPECT_EQ(stored->spec.operation_id, param.operation_id);
     EXPECT_EQ(stored->spec.engine_type, EngineType::MAP);

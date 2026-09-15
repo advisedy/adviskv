@@ -4,7 +4,6 @@
 
 #include <memory>
 
-#include "common/stable_hash.h"
 #include "common/status.h"
 #include "topo/store/topo_store.h"
 #include "topo/store/topo_store_test_helper.h"
@@ -17,13 +16,13 @@ Table make_table() {
     state.phase = TablePhase::READY;
     return Table{1001,
                  TableSpec{"orders", 11, "commerce", 4, 2, "pool-a",
-                           "create-table-1001"},
+                           "create-table-1001", EngineType::MAP, make_shard_ranges(4)},
                  state};
 }
 
 ShardID shard_for_key(const Table& table, const Key& key) {
-    return ShardID(table.table_id,
-                   stable_shard_index(key, table.spec.shard_count));
+    const auto position = find_shard_range(table.spec.shard_ranges, hash_bucket_for_key(key));
+    return ShardID(table.table_id, table.spec.shard_ranges[position].shard_id);
 }
 
 ShardRoute make_route(const ShardID& shard_id,
@@ -55,6 +54,28 @@ GetRouteParam make_get_route_param(const Key& key = "user-123") {
 }
 
 }  // namespace
+
+TEST(RouteServiceTest, UsesPersistedUnevenRangesAndSparseIds) {
+    TopoStore store{MemoryMetaStoreParam{}};
+    ASSERT_TRUE(store.init().ok());
+    auto table = make_table();
+    const auto h = hash_bucket_for_key("user-123");
+    ASSERT_GT(h, 0U);
+    table.spec.shard_count = 2;
+    table.spec.shard_ranges = {{17, {0, h}}, {42, {h, K_HASH_BUCKET_COUNT}}};
+    ASSERT_TRUE(store_test::put_table(store, table).ok());
+    ASSERT_TRUE(store_test::put_shard_route(store, make_route({table.table_id, 42})).ok());
+    RouteService service(&store);
+    ShardRoute route;
+    ASSERT_TRUE(service.get_route(make_get_route_param(), &route).ok());
+    EXPECT_EQ(route.shard_id.shard_index, 42);
+    EXPECT_EQ(route.hash_range.start, h);
+    auto by_id = make_get_route_param();
+    by_id.use_id = true;
+    by_id.table_id = table.table_id;
+    by_id.shard_id = 42;
+    ASSERT_TRUE(service.get_route(by_id, &route).ok());
+}
 
 // 检测 RouteService 会根据 DB、Table 和 Key 计算 shard 并返回对应路由。
 TEST(RouteServiceTest, GetRouteReturnsRouteForTableAndKey) {

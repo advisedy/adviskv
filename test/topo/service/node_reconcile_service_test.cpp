@@ -39,7 +39,7 @@ Table make_table() {
     state.phase = TablePhase::CREATING;
     return Table{1001,
                  TableSpec{"orders", 11, "commerce", 1, 1, "pool-a",
-                           "create-1001"},
+                           "create-1001", EngineType::MAP, make_shard_ranges(1)},
                  state};
 }
 

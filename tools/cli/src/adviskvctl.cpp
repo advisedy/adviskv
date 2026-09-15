@@ -57,8 +57,10 @@ void print_help() {
             "  put <db> <table> <key> <value>\n"
             "  get <db> <table> <key>\n"
             "  delete <db> <table> <key>\n"
+            "  cas <db> <table> <key> <expected> <new>\n"
             "\n"
             "Debug commands:\n"
+            "  shards <db> <table>  (shard ownership and available routes)\n"
             "  route <db> <table> <key>\n"
             "  routes <db> <table>\n"
             "  status <db> <table>\n"
@@ -240,9 +242,12 @@ public:
             get(tokens);
         } else if (command == "delete" || command == "del") {
             del(tokens);
+        } else if (command == "cas") {
+            cas(tokens);
         } else if (command == "route") {
             route(tokens);
-        } else if (command == "routes" || command == "table_routes" || command == "table-routes") {
+        } else if (command == "routes" || command == "table_routes" || command == "table-routes" ||
+                   command == "shards") {
             routes(tokens);
         } else if (command == "demo") {
             demo(tokens);
@@ -434,6 +439,15 @@ private:
         print_status(client.del(tokens[3]));
     }
 
+    void cas(const std::vector<std::string>& tokens) const {
+        if (tokens.size() != 6) {
+            fmt::print("usage: cas <db> <table> <key> <expected> <new>\n");
+            return;
+        }
+        auto client = make_kv_client(tokens[1], tokens[2]);
+        print_status(client.cas(tokens[3], tokens[4], tokens[5]));
+    }
+
     void route(const std::vector<std::string>& tokens) const {
         if (tokens.size() != 4) {
             fmt::print("usage: route <db> <table> <key>\n");
@@ -447,21 +461,22 @@ private:
             print_status(status);
             return;
         }
-        ShardIndex shard = adviskv::stable_shard_index(tokens[3], table_routes.shard_count);
-        if (shard < 0 || static_cast<size_t>(shard) >= table_routes.routes.size()) {
-            fmt::print("ERR invalid shard={} shard_count={}\n", shard, table_routes.shard_count);
+        const size_t position = adviskv::sdk::locate_route(table_routes, tokens[3]);
+        if (position >= table_routes.routes.size()) {
+        fmt::print("ERR key is outside the table shard ranges\n");
             return;
         }
-        route_info = table_routes.routes[static_cast<size_t>(shard)];
+        route_info = table_routes.routes[position];
         fmt::print("Route\n");
         fmt::print("  table: {}.{}\n", tokens[1], tokens[2]);
         fmt::print("  key:   {}\n", tokens[3]);
+        fmt::print("  bucket: {}\n", adviskv::hash_bucket_for_key(tokens[3]));
         print_route(route_info, "  ");
     }
 
     void routes(const std::vector<std::string>& tokens) const {
         if (tokens.size() != 3) {
-            fmt::print("usage: routes <db> <table>\n");
+            fmt::print("usage: shards <db> <table> (alias: routes)\n");
             return;
         }
 
@@ -476,6 +491,7 @@ private:
         fmt::print("Routes\n");
         fmt::print("  table: {}.{}\n", tokens[1], tokens[2]);
         fmt::print("  id:    table_id={} shard_count={}\n", table_routes.table_id, table_routes.shard_count);
+        fmt::print("  sharding: fixed hash buckets [0, 65536) (not lexical key order)\n");
 
         for (const auto& route_info : table_routes.routes) {
             print_route(route_info, "  ");
@@ -484,6 +500,12 @@ private:
 
     void print_route(const adviskv::sdk::RouteInfo& route_info, const std::string& indent) const {
         fmt::print("{}shard: table_id={} shard_id={}\n", indent, route_info.table_id, route_info.shard_id);
+        fmt::print("{}hash_range: [{}, {})\n", indent, route_info.hash_range.start, route_info.hash_range.end);
+        const bool writable = std::count_if(route_info.replicas.begin(), route_info.replicas.end(),
+                [](const adviskv::sdk::RouteReplica& r) {
+                    return r.role == adviskv::ReplicaRole::LEADER && !r.endpoint.ip.empty() && r.endpoint.port > 0;
+                }) == 1;
+        fmt::print("{}route_state: {}\n", indent, writable ? "WRITABLE" : "UNAVAILABLE");
         fmt::print("{}replicas:\n", indent);
         for (const auto& replica : route_info.replicas) {
             fmt::print("{}  - replica_id={} endpoint={}:{} role={}\n", indent, replica.replica_id.to_string(),

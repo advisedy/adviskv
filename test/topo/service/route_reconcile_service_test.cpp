@@ -30,7 +30,8 @@ Table make_table() {
     state.phase = TablePhase::READY;
     return Table{
         K_TEST_TABLE_ID,
-        TableSpec{"orders", 11, "commerce", 1, 3, "pool-a", "create-1001"},
+        TableSpec{"orders", 11, "commerce", 1, 3, "pool-a", "create-1001", EngineType::MAP,
+                  make_shard_ranges(1)},
         state};
 }
 

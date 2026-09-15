@@ -96,7 +96,11 @@ add_adviskv_common_gtest(metrics_test
     ${CMAKE_SOURCE_DIR}/test/common/metrics/metrics_test.cpp
 )
 
-add_adviskv_storage_gtest(map_engine_test
+add_adviskv_common_gtest(shard_range_test
+    ${CMAKE_SOURCE_DIR}/test/common/shard_range_test.cpp
+)
+
+add_adviskv_storage_gtest(map_engine_test)
     ${CMAKE_SOURCE_DIR}/test/storage/engine/map_engine_test.cpp
 )
 

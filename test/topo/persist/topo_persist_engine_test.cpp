@@ -38,7 +38,8 @@ protected:
 
         record.tables[101] = Table{
                 101,
-                TableSpec{"users", 1, "app", 8, 3, "pool-a", "op-table"},
+                TableSpec{"users", 1, "app", 8, 3, "pool-a", "op-table", EngineType::MAP,
+                          make_shard_ranges(8)},
                 table_state,
         };
 
@@ -77,7 +78,8 @@ protected:
 
         record.tables[202] = Table{
                 202,
-                TableSpec{"orders", 2, "billing", 16, 5, "pool-b", "op-table-2", EngineType::MAP},
+                TableSpec{"orders", 2, "billing", 16, 5, "pool-b", "op-table-2", EngineType::MAP,
+                          make_shard_ranges(16)},
                 table_state,
         };
 
@@ -131,6 +133,11 @@ protected:
             EXPECT_EQ(actual_table.spec.db_id, expected_table.spec.db_id);
             EXPECT_EQ(actual_table.spec.db_name, expected_table.spec.db_name);
             EXPECT_EQ(actual_table.spec.shard_count, expected_table.spec.shard_count);
+            ASSERT_EQ(actual_table.spec.shard_ranges.size(), expected_table.spec.shard_ranges.size());
+            for (size_t i = 0; i < actual_table.spec.shard_ranges.size(); ++i) {
+                EXPECT_EQ(actual_table.spec.shard_ranges[i].shard_id, expected_table.spec.shard_ranges[i].shard_id);
+                EXPECT_EQ(actual_table.spec.shard_ranges[i].range, expected_table.spec.shard_ranges[i].range);
+            }
             EXPECT_EQ(actual_table.spec.replica_count, expected_table.spec.replica_count);
             EXPECT_EQ(actual_table.spec.resource_pool, expected_table.spec.resource_pool);
             EXPECT_EQ(actual_table.spec.operation_id, expected_table.spec.operation_id);
@@ -296,6 +303,35 @@ TEST_F(TopoPersistEngineTest, LoadCorruptedTopoMetaFails) {
     TopoPersistedRecord loaded;
     status = engine.load_topo_meta(loaded);
     EXPECT_TRUE(status.fail());
+}
+
+TEST_F(TopoPersistEngineTest, ReopenKeepsUnevenRangesAndSparseShardIds) {
+    auto record = make_minimal_record();
+    record.tables.at(101).spec.shard_count = 2;
+    record.tables.at(101).spec.shard_ranges = {{7, {0, 12345}}, {91, {12345, K_HASH_BUCKET_COUNT}}};
+    {
+        TopoPersistEngine engine(base_dir_.string());
+        ASSERT_TRUE(engine.init().ok());
+        ASSERT_TRUE(engine.save_topo_meta(record).ok());
+    }
+    TopoPersistEngine reopened(base_dir_.string());
+    ASSERT_TRUE(reopened.init().ok());
+    TopoPersistedRecord loaded;
+    ASSERT_TRUE(reopened.load_topo_meta(loaded).ok());
+    expect_record_equal(loaded, record);
+}
+
+TEST_F(TopoPersistEngineTest, InvalidRangesCannotOverwriteValidMetadata) {
+    auto record = make_minimal_record();
+    TopoPersistEngine engine(base_dir_.string());
+    ASSERT_TRUE(engine.init().ok());
+    ASSERT_TRUE(engine.save_topo_meta(record).ok());
+    auto invalid = record;
+    invalid.tables.at(101).spec.shard_ranges[1].range.start++;
+    EXPECT_TRUE(engine.save_topo_meta(invalid).fail());
+    TopoPersistedRecord loaded;
+    ASSERT_TRUE(engine.load_topo_meta(loaded).ok());
+    expect_record_equal(loaded, record);
 }
 
 }  // namespace adviskv::topo

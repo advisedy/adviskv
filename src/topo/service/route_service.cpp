@@ -9,7 +9,6 @@
 #include "common/log.h"
 #include "common/metrics/metrics.h"
 #include "common/model/type.h"
-#include "common/stable_hash.h"
 #include "common/status.h"
 #include "topo/store/topo_store.h"
 #include "topo/store/topo_store_txn.h"
@@ -34,21 +33,22 @@ Status RouteService::get_route(const GetRouteParam& param, ShardRoute* out) cons
     RETURN_IF_NULLPTR(store_, "store is nullptr")
 
     ShardID shard_id;
+    TableOr table;
     if (param.use_id) {
-        TableOr table;
         Status status =
                 store_->read_with([&](const TopoStoreTxn& txn) { return txn.get_table(param.table_id, table); });
         RETURN_IF_INVALID_STATUS(status)
         if (table.is_empty()) {
             return Status::TABLE_NOT_FOUND(fmt::format("table_id {} not found", param.table_id));
         }
-        if (param.shard_id >= table->spec.shard_count) {
+        bool found = std::any_of(table->spec.shard_ranges.begin(), table->spec.shard_ranges.end(),
+                                 [&](const ShardRange& range) { return range.shard_id == param.shard_id; });
+        if (!found) {
             return Status::INVALID_ARGUMENT(
                     fmt::format("shard_id {} out of range, shard_count={}", param.shard_id, table->spec.shard_count));
         }
         shard_id = ShardID{param.table_id, param.shard_id};
     } else {
-        TableOr table;
         Status status = store_->read_with(
                 [&](const TopoStoreTxn& txn) { return txn.get_table_by_name(param.db_name, param.table_name, table); });
         RETURN_IF_INVALID_STATUS(status)
@@ -67,6 +67,9 @@ Status RouteService::get_route(const GetRouteParam& param, ShardRoute* out) cons
     RETURN_IF_INVALID_STATUS(validate_writable_route(*route))
     if (out) {
         *out = *route;
+        for (const auto& range : table->spec.shard_ranges) {
+            if (range.shard_id == shard_id.shard_index) out->hash_range = range.range;
+        }
         // 这边第一个就是leader的，
         // 这个是在route_updater那边就保证了的。
     }
@@ -105,8 +108,10 @@ Status RouteService::get_table_routes(const GetTableRoutesParam& param, Table* o
         }
 
         std::vector<ShardRoute> routes;
+        RETURN_IF_INVALID_STATUS(check_shard_ranges_is_valid(table->spec.shard_count, table->spec.shard_ranges))
         routes.reserve(to<size_t>(table->spec.shard_count));
-        for (ShardIndex shard_index = 0; shard_index < table->spec.shard_count; ++shard_index) {
+        for (const ShardRange& range : table->spec.shard_ranges) {
+            ShardIndex shard_index = range.shard_id;
             ShardRouteOr route;
             ShardID shard_id{table->table_id, shard_index};
             RETURN_IF_INVALID_STATUS(txn.get_shard_route(shard_id, route))
@@ -115,7 +120,9 @@ Status RouteService::get_table_routes(const GetTableRoutesParam& param, Table* o
                         fmt::format("route not found, table_id={}, shard_id={}", table->table_id, shard_index));
             }
             RETURN_IF_INVALID_STATUS(validate_writable_route(*route))
-            routes.push_back(*route);
+            ShardRoute entry = *route;
+            entry.hash_range = range.range;
+            routes.push_back(std::move(entry));
         }
 
         if (out_table != nullptr) {
@@ -127,8 +134,8 @@ Status RouteService::get_table_routes(const GetTableRoutesParam& param, Table* o
 }
 
 ShardID RouteService::calc_shard_id(const Table& table, Key key) const {
-    // TODO 将来得搞range
-    return ShardID{table.table_id, stable_shard_index(key, table.spec.shard_count)};
+    size_t pos = find_shard_range(table.spec.shard_ranges, hash_bucket_for_key(key));
+    return ShardID{table.table_id, pos < table.spec.shard_ranges.size() ? table.spec.shard_ranges[pos].shard_id : -1};
 }
 
 Status RouteService::reconcile_all() {
@@ -137,7 +144,8 @@ Status RouteService::reconcile_all() {
     Status status = store_->read_with([&](const TopoStoreTxn& txn) { return txn.list_tables(tables); });
     RETURN_IF_INVALID_STATUS(status)
     for (auto& table : tables) {
-        for (int i = 0; i < table.spec.shard_count; i++) {
+        for (const ShardRange& range : table.spec.shard_ranges) {
+            ShardIndex i = range.shard_id;
             Status s = check_shard_route(table, to<ShardIndex>(i));
             if (s.fail()) {
                 LOG_WARN(
@@ -179,7 +187,8 @@ Status RouteService::check_shard_route(const Table& table, ShardIndex shard_inde
             // 是creating的时候就得开始准备了，创建table的要求是route都ok了
             (current_table->state.phase != TablePhase::CREATING && current_table->state.phase != TablePhase::RESIZING &&
              current_table->state.phase != TablePhase::READY) ||
-            shard_index < 0 || shard_index >= current_table->spec.shard_count) {
+            std::none_of(current_table->spec.shard_ranges.begin(), current_table->spec.shard_ranges.end(),
+                         [&](const ShardRange& range) { return range.shard_id == shard_index; })) {
             ADVISKV_METRICS_COUNTER("topo_route_delete_shard_route_request");
             RETURN_IF_INVALID_STATUS(txn.delete_shard_route(shard_id))
             return Status::OK();

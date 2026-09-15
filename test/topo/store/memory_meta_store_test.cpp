@@ -17,7 +17,8 @@ Table make_table(TableID table_id, const std::string& table_name,
     state.update_ts = 100 + table_id;
     return Table{table_id,
                  TableSpec{table_name, 11, "commerce", 2, 2, "pool-a",
-                           "create-table-" + std::to_string(table_id)},
+                           "create-table-" + std::to_string(table_id), EngineType::MAP,
+                           make_shard_ranges(2)},
                  state};
 }
 
