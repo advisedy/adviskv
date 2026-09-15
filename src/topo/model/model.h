@@ -8,6 +8,7 @@
 #include "common/id_allocator.h"
 #include "common/model/type.h"
 #include "common/optional.h"
+#include "common/shard_range.h"
 
 namespace adviskv::topo {
 
@@ -134,6 +135,7 @@ struct TableSpec {
     std::string resource_pool;
     std::string operation_id;
     EngineType engine_type{EngineType::MAP};
+    std::vector<ShardRange> shard_ranges{}; 
 };
 
 struct TableState {
@@ -166,6 +168,7 @@ struct RouteEntry {
 struct ShardRoute {
     ShardID shard_id;
     std::vector<RouteEntry> replicas;  // RouteService
+    HashRange hash_range{};
 };
 
 using ShardRoutePtr = std::shared_ptr<ShardRoute>;

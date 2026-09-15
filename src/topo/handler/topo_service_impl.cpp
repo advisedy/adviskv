@@ -277,6 +277,8 @@ grpc::Status TopoServiceImpl::GetTableRoutes(grpc::ServerContext* context, const
     for (const auto& route : routes) {
         auto* route_pb = response->add_routes();
         route_pb->set_shard_id(route.shard_id.shard_index);
+        route_pb->mutable_hash_range()->set_start(route.hash_range.start);
+        route_pb->mutable_hash_range()->set_end(route.hash_range.end);
         for (const auto& replica : route.replicas) {
             pb::RaftRole role_pb;
             if (!encode_pb_raft_role(replica.role, role_pb)) {

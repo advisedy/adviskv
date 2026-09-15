@@ -55,6 +55,7 @@ Status TableService::place_table(const PlaceTableParam& param) {
         table.spec.resource_pool = param.resource_pool;
         table.spec.operation_id = param.operation_id;
         table.spec.engine_type = param.engine_type;
+        table.spec.shard_ranges = make_shard_ranges(param.shard_count);
         table.state.desired = TableDesired::PRESENT;
         table.state.phase = TablePhase::CREATING;
         table.state.update_ts = func::get_current_ts_ms();
@@ -305,7 +306,9 @@ Status TableService::finalize_table_until_ready(Table& table, TablePhase waiting
 
 Status TableService::ensure_all_shards_ok(TopoStoreTxn& txn, Table& table, bool& all_shards_ok) {
     all_shards_ok = true;
-    for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count; ++shard_index) {
+    RETURN_IF_INVALID_STATUS(check_shard_ranges_is_valid(table.spec.shard_count, table.spec.shard_ranges))
+    for (const auto& range : table.spec.shard_ranges) {
+        ShardIndex shard_index = range.shard_id;
         ShardID shard_id{table.table_id, shard_index};
 
         std::vector<Replica> replicas;
@@ -439,7 +442,8 @@ Status TableService::finalize_absent_table(Table& table) {
 
 Status TableService::ensure_all_shards_deleted(TopoStoreTxn& txn, Table& table, bool& all_shards_deleted) {
     all_shards_deleted = true;
-    for (ShardIndex shard_index = 0; shard_index < table.spec.shard_count; ++shard_index) {
+    for (const auto& range : table.spec.shard_ranges) {
+        ShardIndex shard_index = range.shard_id;
         ShardID shard_id{table.table_id, shard_index};
 
         std::vector<Replica> replicas;

@@ -4,6 +4,7 @@
 #include <string>
 
 #include "common/model/type.h"
+#include "common/shard_range.h"
 #include "common/status.h"
 
 namespace adviskv::catalog {
@@ -35,7 +36,8 @@ struct CreateTableParam {
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")
         RETURN_IF_INVALID_CONDITION(!table_name.empty(), "table_name should not empty")
-        RETURN_IF_INVALID_CONDITION(shard_count > 0, "shard count should > 0")
+        RETURN_IF_INVALID_CONDITION(shard_count > 0 && shard_count <= static_cast<int32_t>(K_HASH_BUCKET_COUNT),
+                                    "shard count is not valid")
         // replica_count 是可以等于0的
         RETURN_IF_INVALID_CONDITION(replica_count >= 0, "replica count should >= 0")
         switch (engine_type) {

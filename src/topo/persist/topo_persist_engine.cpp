@@ -151,6 +151,12 @@ private:
         buf.write(static_cast<int32>(table.state.phase));
         buf.write(table.state.last_error_msg);
         buf.write(table.state.update_ts);
+        buf.write(static_cast<int32>(table.spec.shard_ranges.size()));
+        for (const auto& range : table.spec.shard_ranges) {
+            buf.write(range.shard_id);
+            buf.write(range.range.start);
+            buf.write(range.range.end);
+        }
     }
 
     static Status decode_table(DecodeBuffer& buf, Table& table) {
@@ -184,6 +190,19 @@ private:
 
         RETURN_IF_INVALID_READ(buf, table.state.last_error_msg)
         RETURN_IF_INVALID_READ(buf, table.state.update_ts)
+        {
+            int32 count{0};
+            RETURN_IF_INVALID_READ(buf, count)
+            if (count < 0 || count > table.spec.shard_count) return Status::ERROR("invalid shard range count");
+            for (int32 i = 0; i < count; ++i) {
+                ShardRange range;
+                RETURN_IF_INVALID_READ(buf, range.shard_id)
+                RETURN_IF_INVALID_READ(buf, range.range.start)
+                RETURN_IF_INVALID_READ(buf, range.range.end)
+                table.spec.shard_ranges.push_back(range);
+            }
+            RETURN_IF_INVALID_STATUS(check_shard_ranges_is_valid(table.spec.shard_count, table.spec.shard_ranges))
+        }
         return Status::OK();
     }
 
@@ -342,6 +361,11 @@ Status TopoPersistEngine::save_topo_meta(const TopoPersistedRecord& record) {
     ADVISKV_METRICS_COUNTER("topo_persist_save_topo_meta_request");
 
     if (!init_flag_) return Status::NOT_INIT("topo persist engine is not init");
+
+    for (auto& entry : record.tables) {
+        auto& spec = entry.second.spec;
+        RETURN_IF_INVALID_STATUS(check_shard_ranges_is_valid(spec.shard_count, spec.shard_ranges))
+    }
 
     int fd = ::open(meta_tmp_path_.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd < 0) {

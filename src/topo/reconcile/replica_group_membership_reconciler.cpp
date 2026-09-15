@@ -226,7 +226,7 @@ Status ReplicaGroupMembershipReconciler::cleanup_group(const ReplicaGroup& group
             }
             return Status::OK();
         }
-        // current.mode == ReplicaGroupMode::BOOTSTRAP
+        // 现在说明 current.mode == ReplicaGroupMode::BOOTSTRAP
         if (static_cast<int32_t>(current.desired_members.size()) == current.target_replica_count &&
             all_members_ready(txn, current)) {
             current.mode = ReplicaGroupMode::RAFT_RECONFIG;

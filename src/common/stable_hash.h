@@ -25,6 +25,16 @@ public:
 
     uint64 get_hash() const { return hash_; }
 
+    uint64 get_mixed_hash() const {
+        uint64 value = hash_;
+        value ^= value >> 33;
+        value *= 0xff51afd7ed558ccdULL;
+        value ^= value >> 33;
+        value *= 0xc4ceb9fe1a85ec53ULL;
+        value ^= value >> 33;
+        return value;
+    }
+
     void clear() { hash_ = K_FNV1A64_OFFSET_BASIS; }
 
 private:
@@ -35,14 +45,5 @@ private:
 
     uint64 hash_{K_FNV1A64_OFFSET_BASIS};
 };
-
-inline ShardIndex stable_shard_index(std::string_view key, int32_t shard_count) {
-    if (shard_count <= 0) {
-        return -1;
-    }
-    StableHash64 hash;
-    hash.append(key);
-    return static_cast<ShardIndex>(hash.get_hash() % static_cast<uint64>(shard_count));
-}
 
 }  // namespace adviskv

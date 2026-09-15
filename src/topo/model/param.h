@@ -29,7 +29,8 @@ struct PlaceTableParam {
         RETURN_IF_INVALID_CONDITION(!operation_id.empty(), "operation_id should not empty")
         // replica_count 是可以等于0的
         RETURN_IF_INVALID_CONDITION(replica_count >= 0, "replica_count should be greater than or equal to 0")
-        RETURN_IF_INVALID_CONDITION(shard_count > 0, "shard_count should be greater than 0")
+        RETURN_IF_INVALID_CONDITION(shard_count > 0 && shard_count <= static_cast<int32_t>(K_HASH_BUCKET_COUNT),
+                                    "shard_count should be valid")
         switch (engine_type) {
             case EngineType::MAP:
                 break;

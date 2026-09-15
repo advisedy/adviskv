@@ -41,6 +41,12 @@ message GetTableMetaResponse{
 message ShardRoute {
     int32 shard_id = 1;
     repeated RouteReplica replicas = 2;
+    HashRange hash_range = 3;
+}
+
+message HashRange {
+    uint32 start = 1;
+    uint32 end = 2;
 }
 
 message GetTableRoutesRequest{
