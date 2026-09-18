@@ -261,6 +261,7 @@ grpc::Status TopoServiceImpl::GetTableRoutes(grpc::ServerContext* context, const
     GetTableRoutesParam param;
     param.db_name = request->db_name();
     param.table_name = request->table_name();
+    param.include_unavailable = request->include_unavailable();
 
     Table table;
     std::vector<ShardRoute> routes;

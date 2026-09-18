@@ -115,12 +115,16 @@ Status RouteService::get_table_routes(const GetTableRoutesParam& param, Table* o
             ShardRouteOr route;
             ShardID shard_id{table->table_id, shard_index};
             RETURN_IF_INVALID_STATUS(txn.get_shard_route(shard_id, route))
-            if (route.is_empty()) {
+            if (route.is_empty() && !param.include_unavailable) {
                 return Status::ROUTE_NOT_FOUND(
                         fmt::format("route not found, table_id={}, shard_id={}", table->table_id, shard_index));
             }
-            RETURN_IF_INVALID_STATUS(validate_writable_route(*route))
-            ShardRoute entry = *route;
+            ShardRoute entry;
+            entry.shard_id = shard_id;
+            if (route.has_value()) entry = *route;
+            if (!param.include_unavailable) {
+                RETURN_IF_INVALID_STATUS(validate_writable_route(entry))
+            }
             entry.hash_range = range.range;
             routes.push_back(std::move(entry));
         }

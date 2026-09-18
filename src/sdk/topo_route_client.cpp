@@ -23,12 +23,14 @@ TopoRouteClient::TopoRouteClient(const KVClientConf& conf) : conf_(conf) {
     stub_ = topo_rpc::TopoService::NewStub(channel_);
 }
 
-Status TopoRouteClient::get_table_routes(TableRouteInfo* table_routes, Milliseconds timeout) const {
+Status TopoRouteClient::get_table_routes(TableRouteInfo* table_routes, Milliseconds timeout,
+                                        bool include_unavailable) const {
     RETURN_IF_NULLPTR(table_routes, "table_routes should not be nullptr")
 
     topo_rpc::GetTableRoutesRequest request;
     request.set_db_name(conf_.db_name);
     request.set_table_name(conf_.table_name);
+    request.set_include_unavailable(include_unavailable);
 
     topo_rpc::GetTableRoutesResponse response;
     grpc::ClientContext context;
@@ -70,12 +72,13 @@ Status TopoRouteClient::get_table_routes(TableRouteInfo* table_routes, Milliseco
         RETURN_IF_INVALID_CONDITION(
                 shard_id >= 0,
                 fmt::format("table route shard_id invalid, shard_id={}, shard_count={}", shard_id, shard_count))
-        RETURN_IF_INVALID_CONDITION(route_pb.replicas_size() > 0,
+        RETURN_IF_INVALID_CONDITION(include_unavailable || route_pb.replicas_size() > 0,
                                     fmt::format("table route replicas should not empty, shard_id={}", shard_id))
 
         RouteInfo route;
         route.table_id = next.table_id;
         route.shard_id = shard_id;
+        RETURN_IF_INVALID_CONDITION(route_pb.has_hash_range(), "missing shard hash range")
         route.hash_range = {route_pb.hash_range().start(), route_pb.hash_range().end()};
         route.replicas.reserve(route_pb.replicas_size());
         for (const auto& replica_pb : route_pb.replicas()) {

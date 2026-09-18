@@ -17,7 +17,7 @@ public:
     explicit TopoRouteClient(const KVClientConf& conf);
 
     Status get_table_routes(TableRouteInfo* table_routes,
-                            Milliseconds timeout = Milliseconds::zero()) const;
+                            Milliseconds timeout = Milliseconds::zero(), bool include_unavailable = false) const;
 
 private:
     KVClientConf conf_;

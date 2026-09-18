@@ -201,6 +201,7 @@ struct GetTableMetaParam {
 struct GetTableRoutesParam {
     std::string db_name;
     std::string table_name;
+    bool include_unavailable{false};
 
     Status validate() const {
         RETURN_IF_INVALID_CONDITION(!db_name.empty(), "db_name should not empty")

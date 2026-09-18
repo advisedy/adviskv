@@ -456,7 +456,7 @@ private:
         adviskv::sdk::RouteInfo route_info;
         auto route_client = make_route_client(tokens[1], tokens[2]);
         adviskv::sdk::TableRouteInfo table_routes;
-        Status status = route_client.get_table_routes(&table_routes);
+        Status status = route_client.get_table_routes(&table_routes, adviskv::Milliseconds::zero(), true);
         if (status.fail()) {
             print_status(status);
             return;
@@ -482,7 +482,7 @@ private:
 
         adviskv::sdk::TableRouteInfo table_routes;
         auto route_client = make_route_client(tokens[1], tokens[2]);
-        Status status = route_client.get_table_routes(&table_routes);
+        Status status = route_client.get_table_routes(&table_routes, adviskv::Milliseconds::zero(), true);
         if (status.fail()) {
             print_status(status);
             return;

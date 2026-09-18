@@ -55,6 +55,24 @@ GetRouteParam make_get_route_param(const Key& key = "user-123") {
 
 }  // namespace
 
+TEST(RouteServiceTest, InspectionReturnsAllRangesWithoutLiveReplicas) {
+    TopoStore store{MemoryMetaStoreParam{}};
+    ASSERT_TRUE(store.init().ok());
+    const auto table = make_table();
+    ASSERT_TRUE(store_test::put_table(store, table).ok());
+    RouteService service(&store);
+    std::vector<ShardRoute> routes;
+    GetTableRoutesParam param{"commerce", "orders", true};
+    ASSERT_TRUE(service.get_table_routes(param, nullptr, &routes).ok());
+    ASSERT_EQ(routes.size(), 4U);
+    for (size_t i = 0; i < routes.size(); ++i) {
+        EXPECT_EQ(routes[i].hash_range, table.spec.shard_ranges[i].range);
+        EXPECT_TRUE(routes[i].replicas.empty());
+    }
+    param.include_unavailable = false;
+    EXPECT_EQ(service.get_table_routes(param, nullptr, &routes).code(), StatusCode::ROUTE_NOT_FOUND);
+}
+
 TEST(RouteServiceTest, UsesPersistedUnevenRangesAndSparseIds) {
     TopoStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
