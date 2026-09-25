@@ -15,12 +15,14 @@ struct WriteProposal {
     Key key;
     Value value;
     std::string request_id;
+    Value expected;
 
-    bool operator==(const WriteProposal other) const{
-        if(!(op == other.op)) return false;
-        if(!(key == other.key)) return false;
-        if(!(value == other.value)) return false;
-        if(!(request_id == other.request_id)) return false;
+    bool operator==(const WriteProposal& other) const {
+        if (!(op == other.op)) return false;
+        if (!(key == other.key)) return false;
+        if (!(value == other.value)) return false;
+        if (!(request_id == other.request_id)) return false;
+        if (!(expected == other.expected)) return false;
         return true;
     }
 
@@ -38,8 +40,10 @@ struct ConfigChangeProposal {
 struct ProposeParam {
     std::variant<WriteProposal, NoopProposal, ConfigChangeProposal> payload;
 
-    static ProposeParam write(WriteOpType op, Key key, Value value, std::string request_id = {}) {
-        return ProposeParam{WriteProposal{op, std::move(key), std::move(value), std::move(request_id)}};
+    static ProposeParam write(WriteOpType op, Key key, Value value, std::string request_id = {},
+                              Value expected = {}) {
+        return ProposeParam{
+                WriteProposal{op, std::move(key), std::move(value), std::move(request_id), std::move(expected)}};
     }
 
     static ProposeParam noop() { return ProposeParam{NoopProposal{}}; }

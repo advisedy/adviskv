@@ -103,6 +103,7 @@ message LogEntry{
   adviskv.pb.PeerMember config_member = 6;
   adviskv.pb.ReplicaID config_replica_id = 7;
   string request_id = 8;
+  string expected = 9;
 }
 
 message AppendEntriesRequest{

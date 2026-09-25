@@ -77,6 +77,7 @@ protected:
         buf.write(static_cast<int32_t>(entry.op_type));
         buf.write(entry.key);
         buf.write(entry.value);
+        buf.write(entry.expected);
         buf.write(entry.config_member.node_id);
         buf.write(entry.config_member.replica_id.table_id);
         buf.write(entry.config_member.replica_id.shard_index);

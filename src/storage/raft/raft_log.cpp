@@ -58,7 +58,7 @@ void RaftLog::index_request_id(const LogEntry& entry) {
     if (entry.request_id.empty()) {
         return;
     }
-    if (entry.op_type != WriteOpType::PUT && entry.op_type != WriteOpType::DEL) {
+    if (!is_kv_write_op(entry.op_type)) {
         return;
     }
     request_index_.emplace(entry.request_id, entry.index);
@@ -113,6 +113,7 @@ LogIndex RaftLog::append_new_entry(Term term, const ProposeParam& param) {
         entry.op_type = write->op;
         entry.key = write->key;
         entry.value = write->value;
+        entry.expected = write->expected;
         entry.request_id = write->request_id;
     } else if (const auto* config = std::get_if<ConfigChangeProposal>(&param.payload)) {
         entry.op_type = config->op;

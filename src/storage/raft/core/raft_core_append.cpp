@@ -37,7 +37,7 @@ LogIndex RaftCore::append_new_entry(const ProposeParam& param, RaftEffects& effe
 
 Status RaftCore::validate_proposal(const ProposeParam& param) const {
     if (const auto* write = std::get_if<WriteProposal>(&param.payload)) {
-        if (write->op != WriteOpType::PUT && write->op != WriteOpType::DEL) {
+        if (!is_kv_write_op(write->op)) {
             return Status::INVALID_ARGUMENT("invalid write proposal op");
         }
         return Status::OK();

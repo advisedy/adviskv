@@ -27,10 +27,15 @@ enum class WriteOpType : int32_t {
     ADD_LEARNER = 3,
     PROMOTE_VOTER = 4,
     REMOVE_MEMBER = 5,
+    CAS = 6,
 };
 
 inline bool is_config_change_op(WriteOpType op) {
     return op == WriteOpType::ADD_LEARNER || op == WriteOpType::PROMOTE_VOTER || op == WriteOpType::REMOVE_MEMBER;
+}
+
+inline bool is_kv_write_op(WriteOpType op) {
+    return op == WriteOpType::PUT || op == WriteOpType::DEL || op == WriteOpType::CAS;
 }
 
 struct RaftMeta {
@@ -56,9 +61,10 @@ struct LogEntry {
     WriteOpType op_type{WriteOpType::NONE};
     Key key{""};
     Value value{""};
+    Value expected{""};
     PeerMember config_member;
     ReplicaID config_replica_id;
-    // 和 operation_id 概念不一样，这个rqeuest_id只是针对 put 和 del 实现的
+    // 和 operation_id 概念不一样，这个rqeuest_id只是针对 put del cas 实现的
     // config change 或则 none 就也是空的
     std::string request_id;
 
@@ -68,16 +74,16 @@ struct LogEntry {
 
     bool operator==(const LogEntry& other) const {
         return term == other.term && index == other.index && op_type == other.op_type && key == other.key &&
-               value == other.value && config_member == other.config_member &&
+               value == other.value && expected == other.expected && config_member == other.config_member &&
                config_replica_id == other.config_replica_id && request_id == other.request_id;
     }
     DEFINE_OPERATOR_NOT_EQUAL(LogEntry)
 
     std::string to_string() const {
         return fmt::format(
-                "[term:{}, index:{}, key:{}, value:{}, op_type:{}, request_id:{}, "
+                "[term:{}, index:{}, key:{}, value:{}, expected:{}, op_type:{}, request_id:{}, "
                 "config_member:{}, config_replica_id:{}]",
-                term, index, key, value, to<int32>(op_type), request_id, config_member.replica_id.to_string(),
+                term, index, key, value, expected, to<int32>(op_type), request_id, config_member.replica_id.to_string(),
                 config_replica_id.to_string());
     }
 };

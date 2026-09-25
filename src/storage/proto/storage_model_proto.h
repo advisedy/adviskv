@@ -26,6 +26,9 @@ inline bool decode_pb_write_op_type(int32 in, WriteOpType& out) {
         case static_cast<int32>(WriteOpType::REMOVE_MEMBER):
             out = WriteOpType::REMOVE_MEMBER;
             return true;
+        case static_cast<int32>(WriteOpType::CAS):
+            out = WriteOpType::CAS;
+            return true;
         default:
             return false;
     }
@@ -39,6 +42,7 @@ inline bool encode_pb_write_op_type(WriteOpType in, int32& out) {
         case WriteOpType::ADD_LEARNER:
         case WriteOpType::PROMOTE_VOTER:
         case WriteOpType::REMOVE_MEMBER:
+        case WriteOpType::CAS:
             out = static_cast<int32>(in);
             return true;
         default:
@@ -55,6 +59,7 @@ inline bool decode_pb_log_entry(const rpc::LogEntry& in, LogEntry& out) {
     }
     out.key = in.key();
     out.value = in.value();
+    out.expected = in.expected();
     out.request_id = in.request_id();
 
     if (!decode_pb_peer_member(in.config_member(), out.config_member)) {
@@ -77,6 +82,7 @@ inline bool encode_pb_log_entry(const LogEntry& in, rpc::LogEntry& out) {
     out.set_op_type(op_type);
     out.set_key(in.key);
     out.set_value(in.value);
+    out.set_expected(in.expected);
     out.set_request_id(in.request_id);
     if (!encode_pb_peer_member(in.config_member, *out.mutable_config_member())) {
         return false;

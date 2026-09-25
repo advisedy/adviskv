@@ -133,7 +133,8 @@ bool is_valid_wal_op_type(int32 op_type) {
            op_type == static_cast<int32>(WriteOpType::NONE) ||
            op_type == static_cast<int32>(WriteOpType::ADD_LEARNER) ||
            op_type == static_cast<int32>(WriteOpType::PROMOTE_VOTER) ||
-           op_type == static_cast<int32>(WriteOpType::REMOVE_MEMBER);
+           op_type == static_cast<int32>(WriteOpType::REMOVE_MEMBER) ||
+           op_type == static_cast<int32>(WriteOpType::CAS);
 }
 
 class WalEntryCodec {
@@ -149,6 +150,7 @@ public:
         buf.write(static_cast<int32>(entry.op_type));
         buf.write(entry.key);
         buf.write(entry.value);
+        buf.write(entry.expected);
         encode_peer_member(entry.config_member, buf);
         encode_replica_id(entry.config_replica_id, buf);
         buf.write(entry.request_id);
@@ -161,6 +163,7 @@ public:
         RETURN_IF_INVALID_READ(buf, op_type)
         RETURN_IF_INVALID_READ(buf, entry.key)
         RETURN_IF_INVALID_READ(buf, entry.value)
+        RETURN_IF_INVALID_READ(buf, entry.expected)
 
         if (!is_valid_wal_op_type(op_type)) {
             return Status::ERROR(fmt::format("invalid wal op_type: {}", op_type));
