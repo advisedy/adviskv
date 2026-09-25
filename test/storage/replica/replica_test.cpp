@@ -352,6 +352,36 @@ TEST_F(ReplicaTest, RequestIdRetryIsIdempotentAndConflictsAreRejected) {
     EXPECT_EQ(request_entry_count, 1);
 }
 
+TEST_F(ReplicaTest, CasSucceedsAndRejectsMismatchAndMissingKey) {
+    ReplicaManager manager(base_dir_.string());
+    ReplicaPtr replica = add_single_replica(manager);
+    ASSERT_NE(replica, nullptr);
+
+    manager.start_tick();
+    replica = wait_until_leader(manager);
+    ASSERT_NE(replica, nullptr);
+    ASSERT_EQ(replica->get_role(), ReplicaRole::LEADER);
+
+    ASSERT_TRUE(replica->put(PutParam{"cas-key", "v1", "cas-put"}).ok());
+
+    Status status = replica->cas(CasParam{"cas-key", "v1", "v2", "cas-ok"});
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    Value value;
+    ASSERT_TRUE(replica->get(GetParam{"cas-key"}, value).ok());
+    EXPECT_EQ(value, "v2");
+
+    status = replica->cas(CasParam{"cas-key", "v1", "v3", "cas-mismatch"});
+    ASSERT_EQ(status.code(), StatusCode::CONDITION_NOT_MET) << test::status_debug_string(status);
+    ASSERT_TRUE(replica->get(GetParam{"cas-key"}, value).ok());
+    EXPECT_EQ(value, "v2");
+
+    status = replica->cas(CasParam{"missing-key", "v1", "v2", "cas-missing"});
+    ASSERT_EQ(status.code(), StatusCode::KEY_NOT_FOUND) << test::status_debug_string(status);
+
+    status = replica->cas(CasParam{"cas-key", "v1", "v3", "cas-mismatch"});
+    ASSERT_EQ(status.code(), StatusCode::CONDITION_NOT_MET) << test::status_debug_string(status);
+}
+
 // 未 apply 的 WAL 里已有 request_id 时，当选后的相同重试不应再追加业务日志。
 TEST_F(ReplicaTest, RecoveredUnappliedRequestIdRetryDoesNotAppend) {
     constexpr const char* request_id = "recovered-unapplied-request";

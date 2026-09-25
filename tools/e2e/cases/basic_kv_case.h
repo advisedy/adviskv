@@ -44,6 +44,23 @@ inline bool run_basic_kv_case(const Options& options) {
         return false;
     }
 
+    if (!wait_status("sdk cas first key", options, [&]() {
+            return client.cas("basic-kv-key-000", "basic-kv-value-overwrite", "basic-kv-value-cas");
+        })) {
+        return false;
+    }
+    if (!wait_get_value(&client, options, "basic-kv-key-000", "basic-kv-value-cas")) {
+        return false;
+    }
+    {
+        const Status mismatch = client.cas("basic-kv-key-000", "basic-kv-value-overwrite", "nope");
+        if (mismatch.code() != adviskv::StatusCode::CONDITION_NOT_MET) {
+            print_fail("sdk cas mismatch", mismatch.to_string());
+            return false;
+        }
+    }
+    print_pass("cas success and mismatch", "ok");
+
     print_pass("overwrite and get the value", "ok");
 
     const std::vector<Key> keys = make_case_keys("basic-kv", options.key_count);

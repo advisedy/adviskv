@@ -86,6 +86,7 @@ public:
     Status get(const GetParam& param, Value& value);
     Status del(const DelParam& param);
     Status handle_request_vote(const RequestVoteParam& param, RequestVoteResult& result);
+    Status cas(const CasParam& param);
     Status handle_pre_vote(const PreVoteParam& param, PreVoteResult& result);
     Status handle_append_entries(const AppendEntriesParam& param, AppendEntriesResult& result);
     // 收到了来自leader的快照下载要求

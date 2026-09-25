@@ -131,6 +131,51 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context, const rpc::Pu
     return grpc::Status::OK;
 }
 
+grpc::Status StorageServiceImpl::Cas(grpc::ServerContext* context, const rpc::CasRequest* request,
+                                     rpc::CasResponse* response) {
+    ADVISKV_METRICS_TIMER("storage_cas_handler");
+    ADVISKV_METRICS_COUNTER("storage_cas_handler_request");
+
+    UNUSED(context);
+    Status status = Status::OK();
+    auto record_result = Defer([&status]() { record_storage_write_handler_result("cas", status); });
+
+    if (!replica_manager_) {
+        status = Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"};
+        LOG_WARN("replica manager is nullptr");
+        fill_base_rsp(response, status);
+        return grpc::Status::OK;
+    }
+    ReplicaID replica_id;
+    if (Status decode_status = decode_replica_id_or_invalid(request->replica_id(), replica_id); decode_status.fail()) {
+        status = decode_status;
+        fill_base_rsp(response, status);
+        return grpc::Status::OK;
+    }
+    ReplicaPtr&& replica = replica_manager_->get_replica_by_id(replica_id);
+
+    if (!replica) {
+        status = Status{StatusCode::REPLICA_NOT_FOUND, "replica not found"};
+        LOG_WARN("replica not found, replica_id = {}", replica_id.to_string());
+        fill_base_rsp(response, status);
+        return grpc::Status::OK;
+    }
+
+    CasParam param{request->key(), request->expected(), request->value(), request->request_id()};
+    status = replica->cas(param);
+
+    if (!status.ok()) {
+        LOG_WARN(
+                "replica cas failed, table_id = {}, shard_id = {}, key = {}, expected = {}, value "
+                "= {}, msg = {}",
+                replica_id.table_id, replica_id.shard_index, request->key(), request->expected(), request->value(),
+                status.msg());
+    }
+
+    fill_base_rsp(response, status);
+    return grpc::Status::OK;
+}
+
 grpc::Status StorageServiceImpl::Get(grpc::ServerContext* context, const rpc::GetRequest* request,
                                      rpc::GetResponse* response) {
     UNUSED(context);

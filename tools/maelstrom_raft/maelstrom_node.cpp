@@ -11,6 +11,7 @@
 #include "common/log.h"
 #include "common/model/engine_type.h"
 #include "common/status.h"
+#include "storage/model/model.h"
 #include "storage/raft/state_machine/state_machine.h"
 
 namespace adviskv::maelstrom {
@@ -221,10 +222,6 @@ void MaelstromRaftNode::on_write(const std::string& src, const Json& body) {
         reply_error(src, msg_id, kErrTemporarilyUnavailable, "not leader");
         return;
     }
-    if (mutation_in_flight_) {
-        reply_error(src, msg_id, kErrTemporarilyUnavailable, "mutation in flight");
-        return;
-    }
 
     const std::string key = key_to_string(body.at("key"));
     const std::string value = value_to_string(body.at("value"));
@@ -241,8 +238,7 @@ void MaelstromRaftNode::on_write(const std::string& src, const Json& body) {
         return;
     }
 
-    mutation_in_flight_ = true;
-    pending_clients_[index] = PendingClient{src, msg_id, "write_ok"};
+    pending_clients_[index] = PendingClient{src, msg_id, "write_ok", {}};
     apply_committed_unlocked();
     complete_pending_clients_unlocked();
 }
@@ -298,32 +294,15 @@ void MaelstromRaftNode::on_cas(const std::string& src, const Json& body) {
         reply_error(src, msg_id, kErrTemporarilyUnavailable, "not leader");
         return;
     }
-    if (mutation_in_flight_) {
-        reply_error(src, msg_id, kErrTemporarilyUnavailable, "mutation in flight");
-        return;
-    }
 
     const std::string key = key_to_string(body.at("key"));
     const std::string from = value_to_string(body.at("from"));
     const std::string to = value_to_string(body.at("to"));
-
-    Value cur;
-    Status get_status = state_machine_->get(key, cur);
-    if (get_status.code() == StatusCode::KEY_NOT_FOUND) {
-        reply_error(src, msg_id, kErrKeyDoesNotExist, "key does not exist");
-        return;
-    }
-    if (get_status.fail()) {
-        reply_error(src, msg_id, 13, get_status.to_string());
-        return;
-    }
-    if (cur != from) {
-        reply_error(src, msg_id, kErrPreconditionFailed, "precondition failed");
-        return;
-    }
+    const std::string request_id = fmt::format("maelstrom-cas-{}-{}", node_id_, msg_id);
 
     storage::RaftEffects effects;
-    auto [status, index] = core_->propose(storage::ProposeParam::write(storage::WriteOpType::PUT, key, to), effects);
+    auto [status, index] = core_->propose(
+            storage::ProposeParam::write(storage::WriteOpType::CAS, key, to, request_id, from), effects);
     if (status.fail()) {
         reply_error(src, msg_id, kErrTemporarilyUnavailable, status.to_string());
         return;
@@ -334,8 +313,7 @@ void MaelstromRaftNode::on_cas(const std::string& src, const Json& body) {
         return;
     }
 
-    mutation_in_flight_ = true;
-    pending_clients_[index] = PendingClient{src, msg_id, "cas_ok"};
+    pending_clients_[index] = PendingClient{src, msg_id, "cas_ok", request_id};
     apply_committed_unlocked();
     complete_pending_clients_unlocked();
 }
@@ -725,15 +703,28 @@ void MaelstromRaftNode::complete_pending_clients_unlocked() {
     std::vector<storage::LogIndex> done;
     for (const auto& [index, client] : pending_clients_) {
         if (index <= applied) {
-            reply_ok(client.dest, client.in_reply_to, client.ok_type);
+            if (client.ok_type == "cas_ok") {
+                storage::RequestRecord record;
+                Status find_status = state_machine_->find_request(client.request_id, record);
+                if (find_status.fail()) {
+                    reply_error(client.dest, client.in_reply_to, 13, find_status.to_string());
+                } else if (record.apply_status.code() == StatusCode::KEY_NOT_FOUND) {
+                    reply_error(client.dest, client.in_reply_to, kErrKeyDoesNotExist, "key does not exist");
+                } else if (record.apply_status.code() == StatusCode::CONDITION_NOT_MET) {
+                    reply_error(client.dest, client.in_reply_to, kErrPreconditionFailed, "precondition failed");
+                } else if (record.apply_status.code() == StatusCode::OK) {
+                    reply_ok(client.dest, client.in_reply_to, client.ok_type);
+                } else {
+                    reply_error(client.dest, client.in_reply_to, 13, record.apply_status.to_string());
+                }
+            } else {
+                reply_ok(client.dest, client.in_reply_to, client.ok_type);
+            }
             done.push_back(index);
         }
     }
     for (storage::LogIndex idx : done) {
         pending_clients_.erase(idx);
-    }
-    if (pending_clients_.empty()) {
-        mutation_in_flight_ = false;
     }
 }
 
@@ -959,6 +950,8 @@ Json MaelstromRaftNode::encode_log_entry(const storage::LogEntry& entry) const {
     json["op_type"] = static_cast<int64_t>(entry.op_type);
     json["key"] = entry.key;
     json["value"] = entry.value;
+    json["expected"] = entry.expected;
+    json["request_id"] = entry.request_id;
     return json;
 }
 
@@ -969,6 +962,12 @@ storage::LogEntry MaelstromRaftNode::decode_log_entry(const Json& json) const {
     entry.op_type = static_cast<storage::WriteOpType>(json.at("op_type").get<int64_t>());
     entry.key = json.at("key").get<std::string>();
     entry.value = json.at("value").get<std::string>();
+    if (json.contains("expected")) {
+        entry.expected = json.at("expected").get<std::string>();
+    }
+    if (json.contains("request_id")) {
+        entry.request_id = json.at("request_id").get<std::string>();
+    }
     return entry;
 }
 

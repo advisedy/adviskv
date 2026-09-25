@@ -85,6 +85,8 @@ std::string_view KVClient::operation_name(Operation operation) {
             return "delete";
         case Operation::GET:
             return "get";
+        case Operation::CAS:
+            return "cas";
     }
     return "unknown";
 }
@@ -96,6 +98,9 @@ void KVClient::record_result(Operation operation, const Status& status) {
 Status KVClient::finalize_status(const RequestPolicy& policy, Status status, bool write_uncertain) {
     if (policy.is_write_request()) {
         // put / del 操作
+        if (status.code() == StatusCode::CONDITION_NOT_MET || status.code() == StatusCode::KEY_NOT_FOUND) {
+            return status;
+        }
         if (!write_uncertain) {
             return status;
         }
@@ -272,6 +277,21 @@ Status KVClient::del(const Key& key, const std::string& request_id) {
     return run_kv_request(Operation::DELETE, key, Milliseconds(conf_.write_timeout_ms), request_id,
                           [&](const RouteInfo& route, Milliseconds timeout) {
                               return storage_client_.del(route, key, request_id, timeout);
+                          });
+}
+
+Status KVClient::cas(const Key& key, const Value& expected, const Value& value) {
+    return cas(key, expected, value, generate_request_id());
+}
+
+Status KVClient::cas(const Key& key, const Value& expected, const Value& value, const std::string& request_id) {
+    ADVISKV_METRICS_TIMER("sdk_cas");
+    ADVISKV_METRICS_COUNTER("sdk_cas_request");
+    RETURN_IF_INVALID_CONDITION(!request_id.empty(), "request_id should not be empty")
+
+    return run_kv_request(Operation::CAS, key, Milliseconds(conf_.write_timeout_ms), request_id,
+                          [&](const RouteInfo& route, Milliseconds timeout) {
+                              return storage_client_.cas(route, key, expected, value, request_id, timeout);
                           });
 }
 

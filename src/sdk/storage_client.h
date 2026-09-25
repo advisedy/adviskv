@@ -23,6 +23,8 @@ public:
                Milliseconds timeout = Milliseconds::zero()) const;
     Status del(const RouteInfo& route, const Key& key, const std::string& request_id,
                Milliseconds timeout = Milliseconds::zero()) const;
+    Status cas(const RouteInfo& route, const Key& key, const Value& expected, const Value& value,
+               const std::string& request_id, Milliseconds timeout = Milliseconds::zero()) const;
 
 private:
     static Status select_leader_replica(const RouteInfo& route, RouteReplica* replica);

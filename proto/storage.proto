@@ -36,6 +36,18 @@ message DeleteResponse {
   adviskv.pb.BaseRsp base_rsp = 1;
 }
 
+message CasRequest {
+  adviskv.pb.ReplicaID replica_id = 1;
+  bytes key = 2;
+  bytes expected = 3;
+  bytes value = 4;
+  string request_id = 5;
+}
+
+message CasResponse {
+  adviskv.pb.BaseRsp base_rsp = 1;
+}
+
 
 
 message CreateReplicaRequest {
@@ -161,6 +173,7 @@ service StorageService {
   rpc Put(PutRequest) returns (PutResponse);
   rpc Get(GetRequest) returns (GetResponse);
   rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc Cas(CasRequest) returns (CasResponse);
 
   rpc CreateReplica(CreateReplicaRequest) returns (CreateReplicaResponse);
   rpc DeleteReplica(DeleteReplicaRequest) returns (DeleteReplicaResponse);

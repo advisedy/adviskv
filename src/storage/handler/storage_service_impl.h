@@ -18,6 +18,7 @@ public:
     DEFINE_METHOD(Put)
     DEFINE_METHOD(Get)
     DEFINE_METHOD(Delete)
+    DEFINE_METHOD(Cas)
     DEFINE_METHOD(CreateReplica)
     DEFINE_METHOD(DeleteReplica)
     DEFINE_METHOD(GetReplicaInfo)

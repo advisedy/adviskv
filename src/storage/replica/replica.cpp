@@ -261,6 +261,25 @@ Status Replica::del(const DelParam& param) {
     return Status::OK();
 }
 
+Status Replica::cas(const CasParam& param) {
+    RETURN_IF_INVALID_PARAM(param)
+    RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
+    RETURN_IF_INVALID_STATUS(ensure_local_state_running());
+    {
+        std::lock_guard lock(raft_core_mutex_);
+        if (raft_core_->is_recovering()) {
+            return Status::IS_RECOVERING("replica is recovering");
+        }
+    }
+
+    ProposeCall call{ProposeParam::write(WriteOpType::CAS, param.key, param.value, param.request_id, param.expected),
+                     K_REPLICA_PROPOSAL_COMMIT_TIMEOUT};
+    loop_->sync_submit(&call);
+    RETURN_IF_INVALID_STATUS(call.status)
+    notify_apply_task();
+    return Status::OK();
+}
+
 Status Replica::handle_request_vote(const RequestVoteParam& param, RequestVoteResult& result) {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
     RETURN_IF_INVALID_STATUS(ensure_local_state_running())

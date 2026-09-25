@@ -40,6 +40,7 @@ private:
         std::string dest;
         int64_t in_reply_to{0};
         std::string ok_type;
+        std::string request_id;
     };
 
     struct PendingRead {
@@ -112,7 +113,6 @@ private:
     std::mutex mutex_;
     int64_t next_msg_id_{1};
     int64_t next_read_id_{1};
-    bool mutation_in_flight_{false};
     std::unordered_map<int64_t, PendingRpc> pending_rpcs_;
     std::unordered_map<storage::LogIndex, PendingClient> pending_clients_;
     std::unordered_map<int64_t, PendingRead> pending_reads_;

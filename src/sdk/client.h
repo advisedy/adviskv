@@ -24,12 +24,15 @@ public:
     Status get(const Key& key, Value* value);
     Status del(const Key& key);
     Status del(const Key& key, const std::string& request_id);
+    Status cas(const Key& key, const Value& expected, const Value& value);
+    Status cas(const Key& key, const Value& expected, const Value& value, const std::string& request_id);
 
 private:
     enum class Operation {
         PUT,
         DELETE,
         GET,
+        CAS,
     };
 
     struct RequestPolicy {
@@ -37,7 +40,7 @@ private:
         const std::string& request_id;
 
         bool is_write_request() const {
-            return operation == Operation::PUT || operation == Operation::DELETE;
+            return operation == Operation::PUT || operation == Operation::DELETE || operation == Operation::CAS;
         }
     };
 

@@ -91,6 +91,20 @@ struct DelParam {
     }
 };
 
+struct CasParam {
+    const Key& key;
+    const Value& expected;
+    const Value& value;
+    std::string request_id{};
+
+    Status validate() const {
+        if (request_id.empty()) {
+            return Status::INVALID_ARGUMENT("request_id is required for cas");
+        }
+        return Status::OK();
+    }
+};
+
 struct ReplicaRuntimeOptions {
     std::string data_dir;
     int32_t raft_rpc_timeout_ms{1000};

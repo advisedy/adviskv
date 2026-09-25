@@ -383,14 +383,34 @@ void ReplicaLoop::resolve_inflight_proposals() {
         InflightProposal& proposal = it->second;
         if (!proposal.committed && proposal.index > 0 && proposal.index <= commit_index) {
             proposal.committed = true;
-            for (const auto& waiter : proposal.waiters) {
-                if (!complete_proposal_commit(waiter, Status::OK())) {
-                    ADVISKV_METRICS_COUNTER("storage_replica_request_commit_after_timeout");
+            if (proposal.proposal.op != WriteOpType::CAS) {
+                for (const auto& waiter : proposal.waiters) {
+                    if (!complete_proposal_commit(waiter, Status::OK())) {
+                        ADVISKV_METRICS_COUNTER("storage_replica_request_commit_after_timeout");
+                    }
                 }
             }
         }
 
         if (proposal.committed && proposal.index > 0 && proposal.index <= last_applied) {
+            if (proposal.proposal.op == WriteOpType::CAS) {
+                RequestRecord record;
+                Status status;
+                {
+                    std::lock_guard lock(context_.state_machine_mutex);
+                    status = context_.state_machine.find_request(proposal.proposal.request_id, record);
+                }
+                if (status.ok()) {
+                    status = record.matches(proposal.proposal)
+                                     ? record.apply_status
+                                     : Status::INVALID_ARGUMENT("request_id was reused with a different write");
+                }
+                for (const auto& waiter : proposal.waiters) {
+                    if (!complete_proposal_commit(waiter, status)) {
+                        ADVISKV_METRICS_COUNTER("storage_replica_request_commit_after_timeout");
+                    }
+                }
+            }
             it = inflight_.erase(it);
         } else {
             ++it;
@@ -505,7 +525,7 @@ Status ReplicaLoop::propose_batch_from_queue(std::vector<ProposalBatchItem>& act
         if (find_status.ok()) {
             ADVISKV_METRICS_COUNTER("storage_replica_request_record_hit");
             Status status = committed_record.matches(*write)
-                                    ? Status::OK()
+                                    ? committed_record.apply_status
                                     : Status::INVALID_ARGUMENT("request_id was reused with a different write");
             complete_proposal_commit(item.waiter, status);
 
@@ -527,7 +547,7 @@ Status ReplicaLoop::propose_batch_from_queue(std::vector<ProposalBatchItem>& act
             std::lock_guard lock(context_.raft_core_mutex);
             if (const LogEntry* entry = context_.raft_core.find_request(write->request_id)) {
                 InflightProposal proposal;
-                proposal.proposal = WriteProposal{entry->op_type, entry->key, entry->value, entry->request_id};
+                proposal.proposal = WriteProposal{entry->op_type, entry->key, entry->value, entry->request_id, entry->expected};
                 proposal.index = entry->index;
                 proposal.committed = entry->index > 0 && entry->index <= context_.raft_core.commit_index();
                 inflight_it = inflight_.emplace(write->request_id, std::move(proposal)).first;
@@ -538,7 +558,7 @@ Status ReplicaLoop::propose_batch_from_queue(std::vector<ProposalBatchItem>& act
             if ((*write) != proposal.proposal) {
                 complete_proposal_commit(item.waiter,
                                          Status::INVALID_ARGUMENT("request_id was reused with a different write"));
-            } else if (proposal.committed) {
+            } else if (proposal.committed && write->op != WriteOpType::CAS) {
                 ADVISKV_METRICS_COUNTER("storage_replica_request_pending_deduplicated");
                 complete_proposal_commit(item.waiter, Status::OK());
             } else {
