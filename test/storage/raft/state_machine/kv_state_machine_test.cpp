@@ -249,5 +249,40 @@ TEST_F(KvStateMachineTest, SnapshotRestoresRequestIdRecords) {
     EXPECT_EQ(value, "snap-value");
 }
 
+TEST_F(KvStateMachineTest, ApplyCasSuccessMismatchAndMissingKey) {
+    KvStateMachine state_machine(EngineType::MAP);
+    ASSERT_TRUE(state_machine.apply(make_entry(1, 1, WriteOpType::PUT, "k", "v1")).ok());
+
+    LogEntry success = make_entry(1, 2, WriteOpType::CAS, "k", "v2");
+    success.expected = "v1";
+    success.request_id = "cas-ok";
+    ASSERT_TRUE(state_machine.apply(success).ok());
+    EXPECT_EQ(state_machine.apply_index(), 2);
+    Value value;
+    ASSERT_TRUE(state_machine.get("k", value).ok());
+    EXPECT_EQ(value, "v2");
+    RequestRecord record;
+    ASSERT_TRUE(state_machine.find_request("cas-ok", record).ok());
+    EXPECT_EQ(record.apply_status.code(), StatusCode::OK);
+    EXPECT_TRUE(record.matches(success));
+
+    LogEntry mismatch = make_entry(1, 3, WriteOpType::CAS, "k", "v3");
+    mismatch.expected = "v1";
+    mismatch.request_id = "cas-mismatch";
+    ASSERT_TRUE(state_machine.apply(mismatch).ok());
+    EXPECT_EQ(state_machine.apply_index(), 3);
+    ASSERT_TRUE(state_machine.get("k", value).ok());
+    EXPECT_EQ(value, "v2");
+    ASSERT_TRUE(state_machine.find_request("cas-mismatch", record).ok());
+    EXPECT_EQ(record.apply_status.code(), StatusCode::CONDITION_NOT_MET);
+
+    LogEntry missing = make_entry(1, 4, WriteOpType::CAS, "missing", "v");
+    missing.expected = "v";
+    missing.request_id = "cas-missing";
+    ASSERT_TRUE(state_machine.apply(missing).ok());
+    EXPECT_EQ(state_machine.apply_index(), 4);
+    ASSERT_TRUE(state_machine.find_request("cas-missing", record).ok());
+    EXPECT_EQ(record.apply_status.code(), StatusCode::KEY_NOT_FOUND);
+}
 }  // namespace
 }  // namespace adviskv::storage

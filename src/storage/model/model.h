@@ -92,29 +92,33 @@ struct RequestRecord {
     std::string request_id;
     WriteOpType op{WriteOpType::NONE};
     uint64_t payload_hash{0};
+    Status apply_status{Status::OK()};
+    // 用于记录 request_id 对应的写记录在状态机中的执行结果。
 
-    static uint64_t request_payload_hash(WriteOpType op, const Key& key, const Value& value) {
+    static uint64_t request_payload_hash(WriteOpType op, const Key& key, const Value& value,
+                                         const Value& expected = {}) {
         StableHash64 hash;
-        // Include field lengths to make the serialized input unambiguous.
-        hash.append_uint64(1);  // fingerprint format version
         hash.append_uint64(static_cast<uint32_t>(op));
         hash.append_uint64(static_cast<uint64_t>(key.size()));
         hash.append(key);
         hash.append_uint64(static_cast<uint64_t>(value.size()));
         hash.append(value);
+        hash.append_uint64(static_cast<uint64_t>(expected.size()));
+        hash.append(expected);
         return hash.get_hash();
     }
 
     bool matches(const LogEntry& entry) const {
         return request_id == entry.request_id && op == entry.op_type &&
-               payload_hash == request_payload_hash(entry.op_type, entry.key, entry.value);
+               payload_hash == request_payload_hash(entry.op_type, entry.key, entry.value, entry.expected);
     }
 
     template<typename Other>
     bool matches(const Other& other) const {
         return request_id == other.request_id && op == other.op &&
-               payload_hash == request_payload_hash(other.op, other.key, other.value);
+               payload_hash == request_payload_hash(other.op, other.key, other.value, other.expected);
     }
+
 };
 
 struct SnapshotData {

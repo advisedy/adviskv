@@ -29,6 +29,7 @@ Status ReplicaApplier::apply_log_entry(const LogEntry& entry) {
     switch (entry.op_type) {
         case WriteOpType::PUT:
         case WriteOpType::DEL:
+        case WriteOpType::CAS:
         case WriteOpType::NONE:
             return apply_kv_log_entry(entry);
         case WriteOpType::ADD_LEARNER:

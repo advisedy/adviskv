@@ -523,12 +523,16 @@ Status PersistEngine::for_each_snapshot_request(const RequestVisitor& fn) const 
         int32 op_type{0};
         RETURN_IF_INVALID_STATUS(func::read_string(fd, record.request_id))
         RETURN_IF_INVALID_STATUS(func::read_value(fd, op_type))
-        if (!is_valid_wal_op_type(op_type) ||
-            (op_type != static_cast<int32>(WriteOpType::PUT) && op_type != static_cast<int32>(WriteOpType::DEL))) {
+        if (!is_valid_wal_op_type(op_type) || !is_kv_write_op(static_cast<WriteOpType>(op_type))) {
             return Status::ERROR("invalid snapshot request op_type");
         }
         record.op = static_cast<WriteOpType>(op_type);
         RETURN_IF_INVALID_STATUS(func::read_value(fd, record.payload_hash))
+        int32 apply_status{0};
+        std::string apply_status_message;
+        RETURN_IF_INVALID_STATUS(func::read_value(fd, apply_status))
+        RETURN_IF_INVALID_STATUS(func::read_string(fd, apply_status_message))
+        record.apply_status = Status{apply_status, apply_status_message};
         RETURN_IF_INVALID_STATUS(fn(record))
     }
     return Status::OK();
@@ -664,6 +668,8 @@ Status PersistEngine::write_snapshot(const SnapshotData& snapshot, const std::ve
             RETURN_IF_INVALID_STATUS(func::write_string(fd, record.request_id))
             RETURN_IF_INVALID_STATUS(func::write_value<int32>(fd, static_cast<int32>(record.op)))
             RETURN_IF_INVALID_STATUS(func::write_value(fd, record.payload_hash))
+            RETURN_IF_INVALID_STATUS(func::write_value<int32>(fd, static_cast<int32>(record.apply_status.code())))
+            RETURN_IF_INVALID_STATUS(func::write_string(fd, record.apply_status.msg()))
             ++request_count;
         }
         ADVISKV_METRICS_COUNTER("storage_persist_snapshot_request_records_written", request_count);

@@ -22,6 +22,9 @@ void record_state_machine_apply_op(WriteOpType op) {
         case WriteOpType::DEL:
             ADVISKV_METRICS_COUNTER("storage_state_machine_apply_del");
             break;
+        case WriteOpType::CAS:
+            ADVISKV_METRICS_COUNTER("storage_state_machine_apply_cas");
+            break;
         case WriteOpType::ADD_LEARNER:
             ADVISKV_METRICS_COUNTER("storage_state_machine_apply_add_learner");
             break;
@@ -57,11 +60,11 @@ Status KvStateMachine::apply(const LogEntry& entry) {
     ADVISKV_METRICS_COUNTER("storage_state_machine_apply_request");
     record_state_machine_apply_op(entry.op_type);
 
-    if (!entry.request_id.empty() && entry.op_type != WriteOpType::PUT && entry.op_type != WriteOpType::DEL) {
-        return Status::INVALID_ARGUMENT("request_id is only valid for PUT or DEL");
+    if (!entry.request_id.empty() && !is_kv_write_op(entry.op_type)) {
+        return Status::INVALID_ARGUMENT("request_id is only valid for PUT, DEL or CAS");
     }
 
-    if (!entry.request_id.empty() && (entry.op_type == WriteOpType::PUT || entry.op_type == WriteOpType::DEL)) {
+    if (!entry.request_id.empty() && is_kv_write_op(entry.op_type)) {
         RequestRecord existing;
         if (find_request(entry.request_id, existing).ok()) {
             ADVISKV_METRICS_COUNTER("storage_state_machine_apply_request_id_skipped");
@@ -73,6 +76,7 @@ Status KvStateMachine::apply(const LogEntry& entry) {
     }
 
     Status status{Status::OK()};
+    Status apply_status = Status::OK();
     switch (entry.op_type) {
         case WriteOpType::PUT: {
             status = engine_->put(entry.key, entry.value);
@@ -90,6 +94,31 @@ Status KvStateMachine::apply(const LogEntry& entry) {
             }
             break;
         }
+        case WriteOpType::CAS: {
+            Value current;
+            Status get_status = engine_->get(entry.key, current);
+            if (get_status.code() == StatusCode::KEY_NOT_FOUND) {
+                apply_status = Status::KEY_NOT_FOUND();
+                ADVISKV_METRICS_COUNTER("storage_state_machine_apply_cas_key_not_found");
+                break;
+            }
+            if (get_status.fail()) {
+                ADVISKV_METRICS_COUNTER("storage_state_machine_apply_failure");
+                return get_status;
+            }
+            if (current != entry.expected) {
+                apply_status = Status::CONDITION_NOT_MET();
+                ADVISKV_METRICS_COUNTER("storage_state_machine_apply_cas_precondition_failed");
+                break;
+            }
+            status = engine_->put(entry.key, entry.value);
+            if (status.fail()) {
+                ADVISKV_METRICS_COUNTER("storage_state_machine_apply_failure");
+                return status;
+            }
+            ADVISKV_METRICS_COUNTER("storage_state_machine_apply_cas_success");
+            break;
+        }
         case WriteOpType::ADD_LEARNER:
         case WriteOpType::PROMOTE_VOTER:
         case WriteOpType::REMOVE_MEMBER:
@@ -102,11 +131,13 @@ Status KvStateMachine::apply(const LogEntry& entry) {
         }
     }
 
-    if (!entry.request_id.empty() && (entry.op_type == WriteOpType::PUT || entry.op_type == WriteOpType::DEL)) {
+    if (!entry.request_id.empty() && is_kv_write_op(entry.op_type)) {
         auto result = request_records_.emplace(
                 entry.request_id,
                 RequestRecord{entry.request_id, entry.op_type,
-                              RequestRecord::request_payload_hash(entry.op_type, entry.key, entry.value)});
+                              RequestRecord::request_payload_hash(entry.op_type, entry.key, entry.value,
+                                                                  entry.expected),
+                              apply_status});
         if (result.second) {
             ADVISKV_METRICS_COUNTER("storage_state_machine_request_record_insert");
         }
