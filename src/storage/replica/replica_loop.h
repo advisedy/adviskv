@@ -1,23 +1,19 @@
 #pragma once
 
 #include <chrono>
-#include <condition_variable>
 #include <cstddef>
-#include <functional>
-#include <memory>
-#include <mutex>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
 
-#include "common/batch_dispatch_queue.h"
 #include "common/define.h"
 #include "common/model/type.h"
-#include "common/serial_task_runner.h"
 #include "common/status.h"
 #include "storage/model/param.h"
+#include "storage/replica/completion_manager.h"
+#include "storage/replica/replica_loop_queue.h"
+#include "storage/replica/proposal_tracker.h"
 #include "storage/replica/replica.h"
 
 namespace adviskv::storage {
@@ -144,45 +140,8 @@ using Call =
                      PrepareInstallSnapshotCall*, CommitInstallSnapshotCall*, AppendResponseCall*,
                      SnapshotResponseCall*, SnapshotSendFailedCall*, ProposeCall*, AddMemberCall*, RemoveMemberCall*>;
 
-struct Waiter {
-    std::mutex mutex;
-    std::condition_variable cv;
-    bool done{false};
-    Status status{Status::OK()};
-};
-
-struct TimeoutWaiter {
-    std::mutex mutex;
-    std::condition_variable cv;
-    bool done{false};
-    bool cancelled{false};
-    Status status{Status::OK()};
-};
-
-struct ProposalBatchItem {
-    ProposeParam param;
-    std::shared_ptr<TimeoutWaiter> waiter;
-};
-
-struct ConfigChangeItem {
-    std::function<Status(RaftEffects&)> step;
-    std::shared_ptr<Waiter> waiter;
-};
-
-struct InflightProposal {
-    WriteProposal proposal;
-    LogIndex index{0};
-    bool committed{false};
-    std::vector<std::shared_ptr<TimeoutWaiter>> waiters;
-};
-
-using SubmitQueueItem = std::variant<ProposalBatchItem, ConfigChangeItem>;
-
 class ReplicaLoop {
 public:
-    using RaftStepFunc = std::function<Status(RaftEffects&)>;
-    using TaskFunc = std::function<Status()>;
-
     explicit ReplicaLoop(ReplicaContext& context);
     ~ReplicaLoop();
 
@@ -197,10 +156,15 @@ public:
     void sync_submit(Call call);
 
 private:
-    using QueueTask = SerialTaskRunner::Task;
+    // 普通请求交给工作线程执行，写请求交给队列组批。
+    template <typename T>
+    bool enqueue_call(T& call, CompletionManager::Ticket ticket);
+    bool enqueue_call(ProposeCall& call, CompletionManager::Ticket ticket);
 
-    // 同步进入 loop。
-    Status call_in_loop_task(TaskFunc&& task);
+    // 等待都在调用线程里，只有写请求需要超时返回。
+    template <typename T>
+    Status wait_call(const T& call, CompletionManager::Ticket ticket);
+    Status wait_call(const ProposeCall& call, CompletionManager::Ticket ticket);
 
     Status handle_event(const TickEvent& event);
     Status handle_event(const AppendResponseEvent& event);
@@ -221,41 +185,13 @@ private:
     Status handle_call(AppendResponseCall& call);
     Status handle_call(SnapshotResponseCall& call);
     Status handle_call(SnapshotSendFailedCall& call);
-    Status handle_call(ProposeCall& call);
     Status handle_call(AddMemberCall& call);
     Status handle_call(RemoveMemberCall& call);
 
-    Status run_step(RaftStepFunc&& step);
-    Status persist_raft_effects(const RaftEffects& effects);
-
-    void resolve_inflight_proposals();
-    void fail_all_inflight_proposals(const Status& status);
-
-    Status enqueue_proposal_and_wait(ProposeParam param, Milliseconds timeout);
-    Status enqueue_config_change_and_wait(RaftStepFunc&& step);
-    Status propose_batch_from_queue(std::vector<ProposalBatchItem>& items);
-    void drain_submit_queue(std::vector<SubmitQueueItem> items);
-    void on_submit_queue_ready(std::vector<SubmitQueueItem> items);
-
-    static void complete_loop_submit(const std::shared_ptr<Waiter>& waiter, const Status& status);
-    static bool complete_proposal_commit(const std::shared_ptr<TimeoutWaiter>& waiter, const Status& status);
-    static void fail_submit_queue_item(SubmitQueueItem& item, const Status& status);
-    static void fail_submit_queue_items(std::vector<SubmitQueueItem>& items, size_t start_idx, const Status& status);
-
-    bool enqueue(QueueTask&& task);
-
     ReplicaContext& context_;
-    SerialTaskRunner runner_;
-
-    std::mutex mutex_;  // running_
-    BatchDispatchQueue<SubmitQueueItem> submit_queue_;
-    bool running_{false};
-
-    // inflight里面的元素的生命周期是根据apply判断的
-    // commit过也依旧不会析构，只不过会返回客户端结果而已
-    // 按 request_id 维护起来的本机正在追踪的还没 apply 的同一批request_id 的写
-    // 操作，把他们的 waiter 挂在一起
-    std::unordered_map<std::string, InflightProposal> inflight_;
+    CompletionManager completions_;
+    ProposalTracker proposal_tracker_;
+    ReplicaLoopQueue queue_;
 };
 
 }  // namespace adviskv::storage

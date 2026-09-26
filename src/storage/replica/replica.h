@@ -43,6 +43,7 @@ struct ReplicaContext {
 
     std::function<Status(Status)> fault_if_fail;
     std::function<void()> enter_faulted;
+    std::function<void()> notify_apply;
 };
 
 class Replica {

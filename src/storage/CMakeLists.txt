@@ -1,9 +1,13 @@
 set(STORAGE_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/node_agent/node_agent.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/replica/completion_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_applier.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_loop.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_loop_queue.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/replica/proposal_tracker.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/replica/raft_step.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_message_dispatcher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_read_index_checker.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_snapshot_coordinator.cpp
