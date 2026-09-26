@@ -7,10 +7,10 @@
 #include "common/status.h"
 #include "common/types.h"
 #include "sdk/config.h"
+#include "sdk/meta_route_client.h"
 #include "sdk/model.h"
 #include "sdk/route_cache.h"
 #include "sdk/storage_client.h"
-#include "sdk/topo_route_client.h"
 namespace adviskv::sdk {
 
 class KVClient {
@@ -63,7 +63,7 @@ private:
                           const std::string& request_id, Send&& send);
 
     KVClientConf conf_;
-    TopoRouteClient topo_route_client_;
+    MetaRouteClient meta_route_client_;
     RouteCache route_cache_;
     StorageClient storage_client_;
 };

@@ -1,0 +1,15 @@
+listen_host: "127.0.0.1"
+port: 50048
+data_dir: "build/demo/data/meta"
+
+logger_name: "meta_log"
+log_dir: "build/demo/logs/meta"
+log_filename: "meta.log"
+log_level: "debug"
+log_to_console: false
+log_to_file: true
+
+metrics_http_enable: true
+metrics_http_host: "127.0.0.1"
+metrics_http_port: 51048
+metrics_http_path: "/metrics"

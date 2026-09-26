@@ -1,8 +1,6 @@
-catalog_host: "127.0.0.1"
-catalog_port: 50048
-topo_host: "127.0.0.1"
-topo_port: 50049
-catalog_timeout_ms: 3000
+meta_host: "127.0.0.1"
+meta_port: 50048
+meta_timeout_ms: 3000
 rpc_timeout_ms: 3000
 write_timeout_ms: 3000
 read_timeout_ms: 3000

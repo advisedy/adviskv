@@ -63,6 +63,13 @@ inline bool run_create_table_crash_before_persist_prepare_case(
 
 inline bool run_create_table_crash_before_persist_verify_case(
     const Options& options) {
+    E2EContext context(options);
+    std::string error;
+    if (!create_table(&context, &error)) {
+        print_fail("create table after before-commit crash", error);
+        return false;
+    }
+    print_pass("create table after before-commit crash", options.table);
     return run_create_table_crash_verify_case(options,
                                               "create-table-before-persist",
                                               "after-recovery");

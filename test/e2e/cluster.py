@@ -18,8 +18,7 @@ from scripts.internal.local_cluster import (
 
 
 LOCALHOST = "127.0.0.1"
-CATALOG_PORT = 50048
-TOPO_PORT = 50049
+META_PORT = 50048
 STORAGE_BASE_PORT = 50050
 STORAGE_COUNT = 3
 DEFAULT_REPLICA_COUNT = 3
@@ -35,7 +34,7 @@ LOG_DIR = E2E_DIR / "logs"
 
 
 def build_e2e_targets() -> None:
-    build_targets("topo topo_test catalog storage e2e_client")
+    build_targets("meta meta_test storage e2e_client")
 
 
 def clean_data_dirs() -> None:
@@ -81,30 +80,15 @@ def write_client_config() -> None:
     )
 
 
-def write_topo_config() -> None:
+def write_meta_config() -> None:
     write_config_file(
-        CONF_DIR / "topo.yaml",
+        CONF_DIR / "meta.yaml",
         f"""
         listen_host: "{LOCALHOST}"
-        port: {TOPO_PORT}
-        data_dir: "{DATA_DIR / 'topo'}"
+        port: {META_PORT}
+        data_dir: "{DATA_DIR / 'meta'}"
 
-        {logger_block('e2e_topo_log', LOG_DIR / 'topo', 'topo.log')}
-        """,
-    )
-
-
-def write_catalog_config() -> None:
-    write_config_file(
-        CONF_DIR / "catalog.yaml",
-        f"""
-        listen_host: "{LOCALHOST}"
-        port: {CATALOG_PORT}
-        topo_host: "{LOCALHOST}"
-        topo_port: {TOPO_PORT}
-        data_dir: "{DATA_DIR / 'catalog'}"
-
-        {logger_block('e2e_catalog_log', LOG_DIR / 'catalog', 'catalog.log')}
+        {logger_block('e2e_meta_log', LOG_DIR / 'meta', 'meta.log')}
         """,
     )
 
@@ -121,8 +105,8 @@ def write_storage_config(index: int) -> None:
         resource_pool: "{DEFAULT_RESOURCE_POOL}"
         dc: "{DEFAULT_ZONE}"
         data_dir: "{DATA_DIR / name}"
-        topo_host: "{LOCALHOST}"
-        topo_port: {TOPO_PORT}
+        meta_host: "{LOCALHOST}"
+        meta_port: {META_PORT}
         heartbeat_interval_ms: 3000
         node_agent_rpc_timeout_ms: 3000
         enable_test_api: true
@@ -134,8 +118,7 @@ def write_storage_config(index: int) -> None:
 
 def write_e2e_configs(storage_count: int = STORAGE_COUNT) -> None:
     write_client_config()
-    write_topo_config()
-    write_catalog_config()
+    write_meta_config()
     for index in range(1, storage_count + 1):
         write_storage_config(index)
 
@@ -147,18 +130,11 @@ def e2e_service_specs(
     envs = service_envs or {}
     specs = [
         ServiceSpec(
-            "topo",
-            [str(BIN_DIR / "topo_test"), f"--conf={CONF_DIR / 'topo.yaml'}"],
+            "meta",
+            [str(BIN_DIR / "meta_test"), f"--conf={CONF_DIR / 'meta.yaml'}"],
             LOCALHOST,
-            TOPO_PORT,
-            env=envs.get("topo"),
-        ),
-        ServiceSpec(
-            "catalog",
-            [str(BIN_DIR / "catalog"), f"--conf={CONF_DIR / 'catalog.yaml'}"],
-            LOCALHOST,
-            CATALOG_PORT,
-            env=envs.get("catalog"),
+            META_PORT,
+            env=envs.get("meta"),
         ),
     ]
     for index in range(1, storage_count + 1):
@@ -243,10 +219,8 @@ class AdvisKVCluster(LocalCluster):
         command = [
             str(BIN_DIR / "e2e_client"),
             f"--conf={CONF_DIR / 'e2e_client.yaml'}",
-            f"--catalog_host={LOCALHOST}",
-            f"--catalog_port={CATALOG_PORT}",
-            f"--topo_host={LOCALHOST}",
-            f"--topo_port={TOPO_PORT}",
+            f"--meta_host={LOCALHOST}",
+            f"--meta_port={META_PORT}",
             f"--zone={DEFAULT_ZONE}",
             f"--resource_pool={DEFAULT_RESOURCE_POOL}",
             "--shard_count=1",

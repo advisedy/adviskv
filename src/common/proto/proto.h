@@ -9,5 +9,4 @@
 #include "common/proto/raft_member_type_proto.h"
 #include "common/proto/raft_role_proto.h"
 #include "common/proto/rpc_alias.h"
-#include "common/proto/topo_table_status_proto.h"
 #include "common/proto/storage_replica_status_proto.h"

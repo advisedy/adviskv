@@ -27,8 +27,8 @@ struct LogOptions {
 struct KVClientConf {
     std::string db_name;
     std::string table_name;
-    std::string topo_host{"127.0.0.1"};
-    int32_t topo_port{50051};
+    std::string meta_host{"127.0.0.1"};
+    int32_t meta_port{50048};
     
     int32_t rpc_timeout_ms{1000}; // 单次 RPC 超时时间
     int32_t write_timeout_ms{3000}; // 一次 put/del（包含路由刷新和重试）的总耗时
@@ -40,8 +40,8 @@ struct KVClientConf {
     LogOptions log;
 
     Status validate() const {
-        RETURN_IF_INVALID_CONDITION(!topo_host.empty(), "topo_host should not empty")
-        RETURN_IF_INVALID_CONDITION(topo_port > 0, "topo_port should > 0")
+        RETURN_IF_INVALID_CONDITION(!meta_host.empty(), "meta_host should not empty")
+        RETURN_IF_INVALID_CONDITION(meta_port > 0, "meta_port should > 0")
         RETURN_IF_INVALID_CONDITION(rpc_timeout_ms > 0, "rpc_timeout_ms should > 0")
         RETURN_IF_INVALID_CONDITION(write_timeout_ms > 0, "write_timeout_ms should > 0")
         RETURN_IF_INVALID_CONDITION(read_timeout_ms > 0, "read_timeout_ms should > 0")

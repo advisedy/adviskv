@@ -46,7 +46,7 @@ function(add_adviskv_storage_gtest target_name)
     )
 endfunction()
 
-function(add_adviskv_topo_gtest target_name)
+function(add_adviskv_meta_gtest target_name)
     add_executable(${target_name}
         ${CMAKE_SOURCE_DIR}/test/test_main.cpp
         ${ARGN}
@@ -55,30 +55,7 @@ function(add_adviskv_topo_gtest target_name)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/test"
     )
     target_link_libraries(${target_name} PRIVATE
-        adviskv_topo_test_lib
-        GTest::gtest
-    )
-    target_include_directories(${target_name} PRIVATE
-        ${CMAKE_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/src
-        ${CMAKE_SOURCE_DIR}/test
-        ${PROJECT_BINARY_DIR}/generated
-    )
-    gtest_discover_tests(${target_name}
-        DISCOVERY_TIMEOUT 30
-    )
-endfunction()
-
-function(add_adviskv_catalog_gtest target_name)
-    add_executable(${target_name}
-        ${CMAKE_SOURCE_DIR}/test/test_main.cpp
-        ${ARGN}
-    )
-    set_target_properties(${target_name} PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/test"
-    )
-    target_link_libraries(${target_name} PRIVATE
-        adviskv_catalog_test_lib
+        adviskv_meta_test_lib
         GTest::gtest
     )
     target_include_directories(${target_name} PRIVATE
@@ -100,7 +77,7 @@ add_adviskv_common_gtest(shard_range_test
     ${CMAKE_SOURCE_DIR}/test/common/shard_range_test.cpp
 )
 
-add_adviskv_storage_gtest(map_engine_test)
+add_adviskv_storage_gtest(map_engine_test
     ${CMAKE_SOURCE_DIR}/test/storage/engine/map_engine_test.cpp
 )
 
@@ -148,74 +125,36 @@ add_adviskv_storage_gtest(raft_cluster_test
     ${CMAKE_SOURCE_DIR}/test/storage/raft/core/raft_cluster_test.cpp
 )
 
-add_adviskv_topo_gtest(node_service_test
-    ${CMAKE_SOURCE_DIR}/test/topo/service/node_service_test.cpp
+add_adviskv_meta_gtest(meta_route_service_test
+    ${CMAKE_SOURCE_DIR}/test/meta/service/route_service_test.cpp
 )
-
-add_adviskv_topo_gtest(table_service_test
-    ${CMAKE_SOURCE_DIR}/test/topo/service/table_service_test.cpp
+add_adviskv_meta_gtest(meta_node_service_test
+    ${CMAKE_SOURCE_DIR}/test/meta/service/node_service_test.cpp
 )
-
-add_adviskv_topo_gtest(route_service_test
-    ${CMAKE_SOURCE_DIR}/test/topo/service/route_service_test.cpp
+add_adviskv_meta_gtest(meta_persist_engine_test
+    ${CMAKE_SOURCE_DIR}/test/meta/persist/meta_persist_engine_test.cpp
 )
-
-add_adviskv_topo_gtest(node_heartbeat_service_test
-    ${CMAKE_SOURCE_DIR}/test/topo/service/node_heartbeat_service_test.cpp
+add_adviskv_meta_gtest(meta_store_test
+    ${CMAKE_SOURCE_DIR}/test/meta/store/meta_store_test.cpp
 )
-
-add_adviskv_topo_gtest(node_reconcile_service_test
-    ${CMAKE_SOURCE_DIR}/test/topo/service/node_reconcile_service_test.cpp
+add_adviskv_meta_gtest(meta_ddl_service_test
+    ${CMAKE_SOURCE_DIR}/test/meta/service/ddl_service_test.cpp
 )
-
-add_adviskv_topo_gtest(route_reconcile_service_test
-    ${CMAKE_SOURCE_DIR}/test/topo/service/route_reconcile_service_test.cpp
+add_adviskv_meta_gtest(meta_node_heartbeat_service_test
+    ${CMAKE_SOURCE_DIR}/test/meta/service/node_heartbeat_service_test.cpp
 )
-
-add_adviskv_topo_gtest(table_reconcile_service_test
-    ${CMAKE_SOURCE_DIR}/test/topo/service/table_reconcile_service_test.cpp
+add_adviskv_meta_gtest(meta_node_reconcile_service_test
+    ${CMAKE_SOURCE_DIR}/test/meta/service/node_reconcile_service_test.cpp
 )
-
-add_adviskv_topo_gtest(topo_runtime_index_test
-    ${CMAKE_SOURCE_DIR}/test/topo/store/topo_runtime_index_test.cpp
+add_adviskv_meta_gtest(meta_route_reconcile_service_test
+    ${CMAKE_SOURCE_DIR}/test/meta/service/route_reconcile_service_test.cpp
 )
-
-add_adviskv_topo_gtest(node_selector_test
-    ${CMAKE_SOURCE_DIR}/test/topo/selector/node_selector/node_selector_test.cpp
+add_adviskv_meta_gtest(meta_table_reconcile_service_test
+    ${CMAKE_SOURCE_DIR}/test/meta/service/table_reconcile_service_test.cpp
 )
-
-add_adviskv_topo_gtest(memory_meta_store_test
-    ${CMAKE_SOURCE_DIR}/test/topo/store/memory_meta_store_test.cpp
+add_adviskv_meta_gtest(meta_node_selector_test
+    ${CMAKE_SOURCE_DIR}/test/meta/selector/node_selector/node_selector_test.cpp
 )
-
-add_adviskv_topo_gtest(runtime_store_test
-    ${CMAKE_SOURCE_DIR}/test/topo/store/runtime_store_test.cpp
-)
-
-add_adviskv_topo_gtest(persistent_meta_store_test
-    ${CMAKE_SOURCE_DIR}/test/topo/store/persistent_meta_store_test.cpp
-)
-
-add_adviskv_topo_gtest(topo_persist_engine_test
-    ${CMAKE_SOURCE_DIR}/test/topo/persist/topo_persist_engine_test.cpp
-)
-
-add_adviskv_topo_gtest(topo_store_test
-    ${CMAKE_SOURCE_DIR}/test/topo/store/topo_store_test.cpp
-)
-
-add_adviskv_catalog_gtest(catalog_persist_engine_test
-    ${CMAKE_SOURCE_DIR}/test/catalog/persist/catalog_persist_engine_test.cpp
-)
-
-add_adviskv_catalog_gtest(catalog_store_test
-    ${CMAKE_SOURCE_DIR}/test/catalog/store/catalog_store_test.cpp
-)
-
-add_adviskv_catalog_gtest(ddl_service_test
-    ${CMAKE_SOURCE_DIR}/test/catalog/service/ddl_service_test.cpp
-)
-
-add_adviskv_catalog_gtest(table_reconciler_test
-    ${CMAKE_SOURCE_DIR}/test/catalog/background/table_reconciler_test.cpp
+add_adviskv_meta_gtest(meta_index_test
+    ${CMAKE_SOURCE_DIR}/test/meta/store/meta_index_test.cpp
 )

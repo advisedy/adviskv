@@ -27,7 +27,6 @@ std::string generate_request_id() {
     return fmt::format("adviskv-{}-{}", instance_id, sequence.fetch_add(1, std::memory_order_relaxed));
 }
 
-
 struct ErrorAction {
     bool retryable = false;
     bool refresh_route = false;
@@ -99,7 +98,6 @@ void KVClient::record_result(Operation operation, const Status& status) {
 
 Status KVClient::finalize_status(const RequestPolicy& policy, Status status, bool write_uncertain) {
     if (policy.is_write_request()) {
-        // put / del 操作
         if (status.code() == StatusCode::CONDITION_NOT_MET || status.code() == StatusCode::KEY_NOT_FOUND) {
             return status;
         }
@@ -128,8 +126,8 @@ Status KVClient::execute_with_retry(const RequestPolicy& policy, SteadyClock::ti
     const int64_t max_storage_attempts = static_cast<int64_t>(conf_.max_retries) + 1;
     const bool is_write = policy.is_write_request();
 
-    int64_t storage_attempts = 0; // 打向storage的次数
-    int64_t route_refreshes = 0; // 路由表刷新的次数
+    int64_t storage_attempts = 0;  // 打向storage的次数
+    int64_t route_refreshes = 0;   // 路由表刷新的次数
     Milliseconds retry_delay{conf_.retry_delay_ms};
     Status status = Status::RESOURCE_EXHAUSTED("exhausted before request was sent");
     bool write_uncertain = false;  // 在重试内容中是否有出现过status映射为UNKNOWN的情况
@@ -176,7 +174,7 @@ Status KVClient::execute_with_retry(const RequestPolicy& policy, SteadyClock::ti
 }
 
 KVClient::KVClient(const KVClientConf& conf)
-        : conf_(conf), topo_route_client_(conf), route_cache_(conf, &topo_route_client_), storage_client_(conf) {
+        : conf_(conf), meta_route_client_(conf), route_cache_(conf, &meta_route_client_), storage_client_(conf) {
     IGNORE_RESULT(init());
 }
 

@@ -6,11 +6,8 @@
 namespace adviskv::bench {
 
 struct BenchOptions {
-    std::string catalog_host{"127.0.0.1"};
-    int32_t catalog_port{50048};
-
-    std::string topo_host{"127.0.0.1"};
-    int32_t topo_port{50049};
+    std::string meta_host{"127.0.0.1"};
+    int32_t meta_port{50048};
 
     std::string db{"bench_db"};
     std::string table{"bench_table"};

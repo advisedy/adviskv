@@ -78,9 +78,9 @@ Status NodeAgent::init(NodeAgentConf conf) {
 
     conf_ = std::move(conf);
 
-    const std::string target = conf_.topo_host + ":" + std::to_string(conf_.topo_port);
+    const std::string target = conf_.meta_host + ":" + std::to_string(conf_.meta_port);
     channel_ = grpc::CreateChannel(target, grpc::InsecureChannelCredentials());
-    stub_ = topo_rpc::TopoService::NewStub(channel_);
+    stub_ = meta_rpc::MetaService::NewStub(channel_);
     register_task_ = std::make_unique<RegisterTask>(this, Milliseconds(conf_.first_sync_retry_ms),
                                                     Milliseconds(conf_.register_interval_ms));
     heartbeat_task_ = std::make_unique<HeartbeatTask>(this, Milliseconds(conf_.heartbeat_interval_ms));
@@ -115,7 +115,7 @@ Status NodeAgent::stop() {
 }
 
 Status NodeAgent::heartbeat_once() {
-    topo_rpc::HeartbeatResponse response;
+    meta_rpc::HeartbeatResponse response;
     Status status = send_heartbeat_once(&response);
     RETURN_IF_INVALID_STATUS(status)
 
@@ -135,31 +135,37 @@ Status NodeAgent::heartbeat_once() {
     return Status::OK();
 }
 
-Status NodeAgent::send_heartbeat_once(topo_rpc::HeartbeatResponse* response) {
+Status NodeAgent::send_heartbeat_once(meta_rpc::HeartbeatResponse* response) {
     RETURN_IF_NULLPTR(response, "heartbeat response is nullptr")
 
-    topo_rpc::HeartbeatRequest request = make_heartbeat_request();
+    meta_rpc::HeartbeatRequest request = make_heartbeat_request();
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + Milliseconds(conf_.rpc_timeout_ms));
     grpc::Status grpc_status = stub_->Heartbeat(&context, request, response);
-    RETURN_IF_INVALID_CONDITION(grpc_status.ok(), grpc_status.error_message())
+    if (!grpc_status.ok()) {
+        return Status::RPC_ERROR(fmt::format("Meta Heartbeat RPC failed, grpc code = {}, msg = {}",
+                                             static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
+    }
     RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response->base_rsp()))
     return Status::OK();
 }
 
 Status NodeAgent::register_node() {
-    topo_rpc::RegisterNodeRequest request;
+    meta_rpc::RegisterNodeRequest request;
     request.set_node_id(conf_.node_id);
     request.set_ip(conf_.ip);
     request.set_port(conf_.port);
     request.set_resource_pool(conf_.resource_pool);
     request.set_dc(conf_.dc);
 
-    topo_rpc::RegisterNodeResponse response;
+    meta_rpc::RegisterNodeResponse response;
     grpc::ClientContext context;
     context.set_deadline(std::chrono::system_clock::now() + Milliseconds(conf_.rpc_timeout_ms));
     grpc::Status grpc_status = stub_->RegisterNode(&context, request, &response);
-    RETURN_IF_INVALID_CONDITION(grpc_status.ok(), grpc_status.error_message())
+    if (!grpc_status.ok()) {
+        return Status::RPC_ERROR(fmt::format("Meta RegisterNode RPC failed, grpc code = {}, msg = {}",
+                                             static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
+    }
     RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
     return Status::OK();
 }
@@ -248,8 +254,8 @@ ReplicaInitParam NodeAgent::make_replica_init_param(const ExpectedReplica& expec
     return param;
 }
 
-topo_rpc::HeartbeatRequest NodeAgent::make_heartbeat_request() const {
-    topo_rpc::HeartbeatRequest request;
+meta_rpc::HeartbeatRequest NodeAgent::make_heartbeat_request() const {
+    meta_rpc::HeartbeatRequest request;
     request.set_node_id(conf_.node_id);
     request.set_ip(conf_.ip);
     request.set_port(conf_.port);

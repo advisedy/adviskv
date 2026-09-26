@@ -1,6 +1,6 @@
 # conf
 
-- `catalog.yaml` / `topo.yaml` / `storage-*.yaml`：拉起 demo 集群用的
+- `meta.yaml` / `storage-*.yaml`：拉起 demo 集群用的
 - `adviskvctl.yaml`：`adviskvctl` 用的，去连接 demo 集群
 - `test.yaml`：单测用的
 

@@ -37,8 +37,7 @@ if [[ "$BUILD_DIR" != "$ROOT_DIR/build" ]]; then
   rm -rf "$BUILD_DIR/demo"
 fi
 
-require_binary "$BUILD_DIR/bin/topo"
-require_binary "$BUILD_DIR/bin/catalog"
+require_binary "$BUILD_DIR/bin/meta"
 require_binary "$BUILD_DIR/bin/storage"
 require_binary "$ADVISKVCTL"
 

@@ -14,7 +14,7 @@
 #include "common/optional.h"
 #include "common/proto/proto.h"
 #include "common/status.h"
-#include "topo.grpc.pb.h"
+#include "meta.grpc.pb.h"
 #include "storage/replica/replica.h"
 
 namespace adviskv::storage {
@@ -43,8 +43,8 @@ struct NodeAgentConf {
     std::string resource_pool{"default"};
     std::string dc;
 
-    std::string topo_host;
-    int32_t topo_port{-1};
+    std::string meta_host;
+    int32_t meta_port{-1};
 
     int32_t heartbeat_interval_ms{3000};
     int32_t register_interval_ms{30 * 1000};
@@ -58,8 +58,8 @@ struct NodeAgentConf {
         RETURN_IF_INVALID_CONDITION(port > 0, "port should > 0")
         RETURN_IF_INVALID_CONDITION(!resource_pool.empty(), "resource_pool should not empty")
         RETURN_IF_INVALID_CONDITION(!dc.empty(), "dc should not empty")
-        RETURN_IF_INVALID_CONDITION(!topo_host.empty(), "topo_host should not empty")
-        RETURN_IF_INVALID_CONDITION(topo_port > 0, "topo_port should > 0")
+        RETURN_IF_INVALID_CONDITION(!meta_host.empty(), "meta_host should not empty")
+        RETURN_IF_INVALID_CONDITION(meta_port > 0, "meta_port should > 0")
         RETURN_IF_INVALID_CONDITION(heartbeat_interval_ms > 0, "heartbeat_interval_ms should > 0")
         RETURN_IF_INVALID_CONDITION(register_interval_ms > 0, "register_interval_ms should > 0")
         RETURN_IF_INVALID_CONDITION(first_sync_retry_ms > 0, "first_sync_retry_ms should > 0")
@@ -83,19 +83,19 @@ private:
     class RegisterTask;
 
     Status heartbeat_once();
-    Status send_heartbeat_once(topo_rpc::HeartbeatResponse* response);
+    Status send_heartbeat_once(meta_rpc::HeartbeatResponse* response);
 
     Status register_node();
 
     Status apply_expected_replica(const ExpectedReplica& instruction);
     Optional<ReplicaID> find_local_leader_replica(const ShardID& shard_id) const;
     ReplicaInitParam make_replica_init_param(const ExpectedReplica& expects) const;
-    topo_rpc::HeartbeatRequest make_heartbeat_request() const;
+    meta_rpc::HeartbeatRequest make_heartbeat_request() const;
 
     NodeAgentConf conf_;
 
     std::shared_ptr<grpc::Channel> channel_;
-    std::unique_ptr<topo_rpc::TopoService::Stub> stub_;
+    std::unique_ptr<meta_rpc::MetaService::Stub> stub_;
     std::unique_ptr<HeartbeatTask> heartbeat_task_;
     std::unique_ptr<RegisterTask> register_task_;
     bool initialized_{false};

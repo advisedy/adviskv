@@ -8,9 +8,9 @@
 namespace adviskv::e2e {
 
 // 这个场景覆盖最基础的端到端 KV 链路：
-// 先通过 Catalog 创建 DB 和 table，等待 TOPO 完成 route，然后用 SDK 写入一批 key。
+// 先通过 Meta 创建 DB 和 table，等待 route 就绪，然后用 SDK 写入一批 key。
 // 随后验证这些 key 都能读到，再覆盖第一个 key，最后删除最后一个 key
-// 并确认读不到。 这个 case 不注入故障，主要用来证明 catalog -> topo -> storage ->
+// 并确认读不到。这个 case 不注入故障，主要用来证明 meta -> storage ->
 // sdk 的正常链路可用。
 // 并且然后再删除这个table，然后再次创建，重新再写入KV，检查是否可行。
 inline bool run_basic_kv_case(const Options& options) {
@@ -33,16 +33,16 @@ inline bool run_basic_kv_case(const Options& options) {
 
     print_pass("write and verify dataset", "ok");
 
-    if (!wait_status("sdk overwrite first key", options, [&]() {
-            return client.put("basic-kv-key-000", "basic-kv-value-overwrite");
-        })) {
+    if (!wait_status("sdk overwrite first key", options,
+                     [&]() { return client.put("basic-kv-key-000", "basic-kv-value-overwrite"); })) {
         return false;
     }
 
-    if (!wait_get_value(&client, options, "basic-kv-key-000",
-                        "basic-kv-value-overwrite")) {
+    if (!wait_get_value(&client, options, "basic-kv-key-000", "basic-kv-value-overwrite")) {
         return false;
     }
+
+    print_pass("overwrite and get the value", "ok");
 
     if (!wait_status("sdk cas first key", options, [&]() {
             return client.cas("basic-kv-key-000", "basic-kv-value-overwrite", "basic-kv-value-cas");
@@ -61,11 +61,8 @@ inline bool run_basic_kv_case(const Options& options) {
     }
     print_pass("cas success and mismatch", "ok");
 
-    print_pass("overwrite and get the value", "ok");
-
     const std::vector<Key> keys = make_case_keys("basic-kv", options.key_count);
-    if (!wait_status("sdk delete last key", options,
-                     [&]() { return client.del(keys.back()); })) {
+    if (!wait_status("sdk delete last key", options, [&]() { return client.del(keys.back()); })) {
         return false;
     }
     if (!wait_key_not_found(&client, options, keys.back())) {

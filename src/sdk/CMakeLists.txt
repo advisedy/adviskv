@@ -1,7 +1,7 @@
 set(ADVISKV_SDK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/client.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/route_cache.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/topo_route_client.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/meta_route_client.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/storage_client.cpp
 )
 

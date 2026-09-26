@@ -90,10 +90,8 @@ struct BenchResult {
 
 bool parse_args(int argc, char** argv, BenchOptions* options) {
     ArgParser parser;
-    parser.add_string("catalog_host", options->catalog_host);
-    parser.add_int32("catalog_port", options->catalog_port);
-    parser.add_string("topo_host", options->topo_host);
-    parser.add_int32("topo_port", options->topo_port);
+    parser.add_string("meta_host", options->meta_host);
+    parser.add_int32("meta_port", options->meta_port);
     parser.add_string("db", options->db);
     parser.add_string("table", options->table);
     parser.add_string("zone", options->zone);
@@ -145,7 +143,7 @@ bool validate_options(const BenchOptions& options) {
         fmt::print(stderr, "--read_ratio must be in [0.0, 1.0]\n");
         return false;
     }
-    if (options.catalog_port <= 0 || options.topo_port <= 0 ||
+    if (options.meta_port <= 0 ||
         options.timeout_ms <= 0 || options.shard_count <= 0 ||
         options.replica_count < 0 || options.sdk_rpc_timeout_ms <= 0 ||
         options.sdk_write_timeout_ms <= 0 || options.sdk_read_timeout_ms <= 0 ||
@@ -206,10 +204,8 @@ void record_stage_result(const std::string& stage, bool success) {
 
 e2e::Options to_e2e_options(const BenchOptions& options) {
     e2e::Options e2e_options;
-    e2e_options.catalog_host = options.catalog_host;
-    e2e_options.catalog_port = options.catalog_port;
-    e2e_options.topo_host = options.topo_host;
-    e2e_options.topo_port = options.topo_port;
+    e2e_options.meta_host = options.meta_host;
+    e2e_options.meta_port = options.meta_port;
     e2e_options.db = options.db;
     e2e_options.table = options.table;
     e2e_options.zone = options.zone;
@@ -242,8 +238,8 @@ sdk::KVClient make_client(const BenchOptions& options) {
     sdk::KVClientConf conf;
     conf.db_name = options.db;
     conf.table_name = options.table;
-    conf.topo_host = options.topo_host;
-    conf.topo_port = options.topo_port;
+    conf.meta_host = options.meta_host;
+    conf.meta_port = options.meta_port;
     conf.rpc_timeout_ms = options.sdk_rpc_timeout_ms;
     conf.write_timeout_ms = options.sdk_write_timeout_ms;
     conf.read_timeout_ms = options.sdk_read_timeout_ms;

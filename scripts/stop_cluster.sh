@@ -55,8 +55,7 @@ kill_group() {
     fi
 }
 
-kill_group "topo" "topo"
-kill_group "catalog" "catalog"
+kill_group "meta" "meta"
 kill_group "storage" "storage"
 
 echo "cluster processes stopped"

@@ -115,8 +115,8 @@ int main(int argc, char* argv[]) {
         agent_conf.port = CONF_GET_INT("port");
         agent_conf.resource_pool = CONF_GET_STR("resource_pool");
         agent_conf.dc = CONF_GET_STR("dc");
-        agent_conf.topo_host = CONF_GET_STR("topo_host");
-        agent_conf.topo_port = CONF_GET_INT("topo_port");
+        agent_conf.meta_host = CONF_GET_STR("meta_host");
+        agent_conf.meta_port = CONF_GET_INT("meta_port");
         agent_conf.heartbeat_interval_ms = CONF_GET_INT("heartbeat_interval_ms");
         agent_conf.register_interval_ms = CONF_GET_INT("register_interval_ms", 30 * 1000);
         agent_conf.rpc_timeout_ms = CONF_GET_INT("node_agent_rpc_timeout_ms", 3000);

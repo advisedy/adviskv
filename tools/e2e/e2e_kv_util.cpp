@@ -77,8 +77,8 @@ sdk::KVClient make_kv_client(const Options& options) {
     sdk::KVClientConf conf;
     conf.db_name = options.db;
     conf.table_name = options.table;
-    conf.topo_host = options.topo_host;
-    conf.topo_port = options.topo_port;
+    conf.meta_host = options.meta_host;
+    conf.meta_port = options.meta_port;
     conf.rpc_timeout_ms = options.sdk_rpc_timeout_ms;
     conf.log.level = options.sdk_log_level;
     if (options.enable_sdk_log_callback) {

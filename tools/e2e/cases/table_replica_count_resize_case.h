@@ -1,10 +1,10 @@
 #pragma once
 
-#include <fmt/core.h>
-
 #include <cstdint>
 #include <string>
 #include <vector>
+
+#include <fmt/core.h>
 
 #include "e2e_assert.h"
 #include "e2e_kv_util.h"
@@ -15,7 +15,7 @@ namespace adviskv::e2e {
 
 // 覆盖 table replica_count 扩缩容闭环：
 // 先以 3 副本建表并写入数据，再依次扩容到 4、扩容到 5、缩容回 3。
-// 每次 alter 后都等待 Catalog/TOPO/Storage 收敛到 NORMAL，并验证历史数据仍可读。
+// 每次 alter 后都等待 Meta/Storage 收敛，并验证历史数据仍可读。
 inline bool run_table_replica_count_resize_case(const Options& options) {
     if (!validate_key_count(options)) {
         return false;
@@ -48,15 +48,13 @@ inline bool run_table_replica_count_resize_case(const Options& options) {
         return true;
     };
 
-    auto alter_and_check = [&](int32_t replica_count,
-                               const std::string& new_prefix) -> bool {
+    auto alter_and_check = [&](int32_t replica_count, const std::string& new_prefix) -> bool {
         std::string error;
         if (!alter_table_replica_count(&context, replica_count, &error)) {
             print_fail("alter table replica_count", error);
             return false;
         }
-        print_pass("alter table replica_count",
-                   fmt::format("target={}", replica_count));
+        print_pass("alter table replica_count", fmt::format("target={}", replica_count));
 
         if (!wait_table_replica_count(&context, replica_count)) {
             return false;

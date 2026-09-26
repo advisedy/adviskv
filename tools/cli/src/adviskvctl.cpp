@@ -16,10 +16,9 @@
 #include "common/model/type.h"
 #include "common/path_util.h"
 #include "common/stable_hash.h"
-#include "direct_catalog_client.h"
-#include "catalog/model/model.h"
+#include "meta_client.h"
 #include "sdk/client.h"
-#include "sdk/topo_route_client.h"
+#include "sdk/meta_route_client.h"
 namespace {
 
 using adviskv::DatabaseID;
@@ -27,12 +26,12 @@ using adviskv::EngineType;
 using adviskv::ShardIndex;
 using adviskv::Status;
 using adviskv::TableID;
-using adviskv::cli::DirectCatalogClient;
-using adviskv::cli::CatalogCliTarget;
+using adviskv::cli::MetaClient;
+using adviskv::cli::MetaTarget;
 using adviskv::cli::TableInfo;
 
 struct AdvisKvCtlConfig {
-    CatalogCliTarget catalog;
+    MetaTarget meta;
     adviskv::sdk::KVClientConf sdk;
 };
 
@@ -88,13 +87,11 @@ std::vector<std::string> split_tokens(const std::string& line) {
 }
 
 bool parse_i32(const std::string& value, int32_t* out) {
-    if (out == nullptr)
-        return false;
+    if (out == nullptr) return false;
     try {
         size_t pos = 0;
         const int parsed = std::stoi(value, &pos);
-        if (pos != value.size())
-            return false;
+        if (pos != value.size()) return false;
         *out = static_cast<int32_t>(parsed);
         return true;
     } catch (...) {
@@ -103,8 +100,7 @@ bool parse_i32(const std::string& value, int32_t* out) {
 }
 
 bool parse_engine_type(const std::string& value, EngineType* out) {
-    if (out == nullptr)
-        return false;
+    if (out == nullptr) return false;
 
     std::string normalized = value;
     std::transform(normalized.begin(), normalized.end(), normalized.begin(),
@@ -137,20 +133,20 @@ void print_status(const Status& status) {
     fmt::print("ERR code={} msg={}\n", static_cast<int>(status.code()), status.msg());
 }
 
-std::string table_state_to_string(adviskv::catalog::TableState state) {
-    switch (state) {
-        case adviskv::catalog::TableState::ADDING:
-            return "ADDING";
-        case adviskv::catalog::TableState::NORMAL:
-            return "NORMAL";
-        case adviskv::catalog::TableState::FAILED:
-            return "FAILED";
-        case adviskv::catalog::TableState::DROPPING:
-            return "DROPPING";
-        case adviskv::catalog::TableState::DELETED:
+std::string table_phase_to_string(adviskv::meta::TablePhase phase) {
+    switch (phase) {
+        case adviskv::meta::TablePhase::CREATING:
+            return "CREATING";
+        case adviskv::meta::TablePhase::READY:
+            return "READY";
+        case adviskv::meta::TablePhase::DELETING:
+            return "DELETING";
+        case adviskv::meta::TablePhase::DELETED:
             return "DELETED";
-        case adviskv::catalog::TableState::ALTERING:
-            return "ALTERING";
+        case adviskv::meta::TablePhase::FAILED:
+            return "FAILED";
+        case adviskv::meta::TablePhase::RESIZING:
+            return "RESIZING";
     }
     return "UNKNOWN";
 }
@@ -184,24 +180,23 @@ std::string quote_value(const std::string& value) {
 }
 
 bool load_config(const std::string& path, AdvisKvCtlConfig* config) {
-    if (config == nullptr)
-        return false;
+    if (config == nullptr) return false;
     try {
         adviskv::ConfMgr::get_instance().LoadFromFile(adviskv::path_from_project_root(path).string());
 
-        config->catalog.endpoint.ip = CONF_GET_STR("catalog_host");
-        config->catalog.endpoint.port = CONF_GET_INT("catalog_port");
-        config->catalog.timeout_ms = CONF_GET_INT("catalog_timeout_ms");
+        config->meta.endpoint.ip = CONF_GET_STR("meta_host");
+        config->meta.endpoint.port = CONF_GET_INT("meta_port");
+        config->meta.timeout_ms = CONF_GET_INT("meta_timeout_ms");
 
-        config->sdk.topo_host = CONF_GET_STR("topo_host");
-        config->sdk.topo_port = CONF_GET_INT("topo_port");
+        config->sdk.meta_host = CONF_GET_STR("meta_host");
+        config->sdk.meta_port = CONF_GET_INT("meta_port");
         config->sdk.rpc_timeout_ms = CONF_GET_INT("rpc_timeout_ms");
         config->sdk.write_timeout_ms = CONF_GET_INT("write_timeout_ms");
         config->sdk.read_timeout_ms = CONF_GET_INT("read_timeout_ms", 3000);
         config->sdk.max_retries = CONF_GET_INT("max_retries");
         config->sdk.route_max_retries = CONF_GET_INT("route_max_retries");
         config->sdk.retry_delay_ms = CONF_GET_INT("retry_delay_ms", 20);
-        return config->catalog.validate().ok() && config->sdk.validate().ok();
+        return config->meta.validate().ok() && config->sdk.validate().ok();
     } catch (const std::exception& e) {
         fmt::print(stderr, "load config failed: {}\n", e.what());
         return false;
@@ -210,15 +205,12 @@ bool load_config(const std::string& path, AdvisKvCtlConfig* config) {
 
 class AdvisKvCtl {
 public:
-    explicit AdvisKvCtl(AdvisKvCtlConfig config) : config_(std::move(config)), catalog_client_(config_.catalog) {
-    }
+    explicit AdvisKvCtl(AdvisKvCtlConfig config) : config_(std::move(config)), meta_client_(config_.meta) {}
 
     bool execute(const std::vector<std::string>& tokens) {
-        if (tokens.empty())
-            return true;
+        if (tokens.empty()) return true;
         const std::string& command = tokens[0];
-        if (command == "quit" || command == "exit")
-            return false;
+        if (command == "quit" || command == "exit") return false;
         if (command == "help") {
             print_help();
             return true;
@@ -266,11 +258,11 @@ private:
         return adviskv::sdk::KVClient(conf);
     }
 
-    adviskv::sdk::TopoRouteClient make_route_client(const std::string& db, const std::string& table) const {
+    adviskv::sdk::MetaRouteClient make_route_client(const std::string& db, const std::string& table) const {
         adviskv::sdk::KVClientConf conf = config_.sdk;
         conf.db_name = db;
         conf.table_name = table;
-        return adviskv::sdk::TopoRouteClient(conf);
+        return adviskv::sdk::MetaRouteClient(conf);
     }
 
     void create_db(const std::vector<std::string>& tokens) const {
@@ -279,7 +271,7 @@ private:
             return;
         }
         DatabaseID db_id = -1;
-        Status status = catalog_client_.create_db(tokens[1], tokens[2], &db_id);
+        Status status = meta_client_.create_db(tokens[1], tokens[2], &db_id);
         if (status.ok()) {
             fmt::print("OK db_id={}\n", db_id);
         } else {
@@ -293,7 +285,7 @@ private:
             return;
         }
         DatabaseID db_id = -1;
-        Status status = catalog_client_.drop_db(tokens[1], &db_id);
+        Status status = meta_client_.drop_db(tokens[1], &db_id);
         if (status.ok()) {
             fmt::print("OK db_id={}\n", db_id);
         } else {
@@ -321,7 +313,7 @@ private:
         }
         TableID table_id = -1;
         Status status =
-                catalog_client_.create_table(tokens[1], tokens[2], shards, replicas, &table_id, tokens[5], engine_type);
+                meta_client_.create_table(tokens[1], tokens[2], shards, replicas, &table_id, tokens[5], engine_type);
         if (status.ok()) {
             fmt::print("OK table_id={} engine_type={}\n", table_id, static_cast<int>(engine_type));
         } else {
@@ -340,7 +332,7 @@ private:
             return;
         }
         TableID table_id = -1;
-        Status status = catalog_client_.alter_table_replica_count(tokens[1], tokens[2], replicas, &table_id);
+        Status status = meta_client_.alter_table_replica_count(tokens[1], tokens[2], replicas, &table_id);
         if (status.ok()) {
             fmt::print("OK table_id={} replica_count={}\n", table_id, replicas);
         } else {
@@ -349,7 +341,7 @@ private:
     }
 
     bool fetch_table(const std::string& db, const std::string& table, TableInfo* table_info) const {
-        Status status = catalog_client_.get_table(db, table, table_info);
+        Status status = meta_client_.get_table(db, table, table_info);
         if (status.fail()) {
             print_status(status);
             return false;
@@ -360,9 +352,9 @@ private:
     void print_table(const TableInfo& table_info) const {
         fmt::print(
                 "OK db_id={} table_id={} shard_count={} replica_count={} "
-                "engine_type={} table_state={} last_error_msg={}\n",
+                "engine_type={} phase={} last_error_msg={}\n",
                 table_info.db_id, table_info.table_id, table_info.shard_count, table_info.replica_count,
-                static_cast<int>(table_info.engine_type), table_state_to_string(table_info.table_state),
+                static_cast<int>(table_info.engine_type), table_phase_to_string(table_info.phase),
                 table_info.last_error_msg);
     }
 
@@ -390,13 +382,12 @@ private:
         const auto deadline = std::chrono::steady_clock::now() + adviskv::Milliseconds(timeout_ms);
         TableInfo table_info;
         while (std::chrono::steady_clock::now() < deadline) {
-            if (!fetch_table(tokens[1], tokens[2], &table_info))
-                return;
-            if (table_info.table_state == adviskv::catalog::TableState::NORMAL) {
-                fmt::print("OK table_state=NORMAL\n");
+            if (!fetch_table(tokens[1], tokens[2], &table_info)) return;
+            if (table_info.phase == adviskv::meta::TablePhase::READY) {
+                fmt::print("OK phase=READY\n");
                 return;
             }
-            if (table_info.table_state == adviskv::catalog::TableState::FAILED) {
+            if (table_info.phase == adviskv::meta::TablePhase::FAILED) {
                 print_table(table_info);
                 return;
             }
@@ -463,7 +454,7 @@ private:
         }
         const size_t position = adviskv::sdk::locate_route(table_routes, tokens[3]);
         if (position >= table_routes.routes.size()) {
-        fmt::print("ERR key is outside the table shard ranges\n");
+            fmt::print("ERR key is outside the table shard ranges\n");
             return;
         }
         route_info = table_routes.routes[position];
@@ -502,9 +493,10 @@ private:
         fmt::print("{}shard: table_id={} shard_id={}\n", indent, route_info.table_id, route_info.shard_id);
         fmt::print("{}hash_range: [{}, {})\n", indent, route_info.hash_range.start, route_info.hash_range.end);
         const bool writable = std::count_if(route_info.replicas.begin(), route_info.replicas.end(),
-                [](const adviskv::sdk::RouteReplica& r) {
-                    return r.role == adviskv::ReplicaRole::LEADER && !r.endpoint.ip.empty() && r.endpoint.port > 0;
-                }) == 1;
+                                            [](const adviskv::sdk::RouteReplica& r) {
+                                                return r.role == adviskv::ReplicaRole::LEADER &&
+                                                       !r.endpoint.ip.empty() && r.endpoint.port > 0;
+                                            }) == 1;
         fmt::print("{}route_state: {}\n", indent, writable ? "WRITABLE" : "UNAVAILABLE");
         fmt::print("{}replicas:\n", indent);
         for (const auto& replica : route_info.replicas) {
@@ -551,12 +543,11 @@ private:
     }
 
     AdvisKvCtlConfig config_;
-    DirectCatalogClient catalog_client_;
+    MetaClient meta_client_;
 };
 
 bool parse_global_args(int argc, char* argv[], std::string* conf_file, std::vector<std::string>* command_tokens) {
-    if (conf_file == nullptr || command_tokens == nullptr)
-        return false;
+    if (conf_file == nullptr || command_tokens == nullptr) return false;
     *conf_file = "conf/adviskvctl.yaml";
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -603,11 +594,9 @@ int main(int argc, char* argv[]) {
     }
 
     AdvisKvCtlConfig config;
-    if (!load_config(conf_file, &config))
-        return 1;
+    if (!load_config(conf_file, &config)) return 1;
 
-    fmt::print("connected catalog {}:{}, topo {}:{}\n", config.catalog.endpoint.ip, config.catalog.endpoint.port,
-               config.sdk.topo_host, config.sdk.topo_port);
+    fmt::print("connected meta {}:{}\n", config.sdk.meta_host, config.sdk.meta_port);
     AdvisKvCtl ctl(std::move(config));
     if (!command_tokens.empty()) {
         ctl.execute(command_tokens);

@@ -40,8 +40,7 @@ BENCH_BIN = BIN_DIR / "bench_client"
 E2E_BIN = BIN_DIR / "e2e_client"
 LEADER_RE = re.compile(r"\[ ROUTE_LEADER \] ([^:\s]+):(\d+)")
 
-DEFAULT_CATALOG_HOST = "127.0.0.1"
-DEFAULT_TOPO_HOST = "127.0.0.1"
+DEFAULT_META_HOST = "127.0.0.1"
 DEFAULT_ZONE = "dc1"
 DEFAULT_RESOURCE_POOL = "default"
 DEFAULT_SEED_TIMEOUT_MS = 60_000
@@ -125,34 +124,21 @@ def read_text(path: Path) -> str:
 
 def override_service_endpoints(
     *,
-    topo_conf: Path,
-    catalog_conf: Path,
+    meta_conf: Path,
     storage_confs: list[Path],
-    catalog_host: str,
-    catalog_port: int,
-    topo_host: str,
-    topo_port: int,
+    meta_host: str,
+    meta_port: int,
 ) -> None:
     write_conf_from_template(
-        topo_conf,
-        topo_conf,
-        {"listen_host": topo_host, "port": topo_port},
-    )
-    write_conf_from_template(
-        catalog_conf,
-        catalog_conf,
-        {
-            "listen_host": catalog_host,
-            "port": catalog_port,
-            "topo_host": topo_host,
-            "topo_port": topo_port,
-        },
+        meta_conf,
+        meta_conf,
+        {"listen_host": meta_host, "port": meta_port},
     )
     for storage_conf in storage_confs:
         write_conf_from_template(
             storage_conf,
             storage_conf,
-            {"topo_host": topo_host, "topo_port": topo_port},
+            {"meta_host": meta_host, "meta_port": meta_port},
         )
 
 
@@ -160,10 +146,8 @@ def run_seed(
     *,
     e2e_conf: Path,
     seed_log: Path,
-    catalog_host: str,
-    catalog_port: int,
-    topo_host: str,
-    topo_port: int,
+    meta_host: str,
+    meta_port: int,
     db: str,
     table: str,
     zone: str,
@@ -178,10 +162,8 @@ def run_seed(
         str(E2E_BIN),
         f"--conf={e2e_conf}",
         "--case=leader_failover_seed",
-        f"--catalog_host={catalog_host}",
-        f"--catalog_port={catalog_port}",
-        f"--topo_host={topo_host}",
-        f"--topo_port={topo_port}",
+        f"--meta_host={meta_host}",
+        f"--meta_port={meta_port}",
         f"--db={db}",
         f"--table={table}",
         f"--zone={zone}",
@@ -405,10 +387,8 @@ def build_bench_command(
 ) -> list[str]:
     command = [
         str(BENCH_BIN),
-        f"--catalog_host={args.catalog_host}",
-        f"--catalog_port={args.catalog_port}",
-        f"--topo_host={args.topo_host}",
-        f"--topo_port={args.topo_port}",
+        f"--meta_host={args.meta_host}",
+        f"--meta_port={args.meta_port}",
         f"--db={args.db}",
         f"--table={args.table}",
         f"--zone={args.zone}",
@@ -469,10 +449,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-build", action="store_true", default=env_bool("SKIP_BUILD")
     )
 
-    parser.add_argument("--catalog-host", default=DEFAULT_CATALOG_HOST)
-    parser.add_argument("--catalog-port", type=int, default=50048)
-    parser.add_argument("--topo-host", default=DEFAULT_TOPO_HOST)
-    parser.add_argument("--topo-port", type=int, default=50049)
+    parser.add_argument("--meta-host", default=DEFAULT_META_HOST)
+    parser.add_argument("--meta-port", type=int, default=50048)
     parser.add_argument("--db", default="failover_bench_db")
     parser.add_argument("--table", default="failover_bench_table")
     parser.add_argument("--zone", default=DEFAULT_ZONE)
@@ -592,10 +570,10 @@ def run(args: argparse.Namespace) -> int:
 
     if not args.skip_build:
         print(
-            "[failover] building topo catalog storage bench_client e2e_client",
+            "[failover] building meta storage bench_client e2e_client",
             flush=True,
         )
-        build_targets("topo catalog storage bench_client e2e_client")
+        build_targets("meta storage bench_client e2e_client")
     if not BENCH_BIN.is_file() or not os.access(BENCH_BIN, os.X_OK):
         raise RuntimeError(f"bench_client is not executable: {BENCH_BIN}")
     if not E2E_BIN.is_file() or not os.access(E2E_BIN, os.X_OK):
@@ -607,19 +585,16 @@ def run(args: argparse.Namespace) -> int:
         check=True,
     )
 
-    topo_conf, catalog_conf, storage_confs = materialize_bench_confs(
+    meta_conf, storage_confs = materialize_bench_confs(
         conf_dir=conf_dir,
         data_dir=data_dir,
         service_log_dir=service_log_dir,
     )
     override_service_endpoints(
-        topo_conf=topo_conf,
-        catalog_conf=catalog_conf,
+        meta_conf=meta_conf,
         storage_confs=storage_confs,
-        catalog_host=args.catalog_host,
-        catalog_port=args.catalog_port,
-        topo_host=args.topo_host,
-        topo_port=args.topo_port,
+        meta_host=args.meta_host,
+        meta_port=args.meta_port,
     )
     e2e_conf = conf_dir / "e2e_client.yaml"
     write_e2e_client_conf(e2e_conf, service_log_dir / "e2e_client")
@@ -629,8 +604,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         cluster = cluster_from_confs(
             log_dir=process_log_dir,
-            topo_conf=topo_conf,
-            catalog_conf=catalog_conf,
+            meta_conf=meta_conf,
             storage_confs=storage_confs,
             capture_output=True,
         )
@@ -642,10 +616,8 @@ def run(args: argparse.Namespace) -> int:
         leader_host, leader_port, _ = run_seed(
             e2e_conf=e2e_conf,
             seed_log=paths["seed_log"],
-            catalog_host=args.catalog_host,
-            catalog_port=args.catalog_port,
-            topo_host=args.topo_host,
-            topo_port=args.topo_port,
+            meta_host=args.meta_host,
+            meta_port=args.meta_port,
             db=args.db,
             table=args.table,
             zone=args.zone,

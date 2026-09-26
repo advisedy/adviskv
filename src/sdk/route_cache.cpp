@@ -11,7 +11,7 @@
 #include "common/define.h"
 #include "common/metrics/metrics.h"
 #include "sdk/log.h"
-#include "sdk/topo_route_client.h"
+#include "sdk/meta_route_client.h"
 
 namespace adviskv::sdk {
 
@@ -39,7 +39,7 @@ private:
     RouteCache* cache_{nullptr};
 };
 
-RouteCache::RouteCache(const KVClientConf& conf, const TopoRouteClient* route_client)
+RouteCache::RouteCache(const KVClientConf& conf, const MetaRouteClient* route_client)
         : conf_(conf), route_client_(route_client) {}
 
 RouteCache::~RouteCache() { stop(); }

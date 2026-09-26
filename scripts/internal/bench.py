@@ -29,8 +29,7 @@ from scripts.internal.metrics_report import (  # noqa: E402
 
 
 BENCH_BIN = BIN_DIR / "bench_client"
-TOPO_CONF = ROOT_DIR / "conf" / "topo.yaml"
-CATALOG_CONF = ROOT_DIR / "conf" / "catalog.yaml"
+META_CONF = ROOT_DIR / "conf" / "meta.yaml"
 STORAGE_CONFS = [
     ROOT_DIR / "conf" / "storage-1.yaml",
     ROOT_DIR / "conf" / "storage-2.yaml",
@@ -182,10 +181,9 @@ def materialize_bench_confs(
     conf_dir: Path,
     data_dir: Path,
     service_log_dir: Path,
-) -> tuple[Path, Path, list[Path]]:
+) -> tuple[Path, list[Path]]:
     services = [
-        ("topo", TOPO_CONF),
-        ("catalog", CATALOG_CONF),
+        ("meta", META_CONF),
         *[(f"storage-{index}", conf) for index, conf in enumerate(STORAGE_CONFS, 1)],
     ]
     generated: dict[str, Path] = {}
@@ -205,8 +203,7 @@ def materialize_bench_confs(
             },
         )
     return (
-        generated["topo"],
-        generated["catalog"],
+        generated["meta"],
         [generated[f"storage-{index}"] for index in range(1, len(STORAGE_CONFS) + 1)],
     )
 
@@ -234,16 +231,16 @@ def storage_metrics_targets(storage_confs: list[Path]) -> list[MetricsTarget]:
 
 
 def bench_metrics_targets(
-    topo_conf: Path,
+    meta_conf: Path,
     storage_confs: list[Path],
     bench_target: Optional[MetricsTarget],
 ) -> list[MetricsTarget]:
     targets: list[MetricsTarget] = []
     if bench_target is not None:
         targets.append(bench_target)
-    topo_target = metrics_target_from_conf("topo", topo_conf)
-    if topo_target is not None:
-        targets.append(topo_target)
+    meta_target = metrics_target_from_conf("meta", meta_conf)
+    if meta_target is not None:
+        targets.append(meta_target)
     targets.extend(storage_metrics_targets(storage_confs))
     return targets
 
@@ -262,7 +259,7 @@ def run_bench(argv: list[str]) -> None:
 
     if env("SKIP_BUILD", "0") != "1":
         print("[bench] building local cluster and bench_client", flush=True)
-        build_targets("topo catalog storage bench_client")
+        build_targets("meta storage bench_client")
     if not BENCH_BIN.exists() or not os.access(BENCH_BIN, os.X_OK):
         raise RuntimeError(f"bench_client not executable: {BENCH_BIN}")
 
@@ -271,15 +268,14 @@ def run_bench(argv: list[str]) -> None:
                    check=True)
 
     reset_run_dirs(conf_dir, data_dir, service_log_dir, process_log_dir)
-    topo_conf, catalog_conf, storage_confs = materialize_bench_confs(
+    meta_conf, storage_confs = materialize_bench_confs(
         conf_dir=conf_dir,
         data_dir=data_dir,
         service_log_dir=service_log_dir,
     )
     cluster = cluster_from_confs(
         log_dir=process_log_dir,
-        topo_conf=topo_conf,
-        catalog_conf=catalog_conf,
+        meta_conf=meta_conf,
         storage_confs=storage_confs,
         capture_output=True,
     )
@@ -300,7 +296,7 @@ def run_bench(argv: list[str]) -> None:
         print(f"[bench] running bench_client: {' '.join(command)}", flush=True)
 
         if metrics_report_enabled:
-            targets = bench_metrics_targets(topo_conf, storage_confs,
+            targets = bench_metrics_targets(meta_conf, storage_confs,
                                             bench_target)
             metrics_sampler = MetricsSampler(targets)
             metrics_sampler.start()

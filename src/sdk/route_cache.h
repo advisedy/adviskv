@@ -9,11 +9,11 @@
 
 namespace adviskv::sdk {
 
-class TopoRouteClient;
+class MetaRouteClient;
 
 class RouteCache {
 public:
-    RouteCache(const KVClientConf& conf, const TopoRouteClient* route_client);
+    RouteCache(const KVClientConf& conf, const MetaRouteClient* route_client);
     ~RouteCache();
 
     DISALLOW_COPY_AND_ASSIGN(RouteCache)
@@ -35,7 +35,7 @@ private:
     Status publish_table_routes(TableRouteInfo table_routes);
 
     KVClientConf conf_;
-    const TopoRouteClient* route_client_{nullptr};
+    const MetaRouteClient* route_client_{nullptr};
     std::shared_ptr<TableRouteSnapshot> snapshot_;
     std::unique_ptr<RefreshTask> refresh_task_;
 };

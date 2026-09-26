@@ -10,10 +10,9 @@
 #include "cases/follower_snapshot_catchup_case.h"
 #include "cases/leader_failover_case.h"
 #include "cases/many_tables_create_drop_case.h"
-#include "cases/catalog_crash_recovery_case.h"
+#include "cases/meta_crash_recovery_case.h"
 #include "cases/restart_persistence_case.h"
 #include "cases/scale_to_zero_case.h"
-#include "cases/topo_crash_recovery_case.h"
 #include "cases/table_replica_count_resize_case.h"
 #include "cases/table_replica_count_resize_resilience_case.h"
 #include "common/arg_parser.h"
@@ -46,10 +45,8 @@ bool parse_options(int argc, char** argv, std::string* conf_file, adviskv::e2e::
     adviskv::ArgParser parser;
     parser.add_string("conf", *conf_file);
     parser.add_string("case", options->case_name);
-    parser.add_string("catalog_host", options->catalog_host);
-    parser.add_int32("catalog_port", options->catalog_port);
-    parser.add_string("topo_host", options->topo_host);
-    parser.add_int32("topo_port", options->topo_port);
+    parser.add_string("meta_host", options->meta_host);
+    parser.add_int32("meta_port", options->meta_port);
     parser.add_string("db", options->db);
     parser.add_string("table", options->table);
     parser.add_string("zone", options->zone);
@@ -95,10 +92,8 @@ bool run_case(const adviskv::e2e::Options& options) {
     RUN_CASE("follower_snapshot_catchup_prepare", adviskv::e2e::run_follower_snapshot_catchup_prepare_case)
     RUN_CASE("follower_snapshot_catchup_write_gap", adviskv::e2e::run_follower_snapshot_catchup_write_gap_case)
     RUN_CASE("follower_snapshot_catchup_verify", adviskv::e2e::run_follower_snapshot_catchup_verify_case)
-    RUN_CASE("topo_crash_seed", adviskv::e2e::run_topo_crash_seed_case)
-    RUN_CASE("topo_crash_verify", adviskv::e2e::run_topo_crash_verify_case)
-    RUN_CASE("catalog_crash_seed", adviskv::e2e::run_catalog_crash_seed_case)
-    RUN_CASE("catalog_crash_verify", adviskv::e2e::run_catalog_crash_verify_case)
+    RUN_CASE("meta_crash_seed", adviskv::e2e::run_meta_crash_seed_case)
+    RUN_CASE("meta_crash_verify", adviskv::e2e::run_meta_crash_verify_case)
     RUN_CASE("scale_to_zero", adviskv::e2e::run_scale_to_zero_case)
     RUN_CASE("table_replica_count_resize", adviskv::e2e::run_table_replica_count_resize_case)
     RUN_CASE("table_replica_count_resize_with_writes", adviskv::e2e::run_table_replica_count_resize_with_writes_case)
