@@ -19,6 +19,7 @@
 #include "common/defer.h"
 #include "common/define.h"
 #include "common/status.h"
+#include "common/types.h"
 namespace adviskv {
 
 namespace func {
