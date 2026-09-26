@@ -1,0 +1,13 @@
+stateDiagram
+    [*] --> INITIALIZING
+
+    INITIALIZING --> READY : init ok / recover WAL intact
+    INITIALIZING --> RECOVERING : recover WAL gap / corrupt
+    INITIALIZING --> FAULTED : recover disk fail
+
+    RECOVERING --> READY : AppendEntries / Snapshot ok
+    READY --> INITIALIZING : recover start
+    READY --> FAULTED : persist fail / shutdown
+    RECOVERING --> FAULTED : persist fail / shutdown
+
+    FAULTED --> [*]

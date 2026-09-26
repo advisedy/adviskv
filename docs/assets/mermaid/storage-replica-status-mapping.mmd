@@ -1,0 +1,9 @@
+flowchart TD
+    A["Replica::get_status()"] --> B{"local_state_"}
+
+    B -->|"STARTING"| C["INITIALIZING"]
+    B -->|"FAULTED"| D["FAULTED"]
+    B -->|"RUNNING"| E{"recovering_"}
+
+    E -->|"true"| F["RECOVERING"]
+    E -->|"false"| G["READY"]

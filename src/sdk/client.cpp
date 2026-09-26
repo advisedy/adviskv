@@ -43,6 +43,8 @@ ErrorAction classify_error(StatusCode code) {
         case StatusCode::REPLICA_NOT_FOUND:
         case StatusCode::ROUTE_NOT_FOUND:
         case StatusCode::IS_RECOVERING:
+        case StatusCode::IS_FAULTED:
+        case StatusCode::NOT_INIT:
         case StatusCode::RPC_ERROR:
             return ErrorAction{/*retryable=*/true, /*refresh_route=*/true};
         case StatusCode::NOT_YET_COMMIT:

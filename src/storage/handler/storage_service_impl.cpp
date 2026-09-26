@@ -34,6 +34,9 @@ void record_storage_write_handler_result(std::string_view op_name, const Status&
         case StatusCode::NOT_LEADER:
             ADVISKV_METRICS_COUNTER(prefix + "_not_leader");
             break;
+        case StatusCode::IS_FAULTED:
+            ADVISKV_METRICS_COUNTER(prefix + "_faulted");
+            break;
         case StatusCode::NOT_YET_COMMIT:
             ADVISKV_METRICS_COUNTER(prefix + "_not_yet_commit");
             break;

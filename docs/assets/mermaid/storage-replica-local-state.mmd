@@ -1,0 +1,10 @@
+stateDiagram
+    [*] --> STARTING
+
+    STARTING --> RUNNING : init ok / recover disk ok
+    STARTING --> FAULTED : recover disk fail
+
+    RUNNING --> STARTING : recover start
+    RUNNING --> FAULTED : persist fail / shutdown
+
+    FAULTED --> [*]

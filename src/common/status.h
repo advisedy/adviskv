@@ -46,6 +46,7 @@ namespace adviskv {
     X(IS_RECOVERING, 2002)                                                         \
     X(NOT_VOTER, 2003)                                                             \
     X(READ_INDEX_NOT_READY, 2004) /*线性一致读的read_index还没有准备好*/       \
+    X(IS_FAULTED, 2005) /*replica 本地已故障，需要换路由*/                        \
     X(UNKNOWN, 4000)      /*SDK 对外语义：写请求结果未知，调用方应重试或读校验*/ \
     X(SDK_TRY_AGAIN, 4001) /*本次请求未完成，可以安全重试，目前对于读操作暴露*/ \
     X(GET_EOF, 5000)      /*读到了eof*/                                            \

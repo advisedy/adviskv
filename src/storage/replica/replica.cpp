@@ -496,6 +496,13 @@ void Replica::shutdown() {
 }
 
 ReplicaStatus Replica::get_status() const {
+    // Replica 本地 × Raft recovering_ → 对外 StorageReplicaStatus
+    //
+    // | local_state_ | recovering_ | get_status()  |
+    // | STARTING     | *           | INITIALIZING  |
+    // | FAULTED      | *           | FAULTED       |
+    // | RUNNING      | true        | RECOVERING    |
+    // | RUNNING      | false       | READY         |
     switch (local_state_) {
         case LocalState::STARTING:
             return ReplicaStatus::INITIALIZING;
@@ -509,9 +516,7 @@ ReplicaStatus Replica::get_status() const {
     std::lock_guard lock(raft_core_mutex_);
     if (!raft_core_) return ReplicaStatus::INITIALIZING;
     if (raft_core_->is_recovering()) return ReplicaStatus::RECOVERING;
-    if (raft_core_->is_ready()) return ReplicaStatus::READY;
-
-    return ReplicaStatus::INITIALIZING;
+    return ReplicaStatus::READY;
 }
 
 }  // namespace adviskv::storage

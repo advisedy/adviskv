@@ -114,8 +114,10 @@ private:
 
     Status ensure_local_state_running() const {
         if (auto state = local_state_.load(); state != LocalState::RUNNING) {
-            return Status::ERROR(fmt::format("replica is not running, local_state:{}",
-                                             (state == LocalState::FAULTED ? "faulted" : "starting")));
+            if (state == LocalState::FAULTED) {
+                return Status::IS_FAULTED("replica is not running, local_state:faulted");
+            }
+            return Status::NOT_INIT("replica is not running, local_state:starting");
         }
         return Status::OK();
     }
