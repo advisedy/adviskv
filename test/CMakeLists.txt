@@ -155,6 +155,9 @@ add_adviskv_meta_gtest(meta_table_reconcile_service_test
 add_adviskv_meta_gtest(meta_node_selector_test
     ${CMAKE_SOURCE_DIR}/test/meta/selector/node_selector/node_selector_test.cpp
 )
+add_adviskv_meta_gtest(meta_replica_group_membership_reconciler_test
+    ${CMAKE_SOURCE_DIR}/test/meta/service/replica_group_membership_reconciler_test.cpp
+)
 add_adviskv_meta_gtest(meta_index_test
     ${CMAKE_SOURCE_DIR}/test/meta/store/meta_index_test.cpp
 )

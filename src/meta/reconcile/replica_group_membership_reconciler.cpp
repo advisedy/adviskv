@@ -4,6 +4,7 @@
 #include <optional>
 #include <sstream>
 #include <unordered_set>
+#include <utility>
 
 #include "common/define.h"
 #include "common/func.h"
@@ -42,6 +43,46 @@ bool all_members_ready(const MetaStoreTxn& txn, const ReplicaGroup& group) {
         }
     }
     return true;
+}
+
+// 调用方负责选择要退出的副本；这里统一提交成员列表和副本删除状态的转换。
+Status retire_members(MetaStoreTxn& txn, ReplicaGroup& group, const std::vector<ReplicaID>& victims) {
+    if (victims.empty()) return Status::OK();
+
+    std::unordered_set<ReplicaID, ReplicaIDHash> victim_set(victims.begin(), victims.end());
+    std::vector<ReplicaID> kept_members;
+    kept_members.reserve(group.desired_members.size());
+    for (const ReplicaID& rid : group.desired_members) {
+        if (!victim_set.count(rid)) {
+            kept_members.push_back(rid);
+        }
+    }
+    if (kept_members.size() == group.desired_members.size()) return Status::OK();
+    group.desired_members = std::move(kept_members);
+
+    for (const ReplicaID& rid : victims) {
+        ReplicaOr replica_or;
+        RETURN_IF_INVALID_STATUS(txn.get_replica(rid, replica_or))
+        if (replica_or.is_empty()) continue;
+        Replica replica = replica_or.value();
+        bool changed = false;
+        if (replica.state.desired != ReplicaDesired::ABSENT) {
+            replica.state.desired = ReplicaDesired::ABSENT;
+            changed = true;
+        }
+        if (replica.state.phase != ReplicaPhase::DELETING && replica.state.phase != ReplicaPhase::DELETED) {
+            replica.state.phase = ReplicaPhase::DELETING;
+            changed = true;
+        }
+        LOG_DEBUG("[ReplicaGroupMembershipReconciler] retire member, replica_id:{}, changed:{}", rid.to_string(),
+                  changed);
+        if (changed) {
+            replica.state.update_ts = func::get_current_ts_ms();
+            RETURN_IF_INVALID_STATUS(txn.put_replica(replica))
+        }
+    }
+
+    return txn.put_replica_group(group);
 }
 
 }  // namespace
@@ -360,51 +401,7 @@ Status ReplicaGroupMembershipReconciler::remove_members(const ReplicaGroup& grou
 
         std::vector<ReplicaID> victims;
         RETURN_IF_INVALID_STATUS(select_remove_member_victims(txn, current, actual_remove_count, false, victims))
-        if (victims.empty()) {
-            return Status::OK();
-        }
-
-        {
-            std::unordered_set<ReplicaID, ReplicaIDHash> victim_set(victims.begin(), victims.end());
-            std::vector<ReplicaID> keep_members;
-            keep_members.reserve(current.desired_members.size());
-            std::for_each(current.desired_members.begin(), current.desired_members.end(), [&](const ReplicaID& rid) {
-                if (!victim_set.count(rid)) {
-                    keep_members.push_back(rid);
-                }
-            });
-            current.desired_members = std::move(keep_members);
-        }
-
-        LOG_DEBUG("[ReplicaGroupMembershipReconciler] remove_members, selected victims, shard_id:{}, victim_count:{}",
-                  current.shard_id.to_string(), victims.size());
-
-        for (const ReplicaID& rid : victims) {
-            ReplicaOr replica_or;
-            RETURN_IF_INVALID_STATUS(txn.get_replica(rid, replica_or))
-            if (replica_or.is_empty()) continue;
-            Replica replica = replica_or.value();
-            bool changed = false;
-            if (replica.state.desired != ReplicaDesired::ABSENT) {
-                replica.state.desired = ReplicaDesired::ABSENT;
-                changed = true;
-            }
-            if (replica.state.phase != ReplicaPhase::DELETING && replica.state.phase != ReplicaPhase::DELETED) {
-                replica.state.phase = ReplicaPhase::DELETING;
-                changed = true;
-            }
-            LOG_DEBUG(
-                    "[ReplicaGroupMembershipReconciler] remove_members, mark replica absent, replica_id:{}, changed:{}",
-                    rid.to_string(), changed);
-
-            if (changed) {
-                replica.state.update_ts = func::get_current_ts_ms();
-                RETURN_IF_INVALID_STATUS(txn.put_replica(replica))
-            }
-        }
-
-        RETURN_IF_INVALID_STATUS(txn.put_replica_group(current))
-        return Status::OK();
+        return retire_members(txn, current, victims);
     });
 }
 
@@ -417,58 +414,8 @@ Status ReplicaGroupMembershipReconciler::remove_specific_members(const ReplicaGr
         RETURN_IF_INVALID_STATUS(txn.get_replica_group(group.shard_id, current_or))
         if (current_or.is_empty()) return Status::OK();
 
-        std::unordered_set<ReplicaID, ReplicaIDHash> victim_set;
-        victim_set.reserve(victims.size());
-        for (const ReplicaID& rid : victims) {
-            victim_set.insert(rid);
-        }
-
-        // 开始在desired_members里移除victims
         ReplicaGroup current = current_or.value();
-        std::vector<ReplicaID> kept_members;
-        kept_members.reserve(current.desired_members.size());
-        bool changed_group = false;
-        for (const ReplicaID& rid : current.desired_members) {
-            if (victim_set.count(rid)) {
-                changed_group = true;
-                continue;
-            }
-            kept_members.push_back(rid);
-        }
-        if (!changed_group) return Status::OK();
-        current.desired_members = std::move(kept_members);
-        LOG_DEBUG(
-                "[ReplicaGroupMembershipReconciler] remove_specific_members, remove victims from desired members, shard_id:{}, victim_count:{}, kept_member_count:{}",
-                current.shard_id.to_string(), victims.size(), current.desired_members.size());
-
-        // 刚刚是在逻辑上删除Replica，desired_members里面不再有了。
-        // 然后把Replica的内容更改下，让storage那边在物理层面删掉
-        for (const ReplicaID& rid : victims) {
-            ReplicaOr replica_or;
-            RETURN_IF_INVALID_STATUS(txn.get_replica(rid, replica_or))
-            if (replica_or.is_empty()) continue;
-            Replica replica = replica_or.value();
-            bool changed_replica = false;
-            if (replica.state.desired != ReplicaDesired::ABSENT) {
-                replica.state.desired = ReplicaDesired::ABSENT;
-                changed_replica = true;
-            }
-            if (replica.state.phase != ReplicaPhase::DELETING && replica.state.phase != ReplicaPhase::DELETED) {
-                replica.state.phase = ReplicaPhase::DELETING;
-                changed_replica = true;
-            }
-            LOG_DEBUG(
-                    "[ReplicaGroupMembershipReconciler] remove_specific_members, mark replica absent, replica_id:{}, changed:{}",
-                    rid.to_string(), changed_replica);
-
-            if (changed_replica) {
-                replica.state.update_ts = func::get_current_ts_ms();
-                RETURN_IF_INVALID_STATUS(txn.put_replica(replica))
-            }
-        }
-
-        RETURN_IF_INVALID_STATUS(txn.put_replica_group(current))
-        return Status::OK();
+        return retire_members(txn, current, victims);
     });
 }
 

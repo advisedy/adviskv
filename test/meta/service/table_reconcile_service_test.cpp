@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -95,17 +96,38 @@ std::vector<Replica> list_replicas_or_die(MetaStore& store) {
     return replicas;
 }
 
+void update_replica_observed(MetaStore& store, const ReplicaID& replica_id,
+                             const std::function<void(ReplicaObserved&)>& update) {
+    ASSERT_TRUE(store.write_with([&](MetaStoreTxn& txn) -> Status {
+        ReplicaObservedOr observed_or;
+        RETURN_IF_INVALID_STATUS(txn.get_replica_observed(replica_id, observed_or))
+        ReplicaObserved observed = observed_or.is_empty() ? ReplicaObserved{} : observed_or.value();
+        update(observed);
+        return txn.put_replica_observed(replica_id, observed);
+    }).ok());
+}
+
+ReplicaObserved get_replica_observed_or_die(MetaStore& store, const ReplicaID& replica_id) {
+    ReplicaObservedOr observed;
+    EXPECT_TRUE(store.read_with([&](const MetaStoreTxn& txn) {
+        return txn.get_replica_observed(replica_id, observed);
+    }).ok());
+    EXPECT_FALSE(observed.is_empty());
+    return observed.value();
+}
+
 void make_replicas_ready(MetaStore& store) {
     std::vector<Replica> replicas = list_replicas_or_die(store);
     for (Replica& replica : replicas) {
         replica.state.phase = ReplicaPhase::READY;
-        replica.state.observed_storage_status = StorageReplicaStatus::READY;
-        replica.state.observed_raft_role =
-                replica.replica_id.replica_seq == 0 ? ReplicaRole::LEADER : ReplicaRole::FOLLOWER;
-        replica.state.observed_member_type = RaftMemberType::VOTER;
-        replica.state.observed_endpoint = Endpoint{"127.0.0.1", 18080 + replica.replica_id.replica_seq};
-        replica.state.term = 1;
         ASSERT_TRUE(store_test::put_replica(store, replica).ok());
+        update_replica_observed(store, replica.replica_id, [&](ReplicaObserved& observed) {
+            observed.storage_status = StorageReplicaStatus::READY;
+            observed.raft_role = replica.replica_id.replica_seq == 0 ? ReplicaRole::LEADER : ReplicaRole::FOLLOWER;
+            observed.member_type = RaftMemberType::VOTER;
+            observed.endpoint = Endpoint{"127.0.0.1", 18080 + replica.replica_id.replica_seq};
+            observed.term = 1;
+        });
     }
 }
 
@@ -443,11 +465,13 @@ TEST(TableReconcilerTest, ReplicaGroupReplacesBadMemberAfterBackfill) {
     ASSERT_TRUE(store_test::get_replica(store, replacement_id, replacement_replica).ok());
     ASSERT_FALSE(replacement_replica.is_empty());
     replacement_replica->state.phase = ReplicaPhase::READY;
-    replacement_replica->state.observed_storage_status = StorageReplicaStatus::READY;
-    replacement_replica->state.observed_raft_role = ReplicaRole::FOLLOWER;
-    replacement_replica->state.observed_member_type = RaftMemberType::NON_MEMBER;
-    replacement_replica->state.term = 2;
     ASSERT_TRUE(store_test::put_replica(store, replacement_replica.value()).ok());
+    update_replica_observed(store, replacement_id, [](ReplicaObserved& observed) {
+        observed.storage_status = StorageReplicaStatus::READY;
+        observed.raft_role = ReplicaRole::FOLLOWER;
+        observed.member_type = RaftMemberType::NON_MEMBER;
+        observed.term = 2;
+    });
 
     HeartBeatParam param;
     param.node_id = "node-a";
@@ -476,8 +500,9 @@ TEST(TableReconcilerTest, ReplicaGroupReplacesBadMemberAfterBackfill) {
     });
     EXPECT_EQ(remove_it, result.expects.end());
 
-    replacement_replica->state.observed_member_type = RaftMemberType::VOTER;
-    ASSERT_TRUE(store_test::put_replica(store, replacement_replica.value()).ok());
+    update_replica_observed(store, replacement_id, [](ReplicaObserved& observed) {
+        observed.member_type = RaftMemberType::VOTER;
+    });
 
     result.expects.clear();
     ASSERT_TRUE(services.replica_group.build_heartbeat_result(param, result).ok());
@@ -489,7 +514,7 @@ TEST(TableReconcilerTest, ReplicaGroupReplacesBadMemberAfterBackfill) {
     param.replica_list[0].full_membership = {
             RaftMember{PeerMember{"node-a", leader_id, Endpoint{"127.0.0.1", 18080}}, RaftMemberType::VOTER},
             RaftMember{PeerMember{replacement_replica->spec.assign_node_id, replacement_id,
-                                  replacement_replica->state.observed_endpoint},
+                                  get_replica_observed_or_die(store, replacement_id).endpoint},
                        RaftMemberType::VOTER},
     };
     ASSERT_TRUE(services.node.heartbeat(param).ok());
@@ -560,12 +585,14 @@ TEST(TableReconcilerTest, LostReplicaIsReplacedAfterLeaderReportsMembershipWitho
     ASSERT_TRUE(store_test::get_replica(store, replacement_id, replacement).ok());
     ASSERT_FALSE(replacement.is_empty());
     replacement->state.phase = ReplicaPhase::READY;
-    replacement->state.observed_storage_status = StorageReplicaStatus::READY;
-    replacement->state.observed_raft_role = ReplicaRole::FOLLOWER;
-    replacement->state.observed_member_type = RaftMemberType::NON_MEMBER;
-    replacement->state.observed_endpoint = Endpoint{"127.0.0.1", 18083};
-    replacement->state.term = 2;
     ASSERT_TRUE(store_test::put_replica(store, replacement.value()).ok());
+    update_replica_observed(store, replacement_id, [](ReplicaObserved& observed) {
+        observed.storage_status = StorageReplicaStatus::READY;
+        observed.raft_role = ReplicaRole::FOLLOWER;
+        observed.member_type = RaftMemberType::NON_MEMBER;
+        observed.endpoint = Endpoint{"127.0.0.1", 18083};
+        observed.term = 2;
+    });
 
     HeartBeatParam hb;
     hb.node_id = original_replicas[0].spec.assign_node_id;
@@ -590,8 +617,9 @@ TEST(TableReconcilerTest, LostReplicaIsReplacedAfterLeaderReportsMembershipWitho
     });
     ASSERT_NE(add_it, result.expects.end());
 
-    replacement->state.observed_member_type = RaftMemberType::VOTER;
-    ASSERT_TRUE(store_test::put_replica(store, replacement.value()).ok());
+    update_replica_observed(store, replacement_id, [](ReplicaObserved& observed) {
+        observed.member_type = RaftMemberType::VOTER;
+    });
 
     result.expects.clear();
     ASSERT_TRUE(services.replica_group.build_heartbeat_result(hb, result).ok());
@@ -605,13 +633,14 @@ TEST(TableReconcilerTest, LostReplicaIsReplacedAfterLeaderReportsMembershipWitho
     ASSERT_FALSE(healthy_follower.is_empty());
     hb.replica_list[0].full_membership = {
             RaftMember{PeerMember{original_replicas[0].spec.assign_node_id, leader_id,
-                                  original_replicas[0].state.observed_endpoint},
+                                  get_replica_observed_or_die(store, leader_id).endpoint},
                        RaftMemberType::VOTER},
             RaftMember{PeerMember{healthy_follower->spec.assign_node_id, healthy_follower_id,
-                                  healthy_follower->state.observed_endpoint},
+                                  get_replica_observed_or_die(store, healthy_follower_id).endpoint},
                        RaftMemberType::VOTER},
             RaftMember{
-                    PeerMember{replacement->spec.assign_node_id, replacement_id, replacement->state.observed_endpoint},
+                    PeerMember{replacement->spec.assign_node_id, replacement_id,
+                               get_replica_observed_or_die(store, replacement_id).endpoint},
                     RaftMemberType::VOTER},
     };
     ASSERT_TRUE(services.node.heartbeat(hb).ok());
@@ -709,8 +738,9 @@ TEST(TableReconcilerTest, ReplicaGroupShrinksAfterObservedMemberRemoved) {
     ReplicaOr victim;
     ASSERT_TRUE(store_test::get_replica(store, victim_id, victim).ok());
     ASSERT_FALSE(victim.is_empty());
-    victim->state.observed_member_type = RaftMemberType::NON_MEMBER;
-    ASSERT_TRUE(store_test::put_replica(store, victim.value()).ok());
+    update_replica_observed(store, victim_id, [](ReplicaObserved& observed) {
+        observed.member_type = RaftMemberType::NON_MEMBER;
+    });
 
     HeartBeatParam hb;
     hb.node_id = "node-a";
@@ -821,7 +851,6 @@ TEST(TableReconcilerTest, ReplicaErrorKeepsTableWaiting) {
     std::vector<Replica> replicas = list_replicas_or_die(store);
     ASSERT_EQ(replicas.size(), 2U);
     replicas[0].state.phase = ReplicaPhase::ERROR;
-    replicas[0].state.last_error_msg = "replica reconcile failed";
     ASSERT_TRUE(store_test::put_replica(store, replicas[0]).ok());
 
     ASSERT_TRUE(services.table.reconcile_all().ok());
@@ -897,10 +926,11 @@ TEST(TableReconcilerTest, RouteIsRepublishedAfterHeartbeatRecoversLeader) {
 
     std::vector<Replica> replicas = list_replicas_or_die(store);
     ASSERT_EQ(replicas.size(), 2U);
-    for (Replica& replica : replicas) {
-        replica.state.observed_raft_role = ReplicaRole::FOLLOWER;
-        replica.state.term = 8;
-        ASSERT_TRUE(store_test::put_replica(store, replica).ok());
+    for (const Replica& replica : replicas) {
+        update_replica_observed(store, replica.replica_id, [](ReplicaObserved& observed) {
+            observed.raft_role = ReplicaRole::FOLLOWER;
+            observed.term = 8;
+        });
     }
 
     ASSERT_TRUE(services.route.reconcile_all().ok());
