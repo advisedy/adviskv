@@ -27,11 +27,6 @@ enum class TablePhase : int8 {
     RESIZING = 6,
 };
 
-struct ResourcePool {
-    std::string name;
-};
-using ResourcePoolPtr = std::shared_ptr<ResourcePool>;
-
 enum class ReplicaDesired : int8 {
     PRESENT = 1,
     ABSENT = 2,
@@ -114,16 +109,10 @@ struct NodeState {
     NodeOfflineReason offline_reason{NodeOfflineReason::NONE};
 };
 
-struct NodeDerived {
-    int32_t owned_replica_count{0};
-    int32_t owned_leader_count{0};
-};
-
 struct Node {
     NodeID id;
     NodeMeta meta;
     NodeState state;
-    NodeDerived derived;
 };
 
 using NodePtr = std::shared_ptr<Node>;
@@ -144,19 +133,6 @@ struct TableSpec {
     std::vector<ShardRange> shard_ranges{};
     int32_t target_replica_count{0};
     std::string resource_pool;
-
-    TableSpec() = default;
-    TableSpec(std::string name, DatabaseID db_id, std::string db_name, int32_t shard_count, int32_t replica_count,
-              std::string pool, std::string /*operation_id*/, EngineType engine, std::vector<ShardRange> ranges)
-            : db_id(db_id),
-              db_name(std::move(db_name)),
-              name(std::move(name)),
-              engine_type(engine),
-              shard_ranges(std::move(ranges)),
-              target_replica_count(replica_count),
-              resource_pool(std::move(pool)) {
-        if (this->shard_ranges.empty()) this->shard_ranges = make_shard_ranges(shard_count);
-    }
 };
 
 struct TableState {
@@ -195,7 +171,6 @@ struct ShardRoute {
 
 using ShardRoutePtr = std::shared_ptr<ShardRoute>;
 
-using ResourcePoolOr = Optional<ResourcePool>;
 using ReplicaOr = Optional<Replica>;
 using ReplicaGroupOr = Optional<ReplicaGroup>;
 using NodeOr = Optional<Node>;

@@ -16,7 +16,6 @@ struct DurableData {
     std::unordered_map<DatabaseID, Database> databases;
     std::unordered_map<TableID, Table> tables;
     std::unordered_map<ReplicaID, Replica, ReplicaIDHash> replicas;
-    std::unordered_map<std::string, ResourcePool> resource_pools;
     std::unordered_map<ShardID, ReplicaGroup, ShardIDHash> replica_groups;
 };
 

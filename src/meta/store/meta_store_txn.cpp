@@ -2,7 +2,6 @@
 
 #include <algorithm>
 
-#include "common/func.h"
 #include "common/status.h"
 
 namespace adviskv::meta {
@@ -42,16 +41,6 @@ Status MetaStoreTxn::get_database_by_name(const std::string& name, DatabaseOr& o
         return status;
     }
     return get_database(db_id, out);
-}
-
-Status MetaStoreTxn::list_databases(std::vector<Database>& out) const {
-    out.clear();
-    out.reserve(durable().databases.size());
-    for (const auto& kv : durable().databases) {
-        out.push_back(kv.second);
-    }
-    std::sort(out.begin(), out.end(), [](const Database& lhs, const Database& rhs) { return lhs.db_id < rhs.db_id; });
-    return Status::OK();
 }
 
 Status MetaStoreTxn::delete_database(DatabaseID db_id) {
@@ -177,29 +166,6 @@ Status MetaStoreTxn::list_nodes_by_resource_pool(const std::string& pool_name, s
             out.push_back(*node);
         }
     }
-    return Status::OK();
-}
-
-//////////////////////////////////////////////////////////////////////
-
-Status MetaStoreTxn::get_resource_pool(const std::string& name, ResourcePoolOr& out) const {
-    auto it = durable().resource_pools.find(name);
-    if (it == durable().resource_pools.end()) {
-        out.reset();
-        return Status::OK();
-    }
-    out = it->second;
-    return Status::OK();
-}
-
-Status MetaStoreTxn::list_resource_pools(std::vector<ResourcePool>& pools) const {
-    pools.clear();
-    pools.reserve(durable().resource_pools.size());
-    for (const auto& kv : durable().resource_pools) {
-        pools.push_back(kv.second);
-    }
-    std::sort(pools.begin(), pools.end(),
-              [](const ResourcePool& lhs, const ResourcePool& rhs) { return lhs.name < rhs.name; });
     return Status::OK();
 }
 
@@ -346,16 +312,6 @@ Status MetaStoreTxn::delete_shard_route(const ShardID& shard_id) {
         return Status::OK();
     }
     mutable_runtime().shard_routes.erase(shard_id);
-    return Status::OK();
-}
-
-Status MetaStoreTxn::del_shard_route_entry(const ShardID& shard_id, const ReplicaID& replica_id) {
-    auto it = mutable_runtime().shard_routes.find(shard_id);
-    if (it == mutable_runtime().shard_routes.end()) {
-        return Status::OK();
-    }
-    func::ad_erase_if(it->second.replicas,
-                      [&replica_id](const RouteEntry& entry) { return entry.replica_id == replica_id; });
     return Status::OK();
 }
 

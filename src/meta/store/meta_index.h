@@ -1,5 +1,4 @@
 #pragma once
-#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -42,7 +41,6 @@ public:
     MetaIndex() = default;
 
     void clear();
-    std::unique_ptr<MetaIndex> clone() const;
 
     void on_table_upsert(const Table* old_table, const Table& new_table);
     void on_node_upsert(const Node* old_node, const Node& new_node);
@@ -50,7 +48,6 @@ public:
     void on_db_upsert(const Database* old_db, const Database& new_db);
 
     void on_table_delete(const Table& table);
-    void on_node_delete(const Node& node);
     void on_replica_delete(const Replica& replica);
     void on_db_delete(const Database& db);
 
@@ -69,7 +66,5 @@ private:
     std::unordered_map<std::string, std::unordered_set<NodeID>> pool_nodes_index_;
     std::unordered_map<ShardKey, std::unordered_set<ReplicaKey, ReplicaKeyHash>, ShardKeyHash> shard_replicas_index_;
     std::unordered_map<NodeID, std::unordered_set<ReplicaKey, ReplicaKeyHash>> node_replicas_index_;
-
-    std::unordered_map<NodeID, std::string> node_pool_index_;
 };
 }  // namespace adviskv::meta

@@ -15,8 +15,7 @@ Node make_heartbeat_node(const NodeID& node_id, NodeStatus status,
                          int64_t last_heartbeat_ts, int32_t port) {
     return Node{node_id, NodeMeta{"pool-a", "dc-a"},
                 NodeState{status, Endpoint{"127.0.0.1", port},
-                          last_heartbeat_ts},
-                NodeDerived{}};
+                          last_heartbeat_ts}};
 }
 
 Replica make_replica(const NodeID& node_id, ReplicaIndex replica_index,
@@ -38,8 +37,7 @@ Table make_table() {
     state.desired = TableDesired::PRESENT;
     state.phase = TablePhase::CREATING;
     return Table{1001,
-                 TableSpec{"orders", 11, "commerce", 1, 1, "pool-a",
-                           "create-1001", EngineType::MAP, make_shard_ranges(1)},
+                 TableSpec{11, "commerce", "orders", EngineType::MAP, make_shard_ranges(1), 1, "pool-a"},
                  state};
 }
 

@@ -23,9 +23,7 @@ Table make_table(TableID table_id, const std::string& db_name,
     state.desired = desired;
     state.phase = TablePhase::READY;
     return Table{table_id,
-                 TableSpec{table_name, 11, db_name, 2, 2, "pool-a",
-                           "create-table-" + std::to_string(table_id), EngineType::MAP,
-                           make_shard_ranges(2)},
+                 TableSpec{11, db_name, table_name, EngineType::MAP, make_shard_ranges(2), 2, "pool-a"},
                  state};
 }
 
@@ -33,8 +31,7 @@ Node make_node(const NodeID& id, const std::string& resource_pool,
                int32_t port = 18080) {
     return Node{id, NodeMeta{resource_pool, "dc-a"},
                 NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", port},
-                          100},
-                NodeDerived{}};
+                          100}};
 }
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
@@ -171,32 +168,6 @@ TEST(MetaStoreTest, NormalStoreFlowWorks) {
     ASSERT_TRUE(store_test::delete_table(store, 1001).ok());
     ASSERT_TRUE(store_test::get_table_by_name(store, "commerce", "orders", table_by_name).ok());
     EXPECT_TRUE(table_by_name.is_empty());
-}
-
-TEST(MetaStoreTest, FailedRouteEntryMutationDoesNotPublish) {
-    MetaStore store{MemoryMetaStoreParam{}};
-    ASSERT_TRUE(store.init().ok());
-
-    ShardID shard_id{1001, 0};
-    ShardRoute route = make_route(shard_id);
-    route.replicas.push_back(
-        RouteEntry{ReplicaID{1001, 0, 1}, "node-b", "127.0.0.2", 18081,
-                   ReplicaRole::FOLLOWER, 7});
-    ASSERT_TRUE(store_test::put_shard_route(store, route).ok());
-
-    Status status = store.write_with([&](MetaStoreTxn& txn) {
-        RETURN_IF_INVALID_STATUS(
-            txn.del_shard_route_entry(shard_id, ReplicaID{1001, 0, 0}))
-        return Status::ERROR("rollback route mutation");
-    });
-    ASSERT_TRUE(status.fail());
-
-    ShardRouteOr loaded;
-    ASSERT_TRUE(store_test::get_shard_route(store, shard_id, loaded).ok());
-    ASSERT_FALSE(loaded.is_empty());
-    ASSERT_EQ(loaded->replicas.size(), 2U);
-    EXPECT_EQ(loaded->replicas[0].replica_id, ReplicaID({1001, 0, 0}));
-    EXPECT_EQ(loaded->replicas[1].replica_id, ReplicaID({1001, 0, 1}));
 }
 
 // 同一事务内写入后立即查询应可见（read-your-writes），且索引同步。

@@ -30,15 +30,13 @@ Table make_table() {
     state.phase = TablePhase::READY;
     return Table{
         K_TEST_TABLE_ID,
-        TableSpec{"orders", 11, "commerce", 1, 3, "pool-a", "create-1001", EngineType::MAP,
-                  make_shard_ranges(1)},
+        TableSpec{11, "commerce", "orders", EngineType::MAP, make_shard_ranges(1), 3, "pool-a"},
         state};
 }
 
 Node make_node(const NodeID& node_id, int32_t port) {
     return Node{node_id, NodeMeta{"pool-a", "dc-a"},
-                NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", port}, 1},
-                NodeDerived{}};
+                NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", port}, 1}};
 }
 
 Replica make_replica(ReplicaIndex replica_index, const NodeID& node_id,

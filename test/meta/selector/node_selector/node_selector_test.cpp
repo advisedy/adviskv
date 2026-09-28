@@ -18,7 +18,7 @@ Node make_node(const NodeID& id, const std::string& resource_pool, int32_t port,
                const std::string& ip = "127.0.0.1",
                const std::string& dc = "dc-a") {
     return Node{id, NodeMeta{resource_pool, dc},
-                NodeState{status, Endpoint{ip, port}, 100}, NodeDerived{}};
+                NodeState{status, Endpoint{ip, port}, 100}};
 }
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id,

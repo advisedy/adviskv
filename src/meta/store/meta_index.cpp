@@ -1,7 +1,6 @@
 #include "meta/store/meta_index.h"
 
 #include <algorithm>
-#include <memory>
 
 #include "common/define.h"
 #include "common/status.h"
@@ -52,7 +51,6 @@ void MetaIndex::clear() {
     pool_nodes_index_.clear();
     shard_replicas_index_.clear();
     node_replicas_index_.clear();
-    node_pool_index_.clear();
 }
 
 void MetaIndex::on_table_upsert(const Table* old_table, const Table& new_table) {
@@ -71,11 +69,9 @@ void MetaIndex::on_node_upsert(const Node* old_node, const Node& new_node) {
             pool_it->second.erase(old_node->id);
             cleanup_empty_pool_set(pool_nodes_index_, old_pool);
         }
-        node_pool_index_.erase(old_node->id);
     }
 
     pool_nodes_index_[new_node.meta.resource_pool].insert(new_node.id);
-    node_pool_index_[new_node.id] = new_node.meta.resource_pool;
 }
 
 void MetaIndex::on_replica_upsert(const Replica* old_replica, const Replica& new_replica) {
@@ -112,15 +108,6 @@ void MetaIndex::on_db_upsert(const Database* old_db, const Database& new_db) {
 }
 
 void MetaIndex::on_table_delete(const Table& table) { table_name_index_.erase(make_table_name_key(table)); }
-
-void MetaIndex::on_node_delete(const Node& node) {
-    auto pool_it = pool_nodes_index_.find(node.meta.resource_pool);
-    if (pool_it != pool_nodes_index_.end()) {
-        pool_it->second.erase(node.id);
-        cleanup_empty_pool_set(pool_nodes_index_, node.meta.resource_pool);
-    }
-    node_pool_index_.erase(node.id);
-}
 
 void MetaIndex::on_db_delete(const Database& db) { db_name_index_.erase(db.name); }
 
@@ -192,7 +179,5 @@ Status MetaIndex::list_replicas_by_node(const NodeID& node_id, std::vector<Repli
     out.insert(out.end(), it->second.begin(), it->second.end());
     return Status::OK();
 }
-
-std::unique_ptr<MetaIndex> MetaIndex::clone() const { return std::make_unique<MetaIndex>(*this); }
 
 }  // namespace adviskv::meta

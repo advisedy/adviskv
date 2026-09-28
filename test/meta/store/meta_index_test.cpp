@@ -14,14 +14,12 @@ Table make_table(TableID table_id, const std::string& db_name, const std::string
     state.desired = desired;
     state.phase = TablePhase::CREATING;
     return Table{table_id,
-                 TableSpec{table_name, 11, db_name, 2, 2, "pool-a", "create-table-" + std::to_string(table_id),
-                           EngineType::MAP, make_shard_ranges(2)},
+                 TableSpec{11, db_name, table_name, EngineType::MAP, make_shard_ranges(2), 2, "pool-a"},
                  state};
 }
 
 Node make_node(const NodeID& id, const std::string& resource_pool) {
-    return Node{id, NodeMeta{resource_pool, "dc-a"}, NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", 18080}},
-                NodeDerived{}};
+    return Node{id, NodeMeta{resource_pool, "dc-a"}, NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", 18080}}};
 }
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
@@ -116,9 +114,6 @@ TEST(MetaIndexTest, NormalIndexFlowWorks) {
     index.on_replica_delete(moved_replica);
     ASSERT_TRUE(index.list_replicas_by_shard(ShardID{1001, 0}, replicas).ok());
     EXPECT_TRUE(replicas.empty());
-    index.on_node_delete(migrated_node_a);
-    ASSERT_TRUE(index.list_nodes_by_resource_pool("pool-b", nodes).ok());
-    EXPECT_TRUE(nodes.empty());
     index.on_table_delete(renamed);
     EXPECT_EQ(index.find_table_by_name("commerce_v2", "orders_v2", table_id).code(), StatusCode::TABLE_NOT_FOUND);
 }

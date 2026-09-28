@@ -21,7 +21,6 @@ public:
     Status put_database(const Database& db);
     Status get_database(DatabaseID db_id, DatabaseOr& out) const;
     Status get_database_by_name(const std::string& name, DatabaseOr& out) const;
-    Status list_databases(std::vector<Database>& out) const;
     Status delete_database(DatabaseID db_id);
     DatabaseID allocate_db_id();
     TableID allocate_table_id();
@@ -37,9 +36,6 @@ public:
     Status list_nodes(std::vector<Node>& out) const;
     Status list_nodes_by_resource_pool(const std::string& pool_name, std::vector<Node>& out) const;
 
-    Status get_resource_pool(const std::string& name, ResourcePoolOr& out) const;
-    Status list_resource_pools(std::vector<ResourcePool>& pools) const;
-
     Status put_replica(const Replica& replica);
     Status put_replicas(const std::vector<Replica>& replicas);
     Status get_replica(const ReplicaID& replica_key, ReplicaOr& out) const;
@@ -51,7 +47,6 @@ public:
     Status put_shard_route(const ShardRoute& route);
     Status get_shard_route(const ShardID& shard_id, ShardRouteOr& out) const;
     Status delete_shard_route(const ShardID& shard_id);
-    Status del_shard_route_entry(const ShardID& shard_id, const ReplicaID& replica_id);
 
     Status put_replica_group(const ReplicaGroup& group);
     Status get_replica_group(const ShardID& shard_id, ReplicaGroupOr& out) const;

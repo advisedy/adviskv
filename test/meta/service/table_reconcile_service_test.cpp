@@ -60,8 +60,7 @@ struct ServiceHarness {
 };
 
 Node make_node(const NodeID& id, int32_t port) {
-    return Node{id, NodeMeta{"pool-a", "dc-a"}, NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", port}, 1},
-                NodeDerived{}};
+    return Node{id, NodeMeta{"pool-a", "dc-a"}, NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", port}, 1}};
 }
 
 CreateTableParam make_create_table_param() { return CreateTableParam{"commerce", "orders", 1, 2, "pool-a"}; }

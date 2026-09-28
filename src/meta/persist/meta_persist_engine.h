@@ -15,7 +15,6 @@ struct MetaPersistedRecord {
     std::vector<Database> databases;
     std::vector<Table> tables;
     std::vector<Replica> replicas;
-    std::vector<ResourcePool> resource_pools;
     std::vector<ReplicaGroup> replica_groups;
 };
 

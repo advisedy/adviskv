@@ -41,7 +41,7 @@ protected:
 
         record.tables.push_back(Table{
                 101,
-                TableSpec{"users", 1, "app", 8, 3, "pool-a", "op-table", EngineType::MAP, make_shard_ranges(8)},
+                TableSpec{1, "app", "users", EngineType::MAP, make_shard_ranges(8), 3, "pool-a"},
                 table_state,
         });
 
@@ -65,8 +65,6 @@ protected:
                 replica_state,
         });
 
-        record.resource_pools.push_back(ResourcePool{"pool-a"});
-
         return record;
     }
 
@@ -83,8 +81,7 @@ protected:
 
         record.tables.push_back(Table{
                 202,
-                TableSpec{"orders", 2, "billing", 16, 5, "pool-b", "op-table-2", EngineType::MAP,
-                          make_shard_ranges(16)},
+                TableSpec{2, "billing", "orders", EngineType::MAP, make_shard_ranges(16), 5, "pool-b"},
                 table_state,
         });
 
@@ -121,8 +118,6 @@ protected:
                 },
                 follower_state,
         });
-
-        record.resource_pools.push_back(ResourcePool{"pool-b"});
 
         ShardID shard_id{202, 3};
         ReplicaGroup group;
@@ -201,15 +196,6 @@ protected:
             EXPECT_EQ(actual_replica.state.term, expected_replica.state.term);
         }
 
-        ASSERT_EQ(actual.resource_pools.size(), expected.resource_pools.size());
-        for (const auto& expected_pool : expected.resource_pools) {
-            auto it = std::find_if(actual.resource_pools.begin(), actual.resource_pools.end(), [&](const ResourcePool& pool) {
-                return pool.name == expected_pool.name;
-            });
-            ASSERT_NE(it, actual.resource_pools.end());
-            EXPECT_EQ(it->name, expected_pool.name);
-        }
-
         ASSERT_EQ(actual.replica_groups.size(), expected.replica_groups.size());
         for (const auto& expected_group : expected.replica_groups) {
             auto it = std::find_if(actual.replica_groups.begin(), actual.replica_groups.end(), [&](const ReplicaGroup& group) {
@@ -269,7 +255,6 @@ TEST_F(MetaPersistEngineTest, LoadMissingMetaReturnsEmptyRecord) {
 
     EXPECT_TRUE(loaded.tables.empty());
     EXPECT_TRUE(loaded.replicas.empty());
-    EXPECT_TRUE(loaded.resource_pools.empty());
     EXPECT_TRUE(loaded.replica_groups.empty());
 }
 

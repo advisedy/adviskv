@@ -15,8 +15,7 @@ Table make_table() {
     state.desired = TableDesired::PRESENT;
     state.phase = TablePhase::READY;
     return Table{1001,
-                 TableSpec{"orders", 11, "commerce", 4, 2, "pool-a",
-                           "create-table-1001", EngineType::MAP, make_shard_ranges(4)},
+                 TableSpec{11, "commerce", "orders", EngineType::MAP, make_shard_ranges(4), 2, "pool-a"},
                  state};
 }
 

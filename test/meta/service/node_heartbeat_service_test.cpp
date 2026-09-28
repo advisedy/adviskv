@@ -14,8 +14,7 @@ namespace adviskv::meta {
 namespace {
 
 Node make_node(const NodeID& id, int32_t port = 18080) {
-    return Node{id, NodeMeta{"pool-a", "dc-a"}, NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", port}, 1},
-                NodeDerived{}};
+    return Node{id, NodeMeta{"pool-a", "dc-a"}, NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", port}, 1}};
 }
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {

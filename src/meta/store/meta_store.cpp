@@ -108,8 +108,6 @@ Status MetaStore::persist_if_needed(const DurableData& durable) {
     for (const auto& [_, table] : durable.tables) record.tables.push_back(table);
     record.replicas.reserve(durable.replicas.size());
     for (const auto& [_, replica] : durable.replicas) record.replicas.push_back(replica);
-    record.resource_pools.reserve(durable.resource_pools.size());
-    for (const auto& [_, pool] : durable.resource_pools) record.resource_pools.push_back(pool);
     record.replica_groups.reserve(durable.replica_groups.size());
     for (const auto& [_, group] : durable.replica_groups) record.replica_groups.push_back(group);
     return persist_engine_->save_meta(record);
@@ -127,7 +125,6 @@ Status MetaStore::load_from_persist(MetaWorkingSet& ws) {
         replica.state.observed_raft_role = ReplicaRole::FOLLOWER;
         ws.durable.replicas[replica.replica_id] = std::move(replica);
     }
-    for (auto& pool : record.resource_pools) ws.durable.resource_pools[pool.name] = std::move(pool);
     for (auto& group : record.replica_groups) ws.durable.replica_groups[group.shard_id] = std::move(group);
     return Status::OK();
 }

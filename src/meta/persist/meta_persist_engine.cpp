@@ -36,7 +36,6 @@ void from_json(const Json& j, IDAllocator<T>& allocator) {
 namespace adviskv::meta {
 // 字段只列一次，编码和解码都按结构体的层级处理。
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Database, db_id, name, zone)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ResourcePool, name)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TableSpec, db_id, db_name, name, engine_type, shard_ranges, target_replica_count,
                                    resource_pool)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TableState, desired, phase, operation_id, last_error_msg, create_ts, update_ts)
@@ -49,7 +48,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Replica, replica_id, spec, state)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ReplicaGroup, shard_id, mode, target_replica_count, desired_members,
                                    observed_membership_term, observed_membership_leader, seq_allocator)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(MetaPersistedRecord, next_db_id, next_table_id, databases, tables, replicas,
-                                   resource_pools, replica_groups)
+                                   replica_groups)
 
 namespace {
 constexpr int64 K_MAX_META_JSON_BYTES = 256 * 1024 * 1024;
@@ -73,11 +72,6 @@ Status validate_record(const MetaPersistedRecord& record) {
     std::unordered_set<ShardID, ShardIDHash> replica_group_ids;
     for (const auto& group : record.replica_groups) {
         if (!replica_group_ids.insert(group.shard_id).second) return Status::ERROR("duplicate replica group ID");
-    }
-
-    std::unordered_set<std::string> resource_pool_names;
-    for (const auto& pool : record.resource_pools) {
-        if (!resource_pool_names.insert(pool.name).second) return Status::ERROR("duplicate resource pool name");
     }
     return Status::OK();
 }
