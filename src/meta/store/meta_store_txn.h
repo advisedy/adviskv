@@ -44,6 +44,10 @@ public:
     Status list_replicas_by_shard(const ShardID& shard_id, std::vector<Replica>& out) const;
     Status list_replicas_by_node(NodeID node_id, std::vector<Replica>& out) const;
 
+    // 只写 RuntimeData，不落盘。
+    Status put_replica_observed(const ReplicaID& replica_key, const ReplicaObserved& observed);
+    Status get_replica_observed(const ReplicaID& replica_key, ReplicaObservedOr& out) const;
+
     Status put_shard_route(const ShardRoute& route);
     Status get_shard_route(const ShardID& shard_id, ShardRouteOr& out) const;
     Status delete_shard_route(const ShardID& shard_id);

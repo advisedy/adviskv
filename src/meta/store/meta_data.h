@@ -22,6 +22,8 @@ struct DurableData {
 struct RuntimeData {
     std::unordered_map<NodeID, Node> nodes;
     std::unordered_map<ShardID, ShardRoute, ShardIDHash> shard_routes;
+    // 心跳观测态，重启后重新上报。
+    std::unordered_map<ReplicaID, ReplicaObserved, ReplicaIDHash> replica_observeds;
 };
 
 struct MetaWorkingSet {

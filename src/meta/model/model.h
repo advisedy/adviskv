@@ -51,12 +51,16 @@ struct ReplicaSpec {
 struct ReplicaState {
     ReplicaDesired desired{ReplicaDesired::PRESENT};
     ReplicaPhase phase{ReplicaPhase::PENDING};
-    ReplicaRole observed_raft_role{ReplicaRole::FOLLOWER};
-    RaftMemberType observed_member_type{RaftMemberType::NON_MEMBER};
-    Endpoint observed_endpoint;
-    StorageReplicaStatus observed_storage_status{StorageReplicaStatus::INITIALIZING};
-    bool observed_no_exist{false};
-    std::string last_error_msg;
+    int64 update_ts{0};
+};
+
+// Storage 心跳上报的观测态，不落盘。
+struct ReplicaObserved {
+    ReplicaRole raft_role{ReplicaRole::FOLLOWER};
+    RaftMemberType member_type{RaftMemberType::NON_MEMBER};
+    Endpoint endpoint;
+    StorageReplicaStatus storage_status{StorageReplicaStatus::INITIALIZING};
+    bool no_exist{false};
     int64 update_ts{0};
     Term term{0};
 };
@@ -66,6 +70,9 @@ struct Replica {
     ReplicaSpec spec;
     ReplicaState state;
 };
+
+using ReplicaOr = Optional<Replica>;
+using ReplicaObservedOr = Optional<ReplicaObserved>;
 
 using ReplicaPtr = std::shared_ptr<Replica>;
 
@@ -171,7 +178,6 @@ struct ShardRoute {
 
 using ShardRoutePtr = std::shared_ptr<ShardRoute>;
 
-using ReplicaOr = Optional<Replica>;
 using ReplicaGroupOr = Optional<ReplicaGroup>;
 using NodeOr = Optional<Node>;
 using DatabaseOr = Optional<Database>;

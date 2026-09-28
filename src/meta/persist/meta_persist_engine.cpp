@@ -41,9 +41,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TableSpec, db_id, db_name, name, engine_type,
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(TableState, desired, phase, operation_id, last_error_msg, create_ts, update_ts)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Table, table_id, spec, state)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ReplicaSpec, dc, assign_node_id, engine_type)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ReplicaState, desired, phase, observed_raft_role, observed_member_type,
-                                   observed_endpoint, observed_storage_status, observed_no_exist, last_error_msg,
-                                   update_ts, term)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ReplicaState, desired, phase, update_ts)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Replica, replica_id, spec, state)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ReplicaGroup, shard_id, mode, target_replica_count, desired_members,
                                    observed_membership_term, observed_membership_leader, seq_allocator)

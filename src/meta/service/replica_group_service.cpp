@@ -154,13 +154,17 @@ std::vector<PeerMember> build_shard_members(const MetaStoreTxn& txn, const Shard
         if (!txn.get_replica(replica_id, replica).ok() || replica.is_empty()) {
             continue;
         }
-        if (voter_only && (replica->state.observed_member_type != RaftMemberType::VOTER)) {
+        ReplicaObservedOr observed_or;
+        if (!txn.get_replica_observed(replica_id, observed_or).ok() || observed_or.is_empty()) {
+            continue;
+        }
+        if (voter_only && (observed_or->member_type != RaftMemberType::VOTER)) {
             continue;
         }
         PeerMember member;
         member.node_id = replica->spec.assign_node_id;
         member.replica_id = replica_id;
-        member.endpoint = replica->state.observed_endpoint;
+        member.endpoint = observed_or->endpoint;
         members.push_back(std::move(member));
     }
     return members;
@@ -186,15 +190,18 @@ Status append_reconfig_command_for_leader(const MetaStoreTxn& txn, const HeartBe
             if (replica_or.is_empty()) continue;
 
             const Replica& replica = replica_or.value();
-            if (replica.spec.assign_node_id == param.node_id &&
-                replica.state.observed_raft_role == ReplicaRole::LEADER) {
+            ReplicaObservedOr observed_or;
+            RETURN_IF_INVALID_STATUS(txn.get_replica_observed(rid, observed_or))
+            const ReplicaObserved observed = observed_or.is_empty() ? ReplicaObserved{} : observed_or.value();
+
+            if (replica.spec.assign_node_id == param.node_id && observed.raft_role == ReplicaRole::LEADER) {
                 node_is_leader = true;
             }
-            if (is_healthy(replica) && is_raft_voter(replica.state.observed_member_type)) {
+            if (is_healthy(replica) && is_raft_voter(observed.member_type)) {
                 ++healthy_voter_count;
             }
             if (add_target.is_empty() && replica.state.phase == ReplicaPhase::READY &&
-                replica.state.observed_member_type == RaftMemberType::NON_MEMBER) {
+                observed.member_type == RaftMemberType::NON_MEMBER) {
                 add_target = rid;
             }
         }

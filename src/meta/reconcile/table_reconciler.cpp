@@ -163,21 +163,21 @@ Status TableReconciler::ensure_all_shards_ok(MetaStoreTxn& txn, Table& table, bo
 
         std::unordered_set<ReplicaID, ReplicaIDHash> ready_replica_ids;
         for (const Replica& replica : replicas) {
+            ReplicaObservedOr observed_or;
+            RETURN_IF_INVALID_STATUS(txn.get_replica_observed(replica.replica_id, observed_or))
+            ReplicaObserved observed = observed_or.is_empty() ? ReplicaObserved{} : observed_or.value();
             if (replica.state.desired != ReplicaDesired::PRESENT || replica.state.phase != ReplicaPhase::READY ||
-                !is_raft_voter(replica.state.observed_member_type)) {
-                // 必须 desired=PRESENT、phase=READY，并且已经是 Raft voter。
+                !is_raft_voter(observed.member_type)) {
                 LOG_WARN(
                         "[TableReconciler] shard not ready: replica not ready, "
                         "table_id={}, shard_index={}, replica_id={}, desired={}, "
                         "phase={}, storage_status={}, role={}, member_type={}, "
-                        "term={}, endpoint={}:{}, last_error_msg={}",
+                        "term={}, endpoint={}:{}",
                         table.table_id, shard_index, replica.replica_id.to_string(),
                         static_cast<int32>(replica.state.desired), static_cast<int32>(replica.state.phase),
-                        static_cast<int32>(replica.state.observed_storage_status),
-                        static_cast<int32>(replica.state.observed_raft_role),
-                        static_cast<int32>(replica.state.observed_member_type), replica.state.term,
-                        replica.state.observed_endpoint.ip, replica.state.observed_endpoint.port,
-                        replica.state.last_error_msg);
+                        static_cast<int32>(observed.storage_status), static_cast<int32>(observed.raft_role),
+                        static_cast<int32>(observed.member_type), observed.term, observed.endpoint.ip,
+                        observed.endpoint.port);
                 all_shards_ok = false;
                 return Status::OK();
             }

@@ -110,12 +110,15 @@ Status project_leader_membership(MetaStoreTxn& txn, const HeartBeatReplicaInfo& 
                      rid.to_string());
             continue;
         }
-        if (replica->state.observed_member_type == next_type) {
+        ReplicaObservedOr observed_or;
+        RETURN_IF_INVALID_STATUS(txn.get_replica_observed(rid, observed_or))
+        if (observed_or.has_value() && observed_or->member_type == next_type) {
             continue;
         }
-        replica->state.observed_member_type = next_type;
-        replica->state.update_ts = now;
-        RETURN_IF_INVALID_STATUS(txn.put_replica(replica.value()))
+        ReplicaObserved observed = observed_or.is_empty() ? ReplicaObserved{} : observed_or.value();
+        observed.member_type = next_type;
+        observed.update_ts = now;
+        RETURN_IF_INVALID_STATUS(txn.put_replica_observed(rid, observed))
     }
 
     group.observed_membership_term = info.term;
@@ -218,23 +221,28 @@ Status NodeService::apply_reported_replicas(MetaStoreTxn& txn, const HeartBeatPa
                     key.to_string(), replica->spec.assign_node_id, param.node_id);
             continue;
         }
-        if (info.term < replica->state.term) {
+        ReplicaObservedOr prev_observed_or;
+        RETURN_IF_INVALID_STATUS(txn.get_replica_observed(key, prev_observed_or))
+        if (prev_observed_or.has_value() && info.term < prev_observed_or->term) {
             LOG_WARN(
                     "[NodeService] skip stale replica heartbeat, replica_id:{}, reported_term:{}, "
                     "observed_term:{}",
-                    key.to_string(), info.term, replica->state.term);
+                    key.to_string(), info.term, prev_observed_or->term);
             continue;
         }
 
-        replica->state.observed_raft_role = info.role;
-        replica->state.observed_endpoint = Endpoint{param.ip, param.port};
-        replica->state.observed_storage_status = info.storage_status;
-        replica->state.observed_no_exist = false;
-        replica->state.term = info.term;
-        replica->state.update_ts = func::get_current_ts_ms();
-        RETURN_IF_INVALID_STATUS(txn.put_replica(*replica))
+        ReplicaObserved observed;
+        observed.raft_role = info.role;
+        // member_type 由 leader 的 membership 上报更新。
+        observed.member_type = prev_observed_or.is_empty() ? RaftMemberType::NON_MEMBER : prev_observed_or->member_type;
+        observed.endpoint = Endpoint{param.ip, param.port};
+        observed.storage_status = info.storage_status;
+        observed.no_exist = false;
+        observed.term = info.term;
+        observed.update_ts = func::get_current_ts_ms();
+        RETURN_IF_INVALID_STATUS(txn.put_replica_observed(key, observed))
 
-        if (replica->state.observed_raft_role == ReplicaRole::LEADER) {
+        if (observed.raft_role == ReplicaRole::LEADER) {
             LOG_DEBUG("[NodeService] replica_id:{} is leader, term:{}", replica->replica_id.to_string(), info.term);
             RETURN_IF_INVALID_STATUS(project_leader_membership(txn, info))
         }
@@ -255,7 +263,7 @@ Status NodeService::mark_no_exist_replicas(MetaStoreTxn& txn, const HeartBeatPar
     std::vector<Replica> node_replicas;
     RETURN_IF_INVALID_STATUS(txn.list_replicas_by_node(param.node_id, node_replicas))
 
-    for (Replica& replica : node_replicas) {
+    for (const Replica& replica : node_replicas) {
         if (reported_replica_ids.find(replica.replica_id) != reported_replica_ids.end()) {
             continue;
         }
@@ -268,9 +276,12 @@ Status NodeService::mark_no_exist_replicas(MetaStoreTxn& txn, const HeartBeatPar
                 "exist, replica_id:{}",
                 param.node_id, replica.replica_id.to_string());
 
-        replica.state.observed_no_exist = true;
-        replica.state.update_ts = func::get_current_ts_ms();
-        RETURN_IF_INVALID_STATUS(txn.put_replica(replica))
+        ReplicaObservedOr observed_or;
+        RETURN_IF_INVALID_STATUS(txn.get_replica_observed(replica.replica_id, observed_or))
+        ReplicaObserved observed = observed_or.is_empty() ? ReplicaObserved{} : observed_or.value();
+        observed.no_exist = true;
+        observed.update_ts = func::get_current_ts_ms();
+        RETURN_IF_INVALID_STATUS(txn.put_replica_observed(replica.replica_id, observed))
     }
 
     return Status::OK();

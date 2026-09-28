@@ -214,12 +214,28 @@ Status MetaStoreTxn::get_replica(const ReplicaID& replica_key, ReplicaOr& out) c
 Status MetaStoreTxn::delete_replica(const ReplicaID& replica_key) {
     Optional<Replica> old;
     RETURN_IF_INVALID_STATUS(get_replica(replica_key, old))
+    mutable_runtime().replica_observeds.erase(replica_key);
     if (old.is_empty()) {
         return Status::OK();
     }
     mutable_durable().replicas.erase(replica_key);
     mutable_index().on_replica_delete(*old);
     mark_durable_dirty();
+    return Status::OK();
+}
+
+Status MetaStoreTxn::put_replica_observed(const ReplicaID& replica_key, const ReplicaObserved& observed) {
+    mutable_runtime().replica_observeds[replica_key] = observed;
+    return Status::OK();
+}
+
+Status MetaStoreTxn::get_replica_observed(const ReplicaID& replica_key, ReplicaObservedOr& out) const {
+    auto it = runtime().replica_observeds.find(replica_key);
+    if (it == runtime().replica_observeds.end()) {
+        out.reset();
+        return Status::OK();
+    }
+    out = it->second;
     return Status::OK();
 }
 

@@ -34,7 +34,11 @@ bool all_members_ready(const MetaStoreTxn& txn, const ReplicaGroup& group) {
         if (replica->state.phase != ReplicaPhase::READY) {
             return false;
         }
-        if (replica->state.observed_member_type != RaftMemberType::VOTER) {
+        ReplicaObservedOr observed_or;
+        if (txn.get_replica_observed(rid, observed_or).fail() || observed_or.is_empty()) {
+            return false;
+        }
+        if (observed_or->member_type != RaftMemberType::VOTER) {
             return false;
         }
     }
@@ -122,10 +126,11 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
         RETURN_IF_INVALID_STATUS(select_remove_member_victims(txn, current_group, 1, !include_healthy, victims))
         if (!victims.empty()) {
             remove_victim = victims.front();
-            ReplicaOr victim_or;
-            RETURN_IF_INVALID_STATUS(txn.get_replica(remove_victim.value(), victim_or))
-            remove_victim_is_non_member =
-                    !victim_or.is_empty() && victim_or->state.observed_member_type == RaftMemberType::NON_MEMBER;
+            ReplicaObservedOr victim_observed_or;
+            RETURN_IF_INVALID_STATUS(txn.get_replica_observed(remove_victim.value(), victim_observed_or))
+            RaftMemberType victim_type = victim_observed_or.is_empty() ? RaftMemberType::NON_MEMBER
+                                                                       : victim_observed_or->member_type;
+            remove_victim_is_non_member = victim_type == RaftMemberType::NON_MEMBER;
         }
         return Status::OK();
     }))
@@ -320,11 +325,6 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
             replica.spec.engine_type = engine_type;
             replica.state.desired = ReplicaDesired::PRESENT;
             replica.state.phase = ReplicaPhase::CREATING;
-            replica.state.observed_raft_role = ReplicaRole::FOLLOWER;
-            replica.state.observed_member_type = RaftMemberType::NON_MEMBER;
-            replica.state.observed_endpoint = nodes[i].state.endpoint;
-            replica.state.update_ts = func::get_current_ts_ms();
-            replica.state.term = 0;
             LOG_INFO(
                     "[ReplicaGroupMembershipReconciler] add_members, create replica, shard_id:{}, replica_id:{}, node_id:{}, endpoint:{}",
                     current.shard_id.to_string(), rid.to_string(), nodes[i].id, nodes[i].state.endpoint.to_string());
@@ -333,6 +333,13 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
         }
 
         RETURN_IF_INVALID_STATUS(txn.put_replicas(new_replicas))
+        // 新副本首次心跳前先用分配节点的 endpoint。
+        for (size_t i = 0; i < new_replicas.size(); ++i) {
+            ReplicaObserved observed;
+            observed.endpoint = nodes[i].state.endpoint;
+            observed.update_ts = func::get_current_ts_ms();
+            RETURN_IF_INVALID_STATUS(txn.put_replica_observed(new_rids[i], observed))
+        }
         current.desired_members.insert(current.desired_members.end(), new_rids.begin(), new_rids.end());
         RETURN_IF_INVALID_STATUS(txn.put_replica_group(current))
         return Status::OK();

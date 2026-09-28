@@ -122,7 +122,6 @@ Status MetaStore::load_from_persist(MetaWorkingSet& ws) {
     for (auto& db : record.databases) ws.durable.databases[db.db_id] = std::move(db);
     for (auto& table : record.tables) ws.durable.tables[table.table_id] = std::move(table);
     for (auto& replica : record.replicas) {
-        replica.state.observed_raft_role = ReplicaRole::FOLLOWER;
         ws.durable.replicas[replica.replica_id] = std::move(replica);
     }
     for (auto& group : record.replica_groups) ws.durable.replica_groups[group.shard_id] = std::move(group);
