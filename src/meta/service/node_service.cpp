@@ -1,6 +1,5 @@
 #include "meta/service/node_service.h"
 
-#include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -129,7 +128,12 @@ Status project_leader_membership(MetaStoreTxn& txn, const HeartBeatReplicaInfo& 
 
 }  // namespace
 
-NodeService::NodeService(MetaStore* store) : store_(store), start_ts_ms_(func::get_current_ts_ms()) {}
+NodeService::NodeService(MetaStore* store) : store_(store), reconciler_(store) {}
+
+NodeService::NodeService(MetaStore* store, int64_t start_ts_ms)
+        : store_(store), reconciler_(store, start_ts_ms) {}
+
+Status NodeService::reconcile_all() { return reconciler_.run(); }
 
 Status NodeService::register_node(const RegisterNodeParam& param) {
     RETURN_IF_INVALID_PARAM(param)
@@ -285,118 +289,6 @@ Status NodeService::mark_no_exist_replicas(MetaStoreTxn& txn, const HeartBeatPar
     }
 
     return Status::OK();
-}
-
-Status NodeService::reconcile_all() {
-    if (store_ == nullptr) {
-        Status error{StatusCode::INVALID_ARGUMENT, "store is nullptr"};
-        LOG_ERROR("[NodeService] reconcile skipped, msg={}", error.msg());
-        return error;
-    }
-    std::vector<Node> nodes;
-    Status status = store_->read_with([&](const MetaStoreTxn& txn) { return txn.list_nodes(nodes); });
-    if (status.fail()) {
-        LOG_WARN("[NodeService] list nodes failed, msg={}", status.msg());
-        return status;
-    }
-
-    std::vector<NodeID> node_ids;
-    node_ids.reserve(nodes.size());
-    for (const auto& node : nodes) {
-        node_ids.push_back(node.id);
-    }
-
-    // 这里给node搞批处理，防止持有锁的时间太久了
-    for (size_t begin = 0; begin < node_ids.size(); begin += K_HEARTBEAT_CHECK_BATCH_SIZE) {
-        size_t end = std::min(begin + K_HEARTBEAT_CHECK_BATCH_SIZE, node_ids.size());
-        status = store_->write_with([&](MetaStoreTxn& txn) -> Status {
-            for (size_t index = begin; index < end; ++index) {
-                NodeOr current;
-                RETURN_IF_INVALID_STATUS(txn.get_node(node_ids[index], current))
-                if (current.is_empty()) {
-                    continue;
-                }
-                Node node = *current;
-                Status s = check_and_modify_node(txn, node);
-                if (s.fail()) {
-                    LOG_WARN("[NodeService] check node failed, node_id:{}, msg:{}", node_ids[index], s.msg());
-                }
-            }
-            return Status::OK();
-        });
-        if (status.fail()) {
-            LOG_WARN("[NodeService] node check batch failed, begin:{}, msg:{}", begin, status.msg());
-        }
-    }
-    return Status::OK();
-}
-
-Status NodeService::check_and_modify_node(MetaStoreTxn& txn, Node& node) {
-    if (node.state.offline_reason == NodeOfflineReason::TOPOLOGY_MISMATCH) {
-        if (node.state.status != NodeStatus::OFFLINE) {
-            node.state.status = NodeStatus::OFFLINE;
-            return txn.put_node(node);
-        }
-        return Status::OK();
-    }
-
-    int64_t current_ts_ms = func::get_current_ts_ms();
-    int64_t diff = current_ts_ms - node.state.last_heartbeat_ts;
-    bool in_startup_grace = (current_ts_ms - start_ts_ms_ <= HEARTBEAT_STARTUP_GRACE_MS);
-
-    if (diff <= HEARTBEAT_SUSPECT_TIMEOUT_MS) {
-        if (node.state.status != NodeStatus::ONLINE) {
-            return mark_node_online(txn, node);
-        }
-        return Status::OK();
-    }
-
-    if (in_startup_grace) {
-        return Status::OK();
-    }
-
-    if (diff > HEARTBEAT_OFFLINE_TIMEOUT_MS) {
-        if (node.state.status != NodeStatus::OFFLINE) {
-            return mark_node_offline(txn, node);
-        }
-    } else {
-        if (node.state.status == NodeStatus::ONLINE) {
-            return mark_node_suspect(txn, node);
-        }
-    }
-
-    return Status::OK();
-}
-
-Status NodeService::mark_node_offline(MetaStoreTxn& txn, Node& node) {
-    LOG_WARN("[NodeService] node offline, node_id:{}", node.id);
-    node.state.status = NodeStatus::OFFLINE;
-    return txn.put_node(node);
-}
-
-Status NodeService::mark_node_suspect(MetaStoreTxn& txn, Node& node) {
-    LOG_WARN("[NodeService] node suspect, node_id:{}", node.id);
-    node.state.status = NodeStatus::SUSPECT;
-    return txn.put_node(node);
-}
-
-Status NodeService::mark_node_online(MetaStoreTxn& txn, Node& node) {
-    LOG_INFO("[NodeService] node online, node_id:{}", node.id);
-    node.state.status = NodeStatus::ONLINE;
-    return txn.put_node(node);
-}
-
-Status NodeService::check_and_modify_node_for_test(Node& node) {
-    RETURN_IF_NULLPTR(store_, "store is nullptr")
-    return store_->write_with([&](MetaStoreTxn& txn) -> Status {
-        NodeOr current;
-        RETURN_IF_INVALID_STATUS(txn.get_node(node.id, current))
-        if (current.is_empty()) {
-            return Status::OK();
-        }
-        node = *current;
-        return check_and_modify_node(txn, node);
-    });
 }
 
 }  // namespace adviskv::meta

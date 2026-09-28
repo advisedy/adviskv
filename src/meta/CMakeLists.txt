@@ -13,6 +13,7 @@ set(META_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/store/meta_index.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/persist/meta_persist_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/background/background.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/reconcile/node_reconciler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/reconcile/replica_group_membership_reconciler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/reconcile/replica_group_plan_reconciler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/reconcile/table_reconciler.cpp

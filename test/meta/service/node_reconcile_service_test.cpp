@@ -41,11 +41,6 @@ Table make_table() {
                  state};
 }
 
-void expire_startup_grace(NodeService& ctrl) {
-    ctrl.set_start_ts_ms_for_test(func::get_current_ts_ms() -
-                                  NodeService::HEARTBEAT_STARTUP_GRACE_MS - 1000);
-}
-
 void run_node_and_replica_reconcile(NodeService& node_ctrl,
                                     ReplicaGroupService& rg_ctrl) {
     ASSERT_TRUE(node_ctrl.reconcile_all().ok());
@@ -83,7 +78,7 @@ TEST(NodeServiceReconcileTest, OnlineNodeBecomesSuspectThenOfflineAndReplicasLos
             store, make_heartbeat_node(
                        "node-a", NodeStatus::ONLINE,
                        func::get_current_ts_ms() -
-                           NodeService::HEARTBEAT_SUSPECT_TIMEOUT_MS - 1000,
+                           NodeReconciler::HEARTBEAT_SUSPECT_TIMEOUT_MS - 1000,
                        18080))
             .ok());
     ASSERT_TRUE(
@@ -91,9 +86,9 @@ TEST(NodeServiceReconcileTest, OnlineNodeBecomesSuspectThenOfflineAndReplicasLos
             store, make_replica("node-a", 0, ReplicaPhase::READY, 18080))
             .ok());
 
-    NodeService ctrl(&store);
+    NodeService ctrl(&store, func::get_current_ts_ms() -
+                                  NodeReconciler::HEARTBEAT_STARTUP_GRACE_MS - 1000);
     ReplicaGroupService rg_ctrl(&store);
-    expire_startup_grace(ctrl);
 
     run_node_and_replica_reconcile(ctrl, rg_ctrl);
 
@@ -109,7 +104,7 @@ TEST(NodeServiceReconcileTest, OnlineNodeBecomesSuspectThenOfflineAndReplicasLos
     EXPECT_EQ(replica->state.phase, ReplicaPhase::READY);
 
     node->state.last_heartbeat_ts = func::get_current_ts_ms() -
-                                    NodeService::HEARTBEAT_OFFLINE_TIMEOUT_MS - 1000;
+                                    NodeReconciler::HEARTBEAT_OFFLINE_TIMEOUT_MS - 1000;
     ASSERT_TRUE(store_test::put_node(store, *node).ok());
     run_node_and_replica_reconcile(ctrl, rg_ctrl);
 
@@ -136,9 +131,9 @@ TEST(NodeServiceReconcileTest, SuspectNodeBecomesOnlineAndReplicasUpdated) {
                     store, make_replica("node-a", 0, ReplicaPhase::LOST, 18080))
                     .ok());
 
-    NodeService ctrl(&store);
+    NodeService ctrl(&store, func::get_current_ts_ms() -
+                                  NodeReconciler::HEARTBEAT_STARTUP_GRACE_MS - 1000);
     ReplicaGroupService rg_ctrl(&store);
-    expire_startup_grace(ctrl);
     run_node_and_replica_reconcile(ctrl, rg_ctrl);
 
     NodeOr node;
@@ -153,7 +148,7 @@ TEST(NodeServiceReconcileTest, SuspectNodeBecomesOnlineAndReplicasUpdated) {
     EXPECT_EQ(replica->state.phase, ReplicaPhase::CREATING);
 }
 
-// 检测 OFFLINE 节点收到新心跳后变回 ONLINE。
+// 检测 OFFLINE 节点可由新心跳恢复。
 TEST(NodeServiceReconcileTest, OfflineNodeWithFreshHeartbeatBecomesOnline) {
     Node node;
     node.id = "storage-1";
@@ -164,7 +159,7 @@ TEST(NodeServiceReconcileTest, OfflineNodeWithFreshHeartbeatBecomesOnline) {
     ASSERT_TRUE(store.init().ok());
     ASSERT_EQ(store_test::put_node(store, node).ok(), true);
     NodeService ctrl(&store);
-    ASSERT_TRUE(ctrl.check_and_modify_node_for_test(node).ok());
+    ASSERT_TRUE(ctrl.reconcile_all().ok());
 
     NodeOr saved;
     ASSERT_TRUE(store_test::get_node(store, "storage-1", saved).ok());
@@ -184,9 +179,9 @@ TEST(NodeServiceReconcileTest, TopologyMismatchNodeStaysOfflineAndReplicasBecome
                     store, make_replica("node-a", 0, ReplicaPhase::READY, 18080))
                     .ok());
 
-    NodeService ctrl(&store);
+    NodeService ctrl(&store, func::get_current_ts_ms() -
+                                  NodeReconciler::HEARTBEAT_STARTUP_GRACE_MS - 1000);
     ReplicaGroupService rg_ctrl(&store);
-    expire_startup_grace(ctrl);
     run_node_and_replica_reconcile(ctrl, rg_ctrl);
 
     NodeOr saved;
@@ -207,9 +202,8 @@ TEST(NodeServiceReconcileTest, CheckReloadsNodeBeforeWritingStatus) {
     ASSERT_TRUE(store.init().ok());
     Node stale = make_heartbeat_node(
         "node-a", NodeStatus::ONLINE,
-        func::get_current_ts_ms() - NodeService::HEARTBEAT_OFFLINE_TIMEOUT_MS - 1000,
+        func::get_current_ts_ms() - NodeReconciler::HEARTBEAT_OFFLINE_TIMEOUT_MS - 1000,
         18080);
-    ASSERT_TRUE(store_test::put_node(store, stale).ok());
     ASSERT_TRUE(
         store_test::put_replica(
             store, make_replica("node-a", 0, ReplicaPhase::READY, 18080))
@@ -219,10 +213,10 @@ TEST(NodeServiceReconcileTest, CheckReloadsNodeBeforeWritingStatus) {
     fresh.state.last_heartbeat_ts = func::get_current_ts_ms();
     ASSERT_TRUE(store_test::put_node(store, fresh).ok());
 
-    NodeService ctrl(&store);
+    NodeService ctrl(&store, func::get_current_ts_ms() -
+                                  NodeReconciler::HEARTBEAT_STARTUP_GRACE_MS - 1000);
     ReplicaGroupService rg_ctrl(&store);
-    expire_startup_grace(ctrl);
-    ASSERT_TRUE(ctrl.check_and_modify_node_for_test(stale).ok());
+    ASSERT_TRUE(ctrl.reconcile_all().ok());
 
     NodeOr saved;
     ASSERT_TRUE(store_test::get_node(store, "node-a", saved).ok());
@@ -246,7 +240,7 @@ TEST(NodeServiceReconcileTest, StartupGraceKeepsStaleOnlineNodesOnline) {
             store, make_heartbeat_node(
                        "node-a", NodeStatus::ONLINE,
                        func::get_current_ts_ms() -
-                           NodeService::HEARTBEAT_OFFLINE_TIMEOUT_MS - 1000,
+                           NodeReconciler::HEARTBEAT_OFFLINE_TIMEOUT_MS - 1000,
                        18080))
             .ok());
     ASSERT_TRUE(
@@ -254,7 +248,7 @@ TEST(NodeServiceReconcileTest, StartupGraceKeepsStaleOnlineNodesOnline) {
             store, make_heartbeat_node(
                        "node-b", NodeStatus::ONLINE,
                        func::get_current_ts_ms() -
-                           NodeService::HEARTBEAT_OFFLINE_TIMEOUT_MS - 1000,
+                           NodeReconciler::HEARTBEAT_OFFLINE_TIMEOUT_MS - 1000,
                        18081))
             .ok());
     ASSERT_TRUE(
