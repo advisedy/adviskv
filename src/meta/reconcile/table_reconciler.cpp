@@ -27,7 +27,7 @@ bool has_exactly_one_writable_leader(const ShardRoute& route) {
 
 TableReconciler::TableReconciler(MetaStore* store) : store_(store) {}
 
-Status TableReconciler::reconcile_all() {
+Status TableReconciler::run() {
     if (store_ == nullptr) {
         Status status{StatusCode::INVALID_ARGUMENT, "store is nullptr"};
         LOG_ERROR("[TableReconciler] reconcile skipped, msg={}", status.msg());
@@ -100,7 +100,6 @@ Status TableReconciler::reconcile_table(Table& table) {
                     table.table_id, to<int32>(table.state.phase));
             return Status::OK();
     }
-    return Status::OK();
 }
 
 Status TableReconciler::finalize_creating_table(Table& table) {

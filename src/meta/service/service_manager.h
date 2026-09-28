@@ -32,19 +32,7 @@ public:
     Status register_node(const RegisterNodeParam& param);
     Status heartbeat(const HeartBeatParam& param, HeartBeatResult* result = nullptr);
 
-    // 直接调用时仍返回该阶段的 Status；后台 tick 会忽略它，由具体 reconciler 负责记录日志。
-    Status reconcile_tables();
-    Status reconcile_nodes();
-    Status reconcile_routes();
-    Status reconcile_replica_groups();
-
-    // 单后台任务入口，按依赖顺序推进一轮收敛：
-    //   节点存活 -> 副本组与成员 -> 路由 -> 表操作完成判断
-    // tick 只负责定序，具体工作仍在各 service 的 reconcile_* 里
-    // （经由下面的 reconcile_tables/nodes/routes/replica_groups 转发）。
-    // 各阶段自行记录执行错误；tick 只负责定序，不向上汇总阶段错误。
-    // 注意：tick 只改善流程表达，不消除并发窗口——DDL 与 heartbeat
-    // 仍可在阶段之间进入，各阶段须重读当前状态、幂等重入。
+    // 阶段错误不汇总；DDL 与心跳可在阶段间并发，收敛器须幂等重入。
     void tick();
 
     DdlService& ddl_service() { return ddl_service_; }

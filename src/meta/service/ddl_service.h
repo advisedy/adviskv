@@ -9,22 +9,22 @@ namespace adviskv::meta {
 
 class MetaStore;
 
-// Table / Database 的唯一写入入口。建删改走这里，phase 收敛也从这里进 TableReconciler。
+// Table / Database 的建删改入口。
 class DdlService {
 public:
     explicit DdlService(MetaStore* store);
 
+    Status reconcile_all();
     Status create_db(const CreateDBParam& param, Database* db);
     Status drop_db(const DropDBParam& param, Database* db);
     Status create_table(const CreateTableParam& param, Table* table);
     Status drop_table(const DropTableByNameParam& param, Table* table);
     Status alter_table_replica_count(const AlterTableReplicaCountParam& param, Table* table);
     Status get_table(const GetTableParam& param, Table* table);
-    Status reconcile_all();
 
 private:
     MetaStore* store_{nullptr};
-    TableReconciler table_reconciler_;
+    TableReconciler reconciler_;
 };
 
 }  // namespace adviskv::meta

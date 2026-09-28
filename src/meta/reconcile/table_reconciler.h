@@ -7,16 +7,16 @@ namespace adviskv::meta {
 
 class MetaStore;
 class MetaStoreTxn;
+class DdlService;
 
-// 把 Table 的 phase 往终态推：CREATING/RESIZING -> READY，DELETING -> DELETED。
-// 只改 Table 自己，不负责放副本，那是 ReplicaGroupService 的事。
+// 只更新 Table phase，不负责副本放置。
 class TableReconciler {
-public:
+private:
+    friend class DdlService;
+
     explicit TableReconciler(MetaStore* store);
 
-    Status reconcile_all();
-
-private:
+    Status run();
     Status reconcile_table(Table& table);
     Status finalize_creating_table(Table& table);
     Status finalize_resizing_table(Table& table);

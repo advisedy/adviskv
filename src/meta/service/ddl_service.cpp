@@ -10,7 +10,9 @@
 
 namespace adviskv::meta {
 
-DdlService::DdlService(MetaStore* store) : store_(store), table_reconciler_(store) {}
+DdlService::DdlService(MetaStore* store) : store_(store), reconciler_(store) {}
+
+Status DdlService::reconcile_all() { return reconciler_.run(); }
 
 Status DdlService::create_db(const CreateDBParam& param, Database* db) {
     RETURN_IF_INVALID_PARAM(param)
@@ -212,7 +214,5 @@ Status DdlService::get_table(const GetTableParam& param, Table* table) {
     *table = *found;
     return Status::OK();
 }
-
-Status DdlService::reconcile_all() { return table_reconciler_.reconcile_all(); }
 
 }  // namespace adviskv::meta

@@ -5,7 +5,10 @@
 namespace adviskv::meta {
 
 ServiceManager::ServiceManager(MetaStore* store, NodeSelector* selector)
-        : ddl_service_(store), node_service_(store), route_service_(store), replica_group_service_(store, selector) {}
+        : ddl_service_(store),
+          node_service_(store),
+          route_service_(store),
+          replica_group_service_(store, selector) {}
 
 Status ServiceManager::create_db(const CreateDBParam& param, Database* db) { return ddl_service_.create_db(param, db); }
 
@@ -43,19 +46,11 @@ Status ServiceManager::heartbeat(const HeartBeatParam& param, HeartBeatResult* r
     return replica_group_service_.build_heartbeat_result(param, *result);
 }
 
-Status ServiceManager::reconcile_tables() { return ddl_service_.reconcile_all(); }
-
-Status ServiceManager::reconcile_nodes() { return node_service_.reconcile_all(); }
-
-Status ServiceManager::reconcile_routes() { return route_service_.reconcile_all(); }
-
-Status ServiceManager::reconcile_replica_groups() { return replica_group_service_.reconcile_all(); }
-
 void ServiceManager::tick() {
-    reconcile_nodes();
-    reconcile_replica_groups();
-    reconcile_routes();
-    reconcile_tables();
+    node_service_.reconcile_all();
+    replica_group_service_.reconcile_all();
+    route_service_.reconcile_all();
+    ddl_service_.reconcile_all();
 }
 
 }  // namespace adviskv::meta
