@@ -1,21 +1,18 @@
 #include "meta/service/route_service.h"
 
 #include <algorithm>
-#include <memory>
 
 #include <fmt/format.h>
 
-#include "common/define.h"
-#include "common/log.h"
-#include "common/metrics/metrics.h"
-#include "common/model/type.h"
 #include "common/status.h"
 #include "meta/store/meta_store.h"
 #include "meta/store/meta_store_txn.h"
 
 namespace adviskv::meta {
 
-RouteService::RouteService(MetaStore* store) : store_(store) {}
+RouteService::RouteService(MetaStore* store) : store_(store), reconciler_(store) {}
+
+Status RouteService::reconcile_all() { return reconciler_.run(); }
 
 Status RouteService::validate_writable_route(const ShardRoute& route) {
     int leader_count = std::count_if(route.replicas.begin(), route.replicas.end(), [](const RouteEntry& entry) {
@@ -26,72 +23,6 @@ Status RouteService::validate_writable_route(const ShardRoute& route) {
                 fmt::format("writable leader route is not ready。 leader_count={}", leader_count));
     }
     return Status::OK();
-}
-
-Status RouteService::get_route(const GetRouteParam& param, ShardRoute* out) const {
-    RETURN_IF_INVALID_PARAM(param)
-    RETURN_IF_NULLPTR(store_, "store is nullptr")
-
-    ShardID shard_id;
-    TableOr table;
-    if (param.use_id) {
-        Status status =
-                store_->read_with([&](const MetaStoreTxn& txn) { return txn.get_table(param.table_id, table); });
-        RETURN_IF_INVALID_STATUS(status)
-        if (table.is_empty()) {
-            return Status::TABLE_NOT_FOUND(fmt::format("table_id {} not found", param.table_id));
-        }
-        bool found = std::any_of(table->spec.shard_ranges.begin(), table->spec.shard_ranges.end(),
-                                 [&](const ShardRange& range) { return range.shard_id == param.shard_id; });
-        if (!found) {
-            return Status::INVALID_ARGUMENT(
-                    fmt::format("shard_id {} out of range, shard_count={}", param.shard_id, table->shard_count()));
-        }
-        shard_id = ShardID{param.table_id, param.shard_id};
-    } else {
-        Status status = store_->read_with(
-                [&](const MetaStoreTxn& txn) { return txn.get_table_by_name(param.db_name, param.table_name, table); });
-        RETURN_IF_INVALID_STATUS(status)
-        if (table.is_empty()) {
-            return Status::TABLE_NOT_FOUND(fmt::format("table {}.{} not found", param.db_name, param.table_name));
-        }
-        shard_id = calc_shard_id(*table, param.key);
-    }
-
-    ShardRouteOr route;
-    Status status = store_->read_with([&](const MetaStoreTxn& txn) { return txn.get_shard_route(shard_id, route); });
-    RETURN_IF_INVALID_STATUS(status)
-    if (route.is_empty()) {
-        return Status::ROUTE_NOT_FOUND("route not found");
-    }
-    RETURN_IF_INVALID_STATUS(validate_writable_route(*route))
-    if (out) {
-        *out = *route;
-        for (const auto& range : table->spec.shard_ranges) {
-            if (range.shard_id == shard_id.shard_index) out->hash_range = range.range;
-        }
-        // 这边第一个就是leader的，
-        // 这个是在route_updater那边就保证了的。
-    }
-
-    {  // 打一下日志
-        std::string route_res{route->shard_id.to_string()};
-        for (RouteEntry& one : route->replicas) {
-            route_res.append(" replica: " + one.replica_id.to_string() + ", ");
-            if (one.role == ReplicaRole::LEADER) {
-                route_res.append("role: leader.");
-            } else if (one.role == ReplicaRole::CANDIDATE) {
-                route_res.append("role: candidate.");
-            } else if (one.role == ReplicaRole::PRE_CANDIDATE) {
-                route_res.append("role: pre-candidate.");
-            } else {
-                route_res.append("role: follower.");
-            }
-        }
-        LOG_DEBUG("route is ok, {}", route_res);
-    }
-
-    return status;
 }
 
 Status RouteService::get_table_routes(const GetTableRoutesParam& param, Table* out_table,
@@ -135,166 +66,6 @@ Status RouteService::get_table_routes(const GetTableRoutesParam& param, Table* o
         *out_routes = std::move(routes);
         return Status::OK();
     });
-}
-
-ShardID RouteService::calc_shard_id(const Table& table, Key key) const {
-    size_t pos = find_shard_range(table.spec.shard_ranges, hash_bucket_for_key(key));
-    return ShardID{table.table_id, pos < table.spec.shard_ranges.size() ? table.spec.shard_ranges[pos].shard_id : -1};
-}
-
-Status RouteService::reconcile_all() {
-    if (store_ == nullptr) {
-        Status error{StatusCode::INVALID_ARGUMENT, "store is nullptr"};
-        LOG_ERROR("[RouteService] reconcile skipped, msg={}", error.msg());
-        return error;
-    }
-    std::vector<Table> tables;
-    Status status = store_->read_with([&](const MetaStoreTxn& txn) { return txn.list_tables(tables); });
-    if (status.fail()) {
-        LOG_WARN("[RouteService] list tables failed, msg={}", status.msg());
-        return status;
-    }
-    for (auto& table : tables) {
-        for (const ShardRange& range : table.spec.shard_ranges) {
-            ShardIndex i = range.shard_id;
-            Status s = check_shard_route(table, to<ShardIndex>(i));
-            if (s.fail()) {
-                LOG_WARN(
-                        "[RouteService] route task update shard route failed, "
-                        "table={}, shard={}, "
-                        "msg={}",
-                        table.table_id, i, s.msg());
-            } else {
-                LOG_DEBUG("[RouteService] route ready, table_id={}, shard_index={}", table.table_id, i);
-            }
-        }
-    }
-    return Status::OK();
-}
-
-Status RouteService::check_shard_route(const Table& table, ShardIndex shard_index) {
-    ADVISKV_METRICS_TIMER("meta_route_check_shard_route");
-    ADVISKV_METRICS_COUNTER("meta_route_check_shard_route_request");
-
-    ShardID shard_id{table.table_id, shard_index};
-    Status route_status{Status::OK()};
-
-    Status status = store_->write_with([&](MetaStoreTxn& txn) -> Status {
-        auto clear_route_and_return = [&](const std::string& msg) -> Status {
-            route_status = Status::ROUTE_NOT_FOUND(msg);
-            ADVISKV_METRICS_COUNTER("meta_route_delete_shard_route_request");
-            RETURN_IF_INVALID_STATUS(txn.delete_shard_route(shard_id))
-            LOG_WARN(
-                    "[RouteService] check_shard_route, clear_route_and_return, route not ready, table_id={}, shard_index={}, msg={}",
-                    shard_id.table_id, shard_id.shard_index, msg);
-            return Status::OK();
-        };
-
-        TableOr current_table;
-        RETURN_IF_INVALID_STATUS(txn.get_table(table.table_id, current_table))
-
-        if (current_table.is_empty() || current_table->state.desired != TableDesired::PRESENT ||
-            // 从 table
-            // 是creating的时候就得开始准备了，创建table的要求是route都ok了
-            (current_table->state.phase != TablePhase::CREATING && current_table->state.phase != TablePhase::RESIZING &&
-             current_table->state.phase != TablePhase::READY) ||
-            std::none_of(current_table->spec.shard_ranges.begin(), current_table->spec.shard_ranges.end(),
-                         [&](const ShardRange& range) { return range.shard_id == shard_index; })) {
-            ADVISKV_METRICS_COUNTER("meta_route_delete_shard_route_request");
-            RETURN_IF_INVALID_STATUS(txn.delete_shard_route(shard_id))
-            return Status::OK();
-        }
-
-        std::vector<Replica> replicas;
-        RETURN_IF_INVALID_STATUS(txn.list_replicas_by_shard(shard_id, replicas))
-
-        std::vector<RouteEntry> leader_entries;
-        std::vector<RouteEntry> follower_entries;
-
-        for (const Replica& replica : replicas) {
-            if (replica.state.desired != ReplicaDesired::PRESENT || replica.state.phase != ReplicaPhase::READY ||
-                replica.state.observed_member_type != RaftMemberType::VOTER) {
-                LOG_INFO(
-                        "[RouteService] replica_id:{} not routable, "
-                        "replica.state.desired:{}, replica.state.phase:{}, "
-                        "observed_member_type:{}",
-                        replica.replica_id.to_string(), to<int8>(replica.state.desired), to<int8>(replica.state.phase),
-                        to<int8>(replica.state.observed_member_type));
-                continue;
-            }
-
-            if (replica.spec.assign_node_id.empty()) {
-                LOG_INFO(
-                        "[RouteService] replica_id:{} "
-                        "replica.spec.assign_node_id.empty()",
-                        replica.replica_id.to_string());
-                continue;
-            }
-
-            NodeOr node;
-            RETURN_IF_INVALID_STATUS(txn.get_node(replica.spec.assign_node_id, node))
-
-            if (node.is_empty() || node->state.status != NodeStatus::ONLINE) {
-                int8 node_status = node.is_empty() ? -1 : to<int8>(node->state.status);
-                LOG_INFO(
-                        "[RouteService] replica_id:{}, node.is_empty() or "
-                        "node->state.status != NodeStatus::ONLINE, "
-                        "node.is_empty():{}, node->state.status:{}",
-                        replica.replica_id.to_string(), node.is_empty(), node_status);
-                continue;
-            }
-
-            RouteEntry entry;
-            entry.replica_id = replica.replica_id;
-            entry.node_id = replica.spec.assign_node_id;
-            entry.ip = replica.state.observed_endpoint.ip;
-            entry.port = replica.state.observed_endpoint.port;
-            entry.role = replica.state.observed_raft_role;
-            entry.term = replica.state.term;
-            if (entry.role == ReplicaRole::LEADER) {
-                leader_entries.push_back(std::move(entry));
-            } else if (entry.role == ReplicaRole::FOLLOWER || entry.role == ReplicaRole::PRE_CANDIDATE) {
-                // 对于 PRE_CANDIDATE，route 给客户端时当 follower
-                entry.role = ReplicaRole::FOLLOWER;
-                follower_entries.push_back(std::move(entry));
-            } else {
-                // CANDIDATE 不进 route
-            }
-        }
-
-        if (leader_entries.empty()) {
-            return clear_route_and_return("writable leader route is not ready");
-        }
-
-        if (leader_entries.size() > 1U) {
-            std::sort(leader_entries.begin(), leader_entries.end(),
-                      [](const RouteEntry& lhs, const RouteEntry& rhs) { return lhs.term > rhs.term; });
-            if (leader_entries[0].term == leader_entries[1].term) {
-                return clear_route_and_return(
-                        fmt::format("multiple leaders share max term, term={}", leader_entries[0].term));
-            }
-            // 对于出现了多个leader，但是term不同的情况下，我们选择保住term最高的leader。
-            // 对于其余的leader，我们应该选择不出现在这次的route里面
-            leader_entries.resize(1);
-        }
-
-        std::sort(follower_entries.begin(), follower_entries.end(), [](const RouteEntry& lhs, const RouteEntry& rhs) {
-            return lhs.replica_id.replica_seq < rhs.replica_id.replica_seq;
-        });
-
-        ShardRoute route;
-        route.shard_id = shard_id;
-        route.replicas.push_back(std::move(leader_entries.front()));
-        for (RouteEntry& follower_entry : follower_entries) {
-            route.replicas.push_back(std::move(follower_entry));
-        }
-
-        ADVISKV_METRICS_COUNTER("meta_route_put_shard_route_request");
-        return txn.put_shard_route(route);
-    });
-    RETURN_IF_INVALID_STATUS(status)
-
-    return route_status;
 }
 
 }  // namespace adviskv::meta

@@ -6,6 +6,7 @@
 #include "common/status.h"
 #include "meta/model/model.h"
 #include "meta/model/param.h"
+#include "meta/reconcile/route_reconciler.h"
 
 namespace adviskv::meta {
 
@@ -15,18 +16,15 @@ class RouteService {
 public:
     explicit RouteService(MetaStore* store);
 
-    Status get_route(const GetRouteParam& param, ShardRoute* out) const;
+    Status reconcile_all();
     Status get_table_routes(const GetTableRoutesParam& param, Table* out_table,
                             std::vector<ShardRoute>* out_routes) const;
 
-    Status reconcile_all();
-
 protected:
-    ShardID calc_shard_id(const Table& table, Key key) const;
     static Status validate_writable_route(const ShardRoute& route);
-    Status check_shard_route(const Table& table, ShardIndex shard_index);
 
     MetaStore* store_{nullptr};
+    RouteReconciler reconciler_;
 };
 
 }  // namespace adviskv::meta

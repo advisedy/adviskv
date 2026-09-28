@@ -3,26 +3,16 @@
 #include <fmt/format.h>
 #include <gtest/gtest.h>
 
-#include <memory>
 #include <vector>
 
 #include "meta/store/meta_store.h"
 #include "test/meta/store/meta_store_test_helper.h"
-#include "meta/placement/node_selector.h"
 
 namespace adviskv::meta {
 namespace {
 
 constexpr TableID K_TEST_TABLE_ID = 1001;
 constexpr ShardIndex K_TEST_SHARD_INDEX = 0;
-
-class TestRouteService : public RouteService {
-   public:
-    using RouteService::RouteService;
-    Status check_shard_route_test(const Table& table, ShardIndex shard_index) {
-        return check_shard_route(table, shard_index);
-    }
-};
 
 Table make_table() {
     TableState state{};
@@ -39,17 +29,31 @@ Node make_node(const NodeID& node_id, int32_t port) {
                 NodeState{NodeStatus::ONLINE, Endpoint{"127.0.0.1", port}, 1}};
 }
 
-Replica make_replica(ReplicaIndex replica_index, const NodeID& node_id,
-                     int32_t port, ReplicaRole role, Term term) {
+struct ReplicaFixture {
+    Replica replica;
+    ReplicaObserved observed;
+};
+
+ReplicaFixture make_replica(ReplicaIndex replica_index, const NodeID& node_id,
+                            int32_t port, ReplicaRole role, Term term) {
     ReplicaState state{};
     state.desired = ReplicaDesired::PRESENT;
     state.phase = ReplicaPhase::READY;
-    state.observed_raft_role = role;
-    state.observed_member_type = RaftMemberType::VOTER;
-    state.observed_endpoint = Endpoint{"127.0.0.1", port};
-    state.term = term;
-    return Replica{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, replica_index},
-                   ReplicaSpec{"dc-a", node_id, EngineType::MAP}, state};
+    ReplicaObserved observed{};
+    observed.raft_role = role;
+    observed.member_type = RaftMemberType::VOTER;
+    observed.endpoint = Endpoint{"127.0.0.1", port};
+    observed.term = term;
+    return {Replica{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, replica_index},
+                    ReplicaSpec{"dc-a", node_id, EngineType::MAP}, state},
+            observed};
+}
+
+Status put_replica(MetaStore& store, const ReplicaFixture& fixture) {
+    return store.write_with([&](MetaStoreTxn& txn) -> Status {
+        RETURN_IF_INVALID_STATUS(txn.put_replica(fixture.replica))
+        return txn.put_replica_observed(fixture.replica.replica_id, fixture.observed);
+    });
 }
 
 void put_nodes(MetaStore& store, int count) {
@@ -68,18 +72,18 @@ ShardID test_shard_id() { return ShardID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX}; }
 
 }  // namespace
 
-// 检测没有 leader 时，路由会被删除并返回 ROUTE_NOT_FOUND。
+// 单个 shard 路由不可用时不阻断整轮收敛。
 TEST(RouteServiceReconcileTest, DeleteShardRouteWhenLeaderCountLessThanOne) {
     MetaStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_test_table(store);
     put_nodes(store, 2);
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(0, "node-0", 18080, ReplicaRole::FOLLOWER, 10))
             .ok());
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(1, "node-1", 18081, ReplicaRole::FOLLOWER, 10))
             .ok());
     ASSERT_TRUE(
@@ -92,11 +96,8 @@ TEST(RouteServiceReconcileTest, DeleteShardRouteWhenLeaderCountLessThanOne) {
             })
             .ok());
 
-    TestRouteService ctrl(&store);
-    Status status = ctrl.check_shard_route_test(make_table(), K_TEST_SHARD_INDEX);
-    EXPECT_EQ(status.code(), StatusCode::ROUTE_NOT_FOUND);
-    EXPECT_NE(status.msg().find("writable leader route is not ready"),
-              std::string::npos);
+    RouteService ctrl(&store);
+    ASSERT_TRUE(ctrl.reconcile_all().ok());
 
     ShardRouteOr route;
     ASSERT_TRUE(
@@ -111,20 +112,20 @@ TEST(RouteServiceReconcileTest, PutShardRouteWhenLeaderCountEqualsOne) {
     put_test_table(store);
     put_nodes(store, 3);
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(0, "node-0", 18080, ReplicaRole::LEADER, 20))
             .ok());
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(1, "node-1", 18081, ReplicaRole::FOLLOWER, 20))
             .ok());
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(2, "node-2", 18082, ReplicaRole::FOLLOWER, 20))
             .ok());
 
-    TestRouteService ctrl(&store);
-    Status status = ctrl.check_shard_route_test(make_table(), K_TEST_SHARD_INDEX);
+    RouteService ctrl(&store);
+    Status status = ctrl.reconcile_all();
     ASSERT_TRUE(status.ok());
 
     ShardRouteOr route;
@@ -147,20 +148,20 @@ TEST(RouteServiceReconcileTest, CandidateIsExcludedFromRoute) {
     put_test_table(store);
     put_nodes(store, 3);
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(0, "node-0", 18080, ReplicaRole::LEADER, 20))
             .ok());
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(1, "node-1", 18081, ReplicaRole::CANDIDATE, 21))
             .ok());
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(2, "node-2", 18082, ReplicaRole::FOLLOWER, 20))
             .ok());
 
-    TestRouteService ctrl(&store);
-    ASSERT_TRUE(ctrl.check_shard_route_test(make_table(), K_TEST_SHARD_INDEX).ok());
+    RouteService ctrl(&store);
+    ASSERT_TRUE(ctrl.reconcile_all().ok());
 
     ShardRouteOr route;
     ASSERT_TRUE(store_test::get_shard_route(store, test_shard_id(), route).ok());
@@ -173,21 +174,21 @@ TEST(RouteServiceReconcileTest, CandidateIsExcludedFromRoute) {
 }
 
 // 检测多个 leader 拥有相同最大 term 时，路由被删除（无法确定谁是真正的 leader）。
-TEST(RouteServiceReconcileTest, ReturnRouteNotReadyWhenLeadersShareMaxTerm) {
+TEST(RouteServiceReconcileTest, ClearsRouteWhenLeadersShareMaxTerm) {
     MetaStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     put_test_table(store);
     put_nodes(store, 3);
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(0, "node-0", 18080, ReplicaRole::LEADER, 30))
             .ok());
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(1, "node-1", 18081, ReplicaRole::LEADER, 20))
             .ok());
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(2, "node-2", 18082, ReplicaRole::LEADER, 30))
             .ok());
     ASSERT_TRUE(
@@ -200,9 +201,8 @@ TEST(RouteServiceReconcileTest, ReturnRouteNotReadyWhenLeadersShareMaxTerm) {
             })
             .ok());
 
-    TestRouteService ctrl(&store);
-    Status status = ctrl.check_shard_route_test(make_table(), K_TEST_SHARD_INDEX);
-    EXPECT_EQ(status.code(), StatusCode::ROUTE_NOT_FOUND);
+    RouteService ctrl(&store);
+    ASSERT_TRUE(ctrl.reconcile_all().ok());
 
     ShardRouteOr route;
     ASSERT_TRUE(
@@ -218,24 +218,24 @@ TEST(RouteServiceReconcileTest, MultipleLeadersWithDifferentTermsChooseMaxTermLe
     put_test_table(store);
     put_nodes(store, 4);
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(0, "node-0", 18080, ReplicaRole::LEADER, 10))
             .ok());
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(1, "node-1", 18081, ReplicaRole::LEADER, 30))
             .ok());
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(2, "node-2", 18082, ReplicaRole::LEADER, 20))
             .ok());
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(3, "node-3", 18083, ReplicaRole::FOLLOWER, 30))
             .ok());
 
-    TestRouteService ctrl(&store);
-    Status status = ctrl.check_shard_route_test(make_table(), K_TEST_SHARD_INDEX);
+    RouteService ctrl(&store);
+    Status status = ctrl.reconcile_all();
     ASSERT_TRUE(status.ok());
 
     ShardRouteOr route;
@@ -261,11 +261,11 @@ TEST(RouteServiceReconcileTest, DeleteStaleRouteAndRepublishAfterLeaderRecovery)
     put_test_table(store);
     put_nodes(store, 2);
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(0, "node-0", 18080, ReplicaRole::LEADER, 10))
             .ok());
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(1, "node-1", 18081, ReplicaRole::FOLLOWER, 10))
             .ok());
     ASSERT_TRUE(
@@ -282,18 +282,17 @@ TEST(RouteServiceReconcileTest, DeleteStaleRouteAndRepublishAfterLeaderRecovery)
             })
             .ok());
 
-    TestRouteService ctrl(&store);
+    RouteService ctrl(&store);
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(0, "node-0", 18080, ReplicaRole::FOLLOWER, 11))
             .ok());
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(1, "node-1", 18081, ReplicaRole::FOLLOWER, 11))
             .ok());
 
-    Status status = ctrl.check_shard_route_test(make_table(), K_TEST_SHARD_INDEX);
-    EXPECT_EQ(status.code(), StatusCode::ROUTE_NOT_FOUND);
+    ASSERT_TRUE(ctrl.reconcile_all().ok());
 
     ShardRouteOr route;
     ASSERT_TRUE(
@@ -301,16 +300,15 @@ TEST(RouteServiceReconcileTest, DeleteStaleRouteAndRepublishAfterLeaderRecovery)
     EXPECT_TRUE(route.is_empty());
 
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(0, "node-0", 18080, ReplicaRole::FOLLOWER, 12))
             .ok());
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(1, "node-1", 18081, ReplicaRole::LEADER, 12))
             .ok());
 
-    status = ctrl.check_shard_route_test(make_table(), K_TEST_SHARD_INDEX);
-    ASSERT_TRUE(status.ok());
+    ASSERT_TRUE(ctrl.reconcile_all().ok());
 
     ASSERT_TRUE(
         store_test::get_shard_route(store, test_shard_id(), route).ok());
@@ -324,15 +322,13 @@ TEST(RouteServiceReconcileTest, DeleteStaleRouteAndRepublishAfterLeaderRecovery)
     EXPECT_EQ(route->replicas[1].term, 12);
 }
 
-// 检测 reconcile 时会重新读取最新的 table 状态，不因传入的过期 table 对象而误建路由。
-TEST(RouteServiceReconcileTest, CheckShardRouteReloadsCurrentTableState) {
+TEST(RouteServiceReconcileTest, DeletedTableRouteIsCleared) {
     MetaStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
-    Table stale_table = make_table();
     put_test_table(store);
     put_nodes(store, 1);
     ASSERT_TRUE(
-        store_test::put_replica(
+        put_replica(
             store, make_replica(0, "node-0", 18080, ReplicaRole::LEADER, 10))
             .ok());
     ASSERT_TRUE(
@@ -346,13 +342,13 @@ TEST(RouteServiceReconcileTest, CheckShardRouteReloadsCurrentTableState) {
             })
             .ok());
 
-    Table current = stale_table;
+    Table current = make_table();
     current.state.desired = TableDesired::ABSENT;
     current.state.phase = TablePhase::DELETING;
     ASSERT_TRUE(store_test::put_table(store, current).ok());
 
-    TestRouteService ctrl(&store);
-    ASSERT_TRUE(ctrl.check_shard_route_test(stale_table, K_TEST_SHARD_INDEX).ok());
+    RouteService ctrl(&store);
+    ASSERT_TRUE(ctrl.reconcile_all().ok());
 
     ShardRouteOr route;
     ASSERT_TRUE(

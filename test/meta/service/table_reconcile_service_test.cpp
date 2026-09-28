@@ -138,7 +138,7 @@ void put_route(MetaStore& store, std::vector<RouteEntry> replicas) {
     ASSERT_TRUE(store_test::put_shard_route(store, route).ok());
 }
 
-GetRouteParam make_get_route_param(const Key& key = "user-123") { return GetRouteParam{"commerce", "orders", key}; }
+GetTableRoutesParam make_get_table_routes_param() { return GetTableRoutesParam{"commerce", "orders", false}; }
 
 void report_replica_heartbeat(ServiceHarness& services, const NodeID& node_id, int32_t port, ReplicaIndex replica_index,
                               ReplicaRole role, StorageReplicaStatus status, Term term,
@@ -240,7 +240,9 @@ TEST(TableReconcilerTest, ZeroReplicaTableReachesReadyWithoutRoute) {
     ASSERT_TRUE(store_test::get_shard_route(store, ShardID{1001, 0}, route).ok());
     EXPECT_TRUE(route.is_empty());
 
-    EXPECT_EQ(services.route.get_route(make_get_route_param(), nullptr).code(), StatusCode::ROUTE_NOT_FOUND);
+    std::vector<ShardRoute> routes;
+    EXPECT_EQ(services.route.get_table_routes(make_get_table_routes_param(), nullptr, &routes).code(),
+              StatusCode::ROUTE_NOT_FOUND);
 }
 
 // 检测 scale-to-zero 表可以后续扩容并恢复可写路由。
@@ -277,9 +279,10 @@ TEST(TableReconcilerTest, ZeroReplicaTableCanExpandAndPublishRoute) {
     Table table = get_table_or_die(store);
     EXPECT_EQ(table.spec.target_replica_count, 2);
     EXPECT_EQ(table.state.phase, TablePhase::READY);
-    ShardRoute route;
-    ASSERT_TRUE(services.route.get_route(make_get_route_param(), &route).ok());
-    EXPECT_EQ(route.replicas.size(), 2U);
+    std::vector<ShardRoute> routes;
+    ASSERT_TRUE(services.route.get_table_routes(make_get_table_routes_param(), nullptr, &routes).ok());
+    ASSERT_EQ(routes.size(), 1U);
+    EXPECT_EQ(routes[0].replicas.size(), 2U);
 }
 
 // 检测节点选择器失败时，Table 停留在 CREATING，下一轮选择器恢复后可以继续。
@@ -797,7 +800,9 @@ TEST(TableReconcilerTest, ReadyTableCanShrinkToZeroWithoutRoute) {
     EXPECT_EQ(group->mode, ReplicaGroupMode::BOOTSTRAP);
     EXPECT_EQ(group->target_replica_count, 0);
     EXPECT_TRUE(group->desired_members.empty());
-    EXPECT_EQ(services.route.get_route(make_get_route_param(), nullptr).code(), StatusCode::ROUTE_NOT_FOUND);
+    std::vector<ShardRoute> routes;
+    EXPECT_EQ(services.route.get_table_routes(make_get_table_routes_param(), nullptr, &routes).code(),
+              StatusCode::ROUTE_NOT_FOUND);
 }
 
 // 检测 Replica 出现 ERROR 时，Table 不会被标记为 FAILED，而是继续等待
@@ -883,11 +888,12 @@ TEST(TableReconcilerTest, RouteIsRepublishedAfterHeartbeatRecoversLeader) {
     reconcile_table_to_ready(services, store);
 
     RouteService route_service(&store);
-    ShardRoute route;
-    Status status = route_service.get_route(make_get_route_param(), &route);
+    std::vector<ShardRoute> routes;
+    Status status = route_service.get_table_routes(make_get_table_routes_param(), nullptr, &routes);
     ASSERT_TRUE(status.ok()) << status.msg();
-    ASSERT_EQ(route.replicas.size(), 2U);
-    EXPECT_EQ(route.replicas[0].role, ReplicaRole::LEADER);
+    ASSERT_EQ(routes.size(), 1U);
+    ASSERT_EQ(routes[0].replicas.size(), 2U);
+    EXPECT_EQ(routes[0].replicas[0].role, ReplicaRole::LEADER);
 
     std::vector<Replica> replicas = list_replicas_or_die(store);
     ASSERT_EQ(replicas.size(), 2U);
@@ -902,7 +908,7 @@ TEST(TableReconcilerTest, RouteIsRepublishedAfterHeartbeatRecoversLeader) {
     ShardRouteOr route_after_loss;
     ASSERT_TRUE(store_test::get_shard_route(store, ShardID{1001, 0}, route_after_loss).ok());
     EXPECT_TRUE(route_after_loss.is_empty());
-    status = route_service.get_route(make_get_route_param(), &route);
+    status = route_service.get_table_routes(make_get_table_routes_param(), nullptr, &routes);
     EXPECT_EQ(status.code(), StatusCode::ROUTE_NOT_FOUND);
 
     report_replica_heartbeat(services, "node-a", 18080, 0, ReplicaRole::LEADER, StorageReplicaStatus::READY, 11);
@@ -910,16 +916,17 @@ TEST(TableReconcilerTest, RouteIsRepublishedAfterHeartbeatRecoversLeader) {
 
     ASSERT_TRUE(services.route.reconcile_all().ok());
 
-    status = route_service.get_route(make_get_route_param(), &route);
+    status = route_service.get_table_routes(make_get_table_routes_param(), nullptr, &routes);
     ASSERT_TRUE(status.ok()) << status.msg();
-    ASSERT_EQ(route.replicas.size(), 2U);
-    EXPECT_EQ(route.replicas[0].replica_id.replica_seq, 0);
-    EXPECT_EQ(route.replicas[0].role, ReplicaRole::LEADER);
-    EXPECT_EQ(route.replicas[0].term, 11);
-    EXPECT_EQ(route.replicas[0].ip, "127.0.0.1");
-    EXPECT_EQ(route.replicas[0].port, 18080);
-    EXPECT_EQ(route.replicas[1].replica_id.replica_seq, 1);
-    EXPECT_EQ(route.replicas[1].role, ReplicaRole::FOLLOWER);
+    ASSERT_EQ(routes.size(), 1U);
+    ASSERT_EQ(routes[0].replicas.size(), 2U);
+    EXPECT_EQ(routes[0].replicas[0].replica_id.replica_seq, 0);
+    EXPECT_EQ(routes[0].replicas[0].role, ReplicaRole::LEADER);
+    EXPECT_EQ(routes[0].replicas[0].term, 11);
+    EXPECT_EQ(routes[0].replicas[0].ip, "127.0.0.1");
+    EXPECT_EQ(routes[0].replicas[0].port, 18080);
+    EXPECT_EQ(routes[0].replicas[1].replica_id.replica_seq, 1);
+    EXPECT_EQ(routes[0].replicas[1].role, ReplicaRole::FOLLOWER);
 
     ASSERT_TRUE(services.table.reconcile_all().ok());
     EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::READY);

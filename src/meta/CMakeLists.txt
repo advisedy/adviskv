@@ -19,6 +19,7 @@ set(META_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/reconcile/replica_group_reconcile_util.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/reconcile/replica_group_reconciler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/reconcile/replica_phase_reconciler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/reconcile/route_reconciler.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/reconcile/table_reconciler.cpp
 )
 

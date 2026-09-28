@@ -2,8 +2,6 @@
 
 #include <gtest/gtest.h>
 
-#include <memory>
-
 #include "common/status.h"
 #include "meta/store/meta_store.h"
 #include "test/meta/store/meta_store_test_helper.h"
@@ -17,11 +15,6 @@ Table make_table() {
     return Table{1001,
                  TableSpec{11, "commerce", "orders", EngineType::MAP, make_shard_ranges(4), 2, "pool-a"},
                  state};
-}
-
-ShardID shard_for_key(const Table& table, const Key& key) {
-    const auto position = find_shard_range(table.spec.shard_ranges, hash_bucket_for_key(key));
-    return ShardID(table.table_id, table.spec.shard_ranges[position].shard_id);
 }
 
 ShardRoute make_route(const ShardID& shard_id,
@@ -48,10 +41,6 @@ ShardRoute make_route(const ShardID& shard_id,
     return route;
 }
 
-GetRouteParam make_get_route_param(const Key& key = "user-123") {
-    return GetRouteParam{"commerce", "orders", key};
-}
-
 }  // namespace
 
 TEST(RouteServiceTest, InspectionReturnsAllRangesWithoutLiveReplicas) {
@@ -72,6 +61,51 @@ TEST(RouteServiceTest, InspectionReturnsAllRangesWithoutLiveReplicas) {
     EXPECT_EQ(service.get_table_routes(param, nullptr, &routes).code(), StatusCode::ROUTE_NOT_FOUND);
 }
 
+TEST(RouteServiceTest, TableRoutesRequireExactlyOneWritableLeader) {
+    {
+        MetaStore store{MemoryMetaStoreParam{}};
+        ASSERT_TRUE(store.init().ok());
+        const auto table = make_table();
+        ASSERT_TRUE(store_test::put_table(store, table).ok());
+        ASSERT_TRUE(store_test::put_shard_route(
+                        store, make_route({table.table_id, 0}, {ReplicaRole::FOLLOWER,
+                                                                ReplicaRole::FOLLOWER}))
+                        .ok());
+        RouteService service(&store);
+        std::vector<ShardRoute> routes;
+        GetTableRoutesParam param{"commerce", "orders", false};
+        EXPECT_EQ(service.get_table_routes(param, nullptr, &routes).code(), StatusCode::ROUTE_NOT_FOUND);
+    }
+    {
+        MetaStore store{MemoryMetaStoreParam{}};
+        ASSERT_TRUE(store.init().ok());
+        const auto table = make_table();
+        ASSERT_TRUE(store_test::put_table(store, table).ok());
+        ASSERT_TRUE(store_test::put_shard_route(
+                        store, make_route({table.table_id, 0}, {ReplicaRole::LEADER,
+                                                                ReplicaRole::LEADER}))
+                        .ok());
+        RouteService service(&store);
+        std::vector<ShardRoute> routes;
+        GetTableRoutesParam param{"commerce", "orders", false};
+        EXPECT_EQ(service.get_table_routes(param, nullptr, &routes).code(), StatusCode::ROUTE_NOT_FOUND);
+    }
+    {
+        MetaStore store{MemoryMetaStoreParam{}};
+        ASSERT_TRUE(store.init().ok());
+        const auto table = make_table();
+        ASSERT_TRUE(store_test::put_table(store, table).ok());
+        ASSERT_TRUE(
+            store_test::put_shard_route(
+                store, make_route({table.table_id, 0}, {ReplicaRole::LEADER}, false))
+                .ok());
+        RouteService service(&store);
+        std::vector<ShardRoute> routes;
+        GetTableRoutesParam param{"commerce", "orders", false};
+        EXPECT_EQ(service.get_table_routes(param, nullptr, &routes).code(), StatusCode::ROUTE_NOT_FOUND);
+    }
+}
+
 TEST(RouteServiceTest, UsesPersistedUnevenRangesAndSparseIds) {
     MetaStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
@@ -82,119 +116,29 @@ TEST(RouteServiceTest, UsesPersistedUnevenRangesAndSparseIds) {
     ASSERT_TRUE(store_test::put_table(store, table).ok());
     ASSERT_TRUE(store_test::put_shard_route(store, make_route({table.table_id, 42})).ok());
     RouteService service(&store);
-    ShardRoute route;
-    ASSERT_TRUE(service.get_route(make_get_route_param(), &route).ok());
-    EXPECT_EQ(route.shard_id.shard_index, 42);
-    EXPECT_EQ(route.hash_range.start, h);
-    auto by_id = make_get_route_param();
-    by_id.use_id = true;
-    by_id.table_id = table.table_id;
-    by_id.shard_id = 42;
-    ASSERT_TRUE(service.get_route(by_id, &route).ok());
+    std::vector<ShardRoute> routes;
+    // 缺失 shard 路由时，仅 include_unavailable 可返回整表。
+    GetTableRoutesParam param{"commerce", "orders", true};
+    ASSERT_TRUE(service.get_table_routes(param, nullptr, &routes).ok());
+    ASSERT_EQ(routes.size(), 2U);
+    EXPECT_EQ(routes[0].hash_range, (HashRange{0, h}));
+    EXPECT_TRUE(routes[0].replicas.empty());
+    EXPECT_EQ(routes[1].hash_range, (HashRange{h, K_HASH_BUCKET_COUNT}));
+    EXPECT_EQ(routes[1].replicas.size(), 2U);
+    EXPECT_EQ(routes[1].replicas[0].role, ReplicaRole::LEADER);
+    EXPECT_EQ(routes[1].replicas[1].role, ReplicaRole::FOLLOWER);
+
+    param.include_unavailable = false;
+    EXPECT_EQ(service.get_table_routes(param, nullptr, &routes).code(), StatusCode::ROUTE_NOT_FOUND);
 }
 
-// 检测 RouteService 会根据 DB、Table 和 Key 计算 shard 并返回对应路由。
-TEST(RouteServiceTest, GetRouteReturnsRouteForTableAndKey) {
-    MetaStore store{MemoryMetaStoreParam{}};
-    ASSERT_TRUE(store.init().ok());
-    Table table = make_table();
-    const Key key = "user-123";
-    ShardID shard_id = shard_for_key(table, key);
-    ASSERT_TRUE(store_test::put_table(store, table).ok());
-    ASSERT_TRUE(store_test::put_shard_route(store, make_route(shard_id)).ok());
-    RouteService service(&store);
-
-    ShardRoute route;
-    Status status = service.get_route(make_get_route_param(key), &route);
-
-    ASSERT_TRUE(status.ok()) << status.msg();
-    EXPECT_EQ(route.shard_id, shard_id);
-    ASSERT_EQ(route.replicas.size(), 2U);
-    EXPECT_EQ(route.replicas[0].role, ReplicaRole::LEADER);
-    EXPECT_EQ(route.replicas[0].ip, "127.0.0.1");
-    EXPECT_EQ(route.replicas[1].role, ReplicaRole::FOLLOWER);
-}
-
-// 检测非法 get_route 参数会被 RouteService 拒绝。
-TEST(RouteServiceTest, GetRouteRejectsInvalidParam) {
+TEST(RouteServiceTest, TableRoutesReturnsTableNotFoundWhenTableMissing) {
     MetaStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     RouteService service(&store);
-    ShardRoute route;
-
-    Status status =
-        service.get_route(GetRouteParam{"", "orders", "key"}, &route);
-
-    EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT);
-}
-
-// 检测 Table 或者  shard route 不存在
-TEST(RouteServiceTest, GetRouteReturnsTableNotFoundWhenTableMissing) {
-    MetaStore store{MemoryMetaStoreParam{}};
-    ASSERT_TRUE(store.init().ok());
-    RouteService service(&store);
-    ShardRoute route;
-    {
-        Status status = service.get_route(make_get_route_param(), &route);
-
-        EXPECT_EQ(status.code(), StatusCode::TABLE_NOT_FOUND);
-    }
-    ASSERT_TRUE(store_test::put_table(store, make_table()).ok());
-    {
-        Status status = service.get_route(make_get_route_param(), &route);
-
-        EXPECT_EQ(status.code(), StatusCode::ROUTE_NOT_FOUND);
-    }
-}
-
-// 检测没有可写 leader、多个 leader 或 leader endpoint 无效时，RouteService 返回
-// ROUTE_NOT_FOUND。
-TEST(RouteServiceTest, GetRouteRequiresExactlyOneWritableLeader) {
-    {
-        MetaStore store{MemoryMetaStoreParam{}};
-        ASSERT_TRUE(store.init().ok());
-        Table table = make_table();
-        ShardID shard_id = shard_for_key(table, "user-123");
-        ASSERT_TRUE(store_test::put_table(store, table).ok());
-        ASSERT_TRUE(store_test::put_shard_route(
-                        store, make_route(shard_id, {ReplicaRole::FOLLOWER,
-                                                     ReplicaRole::FOLLOWER}))
-                        .ok());
-        RouteService service(&store);
-        ShardRoute route;
-        EXPECT_EQ(service.get_route(make_get_route_param(), &route).code(),
-                  StatusCode::ROUTE_NOT_FOUND);
-    }
-    {
-        MetaStore store{MemoryMetaStoreParam{}};
-        ASSERT_TRUE(store.init().ok());
-        Table table = make_table();
-        ShardID shard_id = shard_for_key(table, "user-123");
-        ASSERT_TRUE(store_test::put_table(store, table).ok());
-        ASSERT_TRUE(store_test::put_shard_route(
-                        store, make_route(shard_id, {ReplicaRole::LEADER,
-                                                     ReplicaRole::LEADER}))
-                        .ok());
-        RouteService service(&store);
-        ShardRoute route;
-        EXPECT_EQ(service.get_route(make_get_route_param(), &route).code(),
-                  StatusCode::ROUTE_NOT_FOUND);
-    }
-    {
-        MetaStore store{MemoryMetaStoreParam{}};
-        ASSERT_TRUE(store.init().ok());
-        Table table = make_table();
-        ShardID shard_id = shard_for_key(table, "user-123");
-        ASSERT_TRUE(store_test::put_table(store, table).ok());
-        ASSERT_TRUE(
-            store_test::put_shard_route(
-                store, make_route(shard_id, {ReplicaRole::LEADER}, false))
-                .ok());
-        RouteService service(&store);
-        ShardRoute route;
-        EXPECT_EQ(service.get_route(make_get_route_param(), &route).code(),
-                  StatusCode::ROUTE_NOT_FOUND);
-    }
+    std::vector<ShardRoute> routes;
+    GetTableRoutesParam param{"commerce", "orders", true};
+    EXPECT_EQ(service.get_table_routes(param, nullptr, &routes).code(), StatusCode::TABLE_NOT_FOUND);
 }
 
 }  // namespace adviskv::meta
