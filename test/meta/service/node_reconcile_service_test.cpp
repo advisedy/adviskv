@@ -59,7 +59,7 @@ TEST(NodeServiceReconcileTest, MissingNodeDoesNotMarkReplicaLost) {
             store, make_replica("node-a", 0, ReplicaPhase::READY, 18080))
             .ok());
 
-    ReplicaGroupService rg_ctrl(&store);
+    ReplicaGroupService rg_ctrl(&store, nullptr);
     ASSERT_TRUE(rg_ctrl.reconcile_all().ok());
 
     ReplicaOr replica;
@@ -88,7 +88,7 @@ TEST(NodeServiceReconcileTest, OnlineNodeBecomesSuspectThenOfflineAndReplicasLos
 
     NodeService ctrl(&store, func::get_current_ts_ms() -
                                   NodeReconciler::HEARTBEAT_STARTUP_GRACE_MS - 1000);
-    ReplicaGroupService rg_ctrl(&store);
+    ReplicaGroupService rg_ctrl(&store, nullptr);
 
     run_node_and_replica_reconcile(ctrl, rg_ctrl);
 
@@ -133,7 +133,7 @@ TEST(NodeServiceReconcileTest, SuspectNodeBecomesOnlineAndReplicasUpdated) {
 
     NodeService ctrl(&store, func::get_current_ts_ms() -
                                   NodeReconciler::HEARTBEAT_STARTUP_GRACE_MS - 1000);
-    ReplicaGroupService rg_ctrl(&store);
+    ReplicaGroupService rg_ctrl(&store, nullptr);
     run_node_and_replica_reconcile(ctrl, rg_ctrl);
 
     NodeOr node;
@@ -181,7 +181,7 @@ TEST(NodeServiceReconcileTest, TopologyMismatchNodeStaysOfflineAndReplicasBecome
 
     NodeService ctrl(&store, func::get_current_ts_ms() -
                                   NodeReconciler::HEARTBEAT_STARTUP_GRACE_MS - 1000);
-    ReplicaGroupService rg_ctrl(&store);
+    ReplicaGroupService rg_ctrl(&store, nullptr);
     run_node_and_replica_reconcile(ctrl, rg_ctrl);
 
     NodeOr saved;
@@ -215,7 +215,7 @@ TEST(NodeServiceReconcileTest, CheckReloadsNodeBeforeWritingStatus) {
 
     NodeService ctrl(&store, func::get_current_ts_ms() -
                                   NodeReconciler::HEARTBEAT_STARTUP_GRACE_MS - 1000);
-    ReplicaGroupService rg_ctrl(&store);
+    ReplicaGroupService rg_ctrl(&store, nullptr);
     ASSERT_TRUE(ctrl.reconcile_all().ok());
 
     NodeOr saved;
@@ -261,7 +261,7 @@ TEST(NodeServiceReconcileTest, StartupGraceKeepsStaleOnlineNodesOnline) {
             .ok());
 
     NodeService ctrl(&store);
-    ReplicaGroupService rg_ctrl(&store);
+    ReplicaGroupService rg_ctrl(&store, nullptr);
     ASSERT_TRUE(ctrl.reconcile_all().ok());
     ASSERT_TRUE(rg_ctrl.reconcile_all().ok());
 
@@ -318,7 +318,7 @@ TEST(NodeServiceReconcileTest, StartupGraceAllowsOfflineNodesWithNewHeartbeatRec
             .ok());
 
     NodeService ctrl(&store);
-    ReplicaGroupService rg_ctrl(&store);
+    ReplicaGroupService rg_ctrl(&store, nullptr);
     run_node_and_replica_reconcile(ctrl, rg_ctrl);
 
     NodeOr node_a;

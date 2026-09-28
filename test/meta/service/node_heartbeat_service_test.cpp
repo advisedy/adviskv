@@ -75,7 +75,7 @@ TEST(NodeHeartbeatServiceTest, HeartbeatUpdatesNodeAndAssignedReplicas) {
     ASSERT_TRUE(store_test::put_node(store, make_node("node-a")).ok());
     ASSERT_TRUE(store_test::put_replica(store, make_replica(ReplicaID{1001, 0, 0}, "node-a")).ok());
     NodeService service(&store);
-    ReplicaGroupService replica_group_service(&store);
+    ReplicaGroupService replica_group_service(&store, nullptr);
 
     Status status = service.heartbeat(make_heartbeat_param());
 
@@ -338,7 +338,7 @@ TEST(NodeHeartbeatServiceTest, HeartbeatMarksDeletingReplicaDeletedWhenMissing) 
     EXPECT_EQ(stored->state.phase, ReplicaPhase::DELETING);
     EXPECT_TRUE(stored->state.observed_no_exist);
 
-    ReplicaGroupService replica_group_service(&store);
+    ReplicaGroupService replica_group_service(&store, nullptr);
     ASSERT_TRUE(replica_group_service.reconcile_all().ok());
     ASSERT_TRUE(store_test::get_replica(store, ReplicaID{1001, 0, 0}, stored).ok());
     ASSERT_FALSE(stored.is_empty());
@@ -377,7 +377,7 @@ TEST(NodeHeartbeatServiceTest, ReplicaGroupServiceBuildsHeartbeatExpectations) {
             {},
     });
 
-    ReplicaGroupService replica_group_service(&store);
+    ReplicaGroupService replica_group_service(&store, nullptr);
     HeartBeatResult result;
     Status status = replica_group_service.build_heartbeat_result(param, result);
 
@@ -423,7 +423,7 @@ TEST(NodeHeartbeatServiceTest, EmptyMetaDoesNotDeleteUnknownStorageReplicas) {
             {},
     });
 
-    ReplicaGroupService service(&store);
+    ReplicaGroupService service(&store, nullptr);
     HeartBeatResult result;
     Status status = service.build_heartbeat_result(param, result);
 
@@ -446,7 +446,7 @@ TEST(NodeHeartbeatServiceTest, PartiallyInitializedTableDoesNotDeleteUnknownStor
     ASSERT_TRUE(store_test::put_table(store, table).ok());
 
     HeartBeatParam param = make_heartbeat_param();
-    ReplicaGroupService service(&store);
+    ReplicaGroupService service(&store, nullptr);
     HeartBeatResult result;
     ASSERT_TRUE(service.build_heartbeat_result(param, result).ok());
     EXPECT_TRUE(result.expects.empty());

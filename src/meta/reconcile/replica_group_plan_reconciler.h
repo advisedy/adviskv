@@ -3,24 +3,27 @@
 #include "common/model/type.h"
 #include "common/status.h"
 #include "meta/model/model.h"
-#include "meta/service/replica_group_service.h"
+#include "meta/reconcile/replica_group_reconcile_util.h"
 
 namespace adviskv::meta {
 
-// 这个是全权由ReplicaGroupService去负责
+class MetaStore;
+class NodeSelector;
+class ReplicaGroupReconciler;
+
 class ReplicaGroupPlanReconciler {
 private:
-    friend class ReplicaGroupService;
+    friend class ReplicaGroupReconciler;
 
-    explicit ReplicaGroupPlanReconciler(ReplicaGroupReconcileContext ctx);
+    explicit ReplicaGroupPlanReconciler(MetaStore* store);
 
-    Status reconcile_all();
+    Status run();
     Status reconcile_table(const Table& table);
     Status reconcile_present_table(const Table& table);
     Status ensure_group_for_shard(const Table& table, ShardIndex shard_index);
     Status reconcile_absent_table(const Table& table);
 
-    ReplicaGroupReconcileContext ctx_;
+    MetaStore* store_{nullptr};
 };
 
 }  // namespace adviskv::meta

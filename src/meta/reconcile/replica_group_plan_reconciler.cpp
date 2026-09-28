@@ -5,22 +5,21 @@
 #include "common/status.h"
 #include "meta/store/meta_store.h"
 #include "meta/store/meta_store_txn.h"
-// #include "meta/model/table_status.h"
 
 namespace adviskv::meta {
 
-ReplicaGroupPlanReconciler::ReplicaGroupPlanReconciler(ReplicaGroupReconcileContext ctx) : ctx_(std::move(ctx)) {}
+ReplicaGroupPlanReconciler::ReplicaGroupPlanReconciler(MetaStore* store) : store_(store) {}
 // 遍历每一个table，如果table是absent的话，直接replica_count=0，当replica都没了就删了
 // 如果是present的话，就遍历table的每一个ReplicaGroup，如果没有group就创建，或者修改target_replica_count为当前table的replica_count
-Status ReplicaGroupPlanReconciler::reconcile_all() {
-    if (ctx_.store == nullptr) {
+Status ReplicaGroupPlanReconciler::run() {
+    if (store_ == nullptr) {
         Status status{StatusCode::INVALID_ARGUMENT, "store is nullptr"};
         LOG_ERROR("[ReplicaGroupPlanReconciler] reconcile skipped, msg={}", status.msg());
         return status;
     }
 
     std::vector<Table> tables;
-    Status status = ctx_.store->read_with([&](const MetaStoreTxn& txn) { return txn.list_tables(tables); });
+    Status status = store_->read_with([&](const MetaStoreTxn& txn) { return txn.list_tables(tables); });
     if (status.fail()) {
         LOG_WARN("[ReplicaGroupPlanReconciler] list tables failed, msg={}", status.msg());
         return status;
@@ -62,7 +61,7 @@ Status ReplicaGroupPlanReconciler::reconcile_present_table(const Table& table) {
 
 Status ReplicaGroupPlanReconciler::ensure_group_for_shard(const Table& table, ShardIndex shard_index) {
     ShardID shard_id{table.table_id, shard_index};
-    return ctx_.store->write_with([&](MetaStoreTxn& txn) -> Status {
+    return store_->write_with([&](MetaStoreTxn& txn) -> Status {
         TableOr current;
         RETURN_IF_INVALID_STATUS(txn.get_table(table.table_id, current))
         if (current.is_empty() || current->state.desired != TableDesired::PRESENT ||
@@ -101,7 +100,7 @@ Status ReplicaGroupPlanReconciler::ensure_group_for_shard(const Table& table, Sh
 }
 
 Status ReplicaGroupPlanReconciler::reconcile_absent_table(const Table& table) {
-    return ctx_.store->write_with([&](MetaStoreTxn& txn) -> Status {
+    return store_->write_with([&](MetaStoreTxn& txn) -> Status {
         TableOr current;
         RETURN_IF_INVALID_STATUS(txn.get_table(table.table_id, current))
 

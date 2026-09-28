@@ -1,145 +1,19 @@
 #include "meta/service/replica_group_service.h"
 
 #include <algorithm>
-#include <cstdint>
 #include <unordered_set>
 #include <vector>
 
 #include "common/define.h"
-#include "common/func.h"
 #include "common/log.h"
 #include "common/model/type.h"
-#include "common/status.h"
-#include "meta/model/model.h"
-#include "meta/reconcile/replica_group_membership_reconciler.h"
-#include "meta/reconcile/replica_group_plan_reconciler.h"
+#include "meta/reconcile/replica_group_reconcile_util.h"
 #include "meta/store/meta_store.h"
 #include "meta/store/meta_store_txn.h"
 
 namespace adviskv::meta {
 
 namespace {
-
-enum class RemoveVictimClass {
-    BAD = 0,
-    NON_MEMBER = 1,
-    NON_LEADER = 2,
-    LEADER = 3,  // 最后才动 leader
-};
-
-RemoveVictimClass get_remove_victim_class_from_replica(const ReplicaOr& replica_or) {
-    if (replica_or.is_empty()) {
-        return RemoveVictimClass::BAD;
-    }
-    const Replica& replica = replica_or.value();
-    if (replica.state.phase == ReplicaPhase::LOST || replica.state.phase == ReplicaPhase::ERROR) {
-        return RemoveVictimClass::BAD;
-    }
-    if (replica.state.observed_member_type == RaftMemberType::NON_MEMBER) {
-        return RemoveVictimClass::NON_MEMBER;
-    }
-    if (replica.state.observed_raft_role == ReplicaRole::LEADER) {
-        return RemoveVictimClass::LEADER;
-    }
-    return RemoveVictimClass::NON_LEADER;
-}
-
-}  // namespace
-
-Status select_remove_member_victims(const MetaStoreTxn& txn, const ReplicaGroup& group, int32_t count,
-                                    bool filter_healthy, std::vector<ReplicaID>& victims) {
-    victims.clear();
-    if (count <= 0 || group.desired_members.empty()) {
-        return Status::OK();
-    }
-
-    std::vector<std::pair<RemoveVictimClass, ReplicaID>> ranked;
-    ranked.reserve(group.desired_members.size());
-    for (const ReplicaID& rid : group.desired_members) {
-        ReplicaOr replica_or;
-        RETURN_IF_INVALID_STATUS(txn.get_replica(rid, replica_or))
-        RemoveVictimClass cls = get_remove_victim_class_from_replica(replica_or);
-        if (filter_healthy && cls != RemoveVictimClass::BAD) {
-            continue;
-        }
-        ranked.emplace_back(cls, rid);
-    }
-
-    std::sort(
-            ranked.begin(), ranked.end(),
-            [](const std::pair<RemoveVictimClass, ReplicaID>& lhs, const std::pair<RemoveVictimClass, ReplicaID>& rhs) {
-                if (lhs.first != rhs.first) {
-                    return lhs.first < rhs.first;
-                }
-                return lhs.second.replica_seq > rhs.second.replica_seq;
-            });
-
-    size_t n = std::min(to<size_t>(count), ranked.size());
-    victims.reserve(n);
-    for (size_t i = 0; i < n; ++i) {
-        victims.push_back(ranked[i].second);
-    }
-    return Status::OK();
-}
-
-namespace {
-
-ReplicaPhase project_phase_from_observed_facts(const MetaStoreTxn& txn, const Replica& replica) {
-    if (replica.state.phase == ReplicaPhase::DELETED) return ReplicaPhase::DELETED;
-
-    if (replica.state.desired == ReplicaDesired::ABSENT) {
-        if (replica.state.phase == ReplicaPhase::DELETING && replica.state.observed_no_exist) {
-            return ReplicaPhase::DELETED;
-        }
-        return ReplicaPhase::DELETING;
-    }
-
-    if (replica.state.phase == ReplicaPhase::DELETING || replica.state.phase == ReplicaPhase::ERROR) {
-        return replica.state.phase;
-    }
-
-    NodeOr node;
-    if (txn.get_node(replica.spec.assign_node_id, node).fail() || node.is_empty()) {
-        return replica.state.phase;
-    }
-    if (node->state.status == NodeStatus::OFFLINE) {
-        return ReplicaPhase::LOST;
-    } else if (replica.state.phase == ReplicaPhase::LOST) {  // 说明node是ONLINE的
-        return ReplicaPhase::CREATING;
-    }
-    switch (replica.state.observed_storage_status) {
-        case StorageReplicaStatus::INITIALIZING:
-        case StorageReplicaStatus::RECOVERING:
-            return ReplicaPhase::CREATING;
-        case StorageReplicaStatus::READY:
-            return ReplicaPhase::READY;
-        case StorageReplicaStatus::FAULTED:
-        default:
-            return ReplicaPhase::ERROR;
-    }
-}
-
-Status reconcile_replica_phase(MetaStoreTxn& txn, Replica& replica) {
-    ReplicaPhase next_phase = project_phase_from_observed_facts(txn, replica);
-    if (next_phase == replica.state.phase) {
-        return Status::OK();
-    }
-    replica.state.phase = next_phase;
-    if (next_phase == ReplicaPhase::DELETED) {
-        replica.state.last_error_msg.clear();
-    }
-    replica.state.update_ts = func::get_current_ts_ms();
-    return txn.put_replica(replica);
-}
-
-Status reconcile_all_replica_phases(MetaStoreTxn& txn) {
-    std::vector<Replica> replicas;
-    RETURN_IF_INVALID_STATUS(txn.list_replicas(replicas))
-    for (Replica& replica : replicas) {
-        RETURN_IF_INVALID_STATUS(reconcile_replica_phase(txn, replica))
-    }
-    return Status::OK();
-}
 
 std::vector<PeerMember> build_shard_members(const MetaStoreTxn& txn, const ShardID& shard_id, bool voter_only) {
     ReplicaGroupOr group_or;
@@ -269,7 +143,9 @@ Status append_reconfig_command_for_leader(const MetaStoreTxn& txn, const HeartBe
 }  // namespace
 
 ReplicaGroupService::ReplicaGroupService(MetaStore* store, NodeSelector* selector)
-        : store_(store), selector_(selector) {}
+        : store_(store), reconciler_(store, selector) {}
+
+Status ReplicaGroupService::reconcile_all() { return reconciler_.run(); }
 
 // 关于这个构建心跳result，分成两个阶段，首先是把期望在但是不在，和期望不在但是在的expected_replicas构成
 // 然后再调用append_reconfig_command_for_leader，负责去把ExpectedReplicaType是ADD_MEMBER或者REMOVE_MEMBER的expected_replicas的构建出来
@@ -365,41 +241,6 @@ Status ReplicaGroupService::build_heartbeat_result(const HeartBeatParam& param, 
 
         return Status::OK();
     });
-}
-
-Status ReplicaGroupService::reconcile_all() {
-    if (store_ == nullptr) {
-        Status error{StatusCode::INVALID_ARGUMENT, "store is nullptr"};
-        LOG_ERROR("[ReplicaGroupService] reconcile skipped, msg={}", error.msg());
-        return error;
-    }
-
-    ReplicaGroupReconcileContext ctx{store_, selector_};
-    ReplicaGroupPlanReconciler plan(ctx);
-    ReplicaGroupMembershipReconciler membership(ctx);
-
-    Status status = plan.reconcile_all();
-    if (status.fail()) {
-        LOG_WARN("[ReplicaGroupService] plan reconcile failed, msg={}", status.msg());
-        return status;
-    }
-    // 在 membership reconcile 之前先把 observed facts 投影成最新 replica phase。
-    status = store_->write_with([&](MetaStoreTxn& txn) -> Status { return reconcile_all_replica_phases(txn); });
-    if (status.fail()) {
-        LOG_WARN("[ReplicaGroupService] reconcile replica phases failed, msg={}", status.msg());
-        return status;
-    }
-    status = membership.reconcile_all();
-    if (status.fail()) {
-        LOG_WARN("[ReplicaGroupService] membership reconcile failed, msg={}", status.msg());
-        return status;
-    }
-    status = plan.reconcile_all();
-    if (status.fail()) {
-        LOG_WARN("[ReplicaGroupService] final plan reconcile failed, msg={}", status.msg());
-        return status;
-    }
-    return Status::OK();
 }
 
 }  // namespace adviskv::meta

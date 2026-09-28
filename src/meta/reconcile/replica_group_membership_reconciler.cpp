@@ -14,7 +14,6 @@
 #include "meta/model/model.h"
 #include "meta/model/param.h"
 #include "meta/placement/node_selector.h"
-#include "meta/service/replica_group_service.h"
 #include "meta/store/meta_store.h"
 #include "meta/store/meta_store_txn.h"
 
@@ -47,18 +46,18 @@ bool all_members_ready(const MetaStoreTxn& txn, const ReplicaGroup& group) {
 
 }  // namespace
 
-ReplicaGroupMembershipReconciler::ReplicaGroupMembershipReconciler(ReplicaGroupReconcileContext ctx)
-        : ctx_(std::move(ctx)) {}
+ReplicaGroupMembershipReconciler::ReplicaGroupMembershipReconciler(MetaStore* store, NodeSelector* selector)
+        : store_(store), selector_(selector) {}
 
-Status ReplicaGroupMembershipReconciler::reconcile_all() {
-    if (ctx_.store == nullptr) {
+Status ReplicaGroupMembershipReconciler::run() {
+    if (store_ == nullptr) {
         Status status{StatusCode::INVALID_ARGUMENT, "store is nullptr"};
         LOG_ERROR("[ReplicaGroupMembership] reconcile skipped, msg={}", status.msg());
         return status;
     }
 
     std::vector<ReplicaGroup> groups;
-    Status status = ctx_.store->read_with([&](const MetaStoreTxn& txn) { return txn.list_replica_groups(groups); });
+    Status status = store_->read_with([&](const MetaStoreTxn& txn) { return txn.list_replica_groups(groups); });
     if (status.fail()) {
         LOG_WARN("[ReplicaGroupMembership] list replica groups failed, msg={}", status.msg());
         return status;
@@ -87,7 +86,6 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
                 group.shard_id.to_string(), to<int32>(group.mode), group.target_replica_count, ids.str());
     }
     //
-    // 从 ctx_.store->read_with 里面获取到这些数据
     ReplicaGroup current_group;
     bool group_exists = false;
     int32_t healthy_count = 0;
@@ -95,7 +93,7 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
     Optional<ReplicaID> remove_victim;
     bool remove_victim_is_non_member = false;
     //
-    RETURN_IF_INVALID_STATUS(ctx_.store->read_with([&](const MetaStoreTxn& txn) -> Status {
+    RETURN_IF_INVALID_STATUS(store_->read_with([&](const MetaStoreTxn& txn) -> Status {
         ReplicaGroupOr current_or;
         RETURN_IF_INVALID_STATUS(txn.get_replica_group(group.shard_id, current_or))
         if (current_or.is_empty()) return Status::OK();
@@ -212,7 +210,7 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
 
 // 负责ReplicaGroup的Mode修改，replica的物理逻辑删除
 Status ReplicaGroupMembershipReconciler::cleanup_group(const ReplicaGroup& group) {
-    return ctx_.store->write_with([&](MetaStoreTxn& txn) -> Status {
+    return store_->write_with([&](MetaStoreTxn& txn) -> Status {
         ReplicaGroupOr current_or;
         RETURN_IF_INVALID_STATUS(txn.get_replica_group(group.shard_id, current_or))
         if (current_or.is_empty()) return Status::OK();
@@ -250,7 +248,7 @@ Status ReplicaGroupMembershipReconciler::cleanup_group(const ReplicaGroup& group
 
 // TODO111 吧count_to_add改一下名字
 Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, int32_t count_to_add) {
-    RETURN_IF_NULLPTR(ctx_.selector, "selector is nullptr")
+    RETURN_IF_NULLPTR(selector_, "selector is nullptr")
     RETURN_IF_INVALID_CONDITION(count_to_add > 0, "count_to_add must be > 0")
 
     std::string resource_pool;
@@ -259,7 +257,7 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
     std::unordered_set<NodeID> occupied_node_ids;
     {
         TableOr table_or;
-        Status status = ctx_.store->read_with([&](const MetaStoreTxn& txn) -> Status {
+        Status status = store_->read_with([&](const MetaStoreTxn& txn) -> Status {
             RETURN_IF_INVALID_STATUS(txn.get_table(group.shard_id.table_id, table_or))
             if (table_or.is_empty()) {
                 should_add = false;
@@ -295,7 +293,7 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
     param.replica_count = count_to_add;
     param.excluded_node_ids = std::move(occupied_node_ids);
 
-    if (Status select_status = ctx_.selector->select_table_nodes(param, placement); select_status.fail()) {
+    if (Status select_status = selector_->select_table_nodes(param, placement); select_status.fail()) {
         LOG_WARN("[ReplicaGroupMembershipReconciler] add_members, node selector failed, status:{}",
                  select_status.to_string());
         return select_status;
@@ -303,7 +301,7 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
 
     const std::vector<Node>& nodes = placement.shards.front().nodes;
 
-    return ctx_.store->write_with([&](MetaStoreTxn& txn) -> Status {
+    return store_->write_with([&](MetaStoreTxn& txn) -> Status {
         ReplicaGroupOr current_or;
         RETURN_IF_INVALID_STATUS(txn.get_replica_group(group.shard_id, current_or))
         if (current_or.is_empty()) return Status::OK();
@@ -350,7 +348,7 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
 Status ReplicaGroupMembershipReconciler::remove_members(const ReplicaGroup& group, int32_t count_to_remove) {
     RETURN_IF_INVALID_CONDITION(count_to_remove > 0, "count_to_remove must be > 0")
 
-    return ctx_.store->write_with([&](MetaStoreTxn& txn) -> Status {
+    return store_->write_with([&](MetaStoreTxn& txn) -> Status {
         ReplicaGroupOr current_or;
         RETURN_IF_INVALID_STATUS(txn.get_replica_group(group.shard_id, current_or))
         if (current_or.is_empty()) return Status::OK();
@@ -414,7 +412,7 @@ Status ReplicaGroupMembershipReconciler::remove_specific_members(const ReplicaGr
                                                                  const std::vector<ReplicaID>& victims) {
     if (victims.empty()) return Status::OK();
 
-    return ctx_.store->write_with([&](MetaStoreTxn& txn) -> Status {
+    return store_->write_with([&](MetaStoreTxn& txn) -> Status {
         ReplicaGroupOr current_or;
         RETURN_IF_INVALID_STATUS(txn.get_replica_group(group.shard_id, current_or))
         if (current_or.is_empty()) return Status::OK();
