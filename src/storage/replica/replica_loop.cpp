@@ -156,26 +156,6 @@ Status ReplicaLoop::handle_event(const SnapshotSendFailedEvent& event) {
     return status;
 }
 
-Status ReplicaLoop::handle_event(const PublishSnapshotEvent& event) {
-    {
-        std::lock_guard lock(context_.raft_core_mutex);
-        if (event.snapshot_index <= context_.raft_core.snapshot_index()) {
-            return Status::OK();
-        }
-        Status status = context_.raft_core.truncate_log(event.snapshot_index);
-        if (status.fail()) {
-            LOG_WARN(
-                    "[ReplicaLoop] handle publish snapshot failed, "
-                    "snapshot_index:{}, status:{}",
-                    event.snapshot_index, status.to_string());
-            context_.enter_faulted();
-            return status;
-        }
-    }
-    proposal_tracker_.advance();
-    return Status::OK();
-}
-
 Status ReplicaLoop::handle_call(RequestVoteCall& call) {
     return run_raft_step(context_, [this, &call](RaftEffects& effects) {
         LOG_DEBUG(

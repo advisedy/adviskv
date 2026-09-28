@@ -60,14 +60,8 @@ struct SnapshotSendFailedEvent {
     Status status;
 };
 
-struct PublishSnapshotEvent {
-    LogIndex snapshot_index;
-    Term snapshot_term;
-    std::vector<RaftMember> members;
-};
-
 using Event = std::variant<TickEvent, AppendResponseEvent, VoteResponseEvent, PreVoteResponseEvent,
-                           SnapshotResponseEvent, AppendSendFailedEvent, SnapshotSendFailedEvent, PublishSnapshotEvent>;
+                           SnapshotResponseEvent, AppendSendFailedEvent, SnapshotSendFailedEvent>;
 
 struct RequestVoteCall {
     RequestVoteParam param;
@@ -173,7 +167,6 @@ private:
     Status handle_event(const SnapshotResponseEvent& event);
     Status handle_event(const AppendSendFailedEvent& event);
     Status handle_event(const SnapshotSendFailedEvent& event);
-    Status handle_event(const PublishSnapshotEvent& event);
 
     // 关于handle_call的返回值最终会回落到call->status里
     Status handle_call(RequestVoteCall& call);
