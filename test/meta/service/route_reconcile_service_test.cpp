@@ -16,7 +16,6 @@ constexpr ShardIndex K_TEST_SHARD_INDEX = 0;
 
 Table make_table() {
     TableState state{};
-    state.desired = TableDesired::PRESENT;
     state.phase = TablePhase::READY;
     return Table{
         K_TEST_TABLE_ID,
@@ -37,7 +36,6 @@ struct ReplicaFixture {
 ReplicaFixture make_replica(ReplicaIndex replica_index, const NodeID& node_id,
                             int32_t port, ReplicaRole role, Term term) {
     ReplicaState state{};
-    state.desired = ReplicaDesired::PRESENT;
     state.phase = ReplicaPhase::READY;
     ReplicaObserved observed{};
     observed.raft_role = role;
@@ -343,7 +341,6 @@ TEST(RouteServiceReconcileTest, DeletedTableRouteIsCleared) {
             .ok());
 
     Table current = make_table();
-    current.state.desired = TableDesired::ABSENT;
     current.state.phase = TablePhase::DELETING;
     ASSERT_TRUE(store_test::put_table(store, current).ok());
 

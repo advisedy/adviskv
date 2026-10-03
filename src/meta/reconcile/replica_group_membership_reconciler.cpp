@@ -6,11 +6,13 @@
 #include <unordered_set>
 #include <utility>
 
+#include <fmt/format.h>
+
 #include "common/define.h"
 #include "common/func.h"
 #include "common/id_allocator.h"
 #include "common/log.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "meta/model/model.h"
 #include "meta/model/param.h"
@@ -66,10 +68,6 @@ Status retire_members(MetaStoreTxn& txn, ReplicaGroup& group, const std::vector<
         if (replica_or.is_empty()) continue;
         Replica replica = replica_or.value();
         bool changed = false;
-        if (replica.state.desired != ReplicaDesired::ABSENT) {
-            replica.state.desired = ReplicaDesired::ABSENT;
-            changed = true;
-        }
         if (replica.state.phase != ReplicaPhase::DELETING && replica.state.phase != ReplicaPhase::DELETED) {
             replica.state.phase = ReplicaPhase::DELETING;
             changed = true;
@@ -167,9 +165,11 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
             remove_victim = victims.front();
             ReplicaObservedOr victim_observed_or;
             RETURN_IF_INVALID_STATUS(txn.get_replica_observed(remove_victim.value(), victim_observed_or))
-            RaftMemberType victim_type = victim_observed_or.is_empty() ? RaftMemberType::NON_MEMBER
-                                                                       : victim_observed_or->member_type;
-            remove_victim_is_non_member = victim_type == RaftMemberType::NON_MEMBER;
+            // 没有观测不等于已退组：member_type 是 runtime 观测，meta 一重启就没了。
+            // 要是把"没观测"当成 NON_MEMBER，缩容期间重启一次就会把还在 raft 里的
+            // 活 voter 退休掉。只有 leader 明确上报"已不在成员集"才允许退休。
+            remove_victim_is_non_member =
+                    !victim_observed_or.is_empty() && victim_observed_or->member_type == RaftMemberType::NON_MEMBER;
         }
         return Status::OK();
     }))
@@ -337,6 +337,21 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
     if (Status select_status = selector_->select_table_nodes(param, placement); select_status.fail()) {
         LOG_WARN("[ReplicaGroupMembershipReconciler] add_members, node selector failed, status:{}",
                  select_status.to_string());
+        // 选不出节点不算失败，等下一轮 reconcile 再试。但要把原因写进
+        // last_error_msg，不然用户 GetTable 看到卡住了也不知道为什么。
+        // 正常 CREATING 保持空，避免每轮心跳抖动落盘。
+        std::string reason = fmt::format("waiting for resources: {}", select_status.msg());
+        IGNORE_RESULT(store_->write_with([&](MetaStoreTxn& txn) -> Status {
+            TableOr latest;
+            RETURN_IF_INVALID_STATUS(txn.get_table(group.shard_id.table_id, latest))
+            if (latest.is_empty() || latest->state.last_error_msg == reason) {
+                return Status::OK();
+            }
+            Table updated = latest.value();
+            updated.state.last_error_msg = reason;
+            updated.state.update_ts = func::get_current_ts_ms();
+            return txn.put_table(updated);
+        }))
         return select_status;
     }
 
@@ -362,7 +377,6 @@ Status ReplicaGroupMembershipReconciler::add_members(const ReplicaGroup& group, 
             replica.spec.dc = nodes[i].meta.dc;
             replica.spec.assign_node_id = nodes[i].id;
             replica.spec.engine_type = engine_type;
-            replica.state.desired = ReplicaDesired::PRESENT;
             replica.state.phase = ReplicaPhase::CREATING;
             LOG_INFO(
                     "[ReplicaGroupMembershipReconciler] add_members, create replica, shard_id:{}, replica_id:{}, node_id:{}, endpoint:{}",

@@ -81,7 +81,6 @@ TEST(DdlServiceTest, DeletedTableRemainsQueryableByIdAfterDatabaseDrop) {
     ASSERT_TRUE(ddl.create_db(CreateDBParam{"commerce", "zone-a"}, nullptr).ok());
     Table table;
     ASSERT_TRUE(ddl.create_table(CreateTableParam{"commerce", "orders", 1, 0, "default"}, &table).ok());
-    table.state.desired = TableDesired::ABSENT;
     table.state.phase = TablePhase::DELETED;
     ASSERT_TRUE(store.write_with([&](MetaStoreTxn& txn) { return txn.put_table(table); }).ok());
 

@@ -22,11 +22,9 @@ public:
     T& value() { return std::optional<T>::value(); }
     const T& value() const { return std::optional<T>::value(); }
 
-    std::optional<T>& self() { return *this; }
-
-    const std::optional<T>& self() const { return *this; }
-
-    bool operator==(const Optional<T>& other) const { return self() == other.self(); }
+    bool operator==(const Optional<T>& other) const {
+        return static_cast<const std::optional<T>&>(*this) == static_cast<const std::optional<T>&>(other);
+    }
 
     DEFINE_OPERATOR_NOT_EQUAL(Optional<T>)
 };

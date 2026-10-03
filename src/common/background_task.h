@@ -9,7 +9,7 @@
 #include <thread>
 
 #include "common/define.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 
 namespace adviskv {

@@ -4,9 +4,8 @@
 #include <unordered_map>
 
 #include "common/id_allocator.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "meta/model/model.h"
-#include "meta/store/meta_index.h"
 
 namespace adviskv::meta {
 
@@ -24,12 +23,7 @@ struct RuntimeData {
     std::unordered_map<ShardID, ShardRoute, ShardIDHash> shard_routes;
     // 心跳观测态，重启后重新上报。
     std::unordered_map<ReplicaID, ReplicaObserved, ReplicaIDHash> replica_observeds;
-};
-
-struct MetaWorkingSet {
-    DurableData durable;
-    RuntimeData runtime;
-    MetaIndex index;
+    std::unordered_map<ShardID, MembershipObserved, ShardIDHash> membership_observeds;
 };
 
 }  // namespace adviskv::meta

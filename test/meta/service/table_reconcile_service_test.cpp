@@ -8,7 +8,7 @@
 
 #include <gtest/gtest.h>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "meta/placement/node_selector.h"
 #include "meta/service/ddl_service.h"
@@ -247,7 +247,6 @@ TEST(TableReconcilerTest, ZeroReplicaTableReachesReadyWithoutRoute) {
 
     Table table = get_table_or_die(store);
     EXPECT_EQ(table.spec.target_replica_count, 0);
-    EXPECT_EQ(table.state.desired, TableDesired::PRESENT);
     EXPECT_EQ(table.state.phase, TablePhase::READY);
     EXPECT_TRUE(list_replicas_or_die(store).empty());
 
@@ -458,7 +457,6 @@ TEST(TableReconcilerTest, ReplicaGroupReplacesBadMemberAfterBackfill) {
     ReplicaOr bad_replica;
     ASSERT_TRUE(store_test::get_replica(store, bad_id, bad_replica).ok());
     ASSERT_FALSE(bad_replica.is_empty());
-    EXPECT_EQ(bad_replica->state.desired, ReplicaDesired::PRESENT);
     EXPECT_EQ(bad_replica->state.phase, ReplicaPhase::LOST);
 
     ReplicaOr replacement_replica;
@@ -530,7 +528,6 @@ TEST(TableReconcilerTest, ReplicaGroupReplacesBadMemberAfterBackfill) {
 
     ASSERT_TRUE(store_test::get_replica(store, bad_id, bad_replica).ok());
     ASSERT_FALSE(bad_replica.is_empty());
-    EXPECT_EQ(bad_replica->state.desired, ReplicaDesired::ABSENT);
     EXPECT_EQ(bad_replica->state.phase, ReplicaPhase::DELETING);
 }
 
@@ -656,7 +653,6 @@ TEST(TableReconcilerTest, LostReplicaIsReplacedAfterLeaderReportsMembershipWitho
 
     ASSERT_TRUE(store_test::get_replica(store, bad_id, bad_replica).ok());
     ASSERT_FALSE(bad_replica.is_empty());
-    EXPECT_EQ(bad_replica->state.desired, ReplicaDesired::ABSENT);
     EXPECT_EQ(bad_replica->state.phase, ReplicaPhase::DELETING);
 
     ASSERT_TRUE(services.route.reconcile_all().ok());
@@ -774,7 +770,6 @@ TEST(TableReconcilerTest, ReplicaGroupShrinksAfterObservedMemberRemoved) {
 
     ASSERT_TRUE(store_test::get_replica(store, victim_id, victim).ok());
     ASSERT_FALSE(victim.is_empty());
-    EXPECT_EQ(victim->state.desired, ReplicaDesired::ABSENT);
     EXPECT_EQ(victim->state.phase, ReplicaPhase::DELETING);
 }
 
@@ -802,7 +797,6 @@ TEST(TableReconcilerTest, ReadyTableCanShrinkToZeroWithoutRoute) {
     std::vector<Replica> replicas = list_replicas_or_die(store);
     ASSERT_EQ(replicas.size(), 2U);
     for (const Replica& replica : replicas) {
-        EXPECT_EQ(replica.state.desired, ReplicaDesired::ABSENT);
         EXPECT_EQ(replica.state.phase, ReplicaPhase::DELETING);
     }
 
@@ -835,7 +829,7 @@ TEST(TableReconcilerTest, ReadyTableCanShrinkToZeroWithoutRoute) {
               StatusCode::ROUTE_NOT_FOUND);
 }
 
-// 检测 Replica 出现 ERROR 时，Table 不会被标记为 FAILED，而是继续等待
+// 检测 Replica 出现 ERROR 时，Table 继续等待
 // ReplicaGroupMembershipReconciler 替换坏副本。
 TEST(TableReconcilerTest, ReplicaErrorKeepsTableWaiting) {
     MetaStore store{MemoryMetaStoreParam{}};
@@ -983,13 +977,11 @@ TEST(TableReconcilerTest, DropTableWaitsForReplicaGroupCleanup) {
     ASSERT_TRUE(services.table.reconcile_all().ok());
 
     Table table = get_table_or_die(store);
-    EXPECT_EQ(table.state.desired, TableDesired::ABSENT);
     EXPECT_EQ(table.state.phase, TablePhase::DELETING);
 
     std::vector<Replica> replicas = list_replicas_or_die(store);
     ASSERT_EQ(replicas.size(), 2U);
     for (const Replica& replica : replicas) {
-        EXPECT_EQ(replica.state.desired, ReplicaDesired::ABSENT);
         EXPECT_EQ(replica.state.phase, ReplicaPhase::DELETING);
     }
 
@@ -1014,7 +1006,6 @@ TEST(TableReconcilerTest, DropTableWaitsForReplicaGroupCleanup) {
     ASSERT_TRUE(services.table.reconcile_all().ok());
 
     table = get_table_or_die(store);
-    EXPECT_EQ(table.state.desired, TableDesired::ABSENT);
     EXPECT_EQ(table.state.phase, TablePhase::DELETED);
     EXPECT_TRUE(list_replicas_or_die(store).empty());
     ASSERT_TRUE(store_test::get_shard_route(store, ShardID{1001, 0}, route).ok());
@@ -1023,26 +1014,5 @@ TEST(TableReconcilerTest, DropTableWaitsForReplicaGroupCleanup) {
     EXPECT_TRUE(group.is_empty());
 }
 
-// 检测 FAILED 状态的 Table 不会被 reconcile 重试推进。
-TEST(TableReconcilerTest, FailedDropTableWillNotRetry) {
-    MetaStore store{MemoryMetaStoreParam{}};
-    ASSERT_TRUE(store.init().ok());
-    put_default_nodes(store);
-
-    FakeNodeSelector selector(&store);
-    ServiceHarness services(&store, &selector);
-    place_default_table(services);
-    reconcile_table_to_ready(services, store);
-    mark_table_absent(services.table);
-    Table failed = get_table_or_die(store);
-    failed.state.phase = TablePhase::FAILED;
-    failed.state.last_error_msg = "manual failure";
-    ASSERT_TRUE(store_test::put_table(store, failed).ok());
-    ASSERT_EQ(get_table_or_die(store).state.phase, TablePhase::FAILED);
-
-    ASSERT_TRUE(services.table.reconcile_all().ok());
-
-    expect_table_phase_and_msg(store, TablePhase::FAILED, "manual failure");
-}
 
 }  // namespace adviskv::meta

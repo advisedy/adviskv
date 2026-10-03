@@ -6,10 +6,18 @@
 
 namespace adviskv::meta {
 
-MetaStoreTxn::MetaStoreTxn(const MetaWorkingSet* ws) : ws_(ws) {}
-MetaStoreTxn::MetaStoreTxn(MetaWorkingSet* ws) : ws_(ws), mutable_ws_(ws) {}
+MetaStoreTxn::MetaStoreTxn(std::shared_ptr<const MetaSnapshot> snapshot)
+        : durable_(snapshot->durable), runtime_(snapshot->runtime), index_(snapshot->index) {}
 
 bool MetaStoreTxn::durable_dirty() const { return durable_dirty_; }
+
+std::shared_ptr<const MetaSnapshot> MetaStoreTxn::finish() const {
+    auto next = std::make_shared<MetaSnapshot>();
+    next->durable = durable_.share();
+    next->runtime = runtime_.share();
+    next->index = index_.share();
+    return next;
+}
 
 Status MetaStoreTxn::put_database(const Database& db) {
     Optional<Database> old;
@@ -232,6 +240,21 @@ Status MetaStoreTxn::put_replica_observed(const ReplicaID& replica_key, const Re
 Status MetaStoreTxn::get_replica_observed(const ReplicaID& replica_key, ReplicaObservedOr& out) const {
     auto it = runtime().replica_observeds.find(replica_key);
     if (it == runtime().replica_observeds.end()) {
+        out.reset();
+        return Status::OK();
+    }
+    out = it->second;
+    return Status::OK();
+}
+
+Status MetaStoreTxn::put_membership_observed(const ShardID& shard_id, const MembershipObserved& observed) {
+    mutable_runtime().membership_observeds[shard_id] = observed;
+    return Status::OK();
+}
+
+Status MetaStoreTxn::get_membership_observed(const ShardID& shard_id, MembershipObservedOr& out) const {
+    auto it = runtime().membership_observeds.find(shard_id);
+    if (it == runtime().membership_observeds.end()) {
         out.reset();
         return Status::OK();
     }

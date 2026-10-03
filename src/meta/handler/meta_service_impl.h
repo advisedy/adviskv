@@ -3,7 +3,7 @@
 #include <grpcpp/server_context.h>
 #include <grpcpp/support/status.h>
 
-#include "common/proto/rpc_alias.h"
+#include "common/proto/codec.h"
 #include "meta.grpc.pb.h"
 
 namespace adviskv::meta {

@@ -10,7 +10,6 @@ namespace {
 
 Table make_table() {
     TableState state{};
-    state.desired = TableDesired::PRESENT;
     state.phase = TablePhase::READY;
     return Table{1001,
                  TableSpec{11, "commerce", "orders", EngineType::MAP, make_shard_ranges(4), 2, "pool-a"},

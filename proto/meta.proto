@@ -29,13 +29,13 @@ message CreateTableRequest {
   int32 shard_count = 3;
   int32 replica_count = 4;
   string resource_pool = 5;
-  adviskv.pb.EngineType engine_type = 6;
+  int32 engine_type = 6;  // adviskv::EngineType
 }
 
 message CreateTableResponse {
   adviskv.pb.BaseRsp base_rsp = 1;
   int32 table_id = 2;
-  adviskv.pb.TablePhase phase = 3;
+  int32 phase = 3;  // adviskv::meta::TablePhase
   string operation_id = 4;
 }
 
@@ -47,7 +47,7 @@ message DropTableRequest {
 message DropTableResponse {
   adviskv.pb.BaseRsp base_rsp = 1;
   int32 table_id = 2;
-  adviskv.pb.TablePhase phase = 3;
+  int32 phase = 3;  // adviskv::meta::TablePhase
   string operation_id = 4;
 }
 
@@ -60,7 +60,7 @@ message AlterTableReplicaCountRequest {
 message AlterTableReplicaCountResponse {
   adviskv.pb.BaseRsp base_rsp = 1;
   int32 table_id = 2;
-  adviskv.pb.TablePhase phase = 3;
+  int32 phase = 3;  // adviskv::meta::TablePhase
   string operation_id = 4;
 }
 
@@ -77,27 +77,10 @@ message GetTableResponse {
   int32 table_id = 3;
   int32 shard_count = 4;
   int32 replica_count = 5;
-  adviskv.pb.TablePhase phase = 6;
+  int32 phase = 6;  // adviskv::meta::TablePhase
   string last_error_msg = 7;
   string operation_id = 8;
-  adviskv.pb.EngineType engine_type = 9;
-}
-
-message RouteReplica {
-    adviskv.pb.Endpoint endpoint = 1;
-    adviskv.pb.RaftRole role = 2;
-    adviskv.pb.ReplicaID replica_id = 3;
-}
-
-message HashRange {
-    uint32 start = 1;
-    uint32 end = 2;
-}
-
-message ShardRoute {
-    int32 shard_id = 1;
-    repeated RouteReplica replicas = 2;
-    HashRange hash_range = 3;
+  int32 engine_type = 9;  // adviskv::EngineType
 }
 
 message GetTableRoutesRequest{
@@ -110,7 +93,7 @@ message GetTableRoutesResponse{
     adviskv.pb.BaseRsp base_rsp = 1;
     int32 table_id = 2;
     int32 shard_count = 3;
-    repeated ShardRoute routes = 4;
+    repeated adviskv.pb.ShardRoute routes = 4;
 }
 
 message RegisterNodeRequest{
@@ -125,41 +108,18 @@ message RegisterNodeResponse{
     adviskv.pb.BaseRsp base_rsp = 1;
 }
 
-message HeartbeatReplicaInfo{
-    adviskv.pb.ReplicaID replica_id = 1;
-    adviskv.pb.RaftRole role = 2;
-    adviskv.pb.StorageReplicaStatus status = 3;
-    int64 term = 4;
-    adviskv.pb.RaftMemberType member_type = 5;
-    repeated adviskv.pb.RaftMember full_membership = 6;
-}
-
 message HeartbeatRequest{
     string node_id = 1;
     string ip = 2;
     int32 port = 3;
     string resource_pool = 4;
     string dc = 5;
-    repeated HeartbeatReplicaInfo replica_info_list = 6;
-}
-
-enum ExpectedReplicaType {
-    PRESENT = 0;
-    ABSENT = 1;
-    ADD_MEMBER = 2;
-    REMOVE_MEMBER = 3;
-}
-
-message ExpectedReplica {
-    ExpectedReplicaType type = 1;
-    adviskv.pb.ReplicaID replica_id = 2;
-    adviskv.pb.EngineType engine_type = 3;
-    repeated adviskv.pb.PeerMember initial_members = 4;
+    repeated adviskv.pb.HeartbeatReplicaInfo replica_info_list = 6;
 }
 
 message HeartbeatResponse{
     adviskv.pb.BaseRsp base_rsp = 1;
-    repeated ExpectedReplica expects = 2;
+    repeated adviskv.pb.ExpectedReplica expects = 2;
 }
 
 service MetaService {

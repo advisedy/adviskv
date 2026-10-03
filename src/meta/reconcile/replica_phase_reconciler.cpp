@@ -12,10 +12,10 @@ ReplicaPhase project_phase_from_observed_facts(const MetaStoreTxn& txn, const Re
                                                const ReplicaObservedOr& observed_or) {
     if (replica.state.phase == ReplicaPhase::DELETED) return ReplicaPhase::DELETED;
 
-    if (replica.state.desired == ReplicaDesired::ABSENT) {
+    if (replica.state.phase == ReplicaPhase::DELETING) {
         // 没有删除确认，继续等。
         bool no_exist = observed_or.has_value() && observed_or->no_exist;
-        if (replica.state.phase == ReplicaPhase::DELETING && no_exist) {
+        if (no_exist) {
             return ReplicaPhase::DELETED;
         }
         return ReplicaPhase::DELETING;

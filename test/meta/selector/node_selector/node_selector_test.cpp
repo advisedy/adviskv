@@ -22,12 +22,9 @@ Node make_node(const NodeID& id, const std::string& resource_pool, int32_t port,
 }
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id,
-                     ReplicaDesired desired = ReplicaDesired::PRESENT) {
+                     ReplicaPhase phase = ReplicaPhase::READY) {
     ReplicaState state{};
-    state.desired = desired;
-    state.phase = ReplicaPhase::READY;
-    state.observed_raft_role = ReplicaRole::FOLLOWER;
-    state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
+    state.phase = phase;
     return Replica{replica_id,
                    ReplicaSpec{"dc-a", node_id, EngineType::MAP}, state};
 }
@@ -163,7 +160,7 @@ TEST(NodeSelectorTest, PrefersNodesWithFewerPresentReplicas) {
                     .ok());
     ASSERT_TRUE(store_test::put_replica(
                     store, make_replica(ReplicaID{3, 0, 0}, "node-c",
-                                        ReplicaDesired::ABSENT))
+                                        ReplicaPhase::DELETING))
                     .ok());
 
     DefaultNodeSelector selector(&store);

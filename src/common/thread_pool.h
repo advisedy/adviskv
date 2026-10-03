@@ -25,7 +25,7 @@ public:
     void start(size_t worker_count);
     void stop();
 
-    void submit(std::function<void()> task);
+    bool submit(std::function<void()> task);
 
     bool started() const;
 

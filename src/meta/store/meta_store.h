@@ -2,16 +2,15 @@
 
 #include <functional>
 #include <memory>
-#include <shared_mutex>
+#include <mutex>
 #include <string>
 #include <variant>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "meta/model/model.h"
 #include "meta/persist/meta_persist_engine.h"
-#include "meta/store/meta_data.h"
-#include "meta/store/meta_index.h"
+#include "meta/store/meta_snapshot.h"
 #include "meta/store/meta_store_txn.h"
 
 namespace adviskv::meta {
@@ -27,7 +26,6 @@ struct PersistentMetaStoreParam {
 
 using MetaStoreParam = std::variant<MemoryMetaStoreParam, PersistentMetaStoreParam>;
 
-// 只负责锁、加载、事务提交、持久化。数据操作全部在 MetaStoreTxn 里。
 class MetaStore {
 public:
     explicit MetaStore(const MetaStoreParam& param);
@@ -38,12 +36,15 @@ public:
     Status write_with(const std::function<Status(MetaStoreTxn&)>& fn);
 
 private:
-    void rebuild_index(MetaWorkingSet& ws) const;
+    static void rebuild_index(const DurableData& durable, const RuntimeData& runtime, MetaIndex& index);
     Status persist_if_needed(const DurableData& durable);
-    Status load_from_persist(MetaWorkingSet& ws);
+    Status load_from_persist(DurableData& durable);
 
-    mutable std::shared_mutex mutex_;
-    MetaWorkingSet committed_;
+    std::shared_ptr<const MetaSnapshot> load_snapshot() const;
+    void publish(std::shared_ptr<const MetaSnapshot> next);
+
+    std::mutex writer_mutex_;
+    std::shared_ptr<const MetaSnapshot> published_;
     std::unique_ptr<IMetaPersistEngine> persist_engine_;
 };
 

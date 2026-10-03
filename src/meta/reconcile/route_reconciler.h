@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "meta/model/model.h"
 

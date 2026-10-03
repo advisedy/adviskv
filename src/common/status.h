@@ -1,13 +1,11 @@
 
 #pragma once
 #include <cstdint>
-#include <optional>
 #include <string>
 
 #include <fmt/core.h>
 #include <fmt/format.h>
 
-#include "common.pb.h"
 #include "common/define.h"
 
 namespace adviskv {
@@ -95,45 +93,6 @@ private:
     std::string msg_;
 };
 
-using StatusOr = std::optional<Status>;
-
 inline int32_t to_rpc_code(StatusCode code) { return static_cast<int32_t>(code); }
-namespace {
-
-inline bool try_decode_status_code(int32_t code, StatusCode& out) {
-    switch (code) {
-#define X(name, value)          \
-    case value:                 \
-        out = StatusCode::name; \
-        return true;
-        ADVISKV_STATUS_CODE_LIST(X)
-#undef X
-        default:
-            return false;
-    }
-}
-
-inline void encode_status_to_base_rsp(pb::BaseRsp* out, const Status& status) {
-    if (out == nullptr) return;
-    out->set_code(to_rpc_code(status.code()));
-    out->set_msg(status.msg());
-}
-
-}  // namespace
-
-inline Status decode_base_rsp_status(const pb::BaseRsp& rsp) {
-    StatusCode code = StatusCode::ERROR;
-    if (!try_decode_status_code(rsp.code(), code)) {
-        return Status::ERROR(fmt::format("unknown remote status code={}, msg={}", rsp.code(), rsp.msg()));
-    }
-    return Status{code, rsp.msg()};
-}
-
-// 专门给RPC的response用的
-template <typename Response>
-inline void fill_base_rsp(Response* rsp, const Status& status) {
-    if (rsp == nullptr) return;
-    encode_status_to_base_rsp(rsp->mutable_base_rsp(), status);
-}
 
 }  // namespace adviskv

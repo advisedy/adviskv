@@ -3,7 +3,7 @@
 #include <gtest/gtest.h>
 
 #include "common/func.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "meta/service/replica_group_service.h"
 #include "meta/store/meta_store.h"
 #include "test/meta/store/meta_store_test_helper.h"
@@ -21,20 +21,13 @@ Node make_heartbeat_node(const NodeID& node_id, NodeStatus status,
 Replica make_replica(const NodeID& node_id, ReplicaIndex replica_index,
                      ReplicaPhase phase, int32_t port) {
     ReplicaState state{};
-    state.desired = ReplicaDesired::PRESENT;
     state.phase = phase;
-    state.observed_raft_role = ReplicaRole::FOLLOWER;
-    state.observed_endpoint = Endpoint{"127.0.0.1", port};
-    state.observed_storage_status =
-        phase == ReplicaPhase::READY ? StorageReplicaStatus::READY
-                                     : StorageReplicaStatus::INITIALIZING;
     return Replica{ReplicaID{1001, 0, replica_index},
                    ReplicaSpec{"dc-a", node_id, EngineType::MAP}, state};
 }
 
 Table make_table() {
     TableState state{};
-    state.desired = TableDesired::PRESENT;
     state.phase = TablePhase::CREATING;
     return Table{1001,
                  TableSpec{11, "commerce", "orders", EngineType::MAP, make_shard_ranges(1), 1, "pool-a"},

@@ -7,6 +7,7 @@
 #include "common/define.h"
 #include "common/stable_hash.h"
 #include "common/status.h"
+#include "common/types.h"
 
 namespace adviskv {
 

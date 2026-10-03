@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "common/define.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "meta/model/model.h"
 namespace adviskv::meta {

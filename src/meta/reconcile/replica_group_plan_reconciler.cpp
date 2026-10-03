@@ -26,7 +26,7 @@ Status ReplicaGroupPlanReconciler::run() {
     }
 
     for (const Table& table : tables) {
-        if (table.state.phase == TablePhase::FAILED || table.state.phase == TablePhase::DELETED) {
+        if (table.state.phase == TablePhase::DELETED) {
             continue;
         }
         status = reconcile_table(table);
@@ -39,7 +39,7 @@ Status ReplicaGroupPlanReconciler::run() {
 }
 
 Status ReplicaGroupPlanReconciler::reconcile_table(const Table& table) {
-    if (table.state.desired == TableDesired::ABSENT) {
+    if (is_absent(table.state.phase)) {
         return reconcile_absent_table(table);
     }
     return reconcile_present_table(table);
@@ -64,8 +64,7 @@ Status ReplicaGroupPlanReconciler::ensure_group_for_shard(const Table& table, Sh
     return store_->write_with([&](MetaStoreTxn& txn) -> Status {
         TableOr current;
         RETURN_IF_INVALID_STATUS(txn.get_table(table.table_id, current))
-        if (current.is_empty() || current->state.desired != TableDesired::PRESENT ||
-            current->state.phase == TablePhase::FAILED) {
+        if (current.is_empty() || is_absent(current->state.phase)) {
             return Status::OK();
         }
 
@@ -104,8 +103,7 @@ Status ReplicaGroupPlanReconciler::reconcile_absent_table(const Table& table) {
         TableOr current;
         RETURN_IF_INVALID_STATUS(txn.get_table(table.table_id, current))
 
-        if (current.has_value() && current->state.desired == TableDesired::ABSENT &&
-            current->state.phase != TablePhase::DELETED && current->state.phase != TablePhase::FAILED) {
+        if (current.has_value() && current->state.phase != TablePhase::DELETED) {
             // 这个table还在删除过程中，继续处理下面的group
         } else {
             return Status::OK();

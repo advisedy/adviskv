@@ -3,7 +3,7 @@
 
 #include <gtest/gtest.h>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "meta/service/node_service.h"
 #include "meta/service/replica_group_service.h"
@@ -19,13 +19,20 @@ Node make_node(const NodeID& id, int32_t port = 18080) {
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
     ReplicaState state{};
-    state.desired = ReplicaDesired::PRESENT;
     state.phase = ReplicaPhase::CREATING;
-    state.observed_raft_role = ReplicaRole::FOLLOWER;
-    state.observed_member_type = RaftMemberType::NON_MEMBER;
-    state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
-    state.term = 1;
     return Replica{replica_id, ReplicaSpec{"dc-a", node_id, EngineType::MAP}, state};
+}
+
+// 观测态与期望态分离后，测试里显式给 replica 铺一条已有的观测记录，
+// 对应线上"storage 心跳过至少一次"的初始状态。
+ReplicaObserved make_observed(const ReplicaID& /*replica_id*/) {
+    ReplicaObserved observed{};
+    observed.raft_role = ReplicaRole::FOLLOWER;
+    observed.member_type = RaftMemberType::NON_MEMBER;
+    observed.endpoint = Endpoint{"127.0.0.1", 18080};
+    observed.storage_status = StorageReplicaStatus::INITIALIZING;
+    observed.term = 1;
+    return observed;
 }
 
 HeartBeatParam make_heartbeat_param() {
@@ -63,6 +70,7 @@ void put_group_with_replicas(MetaStore& store, const std::vector<ReplicaID>& rid
         const NodeID node_id = "node-" + std::to_string(i);
         ASSERT_TRUE(store_test::put_node(store, make_node(node_id, 18080 + i)).ok());
         ASSERT_TRUE(store_test::put_replica(store, make_replica(rids[i], node_id)).ok());
+        ASSERT_TRUE(store_test::put_replica_observed(store, rids[i], make_observed(rids[i])).ok());
     }
 }
 
@@ -88,15 +96,20 @@ TEST(NodeHeartbeatServiceTest, HeartbeatUpdatesNodeAndAssignedReplicas) {
     EXPECT_EQ(node->state.endpoint.port, 19090);
     EXPECT_GT(node->state.last_heartbeat_ts, 0);
 
+    // 心跳只更新观测记录（期望态的 phase 推进交给 reconciler）。
     ReplicaOr replica;
     ASSERT_TRUE(store_test::get_replica(store, ReplicaID{1001, 0, 0}, replica).ok());
     ASSERT_FALSE(replica.is_empty());
     EXPECT_EQ(replica->state.phase, ReplicaPhase::READY);
-    EXPECT_EQ(replica->state.observed_raft_role, ReplicaRole::LEADER);
-    EXPECT_EQ(replica->state.observed_member_type, RaftMemberType::NON_MEMBER);
-    EXPECT_EQ(replica->state.observed_endpoint.ip, "10.0.0.1");
-    EXPECT_EQ(replica->state.observed_endpoint.port, 19090);
-    EXPECT_EQ(replica->state.term, 7);
+
+    ReplicaObservedOr observed;
+    ASSERT_TRUE(store_test::get_replica_observed(store, ReplicaID{1001, 0, 0}, observed).ok());
+    ASSERT_FALSE(observed.is_empty());
+    EXPECT_EQ(observed->raft_role, ReplicaRole::LEADER);
+    EXPECT_EQ(observed->member_type, RaftMemberType::NON_MEMBER);
+    EXPECT_EQ(observed->endpoint.ip, "10.0.0.1");
+    EXPECT_EQ(observed->endpoint.port, 19090);
+    EXPECT_EQ(observed->term, 7);
 }
 
 // 检测心跳 DC 不一致时，节点会被标记为拓扑异常离线。
@@ -188,39 +201,38 @@ TEST(NodeHeartbeatServiceTest, LeaderMembershipProjectsObservedMemberTypes) {
 
     ASSERT_TRUE(service.heartbeat(param).ok());
 
-    ReplicaOr replica0;
-    ReplicaOr replica1;
-    ReplicaOr replica2;
-    ASSERT_TRUE(store_test::get_replica(store, r0, replica0).ok());
-    ASSERT_TRUE(store_test::get_replica(store, r1, replica1).ok());
-    ASSERT_TRUE(store_test::get_replica(store, r2, replica2).ok());
-    ASSERT_FALSE(replica0.is_empty());
-    ASSERT_FALSE(replica1.is_empty());
-    ASSERT_FALSE(replica2.is_empty());
-    EXPECT_EQ(replica0->state.observed_member_type, RaftMemberType::VOTER);
-    EXPECT_EQ(replica1->state.observed_member_type, RaftMemberType::LEARNER);
-    EXPECT_EQ(replica2->state.observed_member_type, RaftMemberType::NON_MEMBER);
+    ReplicaObservedOr observed0;
+    ReplicaObservedOr observed1;
+    ReplicaObservedOr observed2;
+    ASSERT_TRUE(store_test::get_replica_observed(store, r0, observed0).ok());
+    ASSERT_TRUE(store_test::get_replica_observed(store, r1, observed1).ok());
+    ASSERT_TRUE(store_test::get_replica_observed(store, r2, observed2).ok());
+    ASSERT_FALSE(observed0.is_empty());
+    ASSERT_FALSE(observed1.is_empty());
+    ASSERT_FALSE(observed2.is_empty());
+    EXPECT_EQ(observed0->member_type, RaftMemberType::VOTER);
+    EXPECT_EQ(observed1->member_type, RaftMemberType::LEARNER);
+    EXPECT_EQ(observed2->member_type, RaftMemberType::NON_MEMBER);
 
-    ReplicaGroupOr group;
-    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
-    ASSERT_FALSE(group.is_empty());
-    EXPECT_EQ(group->observed_membership_term, 7);
-    EXPECT_EQ(group->observed_membership_leader, r0);
+    // 观测住在 RuntimeData：leader/term 上报进 membership_observed，
+    // 不再回写 durable 的 ReplicaGroup。
+    MembershipObservedOr membership_observed;
+    ASSERT_TRUE(store_test::get_membership_observed(store, ShardID{1001, 0}, membership_observed).ok());
+    ASSERT_FALSE(membership_observed.is_empty());
+    EXPECT_EQ(membership_observed->term, 7);
+    EXPECT_EQ(membership_observed->leader, r0);
 }
 
 // 检测 leader 上报空 membership 时不会投影，也不会推进 authority term。
-TEST(NodeHeartbeatServiceTest, LeaderEmptyMembershipDoesNotProject) {
-    MetaStore store{MemoryMetaStoreParam{}};
+TEST(NodeHeartbeatServiceTest, LeaderEmptyMembershipDoesNotProject) {    MetaStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     ReplicaID r0{1001, 0, 0};
     ReplicaID r1{1001, 0, 1};
     put_group_with_replicas(store, {r0, r1});
-    ReplicaGroupOr group;
-    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
-    ASSERT_FALSE(group.is_empty());
-    group->observed_membership_term = 5;
-    group->observed_membership_leader = r0;
-    ASSERT_TRUE(store_test::put_replica_group(store, group.value()).ok());
+    MembershipObserved seeded;
+    seeded.term = 5;
+    seeded.leader = r0;
+    ASSERT_TRUE(store_test::put_membership_observed(store, ShardID{1001, 0}, seeded).ok());
 
     NodeService service(&store);
     HeartBeatParam param = make_heartbeat_param();
@@ -230,14 +242,15 @@ TEST(NodeHeartbeatServiceTest, LeaderEmptyMembershipDoesNotProject) {
 
     ASSERT_TRUE(service.heartbeat(param).ok());
 
-    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
-    ASSERT_FALSE(group.is_empty());
-    EXPECT_EQ(group->observed_membership_term, 5);
-    EXPECT_EQ(group->observed_membership_leader, r0);
-    ReplicaOr replica1;
-    ASSERT_TRUE(store_test::get_replica(store, r1, replica1).ok());
-    ASSERT_FALSE(replica1.is_empty());
-    EXPECT_EQ(replica1->state.observed_member_type, RaftMemberType::NON_MEMBER);
+    MembershipObservedOr membership_observed;
+    ASSERT_TRUE(store_test::get_membership_observed(store, ShardID{1001, 0}, membership_observed).ok());
+    ASSERT_FALSE(membership_observed.is_empty());
+    EXPECT_EQ(membership_observed->term, 5);
+    EXPECT_EQ(membership_observed->leader, r0);
+    ReplicaObservedOr observed1;
+    ASSERT_TRUE(store_test::get_replica_observed(store, r1, observed1).ok());
+    ASSERT_FALSE(observed1.is_empty());
+    EXPECT_EQ(observed1->member_type, RaftMemberType::NON_MEMBER);
 }
 
 // 检测同 term 不同 leader 的 membership report 会被拒绝。
@@ -247,12 +260,10 @@ TEST(NodeHeartbeatServiceTest, SameTermDifferentLeaderMembershipRejected) {
     ReplicaID r0{1001, 0, 0};
     ReplicaID r1{1001, 0, 1};
     put_group_with_replicas(store, {r0, r1});
-    ReplicaGroupOr group;
-    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
-    ASSERT_FALSE(group.is_empty());
-    group->observed_membership_term = 7;
-    group->observed_membership_leader = r0;
-    ASSERT_TRUE(store_test::put_replica_group(store, group.value()).ok());
+    MembershipObserved seeded;
+    seeded.term = 7;
+    seeded.leader = r0;
+    ASSERT_TRUE(store_test::put_membership_observed(store, ShardID{1001, 0}, seeded).ok());
 
     NodeService service(&store);
     HeartBeatParam param = make_heartbeat_param();
@@ -266,13 +277,15 @@ TEST(NodeHeartbeatServiceTest, SameTermDifferentLeaderMembershipRejected) {
 
     ASSERT_TRUE(service.heartbeat(param).ok());
 
-    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
-    ASSERT_FALSE(group.is_empty());
-    EXPECT_EQ(group->observed_membership_leader, r0);
-    ReplicaOr replica1;
-    ASSERT_TRUE(store_test::get_replica(store, r1, replica1).ok());
-    ASSERT_FALSE(replica1.is_empty());
-    EXPECT_EQ(replica1->state.observed_member_type, RaftMemberType::NON_MEMBER);
+    MembershipObservedOr membership_observed;
+    ASSERT_TRUE(store_test::get_membership_observed(store, ShardID{1001, 0}, membership_observed).ok());
+    ASSERT_FALSE(membership_observed.is_empty());
+    EXPECT_EQ(membership_observed->leader, r0);
+    EXPECT_EQ(membership_observed->term, 7);
+    ReplicaObservedOr observed1;
+    ASSERT_TRUE(store_test::get_replica_observed(store, r1, observed1).ok());
+    ASSERT_FALSE(observed1.is_empty());
+    EXPECT_EQ(observed1->member_type, RaftMemberType::NON_MEMBER);
 }
 
 // 检测 heartbeat 会忽略不存在的 replica 和不属于该节点的 replica。
@@ -281,6 +294,8 @@ TEST(NodeHeartbeatServiceTest, HeartbeatIgnoresMissingAndOtherNodeReplicas) {
     ASSERT_TRUE(store.init().ok());
     ASSERT_TRUE(store_test::put_node(store, make_node("node-a")).ok());
     ASSERT_TRUE(store_test::put_replica(store, make_replica(ReplicaID{1001, 0, 1}, "node-b")).ok());
+    ASSERT_TRUE(
+            store_test::put_replica_observed(store, ReplicaID{1001, 0, 1}, make_observed(ReplicaID{1001, 0, 1})).ok());
     NodeService service(&store);
 
     HeartBeatParam param = make_heartbeat_param();
@@ -308,8 +323,11 @@ TEST(NodeHeartbeatServiceTest, HeartbeatIgnoresMissingAndOtherNodeReplicas) {
     ASSERT_TRUE(store_test::get_replica(store, ReplicaID{1001, 0, 1}, other).ok());
     ASSERT_FALSE(other.is_empty());
     EXPECT_EQ(other->state.phase, ReplicaPhase::CREATING);
-    EXPECT_EQ(other->state.observed_raft_role, ReplicaRole::FOLLOWER);
-    EXPECT_EQ(other->state.term, 1);
+    ReplicaObservedOr other_observed;
+    ASSERT_TRUE(store_test::get_replica_observed(store, ReplicaID{1001, 0, 1}, other_observed).ok());
+    ASSERT_FALSE(other_observed.is_empty());
+    EXPECT_EQ(other_observed->raft_role, ReplicaRole::FOLLOWER);
+    EXPECT_EQ(other_observed->term, 1);
 }
 
 // 检测心跳没上报 DELETING 状态的 replica 时，会记录 no-exist 观测，
@@ -320,7 +338,6 @@ TEST(NodeHeartbeatServiceTest, HeartbeatMarksDeletingReplicaDeletedWhenMissing) 
     ASSERT_TRUE(store_test::put_node(store, make_node("node-a")).ok());
 
     Replica replica = make_replica(ReplicaID{1001, 0, 0}, "node-a");
-    replica.state.desired = ReplicaDesired::ABSENT;
     replica.state.phase = ReplicaPhase::DELETING;
     ASSERT_TRUE(store_test::put_replica(store, replica).ok());
 
@@ -334,9 +351,12 @@ TEST(NodeHeartbeatServiceTest, HeartbeatMarksDeletingReplicaDeletedWhenMissing) 
     ReplicaOr stored;
     ASSERT_TRUE(store_test::get_replica(store, ReplicaID{1001, 0, 0}, stored).ok());
     ASSERT_FALSE(stored.is_empty());
-    EXPECT_EQ(stored->state.desired, ReplicaDesired::ABSENT);
     EXPECT_EQ(stored->state.phase, ReplicaPhase::DELETING);
-    EXPECT_TRUE(stored->state.observed_no_exist);
+
+    ReplicaObservedOr observed;
+    ASSERT_TRUE(store_test::get_replica_observed(store, ReplicaID{1001, 0, 0}, observed).ok());
+    ASSERT_FALSE(observed.is_empty());
+    EXPECT_TRUE(observed->no_exist);
 
     ReplicaGroupService replica_group_service(&store, nullptr);
     ASSERT_TRUE(replica_group_service.reconcile_all().ok());
@@ -354,6 +374,8 @@ TEST(NodeHeartbeatServiceTest, ReplicaGroupServiceBuildsHeartbeatExpectations) {
     Replica replica = make_replica(ReplicaID{1001, 0, 0}, "node-a");
     replica.spec.engine_type = EngineType::MAP;
     ASSERT_TRUE(store_test::put_replica(store, replica).ok());
+    // initial_members 从观测记录里取 endpoint，必须先铺一条观测。
+    ASSERT_TRUE(store_test::put_replica_observed(store, replica.replica_id, make_observed(replica.replica_id)).ok());
 
     ReplicaGroup group;
     group.shard_id = ShardID{1001, 0};
@@ -441,7 +463,6 @@ TEST(NodeHeartbeatServiceTest, PartiallyInitializedTableDoesNotDeleteUnknownStor
     table.spec.db_name = "commerce";
     table.spec.name = "orders";
     table.spec.shard_ranges = make_shard_ranges(1);
-    table.state.desired = TableDesired::PRESENT;
     table.state.phase = TablePhase::CREATING;
     ASSERT_TRUE(store_test::put_table(store, table).ok());
 
@@ -451,7 +472,6 @@ TEST(NodeHeartbeatServiceTest, PartiallyInitializedTableDoesNotDeleteUnknownStor
     ASSERT_TRUE(service.build_heartbeat_result(param, result).ok());
     EXPECT_TRUE(result.expects.empty());
 
-    table.state.desired = TableDesired::ABSENT;
     table.state.phase = TablePhase::DELETING;
     ASSERT_TRUE(store_test::put_table(store, table).ok());
     result.expects.clear();
@@ -492,10 +512,11 @@ TEST(NodeHeartbeatServiceTest, StaleLowerTermDoesNotOverwriteReplica) {
     MetaStore store{MemoryMetaStoreParam{}};
     ASSERT_TRUE(store.init().ok());
     Replica replica = make_replica(ReplicaID{1001, 0, 0}, "node-a");
-    replica.state.term = 10;
-    replica.state.observed_raft_role = ReplicaRole::FOLLOWER;
+    ReplicaObserved observed = make_observed(ReplicaID{1001, 0, 0});
+    observed.term = 10;
     ASSERT_TRUE(store_test::put_node(store, make_node("node-a")).ok());
     ASSERT_TRUE(store_test::put_replica(store, replica).ok());
+    ASSERT_TRUE(store_test::put_replica_observed(store, ReplicaID{1001, 0, 0}, observed).ok());
     NodeService service(&store);
 
     HeartBeatParam param = make_heartbeat_param();
@@ -503,11 +524,11 @@ TEST(NodeHeartbeatServiceTest, StaleLowerTermDoesNotOverwriteReplica) {
     param.replica_list[0].role = ReplicaRole::LEADER;
     ASSERT_TRUE(service.heartbeat(param).ok());
 
-    ReplicaOr loaded;
-    ASSERT_TRUE(store_test::get_replica(store, ReplicaID{1001, 0, 0}, loaded).ok());
+    ReplicaObservedOr loaded;
+    ASSERT_TRUE(store_test::get_replica_observed(store, ReplicaID{1001, 0, 0}, loaded).ok());
     ASSERT_FALSE(loaded.is_empty());
-    EXPECT_EQ(loaded->state.term, 10);
-    EXPECT_EQ(loaded->state.observed_raft_role, ReplicaRole::FOLLOWER);
+    EXPECT_EQ(loaded->term, 10);
+    EXPECT_EQ(loaded->raft_role, ReplicaRole::FOLLOWER);
 }
 
 TEST(NodeHeartbeatServiceTest, RemovedMemberLeaderDoesNotProjectMembership) {
@@ -519,12 +540,10 @@ TEST(NodeHeartbeatServiceTest, RemovedMemberLeaderDoesNotProjectMembership) {
     ASSERT_TRUE(store_test::put_node(store, make_node("node-old", 18100)).ok());
     ASSERT_TRUE(store_test::put_replica(store, make_replica(old_leader, "node-old")).ok());
 
-    ReplicaGroupOr group;
-    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
-    ASSERT_FALSE(group.is_empty());
-    group->observed_membership_term = 3;
-    group->observed_membership_leader = r0;
-    ASSERT_TRUE(store_test::put_replica_group(store, group.value()).ok());
+    MembershipObserved seeded;
+    seeded.term = 3;
+    seeded.leader = r0;
+    ASSERT_TRUE(store_test::put_membership_observed(store, ShardID{1001, 0}, seeded).ok());
 
     NodeService service(&store);
     HeartBeatParam param = make_heartbeat_param();
@@ -537,10 +556,12 @@ TEST(NodeHeartbeatServiceTest, RemovedMemberLeaderDoesNotProjectMembership) {
                                                {make_heartbeat_member(old_leader, "node-old", RaftMemberType::VOTER)}}};
     ASSERT_TRUE(service.heartbeat(param).ok());
 
-    ASSERT_TRUE(store_test::get_replica_group(store, ShardID{1001, 0}, group).ok());
-    ASSERT_FALSE(group.is_empty());
-    EXPECT_EQ(group->observed_membership_term, 3);
-    EXPECT_EQ(group->observed_membership_leader, r0);
+    // old_leader 不在 desired_members 里，上报被过滤，观测不被覆盖。
+    MembershipObservedOr membership_observed;
+    ASSERT_TRUE(store_test::get_membership_observed(store, ShardID{1001, 0}, membership_observed).ok());
+    ASSERT_FALSE(membership_observed.is_empty());
+    EXPECT_EQ(membership_observed->term, 3);
+    EXPECT_EQ(membership_observed->leader, r0);
 }
 
 }  // namespace adviskv::meta

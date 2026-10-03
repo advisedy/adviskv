@@ -10,7 +10,7 @@
 
 #include "common/define.h"
 #include "common/func.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "meta/model/model.h"
 
@@ -96,7 +96,7 @@ Status DefaultNodeSelector::select_table_nodes(const PlaceNodesParam& param, Tab
             NodeView view;
             view.node = node;
             view.owned_replica_count = std::count_if(replicas.begin(), replicas.end(), [](const Replica& replica) {
-                return replica.state.desired == ReplicaDesired::PRESENT;
+                return !is_absent(replica.state.phase);
             });
             view.dc = node.meta.dc;
             views.push_back(std::move(view));

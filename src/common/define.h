@@ -11,6 +11,8 @@
 // 这里cond要填写应该合法的情况，如果cond与预期不符合，就会return，跟assert的语义有点像
 
 #include <chrono>
+#include <cstdint>
+#include <type_traits>
 #include <utility>
 
 #include <fmt/core.h>
@@ -44,13 +46,6 @@ namespace adviskv {
         }                                                                   \
     } while (false);
 
-#define RETURN_IF_INVALID_READ_TYPE(buf, type, name)                                         \
-    do {                                                                                     \
-        if (bool success = (buf).read<type>(name); !success) {                               \
-            return Status::ERROR(fmt::format("read {} is invalid, type: {}", #name, #type)); \
-        }                                                                                    \
-    } while (false);
-
 #define RETURN_IF_NULLPTR(ptr, msg)                       \
     if ((ptr) == nullptr) {                               \
         return Status{StatusCode::INVALID_ARGUMENT, msg}; \
@@ -59,14 +54,6 @@ namespace adviskv {
 #define DISALLOW_COPY_AND_ASSIGN(type) \
     type(const type&) = delete;        \
     type& operator=(const type&) = delete;
-
-#define ALLOW_COPY_AND_ASSIGN(type) \
-    type(const type&) = default;    \
-    type& operator=(const type&) = default;
-
-#define DISALLOW_MOVE_AND_ASSIGN(type) \
-    type(type&&) = delete;             \
-    type& operator=(type&&) = delete;
 
 #define ALLOW_MOVE_AND_ASSIGN(type) \
     type(type&&) = default;         \
@@ -81,6 +68,14 @@ namespace adviskv {
 template <typename To, typename From>
 constexpr To to(From&& x) noexcept {
     return static_cast<To>(std::forward<From>(x));
+}
+
+// 规定一下，枚举的统一使用int32，并且都从0开始，最后一个是 MAX_VALUE用于划分界限，StatusCode不算。
+template <typename Enum>
+constexpr bool is_valid_enum_value(int32_t value) noexcept {
+    static_assert(std::is_enum<Enum>::value, "Enum must be an enum type");
+
+    return value >= 0 && value <= static_cast<int32_t>(Enum::MAX_VALUE);
 }
 
 }  // namespace adviskv

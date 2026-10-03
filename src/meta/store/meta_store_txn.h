@@ -1,22 +1,29 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "meta/model/model.h"
 #include "meta/store/meta_data.h"
 #include "meta/store/meta_index.h"
+#include "meta/store/meta_snapshot.h"
 
 namespace adviskv::meta {
 
 class MetaStoreTxn {
 public:
-    explicit MetaStoreTxn(const MetaWorkingSet* ws);
-    explicit MetaStoreTxn(MetaWorkingSet* ws);
+    explicit MetaStoreTxn(std::shared_ptr<const MetaSnapshot> snapshot);
 
     bool durable_dirty() const;
+
+    std::shared_ptr<const MetaSnapshot> finish() const;
+
+    bool durable_cloned_for_test() const { return durable_.cloned(); }
+    bool runtime_cloned_for_test() const { return runtime_.cloned(); }
+    bool index_cloned_for_test() const { return index_.cloned(); }
 
     Status put_database(const Database& db);
     Status get_database(DatabaseID db_id, DatabaseOr& out) const;
@@ -44,9 +51,12 @@ public:
     Status list_replicas_by_shard(const ShardID& shard_id, std::vector<Replica>& out) const;
     Status list_replicas_by_node(NodeID node_id, std::vector<Replica>& out) const;
 
-    // 只写 RuntimeData，不落盘。
+    // 观测，只写 RuntimeData，不落盘。
     Status put_replica_observed(const ReplicaID& replica_key, const ReplicaObserved& observed);
     Status get_replica_observed(const ReplicaID& replica_key, ReplicaObservedOr& out) const;
+
+    Status put_membership_observed(const ShardID& shard_id, const MembershipObserved& observed);
+    Status get_membership_observed(const ShardID& shard_id, MembershipObservedOr& out) const;
 
     Status put_shard_route(const ShardRoute& route);
     Status get_shard_route(const ShardID& shard_id, ShardRouteOr& out) const;
@@ -58,16 +68,17 @@ public:
     Status list_replica_groups(std::vector<ReplicaGroup>& out) const;
 
 private:
-    const DurableData& durable() const { return ws_->durable; }
-    const RuntimeData& runtime() const { return ws_->runtime; }
-    const MetaIndex& index() const { return ws_->index; }
-    DurableData& mutable_durable() { return mutable_ws_->durable; }
-    RuntimeData& mutable_runtime() { return mutable_ws_->runtime; }
-    MetaIndex& mutable_index() { return mutable_ws_->index; }
+    const DurableData& durable() const { return durable_.get(); }
+    const RuntimeData& runtime() const { return runtime_.get(); }
+    const MetaIndex& index() const { return index_.get(); }
+    DurableData& mutable_durable() { return durable_.mutable_of(); }
+    RuntimeData& mutable_runtime() { return runtime_.mutable_of(); }
+    MetaIndex& mutable_index() { return index_.mutable_of(); }
     void mark_durable_dirty() { durable_dirty_ = true; }
 
-    const MetaWorkingSet* ws_{nullptr};
-    MetaWorkingSet* mutable_ws_{nullptr};
+    CowValue<DurableData> durable_;
+    CowValue<RuntimeData> runtime_;
+    CowValue<MetaIndex> index_;
     bool durable_dirty_{false};
 };
 

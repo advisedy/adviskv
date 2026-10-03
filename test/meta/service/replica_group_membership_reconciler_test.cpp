@@ -62,7 +62,6 @@ TEST(ReplicaGroupMembershipReconcilerTest, CountBasedRetirementMarksAllReplicasD
     EXPECT_TRUE(get_group(store).desired_members.empty());
     for (ReplicaSeq seq = 0; seq < 2; ++seq) {
         Replica replica = get_replica(store, seq);
-        EXPECT_EQ(replica.state.desired, ReplicaDesired::ABSENT);
         EXPECT_EQ(replica.state.phase, ReplicaPhase::DELETING);
     }
     EXPECT_TRUE(service.reconcile_all().ok());
@@ -78,9 +77,7 @@ TEST(ReplicaGroupMembershipReconcilerTest, SpecificRetirementOnlyMarksBadReplica
     ASSERT_TRUE(service.reconcile_all().ok());
 
     EXPECT_EQ(get_group(store).desired_members, (std::vector<ReplicaID>{ReplicaID{K_TABLE_ID, 0, 0}}));
-    EXPECT_EQ(get_replica(store, 0).state.desired, ReplicaDesired::PRESENT);
     Replica bad = get_replica(store, 1);
-    EXPECT_EQ(bad.state.desired, ReplicaDesired::ABSENT);
     EXPECT_EQ(bad.state.phase, ReplicaPhase::DELETING);
     EXPECT_TRUE(service.reconcile_all().ok());
     EXPECT_EQ(get_group(store).desired_members, (std::vector<ReplicaID>{ReplicaID{K_TABLE_ID, 0, 0}}));

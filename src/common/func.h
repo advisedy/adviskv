@@ -92,15 +92,6 @@ inline Status read_full(int fd, void* buf, size_t len) {
     return Status::OK();
 }
 
-inline std::optional<DecodeBuffer> read_full2buffer(int fd, size_t len) {
-    std::vector<uint8_t> data(len);
-    Status status = read_full(fd, data.data(), data.size());
-    if (status.fail() && status.code() != StatusCode::GET_EOF) {
-        return std::nullopt;
-    }
-    return DecodeBuffer{std::move(data)};
-}
-
 template <typename T>
 inline Status read_value(int fd, T& v) {
     return read_full(fd, &v, sizeof(T));

@@ -15,9 +15,8 @@ RouteService::RouteService(MetaStore* store) : store_(store), reconciler_(store)
 Status RouteService::reconcile_all() { return reconciler_.run(); }
 
 Status RouteService::validate_writable_route(const ShardRoute& route) {
-    int leader_count = std::count_if(route.replicas.begin(), route.replicas.end(), [](const RouteEntry& entry) {
-        return entry.role == ReplicaRole::LEADER && !entry.ip.empty() && entry.port > 0;
-    });
+    int leader_count = std::count_if(route.replicas.begin(), route.replicas.end(),
+                                     [](const RouteEntry& entry) { return entry.is_writable_leader(); });
     if (leader_count != 1) {
         return Status::ROUTE_NOT_FOUND(
                 fmt::format("writable leader route is not ready。 leader_count={}", leader_count));

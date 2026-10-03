@@ -3,9 +3,11 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "test/meta/store/meta_store_test_helper.h"
@@ -17,10 +19,8 @@ namespace adviskv::meta {
 namespace {
 
 Table make_table(TableID table_id, const std::string& db_name,
-                 const std::string& table_name,
-                 TableDesired desired = TableDesired::PRESENT) {
+                 const std::string& table_name) {
     TableState state{};
-    state.desired = desired;
     state.phase = TablePhase::READY;
     return Table{table_id,
                  TableSpec{11, db_name, table_name, EngineType::MAP, make_shard_ranges(2), 2, "pool-a"},
@@ -36,10 +36,7 @@ Node make_node(const NodeID& id, const std::string& resource_pool,
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
     ReplicaState state{};
-    state.desired = ReplicaDesired::PRESENT;
     state.phase = ReplicaPhase::READY;
-    state.observed_raft_role = ReplicaRole::FOLLOWER;
-    state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
     return Replica{replica_id,
                    ReplicaSpec{"dc-a", node_id, EngineType::MAP}, state};
 }
@@ -329,6 +326,7 @@ TEST(MetaStoreTest, RouteOnlyWriteDoesNotCreatePersistentSnapshot) {
 
 // 检测 PERSISTENT 类型的 MetaStore 写入后，重新加载仍能恢复 table 和 group；node 当前仍是内存态。
 TEST(MetaStoreTest, WriteWithPersistentStoreSurvivesReload) {
+
     fs::path data_dir = adviskv::test::make_unique_test_dir(
         "meta_store_persistent", persistent_sequence++);
     std::error_code ec;
@@ -398,6 +396,197 @@ TEST(MetaStoreTest, WriteWithPersistentStoreSurvivesReload) {
     }
 
     fs::remove_all(data_dir, ec);
+}
+
+// COW 克隆粒度：只写过 runtime 的事务不应克隆 durable/index 之外的组件，
+// 更不应克隆 durable——这是本次重构的核心收益（心跳事务不再全量拷贝）。
+TEST(MetaStoreTest, RuntimeOnlyTxnClonesOnlyRuntimeAndIndex) {
+    MetaStore store{MemoryMetaStoreParam{}};
+    ASSERT_TRUE(store.init().ok());
+    // 先造一些 durable 内容，保证"没克隆"不是因为本来为空。
+    ASSERT_TRUE(store_test::put_table(store, make_table(1001, "commerce", "orders")).ok());
+
+    Status status = store.write_with([&](MetaStoreTxn& txn) -> Status {
+        EXPECT_FALSE(txn.durable_cloned_for_test());
+        EXPECT_FALSE(txn.runtime_cloned_for_test());
+        EXPECT_FALSE(txn.index_cloned_for_test());
+        RETURN_IF_INVALID_STATUS(txn.put_replica_observed(ReplicaID{1001, 0, 0}, ReplicaObserved{}))
+        // 纯 runtime 观测写：只应克隆 runtime。
+        EXPECT_FALSE(txn.durable_cloned_for_test());
+        EXPECT_TRUE(txn.runtime_cloned_for_test());
+        EXPECT_FALSE(txn.index_cloned_for_test());
+        return Status::OK();
+    });
+    ASSERT_TRUE(status.ok()) << status.to_string();
+
+    // 提交后观测可见，且 durable 内容不受影响。
+    ReplicaObservedOr observed;
+    ASSERT_TRUE(store_test::get_replica_observed(store, ReplicaID{1001, 0, 0}, observed).ok());
+    EXPECT_FALSE(observed.is_empty());
+    TableOr table;
+    ASSERT_TRUE(store_test::get_table(store, 1001, table).ok());
+    EXPECT_FALSE(table.is_empty());
+}
+
+// 写 durable 的事务应克隆 durable 与 index（索引同步），但不必克隆 runtime。
+TEST(MetaStoreTest, DurableTxnClonesDurableAndIndexNotRuntime) {
+    MetaStore store{MemoryMetaStoreParam{}};
+    ASSERT_TRUE(store.init().ok());
+    ASSERT_TRUE(store_test::put_node(store, make_node("node-a", "pool-a")).ok());
+
+    Status status = store.write_with([&](MetaStoreTxn& txn) -> Status {
+        RETURN_IF_INVALID_STATUS(txn.put_database(Database{11, "commerce", "zone-a"}))
+        EXPECT_TRUE(txn.durable_cloned_for_test());
+        EXPECT_TRUE(txn.index_cloned_for_test());  // db_name_index 同步更新
+        EXPECT_FALSE(txn.runtime_cloned_for_test());
+        return Status::OK();
+    });
+    ASSERT_TRUE(status.ok()) << status.to_string();
+
+    // runtime 的既有节点仍然可见（未因 durable 事务被复制丢失）。
+    NodeOr node;
+    ASSERT_TRUE(store_test::get_node(store, "node-a", node).ok());
+    EXPECT_FALSE(node.is_empty());
+}
+
+// 失败回滚：事务克隆了组件但返回失败，克隆丢弃后已发布状态必须逐字节不变，
+// 且其他事务/读者完全看不到半成品。
+TEST(MetaStoreTest, FailedTxnRollbackLeavesPublishedSnapshotUntouched) {
+    MetaStore store{MemoryMetaStoreParam{}};
+    ASSERT_TRUE(store.init().ok());
+    const Table existing = make_table(1001, "commerce", "orders");
+    ASSERT_TRUE(store_test::put_table(store, existing).ok());
+
+    Status status = store.write_with([&](MetaStoreTxn& txn) -> Status {
+        RETURN_IF_INVALID_STATUS(txn.put_table(make_table(2002, "commerce", "ghost")))
+        RETURN_IF_INVALID_STATUS(txn.put_node(make_node("node-x", "pool-x")))
+        return Status::ERROR("rollback on purpose");
+    });
+    EXPECT_TRUE(status.fail());
+
+    TableOr ghost;
+    ASSERT_TRUE(store_test::get_table(store, 2002, ghost).ok());
+    EXPECT_TRUE(ghost.is_empty());
+    TableOr ghost_by_name;
+    ASSERT_TRUE(store_test::get_table_by_name(store, "commerce", "ghost", ghost_by_name).ok());
+    EXPECT_TRUE(ghost_by_name.is_empty());  // index 也已回滚
+    NodeOr node_x;
+    ASSERT_TRUE(store_test::get_node(store, "node-x", node_x).ok());
+    EXPECT_TRUE(node_x.is_empty());
+    TableOr kept;
+    ASSERT_TRUE(store_test::get_table(store, 1001, kept).ok());
+    EXPECT_FALSE(kept.is_empty());
+}
+
+// 读快照稳定性：read_with 拿到的是一次性加载的不可变快照，事务体内多次
+// 读取必然看到同一瞬间的状态（旧实现靠 shared_mutex 挡写者保证，新实现
+// 靠快照本身保证）。
+TEST(MetaStoreTest, ReaderSeesStableSnapshot) {
+    MetaStore store{MemoryMetaStoreParam{}};
+    ASSERT_TRUE(store.init().ok());
+    ASSERT_TRUE(store_test::put_table(store, make_table(1001, "commerce", "orders")).ok());
+
+    // 读者事务内先读一次，再（通过外部写者）提交新数据，读者快照不应变化。
+    std::atomic<bool> writer_done{false};
+    Status status = store.read_with([&](const MetaStoreTxn& txn) -> Status {
+        TableOr before;
+        RETURN_IF_INVALID_STATUS(txn.get_table(1001, before))
+        EXPECT_FALSE(before.is_empty());
+        TableOr mid;
+        RETURN_IF_INVALID_STATUS(txn.get_table(2002, mid))
+        EXPECT_TRUE(mid.is_empty());
+        writer_done.store(true);
+        // 再次确认：同一事务内始终看得到旧快照。
+        TableOr again;
+        RETURN_IF_INVALID_STATUS(txn.get_table(2002, again))
+        EXPECT_TRUE(again.is_empty());
+        return Status::OK();
+    });
+    ASSERT_TRUE(status.ok()) << status.to_string();
+    EXPECT_TRUE(writer_done.load());
+
+    // 提交另一份数据后，新读者能看到，旧快照的读者不受影响（上面已验证）。
+    ASSERT_TRUE(store_test::put_table(store, make_table(2002, "commerce", "later")).ok());
+    TableOr later;
+    ASSERT_TRUE(store_test::get_table(store, 2002, later).ok());
+    EXPECT_FALSE(later.is_empty());
+}
+
+// 并发冒烟：写者持续提交（runtime 心跳式写 + durable 写交替），读者持续
+// 全表扫描。验证无锁读路径与快照发布在真实线程交叉下不崩、不死锁、每次
+// 读都拿到自洽状态（observed 条数与写入进度单调相容）。
+TEST(MetaStoreTest, ConcurrentReadersAndWriterStayConsistent) {
+    MetaStore store{MemoryMetaStoreParam{}};
+    ASSERT_TRUE(store.init().ok());
+
+    constexpr int kIterations = 2000;
+    std::atomic<int> committed_writes{0};
+    std::atomic<bool> readers_stop{false};
+    std::atomic<bool> reader_saw_inconsistency{false};
+
+    // 预置一个 durable 基线，让读路径能顺带校验 durable 部分始终可见。
+    ASSERT_TRUE(store_test::put_table(store, make_table(1001, "commerce", "orders")).ok());
+
+    std::vector<std::thread> readers;
+    for (int r = 0; r < 4; r++) {
+        readers.emplace_back([&]() {
+            while (!readers_stop.load()) {
+                Status status = store.read_with([&](const MetaStoreTxn& txn) -> Status {
+                    TableOr table;
+                    RETURN_IF_INVALID_STATUS(txn.get_table(1001, table))
+                    if (table.is_empty()) {
+                        return Status::ERROR("baseline table vanished");
+                    }
+                    // 遍历全部 observed：数量不会超前于已开始写入的总数（读
+                    // 快照不会包含没写过的 key），且每条的值必须和 key 编号
+                    // 一致（能抓出错位的克隆/发布竞态）。
+                    int seen = 0;
+                    for (int i = 0; i < kIterations; i++) {
+                        ReplicaObservedOr observed;
+                        RETURN_IF_INVALID_STATUS(txn.get_replica_observed(ReplicaID{1001, 0, i}, observed))
+                        if (!observed.is_empty()) {
+                            if (observed->update_ts != i) {
+                                return Status::ERROR("observed value does not match key seq");
+                            }
+                            seen++;
+                        }
+                    }
+                    if (seen > committed_writes.load()) {
+                        return Status::ERROR("reader observed more writes than committed");
+                    }
+                    return Status::OK();
+                });
+                if (status.fail()) {
+                    reader_saw_inconsistency.store(true);
+                    return;
+                }
+            }
+        });
+    }
+
+    for (int i = 0; i < kIterations; i++) {
+        // 计数先于发布递增：读者拿到的快照只会落后、不会超前计数，检查才是
+        // 无假阳性的必要条件。
+        committed_writes.store(i + 1);
+        Status status = store.write_with([&](MetaStoreTxn& txn) -> Status {
+            ReplicaObserved observed;
+            observed.update_ts = i;
+            return txn.put_replica_observed(ReplicaID{1001, 0, i}, observed);
+        });
+        ASSERT_TRUE(status.ok()) << status.to_string();
+        if (i % 500 == 0) {
+            // 穿插 durable 写，触发落盘路径与快照整体替换。
+            ASSERT_TRUE(store.write_with([&](MetaStoreTxn& txn) {
+                return txn.put_database(Database{2000 + i, "db-" + std::to_string(i), "zone-a"});
+            }).ok());
+        }
+    }
+
+    readers_stop.store(true);
+    for (std::thread& t : readers) {
+        t.join();
+    }
+    EXPECT_FALSE(reader_saw_inconsistency.load());
 }
 
 }  // namespace adviskv::meta

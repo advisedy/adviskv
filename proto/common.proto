@@ -7,52 +7,11 @@ message BaseRsp {
     string msg = 2;
 }
 
-enum RaftRole {
-  RAFT_ROLE_FOLLOWER = 0;
-  RAFT_ROLE_LEADER = 1;
-  RAFT_ROLE_CANDIDATE = 2;
-  RAFT_ROLE_PRE_CANDIDATE = 3;
-}
-
-enum RaftMemberType {
-  RAFT_MEMBER_TYPE_NON_MEMBER = 0;
-  RAFT_MEMBER_TYPE_VOTER = 1;
-  RAFT_MEMBER_TYPE_LEARNER = 2;
-}
-
-enum EngineType {
-  ENGINE_TYPE_MAP = 0;
-}
-
-
-
-enum TablePhase {
-  TABLE_PHASE_CREATING = 0;
-  TABLE_PHASE_READY = 1;
-  TABLE_PHASE_DELETING = 2;
-  TABLE_PHASE_DELETED = 3;
-  TABLE_PHASE_FAILED = 4;
-  TABLE_PHASE_RESIZING = 5;
-}
-
-enum NodeStatus {
-  NODE_ONLINE = 0;
-  NODE_OFFLINE = 1;
-  NODE_SUSPECT = 2;
-}
-
-enum StorageReplicaStatus {
-  STORAGE_REPLICA_STATUS_INITIALIZING = 0;
-  STORAGE_REPLICA_STATUS_RECOVERING = 1;
-  STORAGE_REPLICA_STATUS_READY = 2;
-  STORAGE_REPLICA_STATUS_FAULTED = 3;
-}
-
 message NodeInfo {
   string node_name = 1;
   string host = 2;
   int32 port = 3;
-  NodeStatus status = 4;
+  int32 status = 4;  // adviskv::meta::NodeStatus
 }
 
 message ReplicaInfo {
@@ -60,8 +19,8 @@ message ReplicaInfo {
   int32 shard_id = 2;
   int32 replica_seq = 3;
   string node_id = 4;
-  RaftRole role = 5;
-  StorageReplicaStatus status = 6;
+  int32 role = 5;      // adviskv::ReplicaRole
+  int32 status = 6;    // adviskv::StorageReplicaStatus
   Endpoint endpoint = 7;
   int64 term = 8;
 }
@@ -85,5 +44,50 @@ message PeerMember {
 
 message RaftMember {
   adviskv.pb.PeerMember peer = 1;
-  adviskv.pb.RaftMemberType member_type = 2;
+  int32 member_type = 2;  // adviskv::RaftMemberType
+}
+
+message RouteReplica {
+    adviskv.pb.Endpoint endpoint = 1;
+    int32 role = 2;  // adviskv::ReplicaRole
+    adviskv.pb.ReplicaID replica_id = 3;
+}
+
+message HashRange {
+    uint32 start = 1;
+    uint32 end = 2;
+}
+
+message ShardRoute {
+    int32 shard_id = 1;
+    repeated RouteReplica replicas = 2;
+    HashRange hash_range = 3;
+}
+
+message HeartbeatReplicaInfo{
+    adviskv.pb.ReplicaID replica_id = 1;
+    int32 role = 2;        // adviskv::ReplicaRole
+    int32 status = 3;      // adviskv::StorageReplicaStatus
+    int64 term = 4;
+    int32 member_type = 5; // adviskv::RaftMemberType
+    repeated adviskv.pb.RaftMember full_membership = 6;
+}
+
+message ExpectedReplica {
+    int32 type = 1;  // adviskv::ExpectedReplicaType
+    adviskv.pb.ReplicaID replica_id = 2;
+    int32 engine_type = 3;  // adviskv::EngineType
+    repeated adviskv.pb.PeerMember initial_members = 4;
+}
+
+message LogEntry{
+  int64 term = 1;
+  int64 index = 2;
+  int32 op_type = 3;
+  string key = 4;
+  string value = 5;
+  adviskv.pb.PeerMember config_member = 6;
+  adviskv.pb.ReplicaID config_replica_id = 7;
+  string request_id = 8;
+  string expected = 9;
 }

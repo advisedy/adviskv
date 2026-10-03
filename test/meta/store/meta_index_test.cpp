@@ -8,10 +8,8 @@
 namespace adviskv::meta {
 namespace {
 
-Table make_table(TableID table_id, const std::string& db_name, const std::string& table_name,
-                 TableDesired desired = TableDesired::PRESENT) {
+Table make_table(TableID table_id, const std::string& db_name, const std::string& table_name) {
     TableState state{};
-    state.desired = desired;
     state.phase = TablePhase::CREATING;
     return Table{table_id,
                  TableSpec{11, db_name, table_name, EngineType::MAP, make_shard_ranges(2), 2, "pool-a"},
@@ -24,10 +22,7 @@ Node make_node(const NodeID& id, const std::string& resource_pool) {
 
 Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
     ReplicaState state{};
-    state.desired = ReplicaDesired::PRESENT;
     state.phase = ReplicaPhase::READY;
-    state.observed_raft_role = ReplicaRole::FOLLOWER;
-    state.observed_endpoint = Endpoint{"127.0.0.1", 18080};
     return Replica{replica_id, ReplicaSpec{"dc-a", node_id, EngineType::MAP}, state};
 }
 
@@ -61,7 +56,7 @@ TEST(MetaIndexTest, NormalIndexFlowWorks) {
     ASSERT_TRUE(index.find_table_by_name("commerce", "orders", table_id).ok());
     EXPECT_EQ(table_id, 1001);
 
-    Table deleting = make_table(1001, "commerce", "orders", TableDesired::ABSENT);
+    Table deleting = make_table(1001, "commerce", "orders");
     deleting.state.phase = TablePhase::DELETING;
     index.on_table_upsert(&table, deleting);
     ASSERT_TRUE(index.find_table_by_name("commerce", "orders", table_id).ok());

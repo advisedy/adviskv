@@ -14,29 +14,29 @@ namespace adviskv::meta {
 
 namespace {
 
-constexpr size_t K_HEARTBEAT_CHECK_BATCH_SIZE = 16;
-
-// 判断一下是否能够接收，防止旧leader打过来干扰信息
-bool should_accept_membership_report(const ReplicaGroup& group, const HeartBeatReplicaInfo& info) {
-    if (info.term > group.observed_membership_term) {
+// 判断一下是否能够接收，防止旧leader打过来干扰信息。
+bool should_accept_membership_report(const MembershipObservedOr& observed_or, const HeartBeatReplicaInfo& info) {
+    if (observed_or.is_empty()) {
         return true;
     }
-    if (info.term < group.observed_membership_term) {
+    const MembershipObserved& observed = observed_or.value();
+    if (info.term > observed.term) {
+        return true;
+    }
+    if (info.term < observed.term) {
         LOG_WARN(
                 "[NodeService] skip stale leader membership report, "
                 "leader:{}, term:{}, observed_leader:{}, observed_term:{}",
-                info.replica_id.to_string(), info.term, group.observed_membership_leader.to_string(),
-                group.observed_membership_term);
+                info.replica_id.to_string(), info.term, observed.leader.to_string(), observed.term);
         return false;
     }
-    if (info.replica_id == group.observed_membership_leader) {
+    if (info.replica_id == observed.leader) {
         return true;
     }
     LOG_WARN(
             "[NodeService] skip conflicting leader membership report, "
             "leader:{}, term:{}, observed_leader:{}, observed_term:{}",
-            info.replica_id.to_string(), info.term, group.observed_membership_leader.to_string(),
-            group.observed_membership_term);
+            info.replica_id.to_string(), info.term, observed.leader.to_string(), observed.term);
     return false;
 }
 
@@ -69,7 +69,9 @@ Status project_leader_membership(MetaStoreTxn& txn, const HeartBeatReplicaInfo& 
                 info.replica_id.to_string(), info.term);
         return Status::OK();
     }
-    if (!should_accept_membership_report(group, info)) {
+    MembershipObservedOr membership_observed_or;
+    RETURN_IF_INVALID_STATUS(txn.get_membership_observed(group.shard_id, membership_observed_or))
+    if (!should_accept_membership_report(membership_observed_or, info)) {
         return Status::OK();
     }
 
@@ -120,9 +122,11 @@ Status project_leader_membership(MetaStoreTxn& txn, const HeartBeatReplicaInfo& 
         RETURN_IF_INVALID_STATUS(txn.put_replica_observed(rid, observed))
     }
 
-    group.observed_membership_term = info.term;
-    group.observed_membership_leader = info.replica_id;
-    RETURN_IF_INVALID_STATUS(txn.put_replica_group(group))
+    // 观测写 RuntimeData 不落盘，不然每轮 leader 心跳都要全量重写 meta.json。
+    MembershipObserved membership_observed;
+    membership_observed.term = info.term;
+    membership_observed.leader = info.replica_id;
+    RETURN_IF_INVALID_STATUS(txn.put_membership_observed(group.shard_id, membership_observed))
     return Status::OK();
 }
 
@@ -271,7 +275,7 @@ Status NodeService::mark_no_exist_replicas(MetaStoreTxn& txn, const HeartBeatPar
         if (reported_replica_ids.find(replica.replica_id) != reported_replica_ids.end()) {
             continue;
         }
-        if (replica.state.desired != ReplicaDesired::ABSENT || replica.state.phase != ReplicaPhase::DELETING) {
+        if (replica.state.phase != ReplicaPhase::DELETING) {
             continue;
         }
 

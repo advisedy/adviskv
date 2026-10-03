@@ -17,8 +17,6 @@ using uint8 = uint8_t;
 
 using Key = std::string;
 using Value = std::string;
-using KeyView = std::string_view;
-using ValueView = std::string_view;
 
 using KV = std::pair<Key, Value>;
 

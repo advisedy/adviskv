@@ -6,7 +6,7 @@
 
 #include "common/define.h"
 #include "common/log.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "meta/reconcile/replica_group_reconcile_util.h"
 #include "meta/store/meta_store.h"
 #include "meta/store/meta_store_txn.h"
@@ -225,8 +225,7 @@ Status ReplicaGroupService::build_heartbeat_result(const HeartBeatParam& param, 
                 // 如果table已经在删除了，就继续走下面的删除逻辑。
                 TableOr table_or;
                 RETURN_IF_INVALID_STATUS(txn.get_table(info.replica_id.table_id, table_or))
-                if (table_or.has_value() && table_or->state.desired == TableDesired::PRESENT &&
-                    table_or->state.phase != TablePhase::DELETED && table_or->state.phase != TablePhase::FAILED) {
+                if (table_or.has_value() && !is_absent(table_or->state.phase)) {
                     continue;
                 }
             }

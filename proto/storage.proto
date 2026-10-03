@@ -52,7 +52,7 @@ message CasResponse {
 
 message CreateReplicaRequest {
   adviskv.pb.ReplicaID replica_id = 1;
-  adviskv.pb.EngineType engine_type = 2;
+  int32 engine_type = 2;  // adviskv::EngineType
   repeated adviskv.pb.PeerMember initial_members = 3;
 }
 
@@ -106,25 +106,13 @@ message PreVoteResponse{
   bool vote_granted = 3;
 }
 
-message LogEntry{
-  int64 term = 1;
-  int64 index = 2;
-  int32 op_type = 3;
-  string key = 4;
-  string value = 5;
-  adviskv.pb.PeerMember config_member = 6;
-  adviskv.pb.ReplicaID config_replica_id = 7;
-  string request_id = 8;
-  string expected = 9;
-}
-
 message AppendEntriesRequest{
   adviskv.pb.ReplicaID from = 1;
   adviskv.pb.ReplicaID to = 2;
   int64 term = 3;
   int64 prev_log_index = 4;
   int64 prev_log_term = 5;
-  repeated LogEntry entries = 6;
+  repeated adviskv.pb.LogEntry entries = 6;
   int64 leader_commit = 7;
 }
 
@@ -160,8 +148,8 @@ message TestGetReplicaStateRequest {
 message TestGetReplicaStateResponse {
   adviskv.pb.BaseRsp base_rsp = 1;
   bool exists = 2;
-  adviskv.pb.RaftRole role = 3;
-  adviskv.pb.StorageReplicaStatus status = 4;
+  int32 role = 3;      // adviskv::ReplicaRole
+  int32 status = 4;    // adviskv::StorageReplicaStatus
   int64 current_term = 5;
   int64 commit_index = 6;
   int64 last_applied = 7;

@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "common/status.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "meta/model/model.h"
 #include "meta/store/meta_store.h"
 #include "meta/store/meta_store_txn.h"
@@ -73,6 +73,35 @@ inline Status get_replica(const MetaStore& store, const ReplicaID& replica_id,
                           ReplicaOr& out) {
     return store.read_with([&](const MetaStoreTxn& txn) {
         return txn.get_replica(replica_id, out);
+    });
+}
+
+inline Status put_replica_observed(MetaStore& store, const ReplicaID& replica_id,
+                                   const ReplicaObserved& observed) {
+    return store.write_with([&](MetaStoreTxn& txn) {
+        return txn.put_replica_observed(replica_id, observed);
+    });
+}
+
+inline Status get_replica_observed(const MetaStore& store,
+                                   const ReplicaID& replica_id,
+                                   ReplicaObservedOr& out) {
+    return store.read_with([&](const MetaStoreTxn& txn) {
+        return txn.get_replica_observed(replica_id, out);
+    });
+}
+
+inline Status put_membership_observed(MetaStore& store, const ShardID& shard_id,
+                                      const MembershipObserved& observed) {
+    return store.write_with([&](MetaStoreTxn& txn) {
+        return txn.put_membership_observed(shard_id, observed);
+    });
+}
+
+inline Status get_membership_observed(const MetaStore& store, const ShardID& shard_id,
+                                      MembershipObservedOr& out) {
+    return store.read_with([&](const MetaStoreTxn& txn) {
+        return txn.get_membership_observed(shard_id, out);
     });
 }
 

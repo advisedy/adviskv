@@ -3,7 +3,7 @@
 #include <algorithm>
 
 #include "common/define.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "meta/store/meta_store_txn.h"
 
 namespace adviskv::meta {

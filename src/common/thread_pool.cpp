@@ -49,19 +49,20 @@ void ThreadPool::stop() {
     stopping_ = false;
 }
 
-void ThreadPool::submit(std::function<void()> task) {
+bool ThreadPool::submit(std::function<void()> task) {
     if (!task) {
-        return;
+        return false;
     }
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!started_ || stopping_) {
-            return;
+            return false;
         }
         tasks_.push(std::move(task));
     }
     cv_.notify_one();
+    return true;
 }
 
 bool ThreadPool::started() const {

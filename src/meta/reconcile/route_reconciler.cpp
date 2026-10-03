@@ -6,7 +6,7 @@
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "meta/store/meta_store.h"
 #include "meta/store/meta_store_txn.h"
 
@@ -65,7 +65,7 @@ Status RouteReconciler::check_shard_route(const Table& table, ShardIndex shard_i
         TableOr current_table;
         RETURN_IF_INVALID_STATUS(txn.get_table(table.table_id, current_table))
 
-        if (current_table.is_empty() || current_table->state.desired != TableDesired::PRESENT ||
+        if (current_table.is_empty() || is_absent(current_table->state.phase) ||
             (current_table->state.phase != TablePhase::CREATING && current_table->state.phase != TablePhase::RESIZING &&
              current_table->state.phase != TablePhase::READY) ||
             std::none_of(current_table->spec.shard_ranges.begin(), current_table->spec.shard_ranges.end(),
@@ -82,11 +82,11 @@ Status RouteReconciler::check_shard_route(const Table& table, ShardIndex shard_i
         std::vector<RouteEntry> follower_entries;
 
         for (const Replica& replica : replicas) {
-            if (replica.state.desired != ReplicaDesired::PRESENT || replica.state.phase != ReplicaPhase::READY) {
+            if (replica.state.phase != ReplicaPhase::READY) {
                 LOG_INFO(
                         "[RouteReconciler] replica_id:{} not routable, "
-                        "replica.state.desired:{}, replica.state.phase:{}",
-                        replica.replica_id.to_string(), to<int8>(replica.state.desired), to<int8>(replica.state.phase));
+                        "replica.state.phase:{}",
+                        replica.replica_id.to_string(), to<int32_t>(replica.state.phase));
                 continue;
             }
 
@@ -100,7 +100,7 @@ Status RouteReconciler::check_shard_route(const Table& table, ShardIndex shard_i
             RETURN_IF_INVALID_STATUS(txn.get_node(replica.spec.assign_node_id, node))
 
             if (node.is_empty() || node->state.status != NodeStatus::ONLINE) {
-                int8 node_status = node.is_empty() ? -1 : to<int8>(node->state.status);
+                int32_t node_status = node.is_empty() ? -1 : to<int32_t>(node->state.status);
                 LOG_INFO(
                         "[RouteReconciler] replica_id:{}, node.is_empty() or "
                         "node->state.status != NodeStatus::ONLINE, "

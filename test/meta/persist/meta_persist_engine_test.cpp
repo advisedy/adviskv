@@ -35,7 +35,6 @@ protected:
         record.next_table_id = 102;
         record.databases.push_back(Database{1, "app", "zone-a"});
         TableState table_state{};
-        table_state.desired = TableDesired::PRESENT;
         table_state.phase = TablePhase::READY;
         table_state.update_ts = 100;
 
@@ -47,14 +46,8 @@ protected:
 
         ReplicaID replica_id{101, 2, 0};
         ReplicaState replica_state{};
-        replica_state.desired = ReplicaDesired::PRESENT;
         replica_state.phase = ReplicaPhase::READY;
-        replica_state.observed_raft_role = ReplicaRole::LEADER;
-        replica_state.observed_member_type = RaftMemberType::VOTER;
-        replica_state.observed_endpoint = Endpoint{"127.0.0.1", 9000};
-        replica_state.observed_storage_status = StorageReplicaStatus::READY;
         replica_state.update_ts = 300;
-        replica_state.term = 4;
         record.replicas.push_back(Replica{
                 replica_id,
                 ReplicaSpec{
@@ -74,7 +67,6 @@ protected:
         record.next_table_id = 203;
         record.databases.push_back(Database{2, "billing", "zone-b"});
         TableState table_state{};
-        table_state.desired = TableDesired::ABSENT;
         table_state.phase = TablePhase::DELETING;
         table_state.last_error_msg = "delete pending";
         table_state.update_ts = 1000;
@@ -88,16 +80,8 @@ protected:
         ReplicaID leader_id{202, 3, 0};
         ReplicaID follower_id{202, 3, 1};
         ReplicaState replica_state{};
-        replica_state.desired = ReplicaDesired::ABSENT;
         replica_state.phase = ReplicaPhase::DELETING;
-        replica_state.observed_raft_role = ReplicaRole::FOLLOWER;
-        replica_state.observed_member_type = RaftMemberType::NON_MEMBER;
-        replica_state.observed_endpoint = Endpoint{"127.0.0.2", 9100};
-        replica_state.observed_storage_status = StorageReplicaStatus::READY;
-        replica_state.observed_no_exist = true;
-        replica_state.last_error_msg = "replica draining";
         replica_state.update_ts = 3000;
-        replica_state.term = 11;
         record.replicas.push_back(Replica{
                 leader_id,
                 ReplicaSpec{
@@ -108,7 +92,6 @@ protected:
                 replica_state,
         });
         ReplicaState follower_state = replica_state;
-        follower_state.observed_raft_role = ReplicaRole::FOLLOWER;
         record.replicas.push_back(Replica{
                 follower_id,
                 ReplicaSpec{
@@ -125,8 +108,6 @@ protected:
         group.mode = ReplicaGroupMode::RAFT_RECONFIG;
         group.target_replica_count = 2;
         group.desired_members = {leader_id, follower_id};
-        group.observed_membership_term = 11;
-        group.observed_membership_leader = leader_id;
         group.seq_allocator = IDAllocator<ReplicaSeq>(2);
         record.replica_groups.push_back(group);
 
@@ -167,7 +148,6 @@ protected:
             EXPECT_EQ(actual_table.spec.resource_pool, expected_table.spec.resource_pool);
             EXPECT_EQ(actual_table.state.operation_id, expected_table.state.operation_id);
             EXPECT_EQ(actual_table.spec.engine_type, expected_table.spec.engine_type);
-            EXPECT_EQ(actual_table.state.desired, expected_table.state.desired);
             EXPECT_EQ(actual_table.state.phase, expected_table.state.phase);
             EXPECT_EQ(actual_table.state.last_error_msg, expected_table.state.last_error_msg);
             EXPECT_EQ(actual_table.state.update_ts, expected_table.state.update_ts);
@@ -184,16 +164,8 @@ protected:
             EXPECT_EQ(actual_replica.spec.dc, expected_replica.spec.dc);
             EXPECT_EQ(actual_replica.spec.assign_node_id, expected_replica.spec.assign_node_id);
             EXPECT_EQ(actual_replica.spec.engine_type, expected_replica.spec.engine_type);
-            EXPECT_EQ(actual_replica.state.desired, expected_replica.state.desired);
             EXPECT_EQ(actual_replica.state.phase, expected_replica.state.phase);
-            EXPECT_EQ(actual_replica.state.observed_raft_role, expected_replica.state.observed_raft_role);
-            EXPECT_EQ(actual_replica.state.observed_member_type, expected_replica.state.observed_member_type);
-            EXPECT_EQ(actual_replica.state.observed_endpoint, expected_replica.state.observed_endpoint);
-            EXPECT_EQ(actual_replica.state.observed_storage_status, expected_replica.state.observed_storage_status);
-            EXPECT_EQ(actual_replica.state.observed_no_exist, expected_replica.state.observed_no_exist);
-            EXPECT_EQ(actual_replica.state.last_error_msg, expected_replica.state.last_error_msg);
             EXPECT_EQ(actual_replica.state.update_ts, expected_replica.state.update_ts);
-            EXPECT_EQ(actual_replica.state.term, expected_replica.state.term);
         }
 
         ASSERT_EQ(actual.replica_groups.size(), expected.replica_groups.size());
@@ -207,8 +179,6 @@ protected:
             EXPECT_EQ(actual_group.mode, expected_group.mode);
             EXPECT_EQ(actual_group.target_replica_count, expected_group.target_replica_count);
             EXPECT_EQ(actual_group.desired_members, expected_group.desired_members);
-            EXPECT_EQ(actual_group.observed_membership_term, expected_group.observed_membership_term);
-            EXPECT_EQ(actual_group.observed_membership_leader, expected_group.observed_membership_leader);
             EXPECT_EQ(actual_group.seq_allocator.current_id(), expected_group.seq_allocator.current_id());
         }
     }
@@ -330,6 +300,99 @@ TEST_F(MetaPersistEngineTest, LoadEmptyFileFails) {
     {
         std::ofstream out(meta_path(), std::ios::binary);
         ASSERT_TRUE(out.is_open());
+    }
+
+    MetaPersistEngine engine(base_dir_.string());
+    ASSERT_TRUE(engine.init().ok());
+    MetaPersistedRecord loaded;
+    EXPECT_TRUE(engine.load_meta(loaded).fail());
+}
+
+// 新格式落盘检查：phase/mode 必须写成名字字符串，不能是裸数字。
+TEST_F(MetaPersistEngineTest, SaveWritesEnumNamesAsString) {
+    {
+        MetaPersistEngine engine(base_dir_.string());
+        ASSERT_TRUE(engine.init().ok());
+        ASSERT_TRUE(engine.save_meta(make_record()).ok());
+    }
+    std::ifstream in(meta_path());
+    ASSERT_TRUE(in.is_open());
+    std::string payload((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    EXPECT_NE(payload.find("\"phase\": \"DELETING\""), std::string::npos);
+    EXPECT_NE(payload.find("\"mode\": \"RAFT_RECONFIG\""), std::string::npos);
+    // 枚举不允许写成裸数字。
+    EXPECT_EQ(payload.find("\"phase\": 2"), std::string::npos);
+}
+
+// int 形式的枚举一律拒绝加载，不做旧数据兼容。
+TEST_F(MetaPersistEngineTest, LoadIntEnumFails) {
+    const std::string int_payload = R"({
+  "next_db_id": 3,
+  "next_table_id": 203,
+  "databases": [
+    {"db_id": 2, "name": "billing", "zone": "zone-b"}
+  ],
+  "tables": [
+    {
+      "table_id": 202,
+      "spec": {
+        "db_id": 2, "db_name": "billing", "name": "orders", "engine_type": 0,
+        "shard_ranges": [{"shard_id": 0, "range": {"start": 0, "end": 65536}}],
+        "target_replica_count": 5, "resource_pool": "pool-b"
+      },
+      "state": {
+        "phase": 3, "operation_id": "", "last_error_msg": "delete pending",
+        "create_ts": 0, "update_ts": 1000
+      }
+    }
+  ],
+  "replicas": [],
+  "replica_groups": [
+    {
+      "shard_id": {"table_id": 202, "shard_index": 3},
+      "mode": 2, "target_replica_count": 2, "desired_members": [], "seq_allocator": 2
+    }
+  ]
+})";
+    {
+        std::ofstream out(meta_path(), std::ios::binary);
+        ASSERT_TRUE(out.is_open());
+        out << int_payload;
+    }
+
+    MetaPersistEngine engine(base_dir_.string());
+    ASSERT_TRUE(engine.init().ok());
+    MetaPersistedRecord loaded;
+    EXPECT_TRUE(engine.load_meta(loaded).fail());
+}
+
+// 未知枚举名字同样拒绝加载（含已删除的死值名字）。
+TEST_F(MetaPersistEngineTest, LoadUnknownEnumNameFails) {
+    const std::string unknown_name_payload = R"({
+  "next_db_id": 3,
+  "next_table_id": 203,
+  "databases": [],
+  "tables": [
+    {
+      "table_id": 202,
+      "spec": {
+        "db_id": 2, "db_name": "billing", "name": "orders", "engine_type": 0,
+        "shard_ranges": [{"shard_id": 0, "range": {"start": 0, "end": 65536}}],
+        "target_replica_count": 5, "resource_pool": "pool-b"
+      },
+      "state": {
+        "phase": "WHAT_IS_THIS", "operation_id": "", "last_error_msg": "",
+        "create_ts": 0, "update_ts": 1000
+      }
+    }
+  ],
+  "replicas": [],
+  "replica_groups": []
+})";
+    {
+        std::ofstream out(meta_path(), std::ios::binary);
+        ASSERT_TRUE(out.is_open());
+        out << unknown_name_payload;
     }
 
     MetaPersistEngine engine(base_dir_.string());

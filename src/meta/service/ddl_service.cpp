@@ -73,7 +73,7 @@ Status DdlService::create_table(const CreateTableParam& param, Table* table) {
         Status found = txn.get_table_by_name(param.db_name, param.table_name, existing);
         RETURN_IF_INVALID_STATUS(found)
         if (existing.has_value() && existing->state.phase != TablePhase::DELETED) {
-            if (existing->state.desired == TableDesired::ABSENT || existing->state.phase == TablePhase::DELETING) {
+            if (existing->state.phase == TablePhase::DELETING) {
                 return Status::ALREADY_EXIST(
                         fmt::format("table_name:{} is deleting in db:{}", param.table_name, param.db_name));
             }
@@ -97,7 +97,6 @@ Status DdlService::create_table(const CreateTableParam& param, Table* table) {
         created.spec.shard_ranges = make_shard_ranges(param.shard_count);
         created.spec.target_replica_count = param.replica_count;
         created.spec.resource_pool = param.resource_pool;
-        created.state.desired = TableDesired::PRESENT;
         created.state.phase = TablePhase::CREATING;
         created.state.create_ts = func::get_current_ts_ms();
         created.state.update_ts = created.state.create_ts;
@@ -129,11 +128,10 @@ Status DdlService::drop_table(const DropTableByNameParam& param, Table* table) {
             return Status::TABLE_NOT_FOUND(
                     fmt::format("table_name:{} does not exist in db:{}", param.table_name, param.db_name));
         }
-        if (existing->state.desired == TableDesired::ABSENT || existing->state.phase == TablePhase::DELETING) {
+        if (existing->state.phase == TablePhase::DELETING) {
             dropped = *existing;
             return Status::OK();
         }
-        existing->state.desired = TableDesired::ABSENT;
         existing->state.phase = TablePhase::DELETING;
         existing->state.operation_id = fmt::format("drop-table-{}-{}", existing->table_id, func::get_current_ts_ms());
         existing->state.last_error_msg.clear();
