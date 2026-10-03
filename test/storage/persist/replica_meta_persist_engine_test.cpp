@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "test_env.h"
 namespace fs = std::filesystem;
 

@@ -15,7 +15,7 @@
 #include <vector>
 
 #include "common/status.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "storage/model/param.h"
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/core/raft_core.h"
@@ -332,6 +332,11 @@ class RaftCluster {
         int dropped = static_cast<int>(effect_outboxes_[source_idx].size());
         effect_outboxes_[source_idx].clear();
         return dropped;
+    }
+
+    // 只读观察 outbox（测试断言消息内容用，不消费）
+    const std::vector<RaftMessage>& outbox_of(int node_idx) const {
+        return effect_outboxes_[node_idx];
     }
 
     static LogEntry make_entry(Term term, LogIndex index, WriteOpType op_type,
@@ -1543,8 +1548,9 @@ TEST_F(RaftClusterTest, ReadIndexRequiresCommittedCurrentTermEntry) {
     RaftEffects read_effects;
     LogIndex read_index = 0;
     Term read_term = 0;
-    Status status = cluster_.core_ptr(2)->build_append_entries_for_read(
-        read_effects, read_index, read_term);
+    std::vector<ReplicaID> voters;
+    Status status = cluster_.core_ptr(2)->build_read_probe(
+        read_effects, read_index, read_term, voters, /*read_probe_seq=*/1);
 
     EXPECT_EQ(status.code(), StatusCode::READ_INDEX_NOT_READY);
     EXPECT_TRUE(read_effects.messages.empty());
@@ -1552,8 +1558,8 @@ TEST_F(RaftClusterTest, ReadIndexRequiresCommittedCurrentTermEntry) {
     LogIndex current_term_idx = cluster_.core_ptr(2)->last_log_index();
     replicate_until_committed(2, current_term_idx, {1});
 
-    status = cluster_.core_ptr(2)->build_append_entries_for_read(
-        read_effects, read_index, read_term);
+    status = cluster_.core_ptr(2)->build_read_probe(
+        read_effects, read_index, read_term, voters, /*read_probe_seq=*/2);
 
     ASSERT_TRUE(status.ok()) << status.to_string();
     EXPECT_EQ(read_index, cluster_.core_ptr(2)->commit_index());
@@ -1561,10 +1567,11 @@ TEST_F(RaftClusterTest, ReadIndexRequiresCommittedCurrentTermEntry) {
     EXPECT_FALSE(read_effects.messages.empty());
 }
 
-// 验证读一致性检查中，INSTALL_SNAPSHOT 消息也被计入 quorum。
-// 之前只处理 APPEND_ENTRIES，遇到 INSTALL_SNAPSHOT 直接 continue 跳过，
-// 导致我们会错误的返回一次NO_LEADER，然后等到心跳补上了快照之后才会OK
-TEST_F(RaftClusterTest, ReadIndexCountsInstallSnapshotMessage) {
+// 纯探测不变量（F2/F3/F15，取代旧的"INSTALL_SNAPSHOT 计票"语义）：
+// follower 落后到需要快照时，读探测依然以 heartbeat 形参到达它并拿到
+// term 匹配的响应（拒绝 prev 不对齐同样是任期确认证据）；探测绝不产出
+// INSTALL_SNAPSHOT、绝不触碰 next/match 进度——快照追赶只属于复制路径。
+TEST_F(RaftClusterTest, ReadProbeReachesLaggingVoterWithoutSnapshotMsg) {
     create_and_set_0_leader(3);
     ASSERT_TRUE(tick_until_all_committed(1));
     ASSERT_EQ(cluster_.leader_idx(), 0);
@@ -1583,95 +1590,48 @@ TEST_F(RaftClusterTest, ReadIndexCountsInstallSnapshotMessage) {
     ASSERT_TRUE(cluster_.core_ptr(0)->truncate_log(4).ok());
     ASSERT_EQ(cluster_.core_ptr(0)->snapshot_index(), 4);
 
-    // 强制 node 2 的 next_index 降到 snapshot_index 以下，
-    // 模拟 follower 落后太多、leader 需要发快照的场景
+    // node 2 严重落后（其 next 在快照边界之下）。读探测无视 next_index，
+    // 直接 heartbeat 形参覆盖全部 voter。
     set_node_next_index(0, cluster_.replica_id(2), 3);
+    const LogIndex next_before = get_node_next_index(0, cluster_.replica_id(2));
+    const LogIndex inflight_before =
+        get_inflight_snapshot_index(0, cluster_.replica_id(2));
 
     RaftEffects read_effects;
     LogIndex read_index = 0;
     Term read_term = 0;
-    Status status = cluster_.core_ptr(0)->build_append_entries_for_read(
-        read_effects, read_index, read_term);
+    std::vector<ReplicaID> voters;
+    Status status = cluster_.core_ptr(0)->build_read_probe(
+        read_effects, read_index, read_term, voters, /*read_probe_seq=*/1);
     ASSERT_TRUE(status.ok()) << status.to_string();
 
-    // 验证同时存在 APPEND_ENTRIES 和 INSTALL_SNAPSHOT
-    bool has_snapshot = false;
-    bool has_append = false;
-    for (const auto& msg : read_effects.messages) {
-        if (msg.type == RaftMessageType::INSTALL_SNAPSHOT) has_snapshot = true;
-        if (msg.type == RaftMessageType::APPEND_ENTRIES) has_append = true;
-    }
+    int probe_count = 0;
+    int confirmed = 1;  // self 天然确认
+    const int limit = cluster_.core_ptr(0)->quorum_size();
+    for (const RaftMessage& msg : read_effects.messages) {
+        ASSERT_EQ(msg.type, RaftMessageType::APPEND_ENTRIES)
+            << "pure probe must never emit INSTALL_SNAPSHOT (F3)";
+        ASSERT_TRUE(msg.append_param.read_probe_seq != 0);
+        probe_count++;
 
-    ASSERT_TRUE(has_snapshot);
-    ASSERT_TRUE(has_append);
-
-    // 模拟 Replica::check_self_leader_and_get_read_index 的计数逻辑
-    int success_cnt = 1;  // self
-    int limit = cluster_.core_ptr(0)->quorum_size();
-
-    for (auto& msg : read_effects.messages) {
         int target = cluster_.find_node(msg.target.replica_id);
         ASSERT_GE(target, 0);
-
-        if (msg.type == RaftMessageType::APPEND_ENTRIES) {
-            AppendEntriesResult res;
-            RaftEffects effects;
-            cluster_.core_ptr(target)->handle_append_entries(msg.append_param,
-                                                             res, effects);
-            Status drive_status = cluster_.drive_raft_effects(target, effects);
-            ASSERT_TRUE(drive_status.ok()) << drive_status.to_string();
-            RaftEffects response_effects;
-            IGNORE_RESULT(cluster_.core_ptr(0)->handle_append_response(
-                msg.target.replica_id, msg.append_param, res,
-                response_effects));
-            Status response_status =
-                cluster_.drive_raft_effects(0, std::move(response_effects));
-            ASSERT_TRUE(response_status.ok()) << response_status.to_string();
-            if (res.term == read_term) success_cnt++;
-        } else if (msg.type == RaftMessageType::INSTALL_SNAPSHOT) {
-            RaftEffects prepare_effects;
-            Status ps = cluster_.core_ptr(target)->prepare_install_snapshot(
-                msg.snapshot_param, prepare_effects);
-            Status prepare_status =
-                cluster_.drive_raft_effects(target, std::move(prepare_effects));
-            ASSERT_TRUE(prepare_status.ok()) << prepare_status.to_string();
-            InstallSnapshotResult res;
-            res.term = cluster_.core_ptr(target)->current_term();
-            res.status = ps;
-            if (ps.ok()) {
-                InstallSnapshotContext context;
-                context.snapshot_index = msg.snapshot_param.snapshot_index;
-                context.snapshot_term = msg.snapshot_param.snapshot_term;
-                RaftEffects install_effects;
-                cluster_.core_ptr(target)->commit_install_snapshot(
-                    context, install_effects);
-                Status install_status = cluster_.drive_raft_effects(
-                    target, std::move(install_effects));
-                ASSERT_TRUE(install_status.ok()) << install_status.to_string();
-            }
-            if (ps.code() == StatusCode::ALREADY_EXIST ||
-                (ps.fail() &&
-                 msg.snapshot_param.snapshot_index <=
-                     cluster_.core_ptr(target)->snapshot_index())) {
-                if (ps.code() == StatusCode::ALREADY_EXIST) {
-                    res.snapshot_watermark = msg.snapshot_param.snapshot_index;
-                } else {
-                    res.snapshot_watermark =
-                        cluster_.core_ptr(target)->snapshot_index();
-                }
-            }
-            RaftEffects response_effects;
-            cluster_.core_ptr(0)->handle_install_snapshot_response(
-                msg.target.replica_id, msg.snapshot_param, res,
-                response_effects);
-            Status response_status =
-                cluster_.drive_raft_effects(0, std::move(response_effects));
-            ASSERT_TRUE(response_status.ok()) << response_status.to_string();
-            if (res.term == read_term) success_cnt++;
-        }
+        AppendEntriesResult res;
+        RaftEffects effects;
+        cluster_.core_ptr(target)->handle_append_entries(msg.append_param, res, effects);
+        Status drive_status = cluster_.drive_raft_effects(target, effects);
+        ASSERT_TRUE(drive_status.ok()) << drive_status.to_string();
+        // 落后的 voter 会拒绝 prev 对账，但 term 匹配的响应仍是任期确认
+        //（F15：计票看 term，不看 success）。
+        if (res.term == read_term) confirmed++;
     }
 
-    EXPECT_GE(success_cnt, limit);
+    // 全部 2 个 follower 都被探测到，self + 它们凑满多数派。
+    EXPECT_EQ(probe_count, 2);
+    EXPECT_GE(confirmed, limit);
+    // 探测不污染复制进度（C.7 回归断言）。
+    EXPECT_EQ(get_node_next_index(0, cluster_.replica_id(2)), next_before);
+    EXPECT_EQ(get_inflight_snapshot_index(0, cluster_.replica_id(2)), inflight_before);
 }
 
 TEST_F(RaftClusterTest, InstallSnapshotSuccessUsesSentSnapshotIndex) {
@@ -1694,16 +1654,13 @@ TEST_F(RaftClusterTest, InstallSnapshotSuccessUsesSentSnapshotIndex) {
 
     set_node_next_index(0, cluster_.replica_id(2), 3);
 
-    RaftEffects read_effects;
-    LogIndex read_index = 0;
-    Term read_term = 0;
-    Status status = cluster_.core_ptr(0)->build_append_entries_for_read(
-        read_effects, read_index, read_term);
-    ASSERT_TRUE(status.ok()) << status.to_string();
+    // 心跳驱动复制路径产出 INSTALL_SNAPSHOT（读探测不产快照，F3；旧的
+    // build_append_entries_for_read 已删除，快照消息只属于复制路径）。
+    tick_heartbeat(0);
 
     bool found_snapshot = false;
     RaftMessage snapshot_msg;
-    for (const auto& msg : read_effects.messages) {
+    for (const auto& msg : cluster_.outbox_of(0)) {
         if (msg.type == RaftMessageType::INSTALL_SNAPSHOT &&
             msg.target.replica_id == cluster_.replica_id(2)) {
             snapshot_msg = msg;
@@ -1754,16 +1711,12 @@ TEST_F(RaftClusterTest, InstallSnapshotCoveredWatermarkUpdatesProgress) {
 
     set_node_next_index(0, cluster_.replica_id(2), 3);
 
-    RaftEffects read_effects;
-    LogIndex read_index = 0;
-    Term read_term = 0;
-    Status status = cluster_.core_ptr(0)->build_append_entries_for_read(
-        read_effects, read_index, read_term);
-    ASSERT_TRUE(status.ok()) << status.to_string();
+    // 心跳驱动复制路径产出 INSTALL_SNAPSHOT（同 InstallSnapshotSuccessUsesSentSnapshotIndex）。
+    tick_heartbeat(0);
 
     bool found_snapshot = false;
     RaftMessage snapshot_msg;
-    for (const auto& msg : read_effects.messages) {
+    for (const auto& msg : cluster_.outbox_of(0)) {
         if (msg.type == RaftMessageType::INSTALL_SNAPSHOT &&
             msg.target.replica_id == cluster_.replica_id(2)) {
             snapshot_msg = msg;
@@ -1792,8 +1745,7 @@ TEST_F(RaftClusterTest, InstallSnapshotCoveredWatermarkUpdatesProgress) {
               0);
 }
 
-TEST_F(RaftClusterTest, InstallSnapshotHigherWatermarkUpdatesProgress) {
-    create_and_set_0_leader(3);
+TEST_F(RaftClusterTest, InstallSnapshotHigherWatermarkUpdatesProgress) {    create_and_set_0_leader(3);
     ASSERT_TRUE(tick_until_all_committed(1));
     ASSERT_EQ(cluster_.leader_idx(), 0);
     drop_all_messages();
@@ -1817,16 +1769,12 @@ TEST_F(RaftClusterTest, InstallSnapshotHigherWatermarkUpdatesProgress) {
 
     set_node_next_index(0, cluster_.replica_id(2), 3);
 
-    RaftEffects read_effects;
-    LogIndex read_index = 0;
-    Term read_term = 0;
-    Status status = cluster_.core_ptr(0)->build_append_entries_for_read(
-        read_effects, read_index, read_term);
-    ASSERT_TRUE(status.ok()) << status.to_string();
+    // 心跳驱动复制路径产出 INSTALL_SNAPSHOT（同 InstallSnapshotSuccessUsesSentSnapshotIndex）。
+    tick_heartbeat(0);
 
     bool found_snapshot = false;
     RaftMessage snapshot_msg;
-    for (const auto& msg : read_effects.messages) {
+    for (const auto& msg : cluster_.outbox_of(0)) {
         if (msg.type == RaftMessageType::INSTALL_SNAPSHOT &&
             msg.target.replica_id == cluster_.replica_id(2)) {
             snapshot_msg = msg;
@@ -1904,20 +1852,24 @@ TEST_F(RaftClusterTest, ReadIndexCountsRejectedAppendEntriesWithMatchingTerm) {
     RaftEffects read_effects;
     LogIndex read_index = 0;
     Term read_term = 0;
-    Status status = cluster_.core_ptr(0)->build_append_entries_for_read(
-        read_effects, read_index, read_term);
+    std::vector<ReplicaID> voters;
+    Status status = cluster_.core_ptr(0)->build_read_probe(
+        read_effects, read_index, read_term, voters, /*read_probe_seq=*/1);
     ASSERT_TRUE(status.ok()) << status.to_string();
+
+    const LogIndex next_before = get_node_next_index(0, cluster_.replica_id(1));
 
     int success_cnt = 1;
     int limit = cluster_.core_ptr(0)->quorum_size();
 
-    for (auto& msg : read_effects.messages) {
+    for (const RaftMessage& msg : read_effects.messages) {
         int target = cluster_.find_node(msg.target.replica_id);
         ASSERT_GE(target, 0);
         if (cluster_.is_isolate(target)) continue;
 
         ASSERT_EQ(target, 1);
         ASSERT_EQ(msg.type, RaftMessageType::APPEND_ENTRIES);
+        ASSERT_TRUE(msg.append_param.read_probe_seq != 0);
         EXPECT_GT(msg.append_param.prev_log_index,
                   cluster_.core_ptr(target)->last_log_index());
         AppendEntriesResult res;
@@ -1929,19 +1881,347 @@ TEST_F(RaftClusterTest, ReadIndexCountsRejectedAppendEntriesWithMatchingTerm) {
 
         // B 缺少 prev_log_index 对应日志，所以 reject。
         EXPECT_FALSE(res.success);
-        // 但 term 匹配 read_term
+        // 但 term 匹配 read_term：F15，reject 但任期匹配的响应仍是任期确认证据。
         EXPECT_EQ(res.term, read_term);
-
-        RaftEffects response_effects;
-        IGNORE_RESULT(cluster_.core_ptr(0)->handle_append_response(
-            msg.target.replica_id, msg.append_param, res, response_effects));
-        Status response_status =
-            cluster_.drive_raft_effects(0, std::move(response_effects));
-        ASSERT_TRUE(response_status.ok()) << response_status.to_string();
         if (res.term == read_term) success_cnt++;
     }
 
     EXPECT_GE(success_cnt, limit);
+    // 探测响应只计票，绝不推进复制进度（不经过 handle_append_response）。
+    EXPECT_EQ(get_node_next_index(0, cluster_.replica_id(1)), next_before);
+}
+
+// 不变量2：本地快照完成只推进压缩边界，绝不把快照捕获时的旧成员配置装回 Raft。
+//
+// 已由 install_local_snapshot（本地路径）与 install_snapshot（远端路径）
+// 显式分家落地：本地路径不调 membership_.update_raft_members，远端路径才
+// 装 snapshot_members。本测试是回归保护——若未来有人把两条路径重新合并，
+// 这里会红。
+TEST_F(RaftClusterTest, LocalSnapshotFinishDoesNotRollbackMembership) {
+    create_and_set_0_leader(3);
+    ASSERT_TRUE(tick_until_all_committed(1));
+    ASSERT_EQ(cluster_.leader_idx(), 0);
+    drop_all_messages();
+
+    // leader 提交 3 条 KV 日志并 apply，为本地快照做准备
+    LogIndex last_idx = 0;
+    for (int i = 0; i < 3; ++i) {
+        last_idx = propose_and_replicate_once(0, {1, 2}, WriteOpType::PUT,
+                                              "snap_member_" + std::to_string(i),
+                                              "v" + std::to_string(i));
+    }
+    cluster_.core_ptr(0)->advance_last_applied(last_idx);
+    cluster_.core_ptr(1)->advance_last_applied(last_idx);
+    cluster_.core_ptr(2)->advance_last_applied(last_idx);
+    drop_all_messages();
+
+    // 捕获快照：索引 last_idx、成员配置 = 旧三 voter（不含新成员）
+    const std::vector<RaftMember> members_at_capture =
+        cluster_.core_ptr(0)->raft_members();
+    InstallSnapshotContext local_context;
+    local_context.snapshot_index = last_idx;
+    local_context.snapshot_term =
+        cluster_.core_ptr(0)->last_log_term();
+    local_context.snapshot_members = members_at_capture;
+
+    // 快照写盘期间，apply 了索引 last_idx+1 的 ADD_LEARNER 成员变更
+    PeerMember new_member;
+    new_member.node_id = "node_3";
+    new_member.replica_id =
+        ReplicaID{cluster_.replica_id(0).table_id, 0, 3};
+    new_member.endpoint = {"127.0.0.1", 9003};
+    LogEntry config_entry{};
+    config_entry.term = cluster_.core_ptr(0)->current_term();
+    config_entry.index = last_idx + 1;
+    config_entry.op_type = WriteOpType::ADD_LEARNER;
+    config_entry.config_member = new_member;
+    LogEntry config_entry_copy = config_entry;
+    cluster_.core_ptr(0)->update_log_entries({config_entry_copy});
+    cluster_.core_ptr(0)->advance_last_applied(last_idx + 1);
+    ASSERT_TRUE(cluster_.core_ptr(0)->apply_config_entry(config_entry_copy).ok());
+    ASSERT_EQ(cluster_.core_ptr(0)->member_type(new_member.replica_id),
+              RaftMemberType::LEARNER);
+
+    // 本地快照完成：当前实现会调 install_snapshot 装回旧成员配置
+    cluster_.core_ptr(0)->install_local_snapshot(local_context);
+
+    // 期望：成员配置保持捕获之后的最新值（新 learner 仍在），不被快照回滚
+    EXPECT_EQ(cluster_.core_ptr(0)->member_type(new_member.replica_id),
+              RaftMemberType::LEARNER)
+        << "local snapshot finish must not rollback membership";
+    EXPECT_EQ(cluster_.core_ptr(0)->snapshot_index(), last_idx);
+    EXPECT_EQ(cluster_.core_ptr(0)->last_applied(), last_idx + 1);
+}
+
+// ========== 批次 0：快照发送"未送达"必须清 inflight（F2） ==========
+//
+// 不变量：INSTALL_SNAPSHOT 一旦构造就打了 mark_snapshot_inflight，唯一清除
+// 途径是发送回执或 send-failed 事件。消息被丢（dispatch 拒绝、RPC 失败）
+// 时若不清标记，该 follower 的快照追赶永久停滞：下一次 tick 的
+// build_append_entries_message 会因 inflight>0 返回 nullopt，永远不再发。
+//
+// 场景（协议层确定性构造，不依赖真实 RPC）：
+//   1. 3 节点，node0 当选 leader；
+//   2. node1 落后到快照边界之下，leader 本地打快照（truncate_log 造出
+//      snapshot_index），next_index[node1] 压到 1；
+//   3. leader tick 产出 INSTALL_SNAPSHOT → inflight 标记置位（断言非零）；
+//   4. 发送"失败"——模拟 dispatcher 丢失/网络不可达：直接调用
+//      handle_install_snapshot_send_failed（dispatcher 的 send_task 失败
+//      回调最终走的就是它；async_send_one 的 submit 拒绝路径也回投同一
+//      事件）；
+//   5. 断言 inflight 归零，且下一次 tick 能重新产出 INSTALL_SNAPSHOT
+//      （快照追赶恢复，而不是永久卡死）。
+TEST_F(RaftClusterTest, SnapshotSendFailedClearsInflightAndRecovers) {
+    create_and_set_0_leader(3);
+    ASSERT_TRUE(tick_until_all_committed(1));
+    ASSERT_EQ(cluster_.leader_idx(), 0);
+    drop_all_messages();
+
+    // leader 与 node2 提交 4 条日志并 apply；node1 保持落后
+    LogIndex last_idx = 0;
+    for (int i = 0; i < 4; ++i) {
+        last_idx = propose_and_replicate_once(0, {2}, WriteOpType::PUT,
+                                              "orphan_k" + std::to_string(i),
+                                              "v" + std::to_string(i));
+    }
+    ASSERT_EQ(cluster_.core_ptr(0)->commit_index(), last_idx);
+    cluster_.core_ptr(0)->advance_last_applied(last_idx);
+    cluster_.core_ptr(2)->advance_last_applied(last_idx);
+
+    // leader 本地打快照：snapshot_index = 2（快照边界之下只剩 entry 3、4）
+    ASSERT_TRUE(cluster_.core_ptr(0)->truncate_log(2).ok());
+    ASSERT_EQ(cluster_.core_ptr(0)->snapshot_index(), 2);
+    drop_all_messages();
+
+    // node1 的 next_index 压到 1：prev(0) < snapshot_index(2)，
+    // 下一次复制构造必然走 INSTALL_SNAPSHOT 分支
+    set_node_next_index(0, cluster_.replica_id(1), 1);
+
+    // 立即触发一次心跳广播（心跳也走 broadcast_append_entries →
+    // build_append_entries_message），产出 INSTALL_SNAPSHOT，inflight 置位
+    tick_heartbeat(0);
+    const ReplicaID node1_id = cluster_.replica_id(1);
+    ASSERT_EQ(get_inflight_snapshot_index(0, node1_id), 2)
+        << "heartbeat must mark snapshot inflight for lagging follower";
+
+    // 提取被丢弃的 INSTALL_SNAPSHOT（不投递，模拟消息在 dispatcher 层丢失）
+    const int dropped = cluster_.drop_messages_from(0);
+    EXPECT_GT(dropped, 0) << "expected INSTALL_SNAPSHOT in outbox";
+
+    // 发送失败回执：dispatcher send_task 失败 / async_send_one submit 拒绝
+    // 都回投同一事件，loop 最终调用 handle_install_snapshot_send_failed
+    {
+        InstallSnapshotParam sent_param;
+        sent_param.from_replica_id = cluster_.replica_id(0);
+        sent_param.to_replica_id = node1_id;
+        sent_param.term = cluster_.core_ptr(0)->current_term();
+        sent_param.snapshot_index = 2;
+        sent_param.snapshot_term = cluster_.core_ptr(0)->snapshot_term();
+        RaftEffects effects;
+        cluster_.core_ptr(0)->handle_install_snapshot_send_failed(
+            node1_id, sent_param, Status::ERROR("rpc submit rejected"));
+        ASSERT_TRUE(cluster_.drive_raft_effects(0, std::move(effects)).ok());
+    }
+
+    // 断言1：inflight 已清零
+    EXPECT_EQ(get_inflight_snapshot_index(0, node1_id), 0)
+        << "send-failed event must clear snapshot inflight";
+
+    // 断言2：下一次心跳能重新产出 INSTALL_SNAPSHOT（追赶恢复）
+    drop_all_messages();
+    tick_heartbeat(0);
+    bool found_retry = false;
+    for (const RaftMessage& msg : cluster_.outbox_of(0)) {
+        if (msg.type == RaftMessageType::INSTALL_SNAPSHOT &&
+            msg.target.replica_id == node1_id) {
+            found_retry = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_retry)
+        << "after send-failed clears inflight, next heartbeat must rebuild "
+           "INSTALL_SNAPSHOT (orphan marker would block it forever)";
+}
+
+// ========== 方案 E 批次 D（§3-D）：apply 收敛与发布的机械层 ==========
+
+// D-1 有界提取（治 F4）：单次提取受 budget_entries 约束，不整体拷贝
+// backlog；has_more 精确指示剩余；逐轮提取最终消化全部日志；config entry
+// 不被 KV 预算阻断（跟随所在批次顺序放行）。
+// 确定性：协议层直接构造 3 节点集群与 100 条 backlog，逐轮预算提取并
+// 断言每轮条数与 has_more 语义——无并发窗口。
+TEST_F(RaftClusterTest, BoundedExtractRespectsEntryBudgetAndConfigNotBlocked) {
+    create_and_set_0_leader(3);
+    ASSERT_TRUE(tick_until_all_committed(1));
+    ASSERT_EQ(cluster_.leader_idx(), 0);
+    drop_all_messages();
+
+    // 6 条 KV backlog（不驱动复制，commit 停在本地 propose？——单节点
+    // quorum 会立即 commit；这里用 propose_and_replicate_once 逐条提交
+    // 后统一只让 node0 保留未 apply 的 backlog）。
+    for (int i = 0; i < 6; ++i) {
+        propose_and_replicate_once(0, {1, 2}, WriteOpType::PUT,
+                                   "budget_k" + std::to_string(i), "v");
+    }
+    const LogIndex last_idx = cluster_.core_ptr(0)->commit_index();
+    ASSERT_EQ(last_idx, 7);  // 1 noop + 6 kv
+
+    // budget=4：首轮最多 4 条（NONE/noop 与 KV 都占条数预算；config 才免费）。
+    bool has_more = false;
+    std::vector<LogEntry> first =
+        cluster_.core_ptr(0)->extract_committed_entries(4, 0, &has_more);
+    ASSERT_EQ(first.size(), 4u);
+    ASSERT_TRUE(has_more) << "6 kv backlog must have more after budget=4";
+
+    // 应用首轮（推进 last_applied），再提下一轮：剩余 3 条。
+    for (const LogEntry& e : first) {
+        cluster_.core_ptr(0)->advance_last_applied(e.index);
+    }
+    std::vector<LogEntry> second =
+        cluster_.core_ptr(0)->extract_committed_entries(4, 0, &has_more);
+    ASSERT_EQ(second.size(), 3u);
+    ASSERT_FALSE(has_more) << "backlog exhausted, has_more must be false";
+
+    // 提取序 = 日志序。
+    LogIndex expect_index = first.front().index;
+    for (const LogEntry& e : first) {
+        ASSERT_EQ(e.index, expect_index++);
+    }
+    for (const LogEntry& e : second) {
+        ASSERT_EQ(e.index, expect_index++);
+    }
+
+    // config entry 不被 KV 预算阻断：ensure_add_learner（config）紧随 KV
+    // backlog，budget=0（拦一切 KV）时 config 仍按日志序放行。
+    // 先把现有 backlog 全部应用掉，得到干净起点。
+    while (true) {
+        bool more = false;
+        std::vector<LogEntry> drain =
+            cluster_.core_ptr(0)->extract_committed_entries(128, 0, &more);
+        if (drain.empty()) break;
+        for (const LogEntry& e : drain) {
+            cluster_.core_ptr(0)->advance_last_applied(e.index);
+        }
+        if (!more) break;
+    }
+
+    drop_all_messages();
+    propose_and_replicate_once(0, {1, 2}, WriteOpType::PUT, "after_cfg_k", "v");
+    PeerMember cfg_member;
+    cfg_member.node_id = "cfg_learner";
+    cfg_member.replica_id = ReplicaID{cluster_.replica_id(0).table_id, 0, 9};
+    cfg_member.endpoint = {"127.0.0.1", 9009};
+    RaftEffects cfg_effects;
+    Status cfg_status = cluster_.core_ptr(0)->ensure_add_learner(cfg_member, cfg_effects);
+    ASSERT_TRUE(cfg_status.ok()) << cfg_status.to_string();
+    ASSERT_TRUE(cluster_.drive_raft_effects(0, std::move(cfg_effects)).ok());
+    replicate_until_committed(0, cluster_.core_ptr(0)->last_log_index(), {1, 2});
+    has_more = false;
+    std::vector<LogEntry> cfg_batch =
+        cluster_.core_ptr(0)->extract_committed_entries(0, 0, &has_more);
+    ASSERT_EQ(cfg_batch.size(), 1u) << "budget=0 blocks the KV, config flows";
+    ASSERT_EQ(cfg_batch.back().op_type, WriteOpType::ADD_LEARNER)
+        << "config entry must not be blocked by KV budget";
+}
+
+// D-1 超大单条放行：budget_bytes 拦不住"空 KV 批起步的大 entry"，进度不死
+// 锁，记指标。
+TEST_F(RaftClusterTest, BoundedExtractPassesOversizedSingleAndConfigEntries) {
+    create_and_set_0_leader(3);
+    ASSERT_TRUE(tick_until_all_committed(1));
+    drop_all_messages();
+
+    // 应用掉当选 no-op，得到干净起点（last_applied == commit）。
+    cluster_.core_ptr(0)->advance_last_applied(cluster_.core_ptr(0)->commit_index());
+
+    // 大 value 单条（2000 字节）。
+    const std::string big_value(2000, 'x');
+    propose_and_replicate_once(0, {1, 2}, WriteOpType::PUT, "big_k", big_value);
+
+    // budget_bytes=100 拦不住"KV 批内第一条"（空 KV 批起步放行，防超大单条
+    // 饿死进度）。
+    bool has_more = false;
+    std::vector<LogEntry> first =
+        cluster_.core_ptr(0)->extract_committed_entries(10, 100, &has_more);
+    ASSERT_EQ(first.size(), 1u);
+    ASSERT_EQ(first.front().key, "big_k");
+    ASSERT_EQ(first.front().value, big_value);
+    ASSERT_FALSE(has_more);
+}
+
+// ========== 方案 E 批次 C 补充（§8.2）：读索引恰在快照边界 ==========
+
+// 不变量：commit == snapshot_index（WAL 已全部压缩）时，纯探测仍必须可构造
+// 且合法——prev_log_index/prev_log_term 取压缩边界（snapshot_index /
+// snapshot_term），探测消息不产生 INSTALL_SNAPSHOT、不触 inflight；follower
+// 收到后按协议应答，读流程可完成。
+//
+// 确定性：协议层直构。leader 打快照把 WAL 压到 commit 位置（last_log_index
+// == snapshot_index），再构造探测断言四元组取值与零副作用。
+TEST_F(RaftClusterTest, ReadProbeAtSnapshotBoundaryUsesCompactionTerm) {
+    create_and_set_0_leader(3);
+    ASSERT_TRUE(tick_until_all_committed(1));
+    drop_all_messages();
+
+    // 复制两条 KV 并让 followers 确认，leader commit 到 3。
+    for (int i = 0; i < 2; ++i) {
+        propose_and_replicate_once(0, {1, 2}, WriteOpType::PUT,
+                                   "boundary_k" + std::to_string(i), "v");
+    }
+    const LogIndex committed = cluster_.core_ptr(0)->commit_index();
+    ASSERT_EQ(committed, 3);  // noop + 2 kv
+
+    // leader 打快照到 commit 位置：先 apply 再 truncate（快照边界不能超过
+    // last_applied），WAL 全部压缩，last_log_index == snapshot_index。
+    cluster_.core_ptr(0)->advance_last_applied(committed);
+    ASSERT_TRUE(cluster_.core_ptr(0)->truncate_log(committed).ok());
+    const auto [snap_index, snap_term] = cluster_.core_ptr(0)->snapshot_for_test();
+    ASSERT_EQ(snap_index, committed);
+    ASSERT_EQ(cluster_.core_ptr(0)->last_log_index(), snap_index)
+        << "WAL fully compacted: read_index == snapshot_index boundary";
+
+    // 读探测在此边界上构造：prev 取压缩边界值，零 INSTALL_SNAPSHOT / inflight。
+    RaftEffects read_effects;
+    LogIndex read_index = 0;
+    Term read_term = 0;
+    std::vector<ReplicaID> voters;
+    Status status = cluster_.core_ptr(0)->build_read_probe(
+        read_effects, read_index, read_term, voters, /*read_probe_seq=*/1);
+    ASSERT_TRUE(status.ok()) << status.to_string();
+    ASSERT_EQ(read_index, snap_index);
+    ASSERT_EQ(voters.size(), 3u);  // self + 2 followers，learner 不存在
+
+    int probe_count = 0;
+    for (const RaftMessage& msg : read_effects.messages) {
+        ASSERT_EQ(msg.type, RaftMessageType::APPEND_ENTRIES)
+            << "pure probe must never emit INSTALL_SNAPSHOT (F3)";
+        ASSERT_TRUE(msg.append_param.read_probe_seq != 0);
+        // §8.2：压缩后 prev 可给出的值就是边界值。
+        EXPECT_EQ(msg.append_param.prev_log_index, snap_index);
+        EXPECT_EQ(msg.append_param.prev_log_term, snap_term);
+        EXPECT_TRUE(msg.append_param.entries.empty());
+        ++probe_count;
+    }
+    ASSERT_EQ(probe_count, 2) << "probe must cover every voter except self";
+
+    // 零 inflight：探测前后 leader 对任何 peer 都没有快照发送标记（F2）。
+    for (int node = 1; node < 3; ++node) {
+        EXPECT_EQ(cluster_.core_ptr(0)->inflight_snapshot_index_for_test(
+                      cluster_.replica_id(node)),
+                  0);
+    }
+
+    // follower 收到边界探测：以自身 term 应答（真实链路里该回执计票）。
+    for (const RaftMessage& msg : read_effects.messages) {
+        int target = cluster_.find_node(msg.target.replica_id);
+        ASSERT_GE(target, 0);
+        AppendEntriesResult res;
+        RaftEffects follower_effects;
+        cluster_.core_ptr(target)->handle_append_entries(msg.append_param, res,
+                                                         follower_effects);
+        ASSERT_TRUE(cluster_.drive_raft_effects(target, std::move(follower_effects)).ok());
+        EXPECT_GT(res.term, 0) << "follower must answer the boundary probe with its term";
+    }
 }
 
 }  // namespace adviskv::storage

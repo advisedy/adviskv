@@ -10,7 +10,7 @@ ReplicaRole RaftElection::role() const { return role_; }
 
 Term RaftElection::current_term() const { return current_term_; }
 
-const std::optional<ReplicaID>& RaftElection::voted_for() const { return voted_for_; }
+const Optional<ReplicaID>& RaftElection::voted_for() const { return voted_for_; }
 
 bool RaftElection::is_follower() const { return role_ == ReplicaRole::FOLLOWER; }
 

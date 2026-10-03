@@ -12,6 +12,7 @@
 #include "common/buffer.h"
 #include "common/defer.h"
 #include "common/define.h"
+
 #include "common/framed_record_codec.h"
 #include "common/func.h"
 
@@ -52,13 +53,8 @@ public:
         RETURN_IF_INVALID_READ(buf, meta.init_param.replica_id.replica_seq)
         int32 engine_type{0};
         RETURN_IF_INVALID_READ(buf, engine_type)
+        RETURN_IF_INVALID_CONDITION(is_valid_enum_value<EngineType>(engine_type), "invalid replica meta engine_type")
         meta.init_param.engine_type = static_cast<EngineType>(engine_type);
-        switch (meta.init_param.engine_type) {
-            case EngineType::MAP:
-                break;
-            default:
-                return Status::ERROR("invalid replica meta engine_type");
-        }
         RETURN_IF_INVALID_READ(buf, meta.init_param.local_endpoint.ip)
         RETURN_IF_INVALID_READ(buf, meta.init_param.local_endpoint.port)
 

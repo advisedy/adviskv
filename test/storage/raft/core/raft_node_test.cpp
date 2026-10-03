@@ -3,7 +3,7 @@
 #include <gtest/gtest.h>
 
 #include "common/status.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "storage/model/param.h"
 #include "storage/persist/persist_engine.h"
 #include "test_env.h"
@@ -706,6 +706,81 @@ TEST_F(RaftCoreTest, PreVoteResponseAtCurrentTermUpdatesCandidate) {
     EXPECT_EQ(core.current_term(), 3);
     ASSERT_TRUE(response_effects.hard_state.has_value());
     EXPECT_EQ(response_effects.hard_state->current_term, 3);
+}
+
+// 成员变更 apply 进度不齐的窗口：ex-voter 的 PreVote grant 不得计入多数派。
+// 4 voter {self,x,y,z} 缩容为 {self,x,y} 后 quorum=2，若 ex-voter z 的票被
+// 计入，self+z 两票即可假当选。
+TEST_F(RaftCoreTest, PreVoteGrantFromRemovedVoterDoesNotCount) {
+    ReplicaID peer_x{101, 7, 0};
+    ReplicaID peer_y{101, 7, 1};
+    ReplicaID peer_z{101, 7, 3};
+    std::vector<PeerMember> members{
+        PeerMember{"self", replica_id_, {}},
+        PeerMember{"x", peer_x, {}},
+        PeerMember{"y", peer_y, {}},
+        PeerMember{"z", peer_z, {}},
+    };
+    RaftCore core{replica_id_, members};
+    core.update_raft_meta(RaftMeta{2, std::nullopt});
+
+    // 本地已 apply 移除 z：当前 voter 集只剩 {self, x, y}。
+    core.update_membership({
+            RaftMember{PeerMember{"self", replica_id_, {}}, RaftMemberType::VOTER},
+            RaftMember{PeerMember{"x", peer_x, {}}, RaftMemberType::VOTER},
+            RaftMember{PeerMember{"y", peer_y, {}}, RaftMemberType::VOTER},
+    });
+
+    RaftEffects start_effects;
+    core.become_pre_candidate_for_test(start_effects);
+    ASSERT_EQ(core.role(), ReplicaRole::PRE_CANDIDATE);
+
+    // z 尚未 apply 自身移除，仍回了 grant——不得计票。
+    RaftEffects z_effects;
+    core.handle_pre_vote_response(peer_z, PreVoteResult{2, true}, z_effects);
+    EXPECT_TRUE(core.is_pre_candidate_for_test()) << "ex-voter 的票不得凑成多数派";
+    EXPECT_EQ(core.role(), ReplicaRole::PRE_CANDIDATE);
+
+    // 当前 voter x 的 grant 才是真多数派（self+x = 2/3）。
+    RaftEffects x_effects;
+    core.handle_pre_vote_response(peer_x, PreVoteResult{2, true}, x_effects);
+    EXPECT_EQ(core.role(), ReplicaRole::CANDIDATE);
+}
+
+// 同上的正式投票版本：ex-voter 的 RequestVote grant 不得计入多数派。
+TEST_F(RaftCoreTest, VoteGrantFromRemovedVoterDoesNotElect) {
+    ReplicaID peer_x{101, 7, 0};
+    ReplicaID peer_y{101, 7, 1};
+    ReplicaID peer_z{101, 7, 3};
+    std::vector<PeerMember> members{
+        PeerMember{"self", replica_id_, {}},
+        PeerMember{"x", peer_x, {}},
+        PeerMember{"y", peer_y, {}},
+        PeerMember{"z", peer_z, {}},
+    };
+    RaftCore core{replica_id_, members};
+    core.update_raft_meta(RaftMeta{2, std::nullopt});
+
+    core.update_membership({
+            RaftMember{PeerMember{"self", replica_id_, {}}, RaftMemberType::VOTER},
+            RaftMember{PeerMember{"x", peer_x, {}}, RaftMemberType::VOTER},
+            RaftMember{PeerMember{"y", peer_y, {}}, RaftMemberType::VOTER},
+    });
+
+    RaftEffects start_effects;
+    core.become_candidate_for_test(start_effects);
+    ASSERT_EQ(core.role(), ReplicaRole::CANDIDATE);
+    // become_candidate 递增 term（2→3），响应必须匹配新 term 才进入计票。
+    const Term vote_term = core.current_term();
+    ASSERT_EQ(vote_term, 3);
+
+    RaftEffects z_effects;
+    core.handle_vote_response(peer_z, RequestVoteResult{vote_term, true}, z_effects);
+    EXPECT_EQ(core.role(), ReplicaRole::CANDIDATE) << "ex-voter 的票不得让候选者当选";
+
+    RaftEffects x_effects;
+    core.handle_vote_response(peer_x, RequestVoteResult{vote_term, true}, x_effects);
+    EXPECT_EQ(core.role(), ReplicaRole::LEADER);
 }
 
 }  // namespace adviskv::storage

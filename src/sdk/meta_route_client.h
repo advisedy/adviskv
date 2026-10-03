@@ -4,7 +4,7 @@
 
 #include <grpcpp/channel.h>
 
-#include "common/proto/proto.h"
+#include "common/proto/codec.h"
 #include "common/status.h"
 #include "meta.grpc.pb.h"
 #include "sdk/config.h"

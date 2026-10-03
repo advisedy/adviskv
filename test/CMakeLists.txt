@@ -73,6 +73,14 @@ add_adviskv_common_gtest(metrics_test
     ${CMAKE_SOURCE_DIR}/test/common/metrics/metrics_test.cpp
 )
 
+add_adviskv_common_gtest(thread_pool_test
+    ${CMAKE_SOURCE_DIR}/test/common/thread_pool_test.cpp
+)
+
+add_adviskv_common_gtest(codec_test
+    ${CMAKE_SOURCE_DIR}/test/common/proto/codec_test.cpp
+)
+
 add_adviskv_common_gtest(shard_range_test
     ${CMAKE_SOURCE_DIR}/test/common/shard_range_test.cpp
 )

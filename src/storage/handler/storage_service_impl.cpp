@@ -1,6 +1,8 @@
 #include "storage/handler/storage_service_impl.h"
 
+#include <optional>
 #include <string_view>
+#include <utility>
 
 #include <fmt/format.h>
 #include <grpcpp/server_context.h>
@@ -11,13 +13,13 @@
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/path_util.h"
-#include "common/proto/proto.h"
+#include "common/proto/codec.h"
 #include "common/status.h"
 #include "storage.pb.h"
 #include "storage/model/param.h"
-#include "storage/proto/storage_model_proto.h"
+#include "common/proto/codec.h"
 #include "storage/replica/replica.h"
 
 namespace adviskv::storage {
@@ -59,32 +61,25 @@ Status check_test_api_enabled() {
     return Status::ERROR("enable_test_api is false");
 }
 
-Status decode_replica_id_or_invalid(const pb::ReplicaID& in, ReplicaID& out) {
-    if (!decode_pb_replica_id(in, out)) {
-        return Status::INVALID_ARGUMENT("replica_id is not valid");
-    }
-    return Status::OK();
-}
 
-Status decode_peer_member_or_invalid(const pb::PeerMember& in, PeerMember& out) {
-    if (!decode_pb_peer_member(in, out)) {
-        return Status::INVALID_ARGUMENT("peer member is not valid");
+Optional<std::pair<ReplicaPtr, ReplicaID>> resolve_replica(const ReplicaManager* replica_manager,
+                                                                const pb::ReplicaID& replica_id_pb,
+                                                                Status& out_status) {
+    if (replica_manager == nullptr) {
+        out_status = Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"};
+        return std::nullopt;
     }
-    return Status::OK();
-}
-
-Status encode_raft_role_or_error(ReplicaRole in, pb::RaftRole& out) {
-    if (!encode_pb_raft_role(in, out)) {
-        return Status::ERROR("raft role is not valid");
+    ReplicaID replica_id;
+    if (!codec::decode(replica_id_pb, replica_id)) {
+        out_status = Status::INVALID_ARGUMENT("replica_id is not valid");
+        return std::nullopt;
     }
-    return Status::OK();
-}
-
-Status encode_storage_status_or_error(StorageReplicaStatus in, pb::StorageReplicaStatus& out) {
-    if (!encode_pb_storage_replica_status(in, out)) {
-        return Status::ERROR("storage replica status is not valid");
+    ReplicaPtr replica = replica_manager->get_replica_by_id(replica_id);
+    if (!replica) {
+        out_status = Status{StatusCode::REPLICA_NOT_FOUND, "replica not found"};
+        return std::nullopt;
     }
-    return Status::OK();
+    return std::make_pair(std::move(replica), replica_id);
 }
 
 }  // namespace
@@ -98,26 +93,13 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context, const rpc::Pu
     Status status = Status::OK();
     auto record_result = Defer([&status]() { record_storage_write_handler_result("put", status); });
 
-    if (!replica_manager_) {
-        status = Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"};
-        LOG_WARN("replica manager is nullptr");
-        fill_base_rsp(response, status);
+    auto resolved = resolve_replica(replica_manager_.get(), request->replica_id(), status);
+    if (!resolved) {
+        LOG_WARN("replica put failed, code = {}, msg = {}", to<int>(status.code()), status.msg());
+        codec::status_to_base_rsp(response, status);
         return grpc::Status::OK;
     }
-    ReplicaID replica_id;
-    if (Status decode_status = decode_replica_id_or_invalid(request->replica_id(), replica_id); decode_status.fail()) {
-        status = decode_status;
-        fill_base_rsp(response, status);
-        return grpc::Status::OK;
-    }
-    ReplicaPtr&& replica = replica_manager_->get_replica_by_id(replica_id);
-
-    if (!replica) {
-        status = Status{StatusCode::REPLICA_NOT_FOUND, "replica not found"};
-        LOG_WARN("replica not found, replica_id = {}", replica_id.to_string());
-        fill_base_rsp(response, status);
-        return grpc::Status::OK;
-    }
+    auto& [replica, replica_id] = *resolved;
 
     // replica内部执行put操作
     PutParam param{request->key(), request->value(), request->request_id()};
@@ -130,7 +112,7 @@ grpc::Status StorageServiceImpl::Put(grpc::ServerContext* context, const rpc::Pu
                 replica_id.table_id, replica_id.shard_index, request->key(), request->value(), status.msg());
     }
 
-    fill_base_rsp(response, status);
+    codec::status_to_base_rsp(response, status);
     return grpc::Status::OK;
 }
 
@@ -143,26 +125,13 @@ grpc::Status StorageServiceImpl::Cas(grpc::ServerContext* context, const rpc::Ca
     Status status = Status::OK();
     auto record_result = Defer([&status]() { record_storage_write_handler_result("cas", status); });
 
-    if (!replica_manager_) {
-        status = Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"};
-        LOG_WARN("replica manager is nullptr");
-        fill_base_rsp(response, status);
+    auto resolved = resolve_replica(replica_manager_.get(), request->replica_id(), status);
+    if (!resolved) {
+        LOG_WARN("replica cas failed, code = {}, msg = {}", to<int>(status.code()), status.msg());
+        codec::status_to_base_rsp(response, status);
         return grpc::Status::OK;
     }
-    ReplicaID replica_id;
-    if (Status decode_status = decode_replica_id_or_invalid(request->replica_id(), replica_id); decode_status.fail()) {
-        status = decode_status;
-        fill_base_rsp(response, status);
-        return grpc::Status::OK;
-    }
-    ReplicaPtr&& replica = replica_manager_->get_replica_by_id(replica_id);
-
-    if (!replica) {
-        status = Status{StatusCode::REPLICA_NOT_FOUND, "replica not found"};
-        LOG_WARN("replica not found, replica_id = {}", replica_id.to_string());
-        fill_base_rsp(response, status);
-        return grpc::Status::OK;
-    }
+    auto& [replica, replica_id] = *resolved;
 
     CasParam param{request->key(), request->expected(), request->value(), request->request_id()};
     status = replica->cas(param);
@@ -175,7 +144,7 @@ grpc::Status StorageServiceImpl::Cas(grpc::ServerContext* context, const rpc::Ca
                 status.msg());
     }
 
-    fill_base_rsp(response, status);
+    codec::status_to_base_rsp(response, status);
     return grpc::Status::OK;
 }
 
@@ -183,28 +152,19 @@ grpc::Status StorageServiceImpl::Get(grpc::ServerContext* context, const rpc::Ge
                                      rpc::GetResponse* response) {
     UNUSED(context);
 
-    if (!replica_manager_) {
-        LOG_WARN("replica manager is nullptr");
-        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
+    Status status;
+    auto resolved = resolve_replica(replica_manager_.get(), request->replica_id(), status);
+    if (!resolved) {
+        LOG_WARN("replica get failed, code = {}, msg = {}", to<int>(status.code()), status.msg());
+        codec::status_to_base_rsp(response, status);
         return grpc::Status::OK;
     }
-    ReplicaID replica_id;
-    if (Status decode_status = decode_replica_id_or_invalid(request->replica_id(), replica_id); decode_status.fail()) {
-        fill_base_rsp(response, decode_status);
-        return grpc::Status::OK;
-    }
-    ReplicaPtr&& replica = replica_manager_->get_replica_by_id(replica_id);
-
-    if (!replica) {
-        LOG_WARN("replica not found, replica_id = {}", replica_id.to_string());
-        fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND, "replica not found"});
-        return grpc::Status::OK;
-    }
+    auto& [replica, replica_id] = *resolved;
 
     GetParam param{request->key()};
     Value value;
 
-    Status status = replica->get(param, value);
+    status = replica->get(param, value);
 
     if (!status.ok()) {
         LOG_WARN(
@@ -212,7 +172,7 @@ grpc::Status StorageServiceImpl::Get(grpc::ServerContext* context, const rpc::Ge
                 "{}",
                 replica_id.table_id, replica_id.shard_index, request->key(), status.msg());
     }
-    fill_base_rsp(response, status);
+    codec::status_to_base_rsp(response, status);
     if (status.fail()) {
         return grpc::Status::OK;
     }
@@ -230,26 +190,13 @@ grpc::Status StorageServiceImpl::Delete(grpc::ServerContext* context, const rpc:
     Status status = Status::OK();
     auto record_result = Defer([&status]() { record_storage_write_handler_result("delete", status); });
 
-    if (!replica_manager_) {
-        status = Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"};
-        LOG_WARN("replica manager is nullptr");
-        fill_base_rsp(response, status);
+    auto resolved = resolve_replica(replica_manager_.get(), request->replica_id(), status);
+    if (!resolved) {
+        LOG_WARN("replica delete failed, code = {}, msg = {}", to<int>(status.code()), status.msg());
+        codec::status_to_base_rsp(response, status);
         return grpc::Status::OK;
     }
-
-    ReplicaID replica_id;
-    if (Status decode_status = decode_replica_id_or_invalid(request->replica_id(), replica_id); decode_status.fail()) {
-        status = decode_status;
-        fill_base_rsp(response, status);
-        return grpc::Status::OK;
-    }
-    ReplicaPtr&& replica = replica_manager_->get_replica_by_id(replica_id);
-    if (!replica) {
-        status = Status{StatusCode::REPLICA_NOT_FOUND, "replica not found"};
-        LOG_WARN("replica not found, replica_id = {}", replica_id.to_string());
-        fill_base_rsp(response, status);
-        return grpc::Status::OK;
-    }
+    auto& [replica, replica_id] = *resolved;
 
     status = replica->del(DelParam{request->key(), request->request_id()});
 
@@ -260,7 +207,7 @@ grpc::Status StorageServiceImpl::Delete(grpc::ServerContext* context, const rpc:
                 replica_id.table_id, replica_id.shard_index, request->key(), status.msg());
     }
 
-    fill_base_rsp(response, status);
+    codec::status_to_base_rsp(response, status);
     return grpc::Status::OK;
 }
 
@@ -269,31 +216,31 @@ grpc::Status StorageServiceImpl::CreateReplica(grpc::ServerContext* context, con
     UNUSED(context);
 
     if (Status status = check_test_api_enabled(); status.fail()) {
-        fill_base_rsp(response, status);
+        codec::status_to_base_rsp(response, status);
         return grpc::Status::OK;
     }
 
     if (!replica_manager_) {
         LOG_WARN("replica manager is nullptr");
-        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
+        codec::status_to_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
         return grpc::Status::OK;
     }
 
     ReplicaInitParam param;
-    if (Status decode_status = decode_replica_id_or_invalid(request->replica_id(), param.replica_id);
-        decode_status.fail()) {
-        fill_base_rsp(response, decode_status);
+    if (!codec::decode(request->replica_id(), param.replica_id)) {
+        codec::status_to_base_rsp(response, Status::INVALID_ARGUMENT("replica_id is not valid"));
         return grpc::Status::OK;
     }
-    if (!decode_pb_engine_type(request->engine_type(), param.engine_type)) {
-        fill_base_rsp(response, Status{StatusCode::INVALID_ARGUMENT, "engine_type is not valid"});
+    if (!is_valid_enum_value<EngineType>(request->engine_type())) {
+        codec::status_to_base_rsp(response, Status{StatusCode::INVALID_ARGUMENT, "engine_type is not valid"});
         return grpc::Status::OK;
     }
+    param.engine_type = static_cast<EngineType>(request->engine_type());
     param.members.clear();
     for (const auto& member : request->initial_members()) {
         PeerMember peer_member;
-        if (Status decode_status = decode_peer_member_or_invalid(member, peer_member); decode_status.fail()) {
-            fill_base_rsp(response, decode_status);
+        if (!codec::decode(member, peer_member)) {
+            codec::status_to_base_rsp(response, Status::INVALID_ARGUMENT("peer member is not valid"));
             return grpc::Status::OK;
         }
         param.members.push_back(std::move(peer_member));
@@ -301,7 +248,7 @@ grpc::Status StorageServiceImpl::CreateReplica(grpc::ServerContext* context, con
     param.local_endpoint = Endpoint{CONF_GET_STR("ip"), CONF_GET_INT("port")};
 
     Status status = replica_manager_->add_replica(param);
-    fill_base_rsp(response, status);
+    codec::status_to_base_rsp(response, status);
     return grpc::Status::OK;
 }
 
@@ -310,23 +257,23 @@ grpc::Status StorageServiceImpl::DeleteReplica(grpc::ServerContext* context, con
     UNUSED(context);
 
     if (Status status = check_test_api_enabled(); status.fail()) {
-        fill_base_rsp(response, status);
+        codec::status_to_base_rsp(response, status);
         return grpc::Status::OK;
     }
 
     if (!replica_manager_) {
         LOG_WARN("replica manager is nullptr");
-        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
+        codec::status_to_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
         return grpc::Status::OK;
     }
 
     ReplicaID replica_id;
-    if (Status decode_status = decode_replica_id_or_invalid(request->replica_id(), replica_id); decode_status.fail()) {
-        fill_base_rsp(response, decode_status);
+    if (!codec::decode(request->replica_id(), replica_id)) {
+        codec::status_to_base_rsp(response, Status::INVALID_ARGUMENT("replica_id is not valid"));
         return grpc::Status::OK;
     }
     Status status = replica_manager_->delete_replica(replica_id);
-    fill_base_rsp(response, status);
+    codec::status_to_base_rsp(response, status);
     return grpc::Status::OK;
 }
 
@@ -335,50 +282,40 @@ grpc::Status StorageServiceImpl::GetReplicaInfo(grpc::ServerContext* context, co
     UNUSED(context);
 
     if (Status status = check_test_api_enabled(); status.fail()) {
-        fill_base_rsp(response, status);
+        codec::status_to_base_rsp(response, status);
         return grpc::Status::OK;
     }
 
     if (!replica_manager_) {
         LOG_WARN("replica manager is nullptr");
-        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
+        codec::status_to_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
         return grpc::Status::OK;
     }
 
     ReplicaID replica_id;
-    if (Status decode_status = decode_replica_id_or_invalid(request->replica_id(), replica_id); decode_status.fail()) {
-        fill_base_rsp(response, decode_status);
+    if (!codec::decode(request->replica_id(), replica_id)) {
+        codec::status_to_base_rsp(response, Status::INVALID_ARGUMENT("replica_id is not valid"));
         return grpc::Status::OK;
     }
     ReplicaPtr replica = replica_manager_->get_replica_by_id(replica_id);
     if (!replica) {
         response->set_exists(false);
-        fill_base_rsp(response, Status::OK());
+        codec::status_to_base_rsp(response, Status::OK());
         return grpc::Status::OK;
     }
 
     response->set_exists(true);
     auto* info = response->mutable_replica();
-    pb::RaftRole role_pb;
-    pb::StorageReplicaStatus status_pb;
-    if (Status encode_status = encode_raft_role_or_error(replica->get_role(), role_pb); encode_status.fail()) {
-        fill_base_rsp(response, encode_status);
-        return grpc::Status::OK;
-    }
-    if (Status encode_status = encode_storage_status_or_error(replica->get_status(), status_pb); encode_status.fail()) {
-        fill_base_rsp(response, encode_status);
-        return grpc::Status::OK;
-    }
     info->set_table_id(replica->get_replica_id().table_id);
     info->set_shard_id(replica->get_replica_id().shard_index);
     info->set_replica_seq(replica->get_replica_id().replica_seq);
-    info->set_role(role_pb);
-    info->set_status(status_pb);
+    info->set_role(static_cast<int32_t>(replica->get_role()));
+    info->set_status(static_cast<int32_t>(replica->get_status()));
     info->set_term(replica->current_term());
     auto* endpoint = info->mutable_endpoint();
     endpoint->set_ip(CONF_GET_STR("ip"));
     endpoint->set_port(CONF_GET_INT("port"));
-    fill_base_rsp(response, Status::OK());
+    codec::status_to_base_rsp(response, Status::OK());
     return grpc::Status::OK;
 }
 
@@ -387,7 +324,7 @@ grpc::Status StorageServiceImpl::RequestVote(grpc::ServerContext* context, const
     UNUSED(context);
     if (!replica_manager_) {
         LOG_WARN("replica manager is nullptr");
-        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
+        codec::status_to_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
         return grpc::Status::OK;
     }
     ReplicaID replica_id{request->to().table_id(), request->to().shard_index(), request->to().replica_seq()};
@@ -402,7 +339,7 @@ grpc::Status StorageServiceImpl::RequestVote(grpc::ServerContext* context, const
     if (!replica) {
         LOG_WARN("[StorageService] RequestVote target replica not found, from:{}, to:{}, term:{}",
                  from_replica_id.to_string(), replica_id.to_string(), request->term());
-        fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND, "target replica not found"});
+        codec::status_to_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND, "target replica not found"});
         return grpc::Status::OK;
     }
     RequestVoteParam param;
@@ -415,7 +352,7 @@ grpc::Status StorageServiceImpl::RequestVote(grpc::ServerContext* context, const
     RequestVoteResult result;
     Status status = replica->handle_request_vote(param, result);
 
-    fill_base_rsp(response, status);
+    codec::status_to_base_rsp(response, status);
     if (status.ok()) {
         response->set_term(result.term);
         response->set_vote_granted(result.vote_granted);
@@ -434,7 +371,7 @@ grpc::Status StorageServiceImpl::PreVote(grpc::ServerContext* context, const rpc
     UNUSED(context);
     if (!replica_manager_) {
         LOG_WARN("replica manager is nullptr");
-        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
+        codec::status_to_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
         return grpc::Status::OK;
     }
     ReplicaID replica_id{request->to().table_id(), request->to().shard_index(), request->to().replica_seq()};
@@ -449,7 +386,7 @@ grpc::Status StorageServiceImpl::PreVote(grpc::ServerContext* context, const rpc
     if (!replica) {
         LOG_WARN("[StorageService] PreVote target replica not found, from:{}, to:{}, term:{}",
                  from_replica_id.to_string(), replica_id.to_string(), request->term());
-        fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND, "target replica not found"});
+        codec::status_to_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND, "target replica not found"});
         return grpc::Status::OK;
     }
     PreVoteParam param;
@@ -462,7 +399,7 @@ grpc::Status StorageServiceImpl::PreVote(grpc::ServerContext* context, const rpc
     PreVoteResult result;
     Status status = replica->handle_pre_vote(param, result);
 
-    fill_base_rsp(response, status);
+    codec::status_to_base_rsp(response, status);
     if (status.ok()) {
         response->set_term(result.term);
         response->set_vote_granted(result.vote_granted);
@@ -486,7 +423,7 @@ grpc::Status StorageServiceImpl::AppendEntries(grpc::ServerContext* context, con
     if (!replica_manager_) {
         ADVISKV_METRICS_COUNTER("storage_raft_append_entries_handler_replica_manager_not_found");
         LOG_WARN("replica manager is nullptr");
-        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
+        codec::status_to_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
         return grpc::Status::OK;
     }
     ReplicaID replica_id{request->to().table_id(), request->to().shard_index(), request->to().replica_seq()};
@@ -494,7 +431,7 @@ grpc::Status StorageServiceImpl::AppendEntries(grpc::ServerContext* context, con
     ReplicaPtr&& replica = replica_manager_->get_replica_by_id(replica_id);
     if (!replica) {
         ADVISKV_METRICS_COUNTER("storage_raft_append_entries_handler_replica_not_found");
-        fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND, "target replica not found"});
+        codec::status_to_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND, "target replica not found"});
         return grpc::Status::OK;
     }
 
@@ -506,10 +443,10 @@ grpc::Status StorageServiceImpl::AppendEntries(grpc::ServerContext* context, con
     param.prev_log_index = request->prev_log_index();
     param.prev_log_term = request->prev_log_term();
     param.leader_commit = request->leader_commit();
-    for (const rpc::LogEntry& one : request->entries()) {
+    for (const pb::LogEntry& one : request->entries()) {
         LogEntry entry;
-        if (!decode_pb_log_entry(one, entry)) {
-            fill_base_rsp(response, Status::INVALID_ARGUMENT("invalid log entry"));
+        if (!codec::decode(one, entry)) {
+            codec::status_to_base_rsp(response, Status::INVALID_ARGUMENT("invalid log entry"));
             return grpc::Status::OK;
         }
         param.entries.push_back(std::move(entry));
@@ -517,7 +454,7 @@ grpc::Status StorageServiceImpl::AppendEntries(grpc::ServerContext* context, con
 
     AppendEntriesResult result;
     Status status = replica->handle_append_entries(param, result);
-    fill_base_rsp(response, status);
+    codec::status_to_base_rsp(response, status);
     response->set_success(result.success);
     response->set_term(result.term);
     response->set_last_log_index(result.last_log_index);
@@ -530,7 +467,7 @@ grpc::Status StorageServiceImpl::InstallSnapshot(grpc::ServerContext* context,
     UNUSED(context);
 
     if (!replica_manager_) {
-        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
+        codec::status_to_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
         return grpc::Status::OK;
     }
 
@@ -538,7 +475,7 @@ grpc::Status StorageServiceImpl::InstallSnapshot(grpc::ServerContext* context,
 
     ReplicaPtr&& replica = replica_manager_->get_replica_by_id(replica_id);
     if (!replica) {
-        fill_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND, "target replica not found"});
+        codec::status_to_base_rsp(response, Status{StatusCode::REPLICA_NOT_FOUND, "target replica not found"});
         return grpc::Status::OK;
     }
 
@@ -555,7 +492,7 @@ grpc::Status StorageServiceImpl::InstallSnapshot(grpc::ServerContext* context,
 
     Status status = replica->handle_install_snapshot(param);
 
-    fill_base_rsp(response, status);
+    codec::status_to_base_rsp(response, status);
     response->set_term(replica->current_term());
     response->set_snapshot_watermark(0);
 
@@ -573,7 +510,7 @@ grpc::Status StorageServiceImpl::TestGetReplicaState(grpc::ServerContext* contex
                                                      const rpc::TestGetReplicaStateRequest* request,
                                                      rpc::TestGetReplicaStateResponse* response) {
     if (Status status = check_test_api_enabled(); status.fail()) {
-        fill_base_rsp(response, status);
+        codec::status_to_base_rsp(response, status);
         return grpc::Status::OK;
     }
 
@@ -581,7 +518,7 @@ grpc::Status StorageServiceImpl::TestGetReplicaState(grpc::ServerContext* contex
 
     if (!replica_manager_) {
         LOG_WARN("replica manager is nullptr");
-        fill_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
+        codec::status_to_base_rsp(response, Status{StatusCode::REPLICA_MANAGER_NOT_FOUND, "replica manager not found"});
         return grpc::Status::OK;
     }
 
@@ -592,30 +529,20 @@ grpc::Status StorageServiceImpl::TestGetReplicaState(grpc::ServerContext* contex
     ReplicaPtr&& replica = replica_manager_->get_replica_by_shard(shard_id);
     if (!replica) {
         response->set_exists(false);
-        fill_base_rsp(response, Status::ERROR("replica not found"));
+        codec::status_to_base_rsp(response, Status::ERROR("replica not found"));
         return grpc::Status::OK;
     }
 
     Replica::ReplicaStateForTest res;
     Status status = replica->get_replica_state_for_test(res);
     if (status.fail()) {
-        fill_base_rsp(response, status);
+        codec::status_to_base_rsp(response, status);
         return grpc::Status::OK;
     }
-    fill_base_rsp(response, status);
+    codec::status_to_base_rsp(response, status);
     response->set_exists(true);
-    pb::RaftRole role_pb;
-    pb::StorageReplicaStatus status_pb;
-    if (Status encode_status = encode_raft_role_or_error(replica->get_role(), role_pb); encode_status.fail()) {
-        fill_base_rsp(response, encode_status);
-        return grpc::Status::OK;
-    }
-    if (Status encode_status = encode_storage_status_or_error(replica->get_status(), status_pb); encode_status.fail()) {
-        fill_base_rsp(response, encode_status);
-        return grpc::Status::OK;
-    }
-    response->set_role(role_pb);
-    response->set_status(status_pb);
+    response->set_role(static_cast<int32_t>(replica->get_role()));
+    response->set_status(static_cast<int32_t>(replica->get_status()));
     response->set_current_term(res.current_term);
     response->set_commit_index(res.commit_index);
     response->set_last_applied(res.last_applied);

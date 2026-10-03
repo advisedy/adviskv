@@ -8,7 +8,7 @@
 
 #include "common/define.h"
 #include "common/metrics/metrics.h"
-#include "common/proto/proto.h"
+#include "common/proto/codec.h"
 #include "sdk/log.h"
 
 namespace adviskv::sdk {
@@ -71,7 +71,7 @@ Status StorageClient::put(const RouteInfo& route, const Key& key, const Value& v
     }
 
     rpc::PutRequest request;
-    encode_pb_replica_id(leader.replica_id, *request.mutable_replica_id());
+    codec::encode(leader.replica_id, *request.mutable_replica_id());
     request.set_key(key);
     request.set_value(value);
     request.set_request_id(request_id);
@@ -98,7 +98,7 @@ Status StorageClient::put(const RouteInfo& route, const Key& key, const Value& v
         return Status::RPC_ERROR(fmt::format("Storage Put RPC failed, grpc code = {}, msg = {}",
                                              static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
     }
-    if (Status status = decode_base_rsp_status(response.base_rsp()); status.fail()) {
+    if (Status status = codec::base_rsp_to_status(response.base_rsp()); status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "Storage Put returns non-ok, endpoint={}:{}, "
                         "table_id={}, shard_id={}, replica_id={}, key={}, "
@@ -134,7 +134,7 @@ Status StorageClient::del(const RouteInfo& route, const Key& key, const std::str
     }
 
     rpc::DeleteRequest request;
-    encode_pb_replica_id(leader.replica_id, *request.mutable_replica_id());
+    codec::encode(leader.replica_id, *request.mutable_replica_id());
     request.set_key(key);
     request.set_request_id(request_id);
 
@@ -161,7 +161,7 @@ Status StorageClient::del(const RouteInfo& route, const Key& key, const std::str
                 fmt::format("Storage Delete RPC failed, grpc code = {}, msg = {}",
                             static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
     }
-    if (Status status = decode_base_rsp_status(response.base_rsp()); status.fail()) {
+    if (Status status = codec::base_rsp_to_status(response.base_rsp()); status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "Storage Delete returns non-ok, endpoint={}:{}, "
                         "table_id={}, shard_id={}, replica_id={}, key={}, "
@@ -197,7 +197,7 @@ Status StorageClient::cas(const RouteInfo& route, const Key& key, const Value& e
     }
 
     rpc::CasRequest request;
-    encode_pb_replica_id(leader.replica_id, *request.mutable_replica_id());
+    codec::encode(leader.replica_id, *request.mutable_replica_id());
     request.set_key(key);
     request.set_expected(expected);
     request.set_value(value);
@@ -225,7 +225,7 @@ Status StorageClient::cas(const RouteInfo& route, const Key& key, const Value& e
         return Status::RPC_ERROR(fmt::format("Storage Cas RPC failed, grpc code = {}, msg = {}",
                                              static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
     }
-    if (Status status = decode_base_rsp_status(response.base_rsp()); status.fail()) {
+    if (Status status = codec::base_rsp_to_status(response.base_rsp()); status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "Storage Cas returns non-ok, endpoint={}:{}, "
                         "table_id={}, shard_id={}, replica_id={}, key={}, "
@@ -254,7 +254,7 @@ Status StorageClient::get(const RouteInfo& route, const Key& key, Value* value, 
     RETURN_IF_NULLPTR(stub, "storage stub is nullptr")
 
     rpc::GetRequest request;
-    encode_pb_replica_id(leader.replica_id, *request.mutable_replica_id());
+    codec::encode(leader.replica_id, *request.mutable_replica_id());
     request.set_key(key);
 
     rpc::GetResponse response;
@@ -275,7 +275,7 @@ Status StorageClient::get(const RouteInfo& route, const Key& key, Value* value, 
                                              static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
     }
 
-    if (Status status = decode_base_rsp_status(response.base_rsp()); status.fail()) {
+    if (Status status = codec::base_rsp_to_status(response.base_rsp()); status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "Storage Get returns non-ok, endpoint={}:{}, "
                         "table_id={}, shard_id={}, replica_id={}, key={}, "

@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "storage/model/param.h"
 
 namespace adviskv::storage {
@@ -16,7 +16,7 @@ class RaftLog {
 public:
     struct AppendEntriesResult {
         std::vector<LogEntry> entries_to_append;
-        std::optional<std::vector<LogEntry>> entries_to_rewrite;
+        Optional<std::vector<LogEntry>> entries_to_rewrite;
     };
 
     struct InstallSnapshotResult {

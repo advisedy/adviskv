@@ -10,7 +10,7 @@
 #include <grpcpp/create_channel.h>
 
 #include "common/define.h"
-#include "common/proto/proto.h"
+#include "common/proto/codec.h"
 #include "sdk/config.h"
 #include "sdk/log.h"
 #include "sdk/model.h"
@@ -48,7 +48,7 @@ Status MetaRouteClient::get_table_routes(TableRouteInfo* table_routes, Milliseco
                                              static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
     }
 
-    if (Status status = decode_base_rsp_status(response.base_rsp()); status.fail()) {
+    if (Status status = codec::base_rsp_to_status(response.base_rsp()); status.fail()) {
         ADVISKV_SDK_LOG(LogLevel::WARN,
                         "GetTableRoutes returns non-ok, meta={}:{}, db={}, table={}, "
                         "code={}, msg={}",
@@ -83,14 +83,16 @@ Status MetaRouteClient::get_table_routes(TableRouteInfo* table_routes, Milliseco
         route.replicas.reserve(route_pb.replicas_size());
         for (const auto& replica_pb : route_pb.replicas()) {
             RouteReplica route_replica;
-            RETURN_IF_INVALID_CONDITION(decode_pb_replica_id(replica_pb.replica_id(), route_replica.replica_id),
+            RETURN_IF_INVALID_CONDITION(codec::decode(replica_pb.replica_id(), route_replica.replica_id),
                                         "route replica id is not valid")
             RETURN_IF_INVALID_CONDITION(route_replica.replica_id.table_id == next.table_id &&
                                                 route_replica.replica_id.shard_index == shard_id,
                                         "route replica belongs to another shard")
             route_replica.endpoint = Endpoint{replica_pb.endpoint().ip(), replica_pb.endpoint().port()};
             ReplicaRole role = ReplicaRole::FOLLOWER;
-            RETURN_IF_INVALID_CONDITION(decode_pb_raft_role(replica_pb.role(), role), "route replica role is not valid")
+            RETURN_IF_INVALID_CONDITION(is_valid_enum_value<ReplicaRole>(replica_pb.role()),
+                                        "route replica role is not valid")
+            role = static_cast<ReplicaRole>(replica_pb.role());
             route_replica.role = role;
             route.replicas.push_back(std::move(route_replica));
         }

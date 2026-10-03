@@ -10,9 +10,9 @@
 
 #include "common/background_task.h"
 #include "common/define.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/optional.h"
-#include "common/proto/proto.h"
+#include "common/proto/codec.h"
 #include "common/status.h"
 #include "meta.grpc.pb.h"
 #include "storage/replica/replica.h"

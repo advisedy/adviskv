@@ -3,7 +3,7 @@
 #include <string>
 #include <string_view>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "common/types.h"
 #include "sdk/config.h"

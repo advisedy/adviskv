@@ -6,8 +6,7 @@
 #include <grpcpp/create_channel.h>
 
 #include "common/log.h"
-#include "common/proto/proto.h"
-#include "storage/proto/storage_model_proto.h"
+#include "common/proto/codec.h"
 
 namespace adviskv::storage {
 namespace {
@@ -19,8 +18,8 @@ auto get_system_clock_now() { return std::chrono::system_clock::now(); }
 Status GrpcRaftRpcTransport::request_vote(const PeerMember& target, const RequestVoteParam& param, int32_t timeout_ms,
                                           RequestVoteResult& result) const {
     rpc::RequestVoteRequest request;
-    encode_pb_replica_id(param.from_replica_id, *request.mutable_from());
-    encode_pb_replica_id(param.to_replica_id, *request.mutable_to());
+    codec::encode(param.from_replica_id, *request.mutable_from());
+    codec::encode(param.to_replica_id, *request.mutable_to());
 
     request.set_term(param.term);
     request.set_last_log_index(param.last_log_index);
@@ -54,8 +53,8 @@ Status GrpcRaftRpcTransport::request_vote(const PeerMember& target, const Reques
 Status GrpcRaftRpcTransport::pre_vote(const PeerMember& target, const PreVoteParam& param, int32_t timeout_ms,
                                       PreVoteResult& result) const {
     rpc::PreVoteRequest request;
-    encode_pb_replica_id(param.from_replica_id, *request.mutable_from());
-    encode_pb_replica_id(param.to_replica_id, *request.mutable_to());
+    codec::encode(param.from_replica_id, *request.mutable_from());
+    codec::encode(param.to_replica_id, *request.mutable_to());
 
     request.set_term(param.term);
     request.set_last_log_index(param.last_log_index);
@@ -89,8 +88,8 @@ Status GrpcRaftRpcTransport::pre_vote(const PeerMember& target, const PreVotePar
 Status GrpcRaftRpcTransport::append_entries(const PeerMember& target, const AppendEntriesParam& param,
                                             int32_t timeout_ms, AppendEntriesResult& result) const {
     rpc::AppendEntriesRequest request;
-    encode_pb_replica_id(param.from_replica_id, *request.mutable_from());
-    encode_pb_replica_id(param.to_replica_id, *request.mutable_to());
+    codec::encode(param.from_replica_id, *request.mutable_from());
+    codec::encode(param.to_replica_id, *request.mutable_to());
 
     request.set_term(param.term);
     request.set_prev_log_index(param.prev_log_index);
@@ -98,10 +97,7 @@ Status GrpcRaftRpcTransport::append_entries(const PeerMember& target, const Appe
     request.set_leader_commit(param.leader_commit);
 
     for (const LogEntry& entry : param.entries) {
-        auto* out_entry = request.add_entries();
-        if (!encode_pb_log_entry(entry, *out_entry)) {
-            return Status::INVALID_ARGUMENT("invalid append entries log entry");
-        }
+        codec::encode(entry, *request.add_entries());
     }
 
     rpc::AppendEntriesResponse response;
@@ -134,8 +130,8 @@ Status GrpcRaftRpcTransport::append_entries(const PeerMember& target, const Appe
 Status GrpcRaftRpcTransport::install_snapshot_chunk(const PeerMember& target, const InstallSnapshotParam& param,
                                                     int32_t timeout_ms, InstallSnapshotResult& result) const {
     rpc::InstallSnapshotRequest request;
-    encode_pb_replica_id(param.from_replica_id, *request.mutable_from());
-    encode_pb_replica_id(param.to_replica_id, *request.mutable_to());
+    codec::encode(param.from_replica_id, *request.mutable_from());
+    codec::encode(param.to_replica_id, *request.mutable_to());
 
     request.set_term(param.term);
     request.set_apply_index(param.snapshot_index);
@@ -161,7 +157,7 @@ Status GrpcRaftRpcTransport::install_snapshot_chunk(const PeerMember& target, co
     }
 
     result.term = response.term();
-    result.status = Status{response.base_rsp().code(), response.base_rsp().msg()};
+    result.status = codec::base_rsp_to_status(response.base_rsp());
     result.snapshot_watermark = response.snapshot_watermark();
     return Status::OK();
 }

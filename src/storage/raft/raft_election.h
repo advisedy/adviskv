@@ -4,7 +4,7 @@
 #include <optional>
 #include <unordered_set>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "storage/model/model.h"
 
 namespace adviskv::storage {
@@ -15,7 +15,7 @@ public:
 
     ReplicaRole role() const;
     Term current_term() const;
-    const std::optional<ReplicaID>& voted_for() const;
+    const Optional<ReplicaID>& voted_for() const;
 
     bool is_follower() const;
     bool is_pre_candidate() const;
@@ -44,7 +44,7 @@ private:
     ReplicaRole role_{ReplicaRole::FOLLOWER};
 
     Term current_term_{0};
-    std::optional<ReplicaID> voted_for_;
+    Optional<ReplicaID> voted_for_;
 
     std::unordered_set<ReplicaID, ReplicaIDHash> granted_voters_;
     std::unordered_set<ReplicaID, ReplicaIDHash> pre_vote_granted_voters_;

@@ -12,8 +12,8 @@
 
 #include "common/define.h"
 #include "common/log.h"
-#include "common/model/type.h"
-#include "common/proto/proto.h"
+#include "common/model/model.h"
+#include "common/proto/codec.h"
 #include "common/status.h"
 #include "storage/replica/replica.h"
 
@@ -121,7 +121,7 @@ Status NodeAgent::heartbeat_once() {
 
     for (const auto& expected_pb : response.expects()) {
         ExpectedReplica instruction;
-        RETURN_IF_INVALID_CONDITION(decode_pb_expected_replica(expected_pb, instruction),
+        RETURN_IF_INVALID_CONDITION(codec::decode(expected_pb, instruction),
                                     "heartbeat expected replica is not valid")
         Status apply_status = apply_expected_replica(instruction);
         if (apply_status.fail()) {
@@ -146,7 +146,7 @@ Status NodeAgent::send_heartbeat_once(meta_rpc::HeartbeatResponse* response) {
         return Status::RPC_ERROR(fmt::format("Meta Heartbeat RPC failed, grpc code = {}, msg = {}",
                                              static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
     }
-    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response->base_rsp()))
+    RETURN_IF_INVALID_STATUS(codec::base_rsp_to_status(response->base_rsp()))
     return Status::OK();
 }
 
@@ -166,7 +166,7 @@ Status NodeAgent::register_node() {
         return Status::RPC_ERROR(fmt::format("Meta RegisterNode RPC failed, grpc code = {}, msg = {}",
                                              static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
     }
-    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
+    RETURN_IF_INVALID_STATUS(codec::base_rsp_to_status(response.base_rsp()))
     return Status::OK();
 }
 
@@ -221,7 +221,7 @@ Status NodeAgent::apply_expected_replica(const ExpectedReplica& expect) {
             return conf_.replica_ops.remove_member(*leader_replica_id, expect.replica_id);
         }
         default:
-            return Status::ERROR(fmt::format("invalid expected replica type {}", to<int8>(expect.type)));
+            return Status::ERROR(fmt::format("invalid expected replica type {}", to<int32_t>(expect.type)));
     }
 }
 
@@ -269,35 +269,16 @@ meta_rpc::HeartbeatRequest NodeAgent::make_heartbeat_request() const {
         }
         ReplicaID replica_id = replica->get_replica_id();
         ReplicaRole role = replica->get_role();
-        pb::RaftRole role_pb;
-        pb::StorageReplicaStatus status_pb;
-        pb::RaftMemberType member_type_pb = pb::RaftMemberType::RAFT_MEMBER_TYPE_NON_MEMBER;
-        if (!encode_pb_raft_role(role, role_pb)) {
-            LOG_WARN("[NodeAgent] skip invalid replica role, replica_id={}", replica_id.to_string());
-            continue;
-        }
-        if (!encode_pb_storage_replica_status(replica->get_status(), status_pb)) {
-            LOG_WARN("[NodeAgent] skip invalid replica status, replica_id={}", replica_id.to_string());
-            continue;
-        }
-        if (!encode_pb_raft_member_type(replica->get_member_type(), member_type_pb)) {
-            LOG_WARN("[NodeAgent] skip invalid replica member type, replica_id={}", replica_id.to_string());
-            continue;
-        }
         auto* info = request.add_replica_info_list();
-        if (!encode_pb_replica_id(replica_id, *info->mutable_replica_id())) {
-            LOG_WARN("[NodeAgent] skip invalid replica id, replica_id={}", replica_id.to_string());
-            request.mutable_replica_info_list()->RemoveLast();
-            continue;
-        }
-        info->set_role(role_pb);
-        info->set_status(status_pb);
+        codec::encode(replica_id, *info->mutable_replica_id());
+        info->set_role(static_cast<int32_t>(role));
+        info->set_status(static_cast<int32_t>(replica->get_status()));
         info->set_term(replica->current_term());
-        info->set_member_type(member_type_pb);
+        info->set_member_type(static_cast<int32_t>(replica->get_member_type()));
         if (role == ReplicaRole::LEADER) {
             for (const RaftMember& member : replica->get_raft_members()) {
                 auto* member_pb = info->add_full_membership();
-                IGNORE_RESULT(encode_pb_raft_member(member, *member_pb));
+                IGNORE_RESULT(codec::encode(member, *member_pb));
             }
         }
     }

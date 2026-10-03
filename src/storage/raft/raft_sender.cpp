@@ -1,8 +1,11 @@
 #include "storage/raft/raft_sender.h"
 
+#include <memory>
+
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
+#include "common/pause_point.h"
 #include "common/status.h"
 #include "storage/model/model.h"
 #include "storage/raft/grpc_raft_rpc_transport.h"
@@ -97,15 +100,36 @@ Status RaftSender::send_install_snapshot(const PeerMember& member, const Install
     result = InstallSnapshotResult{};
     result.term = param.term;
     result.status = Status::OK();
+
+    // 批次 B 治 F6（三件套第 2 条）：进块循环前 open 一次、持 fd 读完。
+    // Linux inode 语义保证中途该文件被 rename/删除不影响已开 fd，发送的
+    // 全部块必然来自同一文件版本；不需要引用计数 / 异步 GC（§6 裁决 1）。
+    //
+    // 安全条件 5：打开的文件头 (index, term) 必须与消息参数匹配。不匹配
+    // （本地快照边界已推进）时 open_snapshot_reader 返回 CONDITION_NOT_MET，
+    // 本次发送取消，上层按发送失败回执清理 inflight，交下轮重新构造。
+    std::unique_ptr<PersistEngine::SnapshotFileReader> reader;
+    RETURN_IF_INVALID_STATUS(persist.open_snapshot_reader(param.snapshot_index, param.snapshot_term, reader))
+
     while (true) {
         std::string data;
         bool eof = false;
-        RETURN_IF_INVALID_STATUS(persist.read_snapshot_chunk(offset, kChunkSize, data, eof))
+        RETURN_IF_INVALID_STATUS(reader->read_chunk(offset, kChunkSize, data, eof))
 
         InstallSnapshotParam chunk_param = param;
         chunk_param.offset = offset;
         chunk_param.data = data;
         chunk_param.done = eof;
+        // session_nonce 只属于接收端会话语义，发送方必须保持为空，
+        // 防止接收端把它当成同一会话的续块。
+        chunk_param.session_nonce.clear();
+
+        // 暂停点（方案 E §5 首批）："发送首块后"。测试在此窗口内让 leader 发布
+        // 更新的本地快照，验证发送端后续块仍来自同一打开的文件版本（批次 B
+        // 安全条件 5 的交错测试用）。没有注册回调时零开销。
+        if (offset == 0) {
+            testhook::pause_point("raft_sender.after_first_chunk");
+        }
 
         Status status = transport_->install_snapshot_chunk(member, chunk_param, timeout_ms_, result);
         RETURN_IF_INVALID_STATUS(status)

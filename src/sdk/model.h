@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/shard_range.h"
 
 namespace adviskv::sdk {

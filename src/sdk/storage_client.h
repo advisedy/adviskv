@@ -5,7 +5,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "sdk/config.h"
 #include "sdk/model.h"

@@ -9,7 +9,8 @@
 #include <fmt/format.h>
 
 #include "common/define.h"
-#include "common/model/type.h"
+
+#include "common/model/model.h"
 #include "common/optional.h"
 #include "common/status.h"
 #include "common/stable_hash.h"
@@ -18,29 +19,18 @@ namespace adviskv::storage {
 
 using ReplicaStatus = ::adviskv::StorageReplicaStatus;
 
-using LogIndex = int64_t;
+enum class RaftMessageType : int32_t {
+    REQUEST_VOTE = 0,
+    PRE_VOTE = 1,
+    APPEND_ENTRIES = 2,
+    INSTALL_SNAPSHOT = 3,
 
-enum class WriteOpType : int32_t {
-    PUT = 0,
-    DEL = 1,
-    NONE = 2,
-    ADD_LEARNER = 3,
-    PROMOTE_VOTER = 4,
-    REMOVE_MEMBER = 5,
-    CAS = 6,
+    MAX_VALUE = INSTALL_SNAPSHOT,
 };
-
-inline bool is_config_change_op(WriteOpType op) {
-    return op == WriteOpType::ADD_LEARNER || op == WriteOpType::PROMOTE_VOTER || op == WriteOpType::REMOVE_MEMBER;
-}
-
-inline bool is_kv_write_op(WriteOpType op) {
-    return op == WriteOpType::PUT || op == WriteOpType::DEL || op == WriteOpType::CAS;
-}
 
 struct RaftMeta {
     Term current_term{0};
-    std::optional<ReplicaID> voted_for;
+    Optional<ReplicaID> voted_for;
 
     std::string to_string() const {
         return fmt::format("[term:{}, voted_for:{}]", current_term,
@@ -53,39 +43,6 @@ struct RaftMeta {
         return true;
     }
     DEFINE_OPERATOR_NOT_EQUAL(RaftMeta)
-};
-
-struct LogEntry {
-    Term term{0};
-    LogIndex index{0};
-    WriteOpType op_type{WriteOpType::NONE};
-    Key key{""};
-    Value value{""};
-    Value expected{""};
-    PeerMember config_member;
-    ReplicaID config_replica_id;
-    // 和 operation_id 概念不一样，这个rqeuest_id只是针对 put del cas 实现的
-    // config change 或则 none 就也是空的
-    std::string request_id;
-
-    LogEntry() = default;
-    LogEntry(Term term, LogIndex index, WriteOpType op_type, Key key, Value value)
-            : term(term), index(index), op_type(op_type), key(std::move(key)), value(std::move(value)) {}
-
-    bool operator==(const LogEntry& other) const {
-        return term == other.term && index == other.index && op_type == other.op_type && key == other.key &&
-               value == other.value && expected == other.expected && config_member == other.config_member &&
-               config_replica_id == other.config_replica_id && request_id == other.request_id;
-    }
-    DEFINE_OPERATOR_NOT_EQUAL(LogEntry)
-
-    std::string to_string() const {
-        return fmt::format(
-                "[term:{}, index:{}, key:{}, value:{}, expected:{}, op_type:{}, request_id:{}, "
-                "config_member:{}, config_replica_id:{}]",
-                term, index, key, value, expected, to<int32>(op_type), request_id, config_member.replica_id.to_string(),
-                config_replica_id.to_string());
-    }
 };
 
 struct RequestRecord {
@@ -153,6 +110,13 @@ struct AppendEntriesParam {
     LogIndex prev_log_index;
     Term prev_log_term;
     LogIndex leader_commit;
+    // 读探测轮次标识。0 = 不是读探测；>0 = 这条 AppendEntries 是某次
+    // ReadIndex 的纯探测（heartbeat 形参、空 entries），取值 = 建立该读的
+    // read_seq。响应走 ReadProbeResponseEvent 计票路径，不进普通复制 handle
+    // （不推进 next/match index）。只在发送端内存里用，不上线路。计票时要求
+    // 响应所属轮次 == 该读的 read_seq，防止上一轮探测/旧心跳的迟到响应冒充
+    // 本轮多数派确认。
+    uint64 read_probe_seq{0};
 };
 
 struct AppendEntriesResult {
@@ -170,6 +134,9 @@ struct InstallSnapshotParam {
     uint64 offset{0};
     std::string data;
     bool done{false};
+    // 接收会话的临时文件 nonce，接收端在 offset==0 首块时生成，只在接收端
+    // 内存里，不上线路。发送方保持为空。
+    std::string session_nonce;
 };
 
 struct InstallSnapshotResult {
@@ -182,13 +149,6 @@ struct InstallSnapshotContext {
     LogIndex snapshot_index{0};
     Term snapshot_term{0};
     std::vector<RaftMember> snapshot_members;
-};
-
-enum class RaftMessageType : uint8_t {
-    REQUEST_VOTE,
-    PRE_VOTE,
-    APPEND_ENTRIES,
-    INSTALL_SNAPSHOT,
 };
 
 struct RaftMessage {
@@ -230,9 +190,9 @@ struct RaftMessage {
 using RaftMessageOr = Optional<RaftMessage>;
 
 struct RaftEffects {
-    std::optional<RaftMeta> hard_state;
+    Optional<RaftMeta> hard_state;
     std::vector<LogEntry> entries_to_append;
-    std::optional<std::vector<LogEntry>> entries_to_rewrite;
+    Optional<std::vector<LogEntry>> entries_to_rewrite;
     std::vector<RaftMessage> messages;
 
     std::string to_string() const {
