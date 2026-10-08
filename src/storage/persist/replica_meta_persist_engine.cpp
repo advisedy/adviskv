@@ -6,80 +6,14 @@
 #include <string>
 #include <vector>
 
-#include <fcntl.h>
-#include <unistd.h>
+#include <fmt/format.h>
 
-#include "common/buffer.h"
-#include "common/defer.h"
 #include "common/define.h"
-
+#include "common/file.h"
 #include "common/framed_record_codec.h"
-#include "common/func.h"
+#include "storage/persist/persist_codecs.h"
 
 namespace adviskv::storage {
-namespace {
-
-constexpr int64 K_MAX_REPLICA_META_PAYLOAD_BYTES = 1024 * 1024;
-
-class ReplicaMetaCodec {
-public:
-    using ObjectType = ReplicaMetaPayload;
-    using LenType = int64;
-
-    LenType max_payload_len() const { return K_MAX_REPLICA_META_PAYLOAD_BYTES; }
-
-    void encode_payload(const ObjectType& meta, EncodeBuffer& buf) const {
-        buf.write(meta.init_param.replica_id.table_id);
-        buf.write(meta.init_param.replica_id.shard_index);
-        buf.write(meta.init_param.replica_id.replica_seq);
-        buf.write(static_cast<int32>(meta.init_param.engine_type));
-        buf.write(meta.init_param.local_endpoint.ip);
-        buf.write(meta.init_param.local_endpoint.port);
-        buf.write<int32>(static_cast<int32>(meta.init_param.members.size()));
-        for (const PeerMember& member : meta.init_param.members) {
-            buf.write(member.node_id);
-            buf.write(member.replica_id.table_id);
-            buf.write(member.replica_id.shard_index);
-            buf.write(member.replica_id.replica_seq);
-            buf.write(member.endpoint.ip);
-            buf.write(member.endpoint.port);
-        }
-    }
-
-    Status decode_payload(DecodeBuffer& buf, ObjectType& meta) const {
-        meta = {};
-        RETURN_IF_INVALID_READ(buf, meta.init_param.replica_id.table_id)
-        RETURN_IF_INVALID_READ(buf, meta.init_param.replica_id.shard_index)
-        RETURN_IF_INVALID_READ(buf, meta.init_param.replica_id.replica_seq)
-        int32 engine_type{0};
-        RETURN_IF_INVALID_READ(buf, engine_type)
-        RETURN_IF_INVALID_CONDITION(is_valid_enum_value<EngineType>(engine_type), "invalid replica meta engine_type")
-        meta.init_param.engine_type = static_cast<EngineType>(engine_type);
-        RETURN_IF_INVALID_READ(buf, meta.init_param.local_endpoint.ip)
-        RETURN_IF_INVALID_READ(buf, meta.init_param.local_endpoint.port)
-
-        int32 member_count{0};
-        RETURN_IF_INVALID_READ(buf, member_count)
-        if (member_count < 0) {
-            return Status::ERROR(fmt::format("invalid replica member count: {}", member_count));
-        }
-        meta.init_param.members.clear();
-        meta.init_param.members.reserve(static_cast<size_t>(member_count));
-        for (int32 i = 0; i < member_count; ++i) {
-            PeerMember member;
-            RETURN_IF_INVALID_READ(buf, member.node_id)
-            RETURN_IF_INVALID_READ(buf, member.replica_id.table_id)
-            RETURN_IF_INVALID_READ(buf, member.replica_id.shard_index)
-            RETURN_IF_INVALID_READ(buf, member.replica_id.replica_seq)
-            RETURN_IF_INVALID_READ(buf, member.endpoint.ip)
-            RETURN_IF_INVALID_READ(buf, member.endpoint.port)
-            meta.init_param.members.push_back(std::move(member));
-        }
-        return Status::OK();
-    }
-};
-
-}  // namespace
 
 ReplicaMetaPersistEngine::ReplicaMetaPersistEngine(std::string data_dir) : data_dir_(std::move(data_dir)) {}
 
@@ -92,27 +26,23 @@ std::filesystem::path ReplicaMetaPersistEngine::meta_path(const ReplicaID& repli
 }
 
 Status ReplicaMetaPersistEngine::save_replica_meta(const ReplicaMetaPayload& payload) const {
-    std::filesystem::path dir = replica_dir(payload.init_param.replica_id);
     std::filesystem::path path = meta_path(payload.init_param.replica_id);
 
-    return func::atomic_replace_file(
-            path, [&payload](int fd) { return FramedRecord<ReplicaMetaCodec>::encode_to_fd(fd, payload); });
+    return File::atomic_replace(path.string(), [&payload](const File& file) {
+        return FramedRecord<ReplicaMetaPayload>::encode_to(file, payload);
+    });
 }
 
 Status ReplicaMetaPersistEngine::load_replica_meta(const std::filesystem::path& path,
                                                    ReplicaMetaPayload& payload) const {
-    int fd = ::open(path.c_str(), O_RDONLY);
-    if (fd < 0) {
+    File file;
+    bool exists = false;
+    RETURN_IF_INVALID_STATUS(File::open_for_read(path.string(), file, exists))
+    if (!exists) {
         return Status::ERROR(fmt::format("open replica meta failed: {}", path.string()));
     }
-    auto close_fd = Defer([&]() {
-        if (fd != -1) {
-            ::close(fd);
-            fd = -1;
-        }
-    });
 
-    RETURN_IF_INVALID_STATUS(FramedRecord<ReplicaMetaCodec>::decode_from_fd(fd, payload))
+    RETURN_IF_INVALID_STATUS(FramedRecord<ReplicaMetaPayload>::decode_from(file, payload))
 
     return Status::OK();
 }
@@ -128,7 +58,7 @@ Status ReplicaMetaPersistEngine::delete_replica_data(const ReplicaID& replica_id
             return Status::OK();
         }
         std::filesystem::remove_all(dir);
-        RETURN_IF_INVALID_STATUS(func::fsync_dir(data_dir_))
+        RETURN_IF_INVALID_STATUS(File::fsync_dir(data_dir_))
         return Status::OK();
     } catch (const std::exception& e) {
         return Status::ERROR(fmt::format("delete replica data failed: {}", e.what()));

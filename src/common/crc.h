@@ -5,8 +5,10 @@
 
 namespace adviskv {
 
-inline uint32_t compute_crc32(const uint8_t* data, size_t len) {
-    static uint32_t crc32_tab[256];
+namespace crc_detail {
+
+inline uint32_t* crc32_table() {
+    static uint32_t tab[256];
     static bool initialized = false;
     if (!initialized) {
         for (uint32_t i = 0; i < 256; i++) {
@@ -17,16 +19,24 @@ inline uint32_t compute_crc32(const uint8_t* data, size_t len) {
                 else
                     crc >>= 1;
             }
-            crc32_tab[i] = crc;
+            tab[i] = crc;
         }
         initialized = true;
     }
-
-    uint32_t crc = 0xFFFFFFFF;
-    for (size_t i = 0; i < len; i++) {
-        crc = (crc >> 8) ^ crc32_tab[(crc ^ data[i]) & 0xFF];
-    }
-    return crc ^ 0xFFFFFFFF;
+    return tab;
 }
+
+}  // namespace crc_detail
+
+inline uint32_t update_crc32(uint32_t crc, const uint8_t* data, size_t len) {
+    uint32_t* tab = crc_detail::crc32_table();
+    uint32_t state = ~crc;
+    for (size_t i = 0; i < len; i++) {
+        state = (state >> 8) ^ tab[(state ^ data[i]) & 0xFF];
+    }
+    return ~state;
+}
+
+inline uint32_t compute_crc32(const uint8_t* data, size_t len) { return update_crc32(0, data, len); }
 
 }  // namespace adviskv

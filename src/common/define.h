@@ -39,13 +39,6 @@ namespace adviskv {
         return status;                                    \
     }
 
-#define RETURN_IF_INVALID_READ(buf, name)                                   \
-    do {                                                                    \
-        if (bool success = (buf).read(name); !success) {                    \
-            return Status::ERROR(fmt::format("read {} is invalid", #name)); \
-        }                                                                   \
-    } while (false);
-
 #define RETURN_IF_NULLPTR(ptr, msg)                       \
     if ((ptr) == nullptr) {                               \
         return Status{StatusCode::INVALID_ARGUMENT, msg}; \
