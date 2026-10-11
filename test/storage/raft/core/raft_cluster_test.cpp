@@ -18,7 +18,7 @@
 #include "common/model/model.h"
 #include "storage/model/param.h"
 #include "storage/persist/persist_engine.h"
-#include "storage/raft/core/raft_core.h"
+#include "test/storage/raft/core/raft_core_test_access.h"
 #include "test_env.h"
 
 namespace adviskv::storage {
@@ -234,14 +234,14 @@ class RaftCluster {
         }
         if (effects.hard_state.has_value()) {
             RETURN_IF_INVALID_STATUS(
-                persists_[node_idx]->save_raft_meta(*effects.hard_state))
+                persists_[node_idx]->raft_meta().save(*effects.hard_state))
         }
         if (effects.entries_to_rewrite.has_value()) {
             RETURN_IF_INVALID_STATUS(
-                persists_[node_idx]->rewrite_wal(*effects.entries_to_rewrite))
+                persists_[node_idx]->wal().rewrite(*effects.entries_to_rewrite))
         }
         if (!effects.entries_to_append.empty()) {
-            RETURN_IF_INVALID_STATUS(persists_[node_idx]->append_wal_batch(
+            RETURN_IF_INVALID_STATUS(persists_[node_idx]->wal().append_batch(
                 effects.entries_to_append))
         }
         for (RaftMessage& msg : effects.messages) {
@@ -417,8 +417,9 @@ class RaftCluster {
 
             case RaftMessageType::INSTALL_SNAPSHOT: {
                 RaftEffects prepare_effects;
+                LogIndex watermark = 0;
                 Status s = cores_[target_idx]->prepare_install_snapshot(
-                    msg.snapshot_param, prepare_effects);
+                    msg.snapshot_param, prepare_effects, watermark);
                 Status prepare_status =
                     drive_raft_effects(target_idx, std::move(prepare_effects));
                 ASSERT_TRUE(prepare_status.ok()) << prepare_status.to_string();
@@ -427,28 +428,22 @@ class RaftCluster {
                 result.term = cores_[target_idx]->current_term();
                 result.status = s;
 
-                if (s.ok()) {
-                    InstallSnapshotContext context;
-                    context.snapshot_index = msg.snapshot_param.snapshot_index;
-                    context.snapshot_term = msg.snapshot_param.snapshot_term;
+                if (s.ok() && watermark >= msg.snapshot_param.snapshot_index) {
+                    result.snapshot_watermark = watermark;
+                } else if (s.ok()) {
+                    SnapshotHeader header;
+                    header.apply_index = msg.snapshot_param.snapshot_index;
+                    header.apply_term = msg.snapshot_param.snapshot_term;
                     RaftEffects install_effects;
-                    cores_[target_idx]->commit_install_snapshot(
-                        context, install_effects);
+                    cores_[target_idx]->install_snapshot(
+                        header, install_effects);
                     Status install_status = drive_raft_effects(
                         target_idx, std::move(install_effects));
                     ASSERT_TRUE(install_status.ok())
                         << install_status.to_string();
-                }
-                if (s.code() == StatusCode::ALREADY_EXIST ||
-                    (s.fail() && msg.snapshot_param.snapshot_index <=
-                                     cores_[target_idx]->snapshot_index())) {
-                    if (s.code() == StatusCode::ALREADY_EXIST) {
-                        result.snapshot_watermark =
-                            msg.snapshot_param.snapshot_index;
-                    } else {
-                        result.snapshot_watermark =
-                            cores_[target_idx]->snapshot_index();
-                    }
+                    result.snapshot_watermark =
+                        std::max(msg.snapshot_param.snapshot_index,
+                                 cores_[target_idx]->snapshot_index());
                 }
 
                 RaftEffects response_effects;
@@ -545,20 +540,20 @@ class RaftClusterTest : public ::testing::Test {
 
     void tick_election(int node_idx) {
         RaftEffects effects;
-        cluster_.core_ptr(node_idx)->become_candidate_for_test(effects);
+        RaftCoreTestPeer::become_candidate(*cluster_.core_ptr(node_idx), effects);
         Status status =
             cluster_.drive_raft_effects(node_idx, std::move(effects));
         ASSERT_TRUE(status.ok()) << status.to_string();
     }
 
     void tick_heartbeat(int node_idx) {
-        cluster_.core_ptr(node_idx)->reset_heartbeat_tick_for_test(0);
+        RaftCoreTestPeer::reset_heartbeat_tick(*cluster_.core_ptr(node_idx), 0);
         cluster_.tick_node(node_idx);
-        cluster_.core_ptr(node_idx)->reset_heartbeat_tick_for_test(3);
+        RaftCoreTestPeer::reset_heartbeat_tick(*cluster_.core_ptr(node_idx), 3);
     }
 
     void set_heartbeat_tick(int node_idx, int val) {
-        cluster_.core_ptr(node_idx)->reset_heartbeat_tick_for_test(val);
+        RaftCoreTestPeer::reset_heartbeat_tick(*cluster_.core_ptr(node_idx), val);
     }
 
     void drop_all_messages() {
@@ -639,20 +634,20 @@ class RaftClusterTest : public ::testing::Test {
     std::vector<LogEntry> get_node_entries(int idx) {
         RaftCore* node = cluster_.core_ptr(idx);
         if (!node) return {};
-        return node->log_entries_for_test();
+        return RaftCoreTestPeer::log_entries(*node);
     }
 
     std::pair<LogIndex, Term> get_node_snapshot(int idx) {
         RaftCore* node = cluster_.core_ptr(idx);
         if (!node) return {};
-        return node->snapshot_for_test();
+        return RaftCoreTestPeer::snapshot(*node);
     }
 
     void set_node_next_index(int node_idx, const ReplicaID& target,
                              LogIndex val) {
         RaftCore* node = cluster_.core_ptr(node_idx);
         if (!node) return;
-        node->set_next_index_for_test(target, val);
+        RaftCoreTestPeer::set_next_index(*node, target, val);
     }
 
     LogIndex get_node_next_index(int node_idx, const ReplicaID& target) {
@@ -664,14 +659,14 @@ class RaftClusterTest : public ::testing::Test {
     LogIndex get_snapshot_watermark(int node_idx, const ReplicaID& target) {
         RaftCore* node = cluster_.core_ptr(node_idx);
         if (!node) return 0;
-        return node->snapshot_watermark_for_test(target);
+        return RaftCoreTestPeer::snapshot_watermark(*node, target);
     }
 
     LogIndex get_inflight_snapshot_index(int node_idx,
                                          const ReplicaID& target) {
         RaftCore* node = cluster_.core_ptr(node_idx);
         if (!node) return 0;
-        return node->inflight_snapshot_index_for_test(target);
+        return RaftCoreTestPeer::inflight_snapshot_index(*node, target);
     }
 
     RaftCluster cluster_;
@@ -735,7 +730,7 @@ TEST_F(RaftClusterTest, HealthyLeaderNotDisplacedByEqualLogPreVote) {
 
     const Term leader_term = cluster_.core_ptr(0)->current_term();
     RaftEffects pre_vote_effects;
-    cluster_.core_ptr(1)->become_pre_candidate_for_test(pre_vote_effects);
+    RaftCoreTestPeer::become_pre_candidate(*cluster_.core_ptr(1), pre_vote_effects);
     ASSERT_TRUE(cluster_.drive_raft_effects(1, std::move(pre_vote_effects)).ok());
 
     EXPECT_EQ(cluster_.route_messages_from_to(1, RaftMessageType::PRE_VOTE, {0, 2}), 2);
@@ -1549,8 +1544,8 @@ TEST_F(RaftClusterTest, ReadIndexRequiresCommittedCurrentTermEntry) {
     LogIndex read_index = 0;
     Term read_term = 0;
     std::vector<ReplicaID> voters;
-    Status status = cluster_.core_ptr(2)->build_read_probe(
-        read_effects, read_index, read_term, voters, /*read_probe_seq=*/1);
+    Status status = cluster_.core_ptr(2)->build_read_quorum_check(
+        read_effects, read_index, read_term, voters, /*read_quorum_seq=*/1);
 
     EXPECT_EQ(status.code(), StatusCode::READ_INDEX_NOT_READY);
     EXPECT_TRUE(read_effects.messages.empty());
@@ -1558,8 +1553,8 @@ TEST_F(RaftClusterTest, ReadIndexRequiresCommittedCurrentTermEntry) {
     LogIndex current_term_idx = cluster_.core_ptr(2)->last_log_index();
     replicate_until_committed(2, current_term_idx, {1});
 
-    status = cluster_.core_ptr(2)->build_read_probe(
-        read_effects, read_index, read_term, voters, /*read_probe_seq=*/2);
+    status = cluster_.core_ptr(2)->build_read_quorum_check(
+        read_effects, read_index, read_term, voters, /*read_quorum_seq=*/2);
 
     ASSERT_TRUE(status.ok()) << status.to_string();
     EXPECT_EQ(read_index, cluster_.core_ptr(2)->commit_index());
@@ -1567,11 +1562,11 @@ TEST_F(RaftClusterTest, ReadIndexRequiresCommittedCurrentTermEntry) {
     EXPECT_FALSE(read_effects.messages.empty());
 }
 
-// 纯探测不变量（F2/F3/F15，取代旧的"INSTALL_SNAPSHOT 计票"语义）：
-// follower 落后到需要快照时，读探测依然以 heartbeat 形参到达它并拿到
-// term 匹配的响应（拒绝 prev 不对齐同样是任期确认证据）；探测绝不产出
+// 纯多数派检查不变量（F2/F3/F15，取代旧的"INSTALL_SNAPSHOT 计票"语义）：
+// follower 落后到需要快照时，读多数派检查依然以 heartbeat 形参到达它并拿到
+// term 匹配的响应（拒绝 prev 不对齐同样是任期确认证据）；多数派检查绝不产出
 // INSTALL_SNAPSHOT、绝不触碰 next/match 进度——快照追赶只属于复制路径。
-TEST_F(RaftClusterTest, ReadProbeReachesLaggingVoterWithoutSnapshotMsg) {
+TEST_F(RaftClusterTest, ReadQuorumReachesLaggingVoterWithoutSnapshotMsg) {
     create_and_set_0_leader(3);
     ASSERT_TRUE(tick_until_all_committed(1));
     ASSERT_EQ(cluster_.leader_idx(), 0);
@@ -1590,7 +1585,7 @@ TEST_F(RaftClusterTest, ReadProbeReachesLaggingVoterWithoutSnapshotMsg) {
     ASSERT_TRUE(cluster_.core_ptr(0)->truncate_log(4).ok());
     ASSERT_EQ(cluster_.core_ptr(0)->snapshot_index(), 4);
 
-    // node 2 严重落后（其 next 在快照边界之下）。读探测无视 next_index，
+    // node 2 严重落后（其 next 在快照边界之下）。读多数派检查无视 next_index，
     // 直接 heartbeat 形参覆盖全部 voter。
     set_node_next_index(0, cluster_.replica_id(2), 3);
     const LogIndex next_before = get_node_next_index(0, cluster_.replica_id(2));
@@ -1601,18 +1596,18 @@ TEST_F(RaftClusterTest, ReadProbeReachesLaggingVoterWithoutSnapshotMsg) {
     LogIndex read_index = 0;
     Term read_term = 0;
     std::vector<ReplicaID> voters;
-    Status status = cluster_.core_ptr(0)->build_read_probe(
-        read_effects, read_index, read_term, voters, /*read_probe_seq=*/1);
+    Status status = cluster_.core_ptr(0)->build_read_quorum_check(
+        read_effects, read_index, read_term, voters, /*read_quorum_seq=*/1);
     ASSERT_TRUE(status.ok()) << status.to_string();
 
-    int probe_count = 0;
+    int read_quorum_message_count = 0;
     int confirmed = 1;  // self 天然确认
     const int limit = cluster_.core_ptr(0)->quorum_size();
     for (const RaftMessage& msg : read_effects.messages) {
         ASSERT_EQ(msg.type, RaftMessageType::APPEND_ENTRIES)
-            << "pure probe must never emit INSTALL_SNAPSHOT (F3)";
-        ASSERT_TRUE(msg.append_param.read_probe_seq != 0);
-        probe_count++;
+            << "pure read quorum check must never emit INSTALL_SNAPSHOT (F3)";
+        ASSERT_TRUE(msg.append_param.read_quorum_seq != 0);
+        read_quorum_message_count++;
 
         int target = cluster_.find_node(msg.target.replica_id);
         ASSERT_GE(target, 0);
@@ -1626,10 +1621,10 @@ TEST_F(RaftClusterTest, ReadProbeReachesLaggingVoterWithoutSnapshotMsg) {
         if (res.term == read_term) confirmed++;
     }
 
-    // 全部 2 个 follower 都被探测到，self + 它们凑满多数派。
-    EXPECT_EQ(probe_count, 2);
+    // 全部 2 个 follower 都收到了多数派检查消息，self + 它们凑满多数派。
+    EXPECT_EQ(read_quorum_message_count, 2);
     EXPECT_GE(confirmed, limit);
-    // 探测不污染复制进度（C.7 回归断言）。
+    // 多数派检查不污染复制进度（C.7 回归断言）。
     EXPECT_EQ(get_node_next_index(0, cluster_.replica_id(2)), next_before);
     EXPECT_EQ(get_inflight_snapshot_index(0, cluster_.replica_id(2)), inflight_before);
 }
@@ -1654,8 +1649,6 @@ TEST_F(RaftClusterTest, InstallSnapshotSuccessUsesSentSnapshotIndex) {
 
     set_node_next_index(0, cluster_.replica_id(2), 3);
 
-    // 心跳驱动复制路径产出 INSTALL_SNAPSHOT（读探测不产快照，F3；旧的
-    // build_append_entries_for_read 已删除，快照消息只属于复制路径）。
     tick_heartbeat(0);
 
     bool found_snapshot = false;
@@ -1729,7 +1722,7 @@ TEST_F(RaftClusterTest, InstallSnapshotCoveredWatermarkUpdatesProgress) {
 
     InstallSnapshotResult res;
     res.term = cluster_.core_ptr(0)->current_term();
-    res.status = Status::ALREADY_EXIST("follower already has sent snapshot");
+    res.status = Status::OK();
     res.snapshot_watermark = snapshot_msg.snapshot_param.snapshot_index;
 
     RaftEffects response_effects;
@@ -1787,7 +1780,7 @@ TEST_F(RaftClusterTest, InstallSnapshotHigherWatermarkUpdatesProgress) {    crea
 
     InstallSnapshotResult res;
     res.term = cluster_.core_ptr(0)->current_term();
-    res.status = Status::ALREADY_EXIST("follower already has newer snapshot");
+    res.status = Status::OK();
     res.snapshot_watermark = cluster_.core_ptr(2)->snapshot_index();
 
     RaftEffects response_effects;
@@ -1840,7 +1833,7 @@ TEST_F(RaftClusterTest, ReadIndexCountsRejectedAppendEntriesWithMatchingTerm) {
     // 提交 A 的 no-op，确保 has_committed_current_term_entry 通过
     replicate_until_committed(0, cluster_.core_ptr(0)->last_log_index(), {2});
 
-    // 恢复 B。B 仍然缺少 index=idx 的日志；等它收到 A 的 ReadIndex 探测时，
+    // 恢复 B。B 仍然缺少 index=idx 的日志；等它收到 A 的 ReadIndex 多数派检查时，
     // 会先被 AppendEntries 的 term 推进到 read_term，再因为 prev_log 不存在而
     // reject。
     cluster_.restore(1);
@@ -1853,8 +1846,8 @@ TEST_F(RaftClusterTest, ReadIndexCountsRejectedAppendEntriesWithMatchingTerm) {
     LogIndex read_index = 0;
     Term read_term = 0;
     std::vector<ReplicaID> voters;
-    Status status = cluster_.core_ptr(0)->build_read_probe(
-        read_effects, read_index, read_term, voters, /*read_probe_seq=*/1);
+    Status status = cluster_.core_ptr(0)->build_read_quorum_check(
+        read_effects, read_index, read_term, voters, /*read_quorum_seq=*/1);
     ASSERT_TRUE(status.ok()) << status.to_string();
 
     const LogIndex next_before = get_node_next_index(0, cluster_.replica_id(1));
@@ -1869,7 +1862,7 @@ TEST_F(RaftClusterTest, ReadIndexCountsRejectedAppendEntriesWithMatchingTerm) {
 
         ASSERT_EQ(target, 1);
         ASSERT_EQ(msg.type, RaftMessageType::APPEND_ENTRIES);
-        ASSERT_TRUE(msg.append_param.read_probe_seq != 0);
+        ASSERT_TRUE(msg.append_param.read_quorum_seq != 0);
         EXPECT_GT(msg.append_param.prev_log_index,
                   cluster_.core_ptr(target)->last_log_index());
         AppendEntriesResult res;
@@ -1887,13 +1880,13 @@ TEST_F(RaftClusterTest, ReadIndexCountsRejectedAppendEntriesWithMatchingTerm) {
     }
 
     EXPECT_GE(success_cnt, limit);
-    // 探测响应只计票，绝不推进复制进度（不经过 handle_append_response）。
+    // 多数派检查响应只计票，绝不推进复制进度（不经过 handle_append_response）。
     EXPECT_EQ(get_node_next_index(0, cluster_.replica_id(1)), next_before);
 }
 
 // 不变量2：本地快照完成只推进压缩边界，绝不把快照捕获时的旧成员配置装回 Raft。
 //
-// 已由 install_local_snapshot（本地路径）与 install_snapshot（远端路径）
+// 已由 install_snapshot 的空/非空 members 约定落地（本地路径传空）
 // 显式分家落地：本地路径不调 membership_.update_raft_members，远端路径才
 // 装 snapshot_members。本测试是回归保护——若未来有人把两条路径重新合并，
 // 这里会红。
@@ -1915,14 +1908,12 @@ TEST_F(RaftClusterTest, LocalSnapshotFinishDoesNotRollbackMembership) {
     cluster_.core_ptr(2)->advance_last_applied(last_idx);
     drop_all_messages();
 
-    // 捕获快照：索引 last_idx、成员配置 = 旧三 voter（不含新成员）
-    const std::vector<RaftMember> members_at_capture =
-        cluster_.core_ptr(0)->raft_members();
-    InstallSnapshotContext local_context;
-    local_context.snapshot_index = last_idx;
-    local_context.snapshot_term =
+    // 捕获快照：索引 last_idx。本地路径约定传空 members（不装回捕获时的旧配置）。
+    RaftEffects unused_effects;
+    SnapshotHeader local_header;
+    local_header.apply_index = last_idx;
+    local_header.apply_term =
         cluster_.core_ptr(0)->last_log_term();
-    local_context.snapshot_members = members_at_capture;
 
     // 快照写盘期间，apply 了索引 last_idx+1 的 ADD_LEARNER 成员变更
     PeerMember new_member;
@@ -1942,8 +1933,8 @@ TEST_F(RaftClusterTest, LocalSnapshotFinishDoesNotRollbackMembership) {
     ASSERT_EQ(cluster_.core_ptr(0)->member_type(new_member.replica_id),
               RaftMemberType::LEARNER);
 
-    // 本地快照完成：当前实现会调 install_snapshot 装回旧成员配置
-    cluster_.core_ptr(0)->install_local_snapshot(local_context);
+    // 本地快照完成：本地路径传空 members，不装回捕获时的旧成员配置
+    cluster_.core_ptr(0)->install_snapshot(local_header, unused_effects);
 
     // 期望：成员配置保持捕获之后的最新值（新 learner 仍在），不被快照回滚
     EXPECT_EQ(cluster_.core_ptr(0)->member_type(new_member.replica_id),
@@ -2151,14 +2142,14 @@ TEST_F(RaftClusterTest, BoundedExtractPassesOversizedSingleAndConfigEntries) {
 
 // ========== 方案 E 批次 C 补充（§8.2）：读索引恰在快照边界 ==========
 
-// 不变量：commit == snapshot_index（WAL 已全部压缩）时，纯探测仍必须可构造
+// 不变量：commit == snapshot_index（WAL 已全部压缩）时，纯多数派检查仍必须可构造
 // 且合法——prev_log_index/prev_log_term 取压缩边界（snapshot_index /
-// snapshot_term），探测消息不产生 INSTALL_SNAPSHOT、不触 inflight；follower
+// snapshot_term），多数派检查消息不产生 INSTALL_SNAPSHOT、不触 inflight；follower
 // 收到后按协议应答，读流程可完成。
 //
 // 确定性：协议层直构。leader 打快照把 WAL 压到 commit 位置（last_log_index
-// == snapshot_index），再构造探测断言四元组取值与零副作用。
-TEST_F(RaftClusterTest, ReadProbeAtSnapshotBoundaryUsesCompactionTerm) {
+// == snapshot_index），再构造多数派检查断言四元组取值与零副作用。
+TEST_F(RaftClusterTest, ReadQuorumAtSnapshotBoundaryUsesCompactionTerm) {
     create_and_set_0_leader(3);
     ASSERT_TRUE(tick_until_all_committed(1));
     drop_all_messages();
@@ -2175,43 +2166,43 @@ TEST_F(RaftClusterTest, ReadProbeAtSnapshotBoundaryUsesCompactionTerm) {
     // last_applied），WAL 全部压缩，last_log_index == snapshot_index。
     cluster_.core_ptr(0)->advance_last_applied(committed);
     ASSERT_TRUE(cluster_.core_ptr(0)->truncate_log(committed).ok());
-    const auto [snap_index, snap_term] = cluster_.core_ptr(0)->snapshot_for_test();
+    const auto [snap_index, snap_term] = RaftCoreTestPeer::snapshot(*cluster_.core_ptr(0));
     ASSERT_EQ(snap_index, committed);
     ASSERT_EQ(cluster_.core_ptr(0)->last_log_index(), snap_index)
         << "WAL fully compacted: read_index == snapshot_index boundary";
 
-    // 读探测在此边界上构造：prev 取压缩边界值，零 INSTALL_SNAPSHOT / inflight。
+    // 读多数派检查在此边界上构造：prev 取压缩边界值，零 INSTALL_SNAPSHOT / inflight。
     RaftEffects read_effects;
     LogIndex read_index = 0;
     Term read_term = 0;
     std::vector<ReplicaID> voters;
-    Status status = cluster_.core_ptr(0)->build_read_probe(
-        read_effects, read_index, read_term, voters, /*read_probe_seq=*/1);
+    Status status = cluster_.core_ptr(0)->build_read_quorum_check(
+        read_effects, read_index, read_term, voters, /*read_quorum_seq=*/1);
     ASSERT_TRUE(status.ok()) << status.to_string();
     ASSERT_EQ(read_index, snap_index);
     ASSERT_EQ(voters.size(), 3u);  // self + 2 followers，learner 不存在
 
-    int probe_count = 0;
+    int read_quorum_message_count = 0;
     for (const RaftMessage& msg : read_effects.messages) {
         ASSERT_EQ(msg.type, RaftMessageType::APPEND_ENTRIES)
-            << "pure probe must never emit INSTALL_SNAPSHOT (F3)";
-        ASSERT_TRUE(msg.append_param.read_probe_seq != 0);
+            << "pure read quorum check must never emit INSTALL_SNAPSHOT (F3)";
+        ASSERT_TRUE(msg.append_param.read_quorum_seq != 0);
         // §8.2：压缩后 prev 可给出的值就是边界值。
         EXPECT_EQ(msg.append_param.prev_log_index, snap_index);
         EXPECT_EQ(msg.append_param.prev_log_term, snap_term);
         EXPECT_TRUE(msg.append_param.entries.empty());
-        ++probe_count;
+        ++read_quorum_message_count;
     }
-    ASSERT_EQ(probe_count, 2) << "probe must cover every voter except self";
+    ASSERT_EQ(read_quorum_message_count, 2) << "read quorum check must cover every voter except self";
 
-    // 零 inflight：探测前后 leader 对任何 peer 都没有快照发送标记（F2）。
+    // 零 inflight：多数派检查前后 leader 对任何 peer 都没有快照发送标记（F2）。
     for (int node = 1; node < 3; ++node) {
-        EXPECT_EQ(cluster_.core_ptr(0)->inflight_snapshot_index_for_test(
-                      cluster_.replica_id(node)),
+        EXPECT_EQ(RaftCoreTestPeer::inflight_snapshot_index(*cluster_.core_ptr(0),
+                                                            cluster_.replica_id(node)),
                   0);
     }
 
-    // follower 收到边界探测：以自身 term 应答（真实链路里该回执计票）。
+    // follower 收到边界多数派检查：以自身 term 应答（真实链路里该回执计票）。
     for (const RaftMessage& msg : read_effects.messages) {
         int target = cluster_.find_node(msg.target.replica_id);
         ASSERT_GE(target, 0);
@@ -2220,7 +2211,7 @@ TEST_F(RaftClusterTest, ReadProbeAtSnapshotBoundaryUsesCompactionTerm) {
         cluster_.core_ptr(target)->handle_append_entries(msg.append_param, res,
                                                          follower_effects);
         ASSERT_TRUE(cluster_.drive_raft_effects(target, std::move(follower_effects)).ok());
-        EXPECT_GT(res.term, 0) << "follower must answer the boundary probe with its term";
+        EXPECT_GT(res.term, 0) << "follower must answer the boundary read quorum check with its term";
     }
 }
 

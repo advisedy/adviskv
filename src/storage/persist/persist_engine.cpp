@@ -74,8 +74,8 @@ Status PersistEngine::recover(RecoverResult& result) {
     result = {};
 
     // 快照
-    result.snapshot = std::make_shared<Snapshot>();
-    RETURN_IF_INVALID_STATUS(snapshot_.load_meta(result.snapshot))
+    result.snapshot = std::make_shared<SnapshotHeader>();
+    RETURN_IF_INVALID_STATUS(snapshot_.load_header(result.snapshot))
     const LogIndex snapshot_index = result.snapshot ? result.snapshot->apply_index : 0;
 
     // raft_meta

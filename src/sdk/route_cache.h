@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "common/define.h"
+#include "common/published_view.h"
 #include "common/status.h"
 #include "sdk/config.h"
 #include "sdk/model.h"
@@ -28,15 +29,12 @@ private:
     struct TableRouteSnapshot;
     class RefreshTask;
 
-    std::shared_ptr<TableRouteSnapshot> load_snapshot() const;
-    void store_snapshot(std::shared_ptr<TableRouteSnapshot> snapshot);
-
     Status lookup_cached_route(const Key& key, RouteInfo* route) const;
     Status publish_table_routes(TableRouteInfo table_routes);
 
     KVClientConf conf_;
     const MetaRouteClient* route_client_{nullptr};
-    std::shared_ptr<TableRouteSnapshot> snapshot_;
+    PublishedView<TableRouteSnapshot> snapshot_;
     std::unique_ptr<RefreshTask> refresh_task_;
 };
 

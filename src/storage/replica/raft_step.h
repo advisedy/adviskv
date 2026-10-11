@@ -1,15 +1,32 @@
 #pragma once
 
 #include <functional>
+#include <utility>
 
+#include "common/model/model.h"
 #include "common/status.h"
+#include "storage/model/model.h"
+#include "storage/raft/raft_sender.h"
+#include "storage/replica/fault_reporter.h"
 
 namespace adviskv::storage {
 
-struct ReplicaContext;
-struct RaftEffects;
+class PersistEngine;
+class ReplicaMessageDispatcher;
 
-// 放到这里是因为Loop和Tracker都会调用到，内容就是执行Raft操作，完成持久化，然后发送消息。
-Status run_raft_step(ReplicaContext& context, std::function<Status(RaftEffects&)> step);
+class RaftEffectExecutor {
+public:
+    RaftEffectExecutor(PersistEngine& persist, ReplicaMessageDispatcher& dispatcher, FaultReporter fault_reporter)
+            : persist_(persist), dispatcher_(dispatcher), fault_reporter_(std::move(fault_reporter)) {}
 
-}  // namespace adviskv::storage
+    Status execute(const std::function<Status(RaftEffects&)>& step) const;
+
+private:
+    Status persist_effects(const RaftEffects& effects) const;
+
+    PersistEngine& persist_;
+    ReplicaMessageDispatcher& dispatcher_;
+    FaultReporter fault_reporter_;
+};
+
+}

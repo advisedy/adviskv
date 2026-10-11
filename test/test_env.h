@@ -2,6 +2,9 @@
 
 #include <gtest/gtest.h>
 
+#include <unistd.h>
+
+#include <chrono>
 #include <filesystem>
 #include <string>
 
@@ -16,9 +19,12 @@ inline std::filesystem::path test_data_dir() {
 
 inline std::filesystem::path make_unique_test_dir(const std::string& prefix,
                                                   int unique_id) {
+    const uint64_t tick =
+            std::chrono::steady_clock::now().time_since_epoch().count();
     return test_data_dir() /
            (prefix + "_" +
             std::to_string(::testing::UnitTest::GetInstance()->random_seed()) +
+            "_" + std::to_string(tick) + "_" + std::to_string(::getpid()) +
             "_" + std::to_string(unique_id));
 }
 

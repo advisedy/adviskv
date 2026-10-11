@@ -1,28 +1,39 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <functional>
+#include <memory>
+#include <optional>
 #include <string>
+#include <thread>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "common/blocking_queue.h"
 #include "common/define.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
+#include "common/types.h"
+#include "storage/model/model.h"
 #include "storage/model/param.h"
+#include "storage/persist/persist_engine.h"
+#include "storage/raft/core/raft_core.h"
+#include "storage/raft/state_machine/state_machine.h"
 #include "storage/replica/completion_manager.h"
-#include "storage/replica/replica_loop_queue.h"
+#include "storage/replica/fault_reporter.h"
 #include "storage/replica/proposal_tracker.h"
-#include "storage/replica/replica.h"
+#include "storage/replica/read_tracker.h"
+#include "storage/replica/raft_step.h"
+#include "storage/replica/snapshot_tracker.h"
+#include "storage/replica/snapshot_writer.h"
 
 namespace adviskv::storage {
 
-/*
-大概说一下，这里，Event代表的意思就是我们异步去提交一些事件，我们并不在乎它的这个
-返回值什么时候到来。而这个Call的话，代表的就是同步去做一些事情。然后里面会有一些
-字段是用于那个就是输出，就代表是我们调用之后，然后里面那些字段就可用了。
-*/
+class ReplicaMessageDispatcher;
 
 struct TickEvent {};
 
@@ -60,8 +71,25 @@ struct SnapshotSendFailedEvent {
     Status status;
 };
 
+struct FaultEvent {
+    Status status;
+};
+
+struct ReadQuorumResponseEvent {
+    ReplicaID from;
+    uint64 read_seq{0};
+    Term response_term{0};
+};
+
+struct SnapshotDoneEvent {
+    LogIndex capture_index{0};
+    Term capture_term{0};
+    Status status{Status::OK()};
+};
+
 using Event = std::variant<TickEvent, AppendResponseEvent, VoteResponseEvent, PreVoteResponseEvent,
-                           SnapshotResponseEvent, AppendSendFailedEvent, SnapshotSendFailedEvent>;
+                           SnapshotResponseEvent, AppendSendFailedEvent, SnapshotSendFailedEvent, SnapshotDoneEvent,
+                           ReadQuorumResponseEvent, FaultEvent>;
 
 struct RequestVoteCall {
     RequestVoteParam param;
@@ -81,35 +109,14 @@ struct AppendEntriesCall {
     Status status{Status::OK()};
 };
 
-struct BuildReadIndexCall {
-    RaftEffects effects;
-    LogIndex read_index{0};
-    Term read_term{0};
+struct SubmitReadCall {
+    Key key;
+    std::shared_ptr<ReadRequestState> state;
     Status status{Status::OK()};
 };
 
-struct PrepareInstallSnapshotCall {
+struct InstallSnapshotCall {
     InstallSnapshotParam param;
-    Status status{Status::OK()};
-};
-
-struct CommitInstallSnapshotCall {
-    InstallSnapshotContext context;
-    Status status{Status::OK()};
-};
-
-struct AppendResponseCall {
-    AppendResponseEvent event;
-    Status status{Status::OK()};
-};
-
-struct SnapshotResponseCall {
-    SnapshotResponseEvent event;
-    Status status{Status::OK()};
-};
-
-struct SnapshotSendFailedCall {
-    SnapshotSendFailedEvent event;
     Status status{Status::OK()};
 };
 
@@ -129,36 +136,62 @@ struct RemoveMemberCall {
     Status status{Status::OK()};
 };
 
-using Call =
-        std::variant<RequestVoteCall*, PreVoteCall*, AppendEntriesCall*, BuildReadIndexCall*,
-                     PrepareInstallSnapshotCall*, CommitInstallSnapshotCall*, AppendResponseCall*,
-                     SnapshotResponseCall*, SnapshotSendFailedCall*, ProposeCall*, AddMemberCall*, RemoveMemberCall*>;
+struct RecoverCall {
+    bool need_recover{false};
+    Status status{Status::OK()};
+};
+
+using Call = std::variant<RequestVoteCall*, PreVoteCall*, AppendEntriesCall*, SubmitReadCall*, InstallSnapshotCall*,
+                          ProposeCall*, AddMemberCall*, RemoveMemberCall*, RecoverCall*>;
+
+class ReplicaLoopTestPeer;
 
 class ReplicaLoop {
 public:
-    explicit ReplicaLoop(ReplicaContext& context);
+    ReplicaLoop(ReplicaID replica_id, RaftCore& raft_core, PersistEngine& persist, StateMachine& state_machine,
+                ReplicaMessageDispatcher& message_dispatcher, FaultReporter fault_reporter,
+                int32_t raft_do_snapshot_limit, std::function<void()> runtime_info_publisher);
     ~ReplicaLoop();
 
     DISALLOW_COPY_AND_ASSIGN(ReplicaLoop)
 
     void start();
     void stop();
+    void stop_snapshot_writer() { snapshot_tracker_.stop_writer(); }
 
-    // Event不等待结果
-    void async_submit(Event event);
-    // Call会回填结果
-    void sync_submit(Call call);
+    void submit_async(Event event);
+    void submit_and_wait(Call call);
+
+    bool on_loop_thread() const;
+
+    void fault_stop();
 
 private:
-    // 普通请求交给工作线程执行，写请求交给队列组批。
+    friend class ReplicaLoopTestPeer;
+
+    using Task = std::function<void()>;
+    using PendingTask = std::variant<Task, ProposalItem>;
+
+    void run();
+    std::vector<ProposalItem> collect_write_batch(ProposalItem first, std::optional<PendingTask>& pending);
+    Status handle_write_batch(std::vector<ProposalItem> items);
+    bool post(PendingTask task);
+
+    void finish_fault_stop();
+    bool fault_pending_{false};
+
     template <typename T>
     bool enqueue_call(T& call, CompletionManager::Ticket ticket);
     bool enqueue_call(ProposeCall& call, CompletionManager::Ticket ticket);
+    bool enqueue_call(SubmitReadCall& call, CompletionManager::Ticket ticket);
 
-    // 等待都在调用线程里，只有写请求需要超时返回。
     template <typename T>
     Status wait_call(const T& call, CompletionManager::Ticket ticket);
     Status wait_call(const ProposeCall& call, CompletionManager::Ticket ticket);
+    Status wait_call(const SubmitReadCall& call, CompletionManager::Ticket ticket);
+
+    void advance_pending_work();
+    void finish_work_unit(CompletionManager::Ticket ticket = 0, const Status& status = Status::OK());
 
     Status handle_event(const TickEvent& event);
     Status handle_event(const AppendResponseEvent& event);
@@ -167,24 +200,51 @@ private:
     Status handle_event(const SnapshotResponseEvent& event);
     Status handle_event(const AppendSendFailedEvent& event);
     Status handle_event(const SnapshotSendFailedEvent& event);
+    Status handle_event(const SnapshotDoneEvent& event);
 
-    // 关于handle_call的返回值最终会回落到call->status里
+    void on_snapshot_written(LogIndex capture_index, Term capture_term, Status status);
+    Status handle_event(const FaultEvent& event);
+    Status handle_event(const ReadQuorumResponseEvent& event);
+
+    Status apply_committed_entries_inline();
+    Status apply_one_entry(const LogEntry& entry);
+
     Status handle_call(RequestVoteCall& call);
     Status handle_call(PreVoteCall& call);
     Status handle_call(AppendEntriesCall& call);
-    Status handle_call(BuildReadIndexCall& call);
-    Status handle_call(PrepareInstallSnapshotCall& call);
-    Status handle_call(CommitInstallSnapshotCall& call);
-    Status handle_call(AppendResponseCall& call);
-    Status handle_call(SnapshotResponseCall& call);
-    Status handle_call(SnapshotSendFailedCall& call);
+    Status handle_call(InstallSnapshotCall& call);
     Status handle_call(AddMemberCall& call);
     Status handle_call(RemoveMemberCall& call);
+    Status handle_call(RecoverCall& call);
 
-    ReplicaContext& context_;
+    void fail_all_pending(const Status& status);
+
+    void publish_runtime_info_snapshot() {
+        if (runtime_info_publisher_) {
+            runtime_info_publisher_();
+        }
+    }
+
+    ReplicaID replica_id_;
+    RaftCore& raft_core_;
+    PersistEngine& persist_;
+    StateMachine& state_machine_;
+    ReplicaMessageDispatcher& message_dispatcher_;
+    FaultReporter fault_reporter_;
+
     CompletionManager completions_;
+    RaftEffectExecutor raft_effect_executor_;
     ProposalTracker proposal_tracker_;
-    ReplicaLoopQueue queue_;
+    ReadTracker read_tracker_;
+
+    BlockingQueue<PendingTask> queue_;
+    std::thread worker_;
+    std::atomic<bool> started_{false};
+    std::atomic<bool> active_{false};
+
+    SnapshotTracker snapshot_tracker_;
+
+    std::function<void()> runtime_info_publisher_;
 };
 
 }  // namespace adviskv::storage

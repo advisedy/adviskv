@@ -3,19 +3,11 @@
 #include <memory>
 #include <vector>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "storage/model/model.h"
 
 namespace adviskv::storage {
-
-struct Snapshot {
-    LogIndex apply_index{0};
-    Term apply_term{0};
-    std::vector<RaftMember> members;
-    // std::string path;
-};
-using SnapshotPtr = std::shared_ptr<Snapshot>;
 
 using KvVisitor = std::function<Status(const Key&, const Value&)>;
 using KvForEach = std::function<Status(const KvVisitor&)>;
@@ -27,7 +19,7 @@ public:
     virtual ~StateMachine() = default;
 
     virtual Status apply(const LogEntry& entry) = 0;
-    virtual Status restore(const SnapshotPtr& snap, const KvForEach& for_each_kv,
+    virtual Status restore(const SnapshotHeaderPtr& snap, const KvForEach& for_each_kv,
                            const RequestForEach& for_each_request = {}) = 0;
     virtual LogIndex apply_index() const = 0;
     virtual LogIndex apply_term() const = 0;

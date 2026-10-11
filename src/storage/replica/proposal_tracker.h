@@ -10,17 +10,19 @@
 
 namespace adviskv::storage {
 
-struct ReplicaContext;
+class RaftCore;
+class StateMachine;
+class RaftEffectExecutor;
 
 struct ProposalItem {
     ProposeParam param;
     CompletionManager::Ticket ticket;
 };
 
-// 主要是Queue在处理WritesTask的时候调用到Tracker，还有Loop去触发advance
 class ProposalTracker {
 public:
-    ProposalTracker(ReplicaContext& context, CompletionManager& completions);
+    ProposalTracker(RaftCore& raft_core, StateMachine& state_machine, RaftEffectExecutor& effect_executor,
+                    CompletionManager& completions);
 
     Status submit_batch(std::vector<ProposalItem> items);
     void advance();
@@ -38,9 +40,11 @@ private:
     void finish_tickets(Entry& entry, const Status& status, bool count_timeout = false);
     void fail_request(const std::string& request_id, const Status& status);
 
-    ReplicaContext& context_;
+    RaftCore& raft_core_;
+    StateMachine& state_machine_;
+    RaftEffectExecutor& effect_executor_;
     CompletionManager& completions_;
     std::unordered_map<std::string, Entry> entries_;
 };
 
-}  // namespace adviskv::storage
+}

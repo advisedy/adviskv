@@ -7,6 +7,7 @@
 #include <variant>
 
 #include "common/model/model.h"
+#include "common/published_view.h"
 #include "common/status.h"
 #include "meta/model/model.h"
 #include "meta/persist/meta_persist_engine.h"
@@ -40,11 +41,8 @@ private:
     Status persist_if_needed(const DurableData& durable);
     Status load_from_persist(DurableData& durable);
 
-    std::shared_ptr<const MetaSnapshot> load_snapshot() const;
-    void publish(std::shared_ptr<const MetaSnapshot> next);
-
     std::mutex writer_mutex_;
-    std::shared_ptr<const MetaSnapshot> published_;
+    PublishedView<MetaSnapshot> published_;
     std::unique_ptr<IMetaPersistEngine> persist_engine_;
 };
 

@@ -5,12 +5,11 @@
 #include <mutex>
 #include <unordered_map>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 
 namespace adviskv::storage {
 
-// 对于Loop里面遇到的sync_submit，用Ticket去管理。
 class CompletionManager {
 public:
     using Ticket = uint64_t;

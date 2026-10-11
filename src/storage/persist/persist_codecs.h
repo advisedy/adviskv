@@ -75,6 +75,39 @@ struct BinaryCodec<storage::ReplicaMetaPayload> : std::true_type {
 
 
 template <>
+struct BinaryCodec<storage::SnapshotHeader> : std::true_type {
+    static Status encode(const storage::SnapshotHeader& header, BinaryWriter& writer) {
+        RETURN_IF_INVALID_STATUS(binary::encode(header.apply_index, writer))
+        RETURN_IF_INVALID_STATUS(binary::encode(header.apply_term, writer))
+        RETURN_IF_INVALID_STATUS(binary::encode(static_cast<int32>(header.members.size()), writer))
+        for (const RaftMember& member : header.members) {
+            RETURN_IF_INVALID_STATUS(binary::encode(member, writer))
+        }
+        return Status::OK();
+    }
+
+    static Status decode(BinaryReader& reader, storage::SnapshotHeader& header) {
+        header = {};
+        RETURN_IF_INVALID_STATUS(binary::decode(reader, header.apply_index))
+        RETURN_IF_INVALID_STATUS(binary::decode(reader, header.apply_term))
+
+        int32 member_count{0};
+        RETURN_IF_INVALID_STATUS(binary::decode(reader, member_count))
+        if (member_count < 0) {
+            return Status::ERROR(fmt::format("invalid snapshot member count: {}", member_count));
+        }
+        header.members.clear();
+        header.members.reserve(static_cast<size_t>(member_count));
+        for (int32 i = 0; i < member_count; ++i) {
+            RaftMember member;
+            RETURN_IF_INVALID_STATUS(binary::decode(reader, member))
+            header.members.push_back(std::move(member));
+        }
+        return Status::OK();
+    }
+};
+
+template <>
 struct BinaryCodec<storage::RequestRecord> : std::true_type {
     static Status encode(const storage::RequestRecord& record, BinaryWriter& writer) {
         RETURN_IF_INVALID_STATUS(binary::encode(record.request_id, writer))

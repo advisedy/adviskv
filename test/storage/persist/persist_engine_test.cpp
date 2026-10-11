@@ -11,13 +11,19 @@
 #include <fmt/base.h>
 #include <gtest/gtest.h>
 
-#include "common/buffer.h"
+#include <fcntl.h>
+#include <unistd.h>
+
+#include "common/binary/codec.h"
 #include "common/crc.h"
 #include "common/status.h"
 #include "common/model/model.h"
 #include "storage/model/model.h"
 #include "storage/raft/state_machine/kv_state_machine.h"
 #include "storage/raft/state_machine/state_machine.h"
+#include "storage/persist/snapshot_store.h"
+#include "test/storage/persist/snapshot_test_util.h"
+#include "test/storage/persist/snapshot_test_util.h"
 #include "test/test_env.h"
 
 namespace fs = std::filesystem;
@@ -71,23 +77,8 @@ protected:
     }
 
     static std::vector<uint8_t> encode_wal_payload(const LogEntry& entry) {
-        EncodeBuffer buf;
-        buf.write(entry.term);
-        buf.write(entry.index);
-        buf.write(static_cast<int32_t>(entry.op_type));
-        buf.write(entry.key);
-        buf.write(entry.value);
-        buf.write(entry.expected);
-        buf.write(entry.config_member.node_id);
-        buf.write(entry.config_member.replica_id.table_id);
-        buf.write(entry.config_member.replica_id.shard_index);
-        buf.write(entry.config_member.replica_id.replica_seq);
-        buf.write(entry.config_member.endpoint.ip);
-        buf.write(entry.config_member.endpoint.port);
-        buf.write(entry.config_replica_id.table_id);
-        buf.write(entry.config_replica_id.shard_index);
-        buf.write(entry.config_replica_id.replica_seq);
-        buf.write(entry.request_id);
+        BufferWriter buf;
+        binary::encode(entry, buf);
         return buf.take();
     }
 
@@ -140,11 +131,11 @@ TEST_F(PersistEngineTest, AppendWalBatchAndReadBackEntries) {
             make_entry(2, 3, WriteOpType::PUT, "k3", "v3"),
     };
 
-    status = engine.append_wal_batch(expected);
+    status = engine.wal().append_batch(expected);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     std::vector<LogEntry> actual;
-    status = engine.read_wal_batch(actual);
+    status = engine.wal().read_batch(actual);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     ASSERT_EQ(actual.size(), expected.size());
 
@@ -176,11 +167,11 @@ TEST_F(PersistEngineTest, ConfigChangeWalPersistsMemberFields) {
     remove_member.config_replica_id = ReplicaID{101, 7, 10};
 
     const std::vector<LogEntry> expected = {add_learner, promote_voter, remove_member};
-    status = engine.append_wal_batch(expected);
+    status = engine.wal().append_batch(expected);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     std::vector<LogEntry> actual;
-    status = engine.read_wal_batch(actual);
+    status = engine.wal().read_batch(actual);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(actual, expected);
 }
@@ -193,11 +184,11 @@ TEST_F(PersistEngineTest, SaveAndLoadRaftMeta) {
 
     RaftMeta expected{9, ReplicaID{9, 2, 1}};
 
-    status = engine.save_raft_meta(expected);
+    status = engine.raft_meta().save(expected);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     RaftMeta actual{};
-    status = engine.load_raft_meta(actual);
+    status = engine.raft_meta().load(actual);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(actual.current_term, expected.current_term);
     ASSERT_TRUE(actual.voted_for.has_value());
@@ -213,11 +204,11 @@ TEST_F(PersistEngineTest, LoadSnapshotMetaWithoutLoadingKvs) {
     KvStateMachine state_machine(EngineType::MAP);
     ASSERT_TRUE(
         state_machine.apply(make_entry(4, 12, WriteOpType::NONE, "", "")).ok());
-    status = engine.write_snapshot(state_machine);
+    status = test::write_state_machine_snapshot(engine.snapshot(), state_machine);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
-    SnapshotPtr actual = std::make_shared<Snapshot>();
-    status = engine.load_snapshot_meta(actual);
+    SnapshotHeaderPtr actual = std::make_shared<SnapshotHeader>();
+    status = engine.snapshot().load_header(actual);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(actual->apply_index, 12);
     EXPECT_EQ(actual->apply_term, 4);
@@ -225,7 +216,7 @@ TEST_F(PersistEngineTest, LoadSnapshotMetaWithoutLoadingKvs) {
     // EXPECT_FALSE(actual->path.empty());
 
     size_t kv_count = 0;
-    status = engine.for_each_snapshot_kv([&kv_count](const Key&, const Value&) -> Status {
+    status = test::for_each_snapshot_kv(engine.snapshot(), [&kv_count](const Key&, const Value&) -> Status {
         ++kv_count;
         return Status::OK();
     });
@@ -250,18 +241,18 @@ TEST_F(PersistEngineTest, SnapshotPersistsRaftMembersBeforeKvs) {
                        RaftMemberType::LEARNER},
     };
 
-    status = engine.write_snapshot(state_machine, members);
+    status = test::write_state_machine_snapshot(engine.snapshot(), state_machine, members);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
-    SnapshotPtr actual = std::make_shared<Snapshot>();
-    status = engine.load_snapshot_meta(actual);
+    SnapshotHeaderPtr actual = std::make_shared<SnapshotHeader>();
+    status = engine.snapshot().load_header(actual);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(actual->apply_index, 21);
     EXPECT_EQ(actual->apply_term, 5);
     EXPECT_EQ(actual->members, members);
 
     std::vector<KV> loaded_kvs;
-    status = engine.for_each_snapshot_kv([&loaded_kvs](const Key& key, const Value& value) -> Status {
+    status = test::for_each_snapshot_kv(engine.snapshot(), [&loaded_kvs](const Key& key, const Value& value) -> Status {
         loaded_kvs.emplace_back(key, value);
         return Status::OK();
     });
@@ -269,8 +260,8 @@ TEST_F(PersistEngineTest, SnapshotPersistsRaftMembersBeforeKvs) {
     EXPECT_EQ(loaded_kvs, (std::vector<KV>{{"member-k1", "v1"}, {"member-k2", "v2"}}));
 }
 
-// 搞4个entry，然后截取前两个，检测截取wal之后，剩余的进行read_wal_batch是否正确
-TEST_F(PersistEngineTest, TruncateWalKeepsEntriesAfterSnapshotIndex) {
+// 搞4个entry，然后用 rewrite 只保留快照之后的两个，检测 read_wal_batch 是否正确
+TEST_F(PersistEngineTest, RewriteWalKeepsEntriesAfterSnapshotIndex) {
     PersistEngine engine = make_engine();
     Status status = engine.init();
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -282,14 +273,14 @@ TEST_F(PersistEngineTest, TruncateWalKeepsEntriesAfterSnapshotIndex) {
             make_entry(2, 4, WriteOpType::PUT, "k3", "v3"),
     };
 
-    status = engine.append_wal_batch(entries);
+    status = engine.wal().append_batch(entries);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
-    status = engine.truncate_wal(2);
+    status = engine.wal().rewrite({entries[2], entries[3]});
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     std::vector<LogEntry> actual;
-    status = engine.read_wal_batch(actual);
+    status = engine.wal().read_batch(actual);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     ASSERT_EQ(actual.size(), 2U);
     EXPECT_EQ(actual[0].index, 3);
@@ -301,9 +292,9 @@ TEST_F(PersistEngineTest, TruncateWalKeepsEntriesAfterSnapshotIndex) {
 // 走正常流程，综合检测一下:
 //  放entry。然后状态机应用跑快照，
 //  读取快照是否没有问题;
-//  跑快照后会截取wal，这个是否没有问题
-//  persist在截取wal之后剩下的wal，是否没有问题
-TEST_F(PersistEngineTest, WriteSnapshotAndTruncateWalPersistsSnapshotAndShrinksWal) {
+//  跑快照后用 rewrite 对齐 wal（只保留快照之后的日志），这个是否没有问题
+//  persist在 rewrite 之后剩下的wal，是否没有问题
+TEST_F(PersistEngineTest, WriteSnapshotAndRewriteWalPersistsSnapshotAndShrinksWal) {
     PersistEngine engine = make_engine();
     Status status = engine.init();
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -313,7 +304,7 @@ TEST_F(PersistEngineTest, WriteSnapshotAndTruncateWalPersistsSnapshotAndShrinksW
             make_entry(3, 12, WriteOpType::PUT, "b", "2"),
             make_entry(4, 13, WriteOpType::PUT, "c", "3"),
     };
-    status = engine.append_wal_batch(entries);
+    status = engine.wal().append_batch(entries);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     // Build a state machine that represents the snapshot state at index=12.
@@ -321,18 +312,18 @@ TEST_F(PersistEngineTest, WriteSnapshotAndTruncateWalPersistsSnapshotAndShrinksW
     ASSERT_TRUE(state_machine.apply(make_entry(3, 11, WriteOpType::PUT, "a", "1")).ok());
     ASSERT_TRUE(state_machine.apply(make_entry(3, 12, WriteOpType::PUT, "b", "2")).ok());
 
-    status = engine.write_snapshot(state_machine);
+    status = test::write_state_machine_snapshot(engine.snapshot(), state_machine);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-    status = engine.truncate_wal(state_machine.apply_index());
+    status = engine.wal().rewrite({entries[2]});
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
-    SnapshotPtr loaded_snapshot = std::make_shared<Snapshot>();
-    status = engine.load_snapshot_meta(loaded_snapshot);
+    SnapshotHeaderPtr loaded_snapshot = std::make_shared<SnapshotHeader>();
+    status = engine.snapshot().load_header(loaded_snapshot);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(loaded_snapshot->apply_index, 12);
     EXPECT_EQ(loaded_snapshot->apply_term, 3);
     std::vector<KV> loaded_kvs;
-    status = engine.for_each_snapshot_kv([&loaded_kvs](const Key& key, const Value& value) -> Status {
+    status = test::for_each_snapshot_kv(engine.snapshot(), [&loaded_kvs](const Key& key, const Value& value) -> Status {
         loaded_kvs.emplace_back(key, value);
         return Status::OK();
     });
@@ -340,7 +331,7 @@ TEST_F(PersistEngineTest, WriteSnapshotAndTruncateWalPersistsSnapshotAndShrinksW
     EXPECT_EQ(loaded_kvs, (std::vector<KV>{{"a", "1"}, {"b", "2"}}));
 
     std::vector<LogEntry> actual;
-    status = engine.read_wal_batch(actual);
+    status = engine.wal().read_batch(actual);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     ASSERT_EQ(actual.size(), 1U);
     EXPECT_EQ(actual[0].index, 13);
@@ -362,11 +353,11 @@ TEST_F(PersistEngineTest, RecoverLoadsSnapshotMetaAndWalTogether) {
     ASSERT_TRUE(state_machine.apply(make_entry(4, 13, WriteOpType::PUT, "beta", "2")).ok());
     const RaftMeta meta{11, ReplicaID{101, 7, 0}};
 
-    status = engine.append_wal_batch(wal_entries);
+    status = engine.wal().append_batch(wal_entries);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-    status = engine.write_snapshot(state_machine);
+    status = test::write_state_machine_snapshot(engine.snapshot(), state_machine);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-    status = engine.save_raft_meta(meta);
+    status = engine.raft_meta().save(meta);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
     PersistEngine recovered_engine = make_engine();
@@ -380,7 +371,8 @@ TEST_F(PersistEngineTest, RecoverLoadsSnapshotMetaAndWalTogether) {
     EXPECT_EQ(result.snapshot->apply_index, 13);
     EXPECT_EQ(result.snapshot->apply_term, 4);
     std::vector<KV> loaded_kvs;
-    status = recovered_engine.for_each_snapshot_kv([&loaded_kvs](const Key& key, const Value& value) -> Status {
+    status = test::for_each_snapshot_kv(recovered_engine.snapshot(),
+                                        [&loaded_kvs](const Key& key, const Value& value) -> Status {
         loaded_kvs.emplace_back(key, value);
         return Status::OK();
     });
@@ -405,9 +397,9 @@ TEST_F(PersistEngineTest, RecoverLoadsCompleteWalWithoutRepair) {
         PersistEngine engine = make_engine();
         Status status = engine.init();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.append_wal_batch(entries);
+        status = engine.wal().append_batch(entries);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{1, std::nullopt});
+        status = engine.raft_meta().save(RaftMeta{1, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -436,9 +428,9 @@ TEST_F(PersistEngineTest, RecoverTruncatesUncommittedPartialWalTail) {
         PersistEngine engine = make_engine();
         Status status = engine.init();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.append_wal_batch(entries);
+        status = engine.wal().append_batch(entries);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{1, std::nullopt});
+        status = engine.raft_meta().save(RaftMeta{1, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -461,7 +453,7 @@ TEST_F(PersistEngineTest, RecoverTruncatesUncommittedPartialWalTail) {
     EXPECT_EQ(fs::file_size(wal_path()), valid_wal_size);
 
     std::vector<LogEntry> reread;
-    status = recovered_engine.read_wal_batch(reread);
+    status = recovered_engine.wal().read_batch(reread);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(reread, entries);
 }
@@ -473,9 +465,9 @@ TEST_F(PersistEngineTest, RecoverTruncatesUncommittedCrcMismatch) {
         PersistEngine engine = make_engine();
         Status status = engine.init();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.append_wal(committed);
+        status = engine.wal().append(committed);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{1, std::nullopt});
+        status = engine.raft_meta().save(RaftMeta{1, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -505,9 +497,9 @@ TEST_F(PersistEngineTest, RecoverTruncatesCommittedCorruptionForRaftCatchUp) {
         PersistEngine engine = make_engine();
         Status status = engine.init();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.append_wal(entry1);
+        status = engine.wal().append(entry1);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{1, std::nullopt});
+        status = engine.raft_meta().save(RaftMeta{1, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -529,7 +521,7 @@ TEST_F(PersistEngineTest, RecoverTruncatesCommittedCorruptionForRaftCatchUp) {
     EXPECT_EQ(fs::file_size(wal_path()), first_record_size);
 
     std::vector<LogEntry> reread;
-    status = recovered_engine.read_wal_batch(reread);
+    status = recovered_engine.wal().read_batch(reread);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(reread, std::vector<LogEntry>{entry1});
 }
@@ -544,9 +536,9 @@ TEST_F(PersistEngineTest, RecoverContinuesCatchUpAfterCrashDuringRecovering) {
         PersistEngine engine = make_engine();
         Status status = engine.init();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.append_wal(entry1);
+        status = engine.wal().append(entry1);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{1, std::nullopt});
+        status = engine.raft_meta().save(RaftMeta{1, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -585,9 +577,9 @@ TEST_F(PersistEngineTest, RecoverHandlesInvalidWalDataLenByCommitIndex) {
         PersistEngine engine = make_engine();
         Status status = engine.init();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.append_wal(committed);
+        status = engine.wal().append(committed);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.save_raft_meta(RaftMeta{1, std::nullopt});
+        status = engine.raft_meta().save(RaftMeta{1, std::nullopt});
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         status = engine.close();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
@@ -622,9 +614,9 @@ TEST_F(PersistEngineTest, RecoverSnapshotAndWalAfterWriteSnapshot) {
             make_entry(2, 4, WriteOpType::PUT, "k3", "v3"),
     };
 
-    status = engine.append_wal_batch(entries);
+    status = engine.wal().append_batch(entries);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-    ASSERT_TRUE(engine.save_raft_meta(RaftMeta{2, std::nullopt}).ok());
+    ASSERT_TRUE(engine.raft_meta().save(RaftMeta{2, std::nullopt}).ok());
     ASSERT_TRUE(engine.close().ok());
 
     KvStateMachine state_machine(EngineType::MAP);
@@ -635,7 +627,7 @@ TEST_F(PersistEngineTest, RecoverSnapshotAndWalAfterWriteSnapshot) {
     PersistEngine snapshot_writer = make_engine();
     status = snapshot_writer.init();
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-    status = snapshot_writer.write_snapshot(state_machine);
+    status = test::write_state_machine_snapshot(snapshot_writer.snapshot(), state_machine);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     ASSERT_TRUE(snapshot_writer.close().ok());
 
@@ -653,7 +645,7 @@ TEST_F(PersistEngineTest, RecoverSnapshotAndWalAfterWriteSnapshot) {
     EXPECT_FALSE(res.need_recover);
 
     std::vector<LogEntry> reread;
-    status = recovered.read_wal_batch(reread);
+    status = recovered.wal().read_batch(reread);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     ASSERT_EQ(reread.size(), 2U);
     EXPECT_EQ(reread[0].index, 3);
@@ -670,7 +662,7 @@ TEST_F(PersistEngineTest, RecoverRewritesWalWhenSnapshotPrefixAndCorruptionCoexi
         PersistEngine engine = make_engine();
         Status status = engine.init();
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
-        status = engine.append_wal_batch(entries);
+        status = engine.wal().append_batch(entries);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
         KvStateMachine state_machine(EngineType::MAP);
@@ -678,7 +670,7 @@ TEST_F(PersistEngineTest, RecoverRewritesWalWhenSnapshotPrefixAndCorruptionCoexi
             status = state_machine.apply(entry);
             ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         }
-        status = engine.write_snapshot(state_machine);
+        status = test::write_state_machine_snapshot(engine.snapshot(), state_machine);
         ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
         ASSERT_TRUE(engine.close().ok());
     }
@@ -698,9 +690,130 @@ TEST_F(PersistEngineTest, RecoverRewritesWalWhenSnapshotPrefixAndCorruptionCoexi
     EXPECT_TRUE(result.wal_entries.empty());
 
     std::vector<LogEntry> reread;
-    status = recovered.read_wal_batch(reread);
+    status = recovered.wal().read_batch(reread);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_TRUE(reread.empty());
+}
+
+// ===== 快照 trailer 损坏负例 =====
+// trailer 是"打开即判定完整"的那道闸：尾部 magic、total_len、body_crc 三条
+// 各钉一个负例，任何一条对不上都不许被当成有效快照读出来。
+
+namespace {
+
+fs::path snapshot_path_of(const fs::path& base_dir, const ReplicaID& replica_id) {
+    return PersistEngine::snapshot_file(PersistEngine::replica_dir(base_dir.string(), replica_id));
+}
+
+// 写一份带若干 KV 的正快照，之后各负例在这份"好的"文件上精准改一个字段。
+void write_reference_snapshot(const fs::path& base_dir, const ReplicaID& replica_id) {
+    KvStateMachine state_machine(EngineType::MAP);
+    ASSERT_TRUE(state_machine.apply(LogEntry{1, 1, WriteOpType::PUT, "tk", "tv"}).ok());
+    ASSERT_TRUE(state_machine.apply(LogEntry{1, 2, WriteOpType::PUT, "tk2", "tv2"}).ok());
+    PersistEngine engine(base_dir.string(), replica_id);
+    ASSERT_TRUE(engine.init().ok());
+    ASSERT_TRUE(test::write_state_machine_snapshot(engine.snapshot(), state_machine).ok());
+    ASSERT_TRUE(engine.close().ok());
+}
+
+// 从文件尾部按偏移改一个字节：trailer 定长在最末尾，偏移全从尾部数，
+// 前面格式怎么演进都不用跟着改这些用例。
+void patch_from_tail(const fs::path& file, size_t offset_from_end, uint8_t xor_mask) {
+    int fd = ::open(file.c_str(), O_RDWR);
+    ASSERT_NE(fd, -1);
+    const off_t size = ::lseek(fd, 0, SEEK_END);
+    ASSERT_GT(size, static_cast<off_t>(offset_from_end));
+    const off_t at = size - static_cast<off_t>(offset_from_end);
+    uint8_t byte = 0;
+    ASSERT_EQ(::pread(fd, &byte, 1, at), 1);
+    byte ^= xor_mask;
+    ASSERT_EQ(::pwrite(fd, &byte, 1, at), 1);
+    ::close(fd);
+}
+
+void patch_at(const fs::path& file, off_t offset, uint8_t xor_mask) {
+    int fd = ::open(file.c_str(), O_RDWR);
+    ASSERT_NE(fd, -1);
+    uint8_t byte = 0;
+    ASSERT_EQ(::pread(fd, &byte, 1, offset), 1);
+    byte ^= xor_mask;
+    ASSERT_EQ(::pwrite(fd, &byte, 1, offset), 1);
+    ::close(fd);
+}
+
+// trailer 布局（从尾部数）：magic 在最后 4 字节；total_len 是再往前 8 字节。
+// （body_crc32 在 load 时不重放，只有发布路径的 verify 会全文件重算，
+// 所以 crc 负例放在接收发布用例里。）
+constexpr size_t K_TAIL_MAGIC_FROM_END = 4;
+constexpr size_t K_TOTAL_LEN_FROM_END = 4 + 8;
+
+}  // namespace
+
+TEST_F(PersistEngineTest, SnapshotLoadRejectsCorruptedTailMagic) {
+    write_reference_snapshot(base_dir_, replica_id_);
+    patch_from_tail(snapshot_path_of(base_dir_, replica_id_), K_TAIL_MAGIC_FROM_END, 0x01);
+
+    PersistEngine engine = make_engine();
+    ASSERT_TRUE(engine.init().ok());
+    SnapshotHeaderPtr snapshot;
+    Status status = engine.snapshot().load_header(snapshot);
+    EXPECT_TRUE(status.fail()) << test::status_debug_string(status);
+}
+
+TEST_F(PersistEngineTest, SnapshotLoadRejectsBogusTotalLen) {
+    write_reference_snapshot(base_dir_, replica_id_);
+    // 只动 total_len 的最低字节：文件没变，声明的总长对不上实际大小。
+    patch_from_tail(snapshot_path_of(base_dir_, replica_id_), K_TOTAL_LEN_FROM_END, 0x10);
+
+    PersistEngine engine = make_engine();
+    ASSERT_TRUE(engine.init().ok());
+    SnapshotHeaderPtr snapshot;
+    Status status = engine.snapshot().load_header(snapshot);
+    EXPECT_TRUE(status.fail()) << test::status_debug_string(status);
+}
+
+TEST_F(PersistEngineTest, ReceivedSnapshotPublishRejectsBodyCrcMismatch) {
+    // 这条走接收发布路径：rename 前的 verify 是全文件 crc 重放，body 里
+    // 改一个字节（不动 trailer）也必须被拦住，坏文件不许发布。
+    // 参考快照写在另一个目录下（目录名只看 table_id+shard_index，所以换个
+    // shard_index）——接收方（make_engine）那边本来就没有已发布快照，
+    // "拒绝后不该出现发布文件"这个断言才有意义。
+    const ReplicaID source_replica_id{101, 8, 9};
+    write_reference_snapshot(base_dir_, source_replica_id);
+    const fs::path received = base_dir_ / "received.tmp";
+    std::filesystem::copy_file(snapshot_path_of(base_dir_, source_replica_id), received);
+    // header = magic(4)+apply_index(8)+apply_term(8)+block_len(4)+count(4)，
+    // 偏移 28 起是第一个 KV 的 key 长度字段：改这里 body_crc 必挂而 trailer 完好。
+    patch_at(received, 28, 0x01);
+
+    PersistEngine engine = make_engine();
+    ASSERT_TRUE(engine.init().ok());
+    InstallSnapshotParam param;
+    param.from_replica_id = replica_id_;
+    param.to_replica_id = replica_id_;
+    param.term = 7;
+    param.snapshot_index = 2;
+    param.snapshot_term = 1;
+    param.offset = 0;
+    param.done = true;
+    std::ifstream in(received, std::ios::binary);
+    ASSERT_TRUE(in.is_open());
+    param.data = std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+
+    ASSERT_TRUE(engine.snapshot().append_snapshot_chunk(param).ok());
+    Status status = engine.snapshot().finish_snapshot_receive(param);
+    EXPECT_TRUE(status.fail()) << test::status_debug_string(status);
+    // 被拒绝的快照绝不能出现在已发布路径上。
+    EXPECT_FALSE(fs::exists(snapshot_path_of(base_dir_, replica_id_)));
+
+    // 反过来验证这份字节本身是合法格式（只有 body 被我们改坏）：原样发一份
+    // 应当能发布成功，免得负例其实是被格式问题挡下的假绿。
+    std::ifstream pristine(snapshot_path_of(base_dir_, source_replica_id), std::ios::binary);
+    ASSERT_TRUE(pristine.is_open());
+    param.data = std::string((std::istreambuf_iterator<char>(pristine)), std::istreambuf_iterator<char>());
+    ASSERT_TRUE(engine.snapshot().append_snapshot_chunk(param).ok());
+    ASSERT_TRUE(engine.snapshot().finish_snapshot_receive(param).ok())
+            << "intact snapshot must publish; negative case may be failing for the wrong reason";
 }
 
 }  // namespace

@@ -52,6 +52,10 @@ namespace adviskv {
     type(type&&) = default;         \
     type& operator=(type&&) = default;
 
+#define DISALLOW_MOVE_AND_ASSIGN(type) \
+    type(type&&) = delete;            \
+    type& operator=(type&&) = delete;
+
 #define UNUSED(x) ((void)(x));
 #define IGNORE_RESULT(expr) ((void)(expr));
 

@@ -1,6 +1,5 @@
 #include "sdk/route_cache.h"
 
-#include <atomic>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -89,19 +88,11 @@ Status RouteCache::refresh(Milliseconds timeout) {
     return publish_table_routes(std::move(table_routes));
 }
 
-std::shared_ptr<RouteCache::TableRouteSnapshot> RouteCache::load_snapshot() const {
-    return std::atomic_load(&snapshot_);
-}
-
-void RouteCache::store_snapshot(std::shared_ptr<TableRouteSnapshot> snapshot) {
-    std::atomic_store(&snapshot_, std::move(snapshot));
-}
-
 Status RouteCache::lookup_cached_route(const Key& key, RouteInfo* route) const {
     RETURN_IF_NULLPTR(route, "route should not be nullptr")
 
-    std::shared_ptr<TableRouteSnapshot> snapshot = load_snapshot();
-    if (snapshot == nullptr || snapshot->table_id < 0 || snapshot->shard_count <= 0) {
+    const auto snapshot = snapshot_.load();
+    if (snapshot->table_id < 0 || snapshot->shard_count <= 0) {
         return Status::ROUTE_NOT_FOUND("route cache is not ready");
     }
 
@@ -130,7 +121,7 @@ Status RouteCache::publish_table_routes(TableRouteInfo table_routes) {
     for (const auto& route : next->routes) {
         next->shard_ranges.push_back({route.shard_id, route.hash_range});
     }
-    store_snapshot(std::move(next));
+    snapshot_.publish(next);
     ADVISKV_METRICS_COUNTER("sdk_route_cache_table_routes_update");
     return Status::OK();
 }

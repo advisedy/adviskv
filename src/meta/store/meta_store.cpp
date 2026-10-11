@@ -1,6 +1,5 @@
 #include "meta/store/meta_store.h"
 
-#include <atomic>
 #include <utility>
 #include <variant>
 
@@ -18,9 +17,6 @@ MetaStore::MetaStore(const MetaStoreParam& param) {
     if (auto* persist_param = std::get_if<PersistentMetaStoreParam>(&param)) {
         persist_engine_ = std::make_unique<MetaPersistEngine>(persist_param->data_dir);
     }
-    publish(std::make_shared<const MetaSnapshot>(
-            MetaSnapshot{std::make_shared<const DurableData>(), std::make_shared<const RuntimeData>(),
-                         std::make_shared<const MetaIndex>()}));
 }
 
 Status MetaStore::init() {
@@ -43,7 +39,7 @@ Status MetaStore::init() {
         }
     }
     rebuild_index(*durable, *runtime, *index);
-    publish(std::make_shared<const MetaSnapshot>(MetaSnapshot{durable, runtime, index}));
+    published_.publish(std::make_shared<const MetaSnapshot>(MetaSnapshot{durable, runtime, index}));
     return Status::OK();
 }
 
@@ -52,7 +48,7 @@ Status MetaStore::read_with(const std::function<Status(const MetaStoreTxn&)>& fu
     if (func == nullptr) {
         return Status::INVALID_ARGUMENT("read_with fn is nullptr");
     }
-    MetaStoreTxn txn(load_snapshot());
+    MetaStoreTxn txn(published_.load());
     return func(txn);
 }
 
@@ -66,7 +62,7 @@ Status MetaStore::write_with(const std::function<Status(MetaStoreTxn&)>& func) {
 
     std::lock_guard<std::mutex> locker{writer_mutex_};
 
-    MetaStoreTxn txn(load_snapshot());
+    MetaStoreTxn txn(published_.load());
     Status status = func(txn);
     if (status.fail()) {
         return status;
@@ -78,7 +74,7 @@ Status MetaStore::write_with(const std::function<Status(MetaStoreTxn&)>& func) {
     if (txn.durable_dirty()) {
         RETURN_IF_INVALID_STATUS(persist_if_needed(*next->durable))
     }
-    publish(std::move(next));
+    published_.publish(next);
     return Status::OK();
 }
 
@@ -101,14 +97,6 @@ void MetaStore::rebuild_index(const DurableData& durable, const RuntimeData& run
         UNUSED(_);
         index.on_replica_upsert(nullptr, replica);
     }
-}
-
-std::shared_ptr<const MetaSnapshot> MetaStore::load_snapshot() const {
-    return std::atomic_load(&published_);
-}
-
-void MetaStore::publish(std::shared_ptr<const MetaSnapshot> next) {
-    std::atomic_store(&published_, std::move(next));
 }
 
 Status MetaStore::persist_if_needed(const DurableData& durable) {

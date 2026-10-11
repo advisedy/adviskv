@@ -48,10 +48,12 @@ private:
         std::string dest;
         int64_t in_reply_to{0};
         std::string key;
-        storage::LogIndex read_index{0};
+        LogIndex read_index{0};
         Term read_term{0};
         int acks{1};
         int quorum{1};
+        std::unordered_set<ReplicaID, ReplicaIDHash> read_quorum_voters;
+        std::unordered_set<ReplicaID, ReplicaIDHash> acked_voters;
         std::unordered_set<int64_t> outstanding_rpc_ids;
         std::chrono::steady_clock::time_point start{};
     };
@@ -75,7 +77,7 @@ private:
     void complete_pending_clients_unlocked();
     void complete_pending_reads_unlocked();
     void fail_all_pending_reads_unlocked(const std::string& reason);
-    void note_read_index_peer_ack_unlocked(int64_t rpc_msg_id, Term response_term);
+    void note_read_index_peer_ack_unlocked(int64_t rpc_msg_id, const ReplicaID& from, Term response_term);
     void reply_read_value_unlocked(const PendingRead& read);
     std::vector<int64_t> send_raft_messages_unlocked(std::vector<storage::RaftMessage> messages);
 
@@ -88,8 +90,8 @@ private:
     std::string node_of(const ReplicaID& replica_id) const;
     PeerMember peer_of(const std::string& node_id) const;
 
-    Json encode_log_entry(const storage::LogEntry& entry) const;
-    storage::LogEntry decode_log_entry(const Json& json) const;
+    Json encode_log_entry(const LogEntry& entry) const;
+    LogEntry decode_log_entry(const Json& json) const;
     Json encode_append_param(const storage::AppendEntriesParam& param) const;
     storage::AppendEntriesParam decode_append_param(const Json& body) const;
     Json encode_snapshot_param(const storage::InstallSnapshotParam& param) const;
@@ -114,7 +116,7 @@ private:
     int64_t next_msg_id_{1};
     int64_t next_read_id_{1};
     std::unordered_map<int64_t, PendingRpc> pending_rpcs_;
-    std::unordered_map<storage::LogIndex, PendingClient> pending_clients_;
+    std::unordered_map<LogIndex, PendingClient> pending_clients_;
     std::unordered_map<int64_t, PendingRead> pending_reads_;
     std::unordered_map<int64_t, int64_t> rpc_msg_to_read_id_;
 };

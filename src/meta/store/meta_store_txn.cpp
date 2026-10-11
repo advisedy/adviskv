@@ -12,11 +12,8 @@ MetaStoreTxn::MetaStoreTxn(std::shared_ptr<const MetaSnapshot> snapshot)
 bool MetaStoreTxn::durable_dirty() const { return durable_dirty_; }
 
 std::shared_ptr<const MetaSnapshot> MetaStoreTxn::finish() const {
-    auto next = std::make_shared<MetaSnapshot>();
-    next->durable = durable_.share();
-    next->runtime = runtime_.share();
-    next->index = index_.share();
-    return next;
+    return std::make_shared<const MetaSnapshot>(
+            MetaSnapshot{durable_.share(), runtime_.share(), index_.share()});
 }
 
 Status MetaStoreTxn::put_database(const Database& db) {

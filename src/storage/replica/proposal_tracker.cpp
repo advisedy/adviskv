@@ -1,18 +1,21 @@
 #include "storage/replica/proposal_tracker.h"
 
-#include <mutex>
 #include <utility>
 
 #include "common/define.h"
 #include "common/metrics/metrics.h"
 #include "storage/raft/core/raft_core.h"
-#include "storage/replica/replica.h"
+#include "storage/raft/state_machine/state_machine.h"
 #include "storage/replica/raft_step.h"
 
 namespace adviskv::storage {
 
-ProposalTracker::ProposalTracker(ReplicaContext& context, CompletionManager& completions)
-        : context_(context), completions_(completions) {}
+ProposalTracker::ProposalTracker(RaftCore& raft_core, StateMachine& state_machine,
+                                 RaftEffectExecutor& effect_executor, CompletionManager& completions)
+        : raft_core_(raft_core),
+          state_machine_(state_machine),
+          effect_executor_(effect_executor),
+          completions_(completions) {}
 
 Status ProposalTracker::submit_batch(std::vector<ProposalItem> items) {
     std::vector<ProposeParam> params;
@@ -33,9 +36,8 @@ Status ProposalTracker::submit_batch(std::vector<ProposalItem> items) {
         Status find_status;
         {
             ADVISKV_METRICS_TIMER("storage_replica_request_record_check");
-            std::lock_guard lock(context_.state_machine_mutex);
             ADVISKV_METRICS_TIMER("storage_replica_request_record_lookup");
-            find_status = context_.state_machine.find_request(write->request_id, record);
+            find_status = state_machine_.find_request(write->request_id, record);
         }
         if (find_status.ok()) {
             ADVISKV_METRICS_COUNTER("storage_replica_request_record_hit");
@@ -70,22 +72,19 @@ Status ProposalTracker::submit_batch(std::vector<ProposalItem> items) {
         Entry entry;
         entry.proposal = *write;
         entry.tickets.push_back(item.ticket);
-        {
-            std::lock_guard lock(context_.raft_core_mutex);
-            if (auto* logged = context_.raft_core.find_request(write->request_id)) {
-                WriteProposal logged_write{logged->op_type, logged->key, logged->value,
-                                           logged->request_id, logged->expected};
-                if (logged_write != *write) {
-                    IGNORE_RESULT(completions_.finish(
-                            item.ticket, Status::INVALID_ARGUMENT("request_id was reused with a different write")))
-                    continue;
-                }
-                if (logged->index <= 0) {
-                    IGNORE_RESULT(completions_.finish(item.ticket, Status::ERROR("invalid existing proposal log index")))
-                    continue;
-                }
-                entry.index = logged->index;
+        if (auto* logged = raft_core_.find_request(write->request_id)) {
+            WriteProposal logged_write{logged->op_type, logged->key, logged->value,
+                                       logged->request_id, logged->expected};
+            if (logged_write != *write) {
+                IGNORE_RESULT(completions_.finish(
+                        item.ticket, Status::INVALID_ARGUMENT("request_id was reused with a different write")))
+                continue;
             }
+            if (logged->index <= 0) {
+                IGNORE_RESULT(completions_.finish(item.ticket, Status::ERROR("invalid existing proposal log index")))
+                continue;
+            }
+            entry.index = logged->index;
         }
         if (entry.index > 0) {
             ADVISKV_METRICS_COUNTER("storage_replica_request_pending_deduplicated");
@@ -97,7 +96,6 @@ Status ProposalTracker::submit_batch(std::vector<ProposalItem> items) {
     }
 
     Status status = propose_new(params, candidate_ids);
-    advance();
     return status;
 }
 
@@ -108,8 +106,8 @@ Status ProposalTracker::propose_new(const std::vector<ProposeParam>& params,
     }
 
     std::vector<std::pair<Status, LogIndex>> results;
-    Status status = run_raft_step(context_, [&](RaftEffects& effects) {
-        results = context_.raft_core.propose_batch(params, effects);
+    Status status = effect_executor_.execute([&](RaftEffects& effects) {
+        results = raft_core_.propose_batch(params, effects);
         return Status::OK();
     });
     if (status.fail()) {
@@ -138,35 +136,22 @@ Status ProposalTracker::propose_new(const std::vector<ProposeParam>& params,
 }
 
 void ProposalTracker::advance() {
-    LogIndex commit_index{0};
-    LogIndex last_applied{0};
-    bool is_leader{false};
-    {
-        std::lock_guard lock(context_.raft_core_mutex);
-        commit_index = context_.raft_core.commit_index();
-        last_applied = context_.raft_core.last_applied();
-        is_leader = context_.raft_core.is_leader();
-    }
+    const LogIndex commit_index = raft_core_.commit_index();
+    const LogIndex last_applied = raft_core_.last_applied();
+    const bool is_leader = raft_core_.is_leader();
 
-    bool notify_apply{false};
     for (auto it = entries_.begin(); it != entries_.end();) {
         Entry& entry = it->second;
         if (!entry.committed && entry.index > 0 && entry.index <= commit_index) {
             entry.committed = true;
-            if (entry.proposal.op == WriteOpType::CAS) {
-                notify_apply = true;
-            } else {
+            if (entry.proposal.op != WriteOpType::CAS) {
                 finish_tickets(entry, Status::OK(), true);
             }
         }
         if (entry.committed && entry.index > 0 && entry.index <= last_applied) {
             if (entry.proposal.op == WriteOpType::CAS) {
                 RequestRecord record;
-                Status status;
-                {
-                    std::lock_guard lock(context_.state_machine_mutex);
-                    status = context_.state_machine.find_request(entry.proposal.request_id, record);
-                }
+                Status status = state_machine_.find_request(entry.proposal.request_id, record);
                 if (status.ok()) {
                     status = record.matches(entry.proposal)
                                      ? record.apply_status
@@ -178,9 +163,6 @@ void ProposalTracker::advance() {
         } else {
             ++it;
         }
-    }
-    if (notify_apply && context_.notify_apply) {
-        context_.notify_apply();
     }
     if (!is_leader) {
         fail_all(Status::NOT_LEADER("leader changed before proposal committed"));

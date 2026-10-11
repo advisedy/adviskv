@@ -77,12 +77,24 @@ add_adviskv_common_gtest(thread_pool_test
     ${CMAKE_SOURCE_DIR}/test/common/thread_pool_test.cpp
 )
 
+add_adviskv_common_gtest(blocking_queue_test
+    ${CMAKE_SOURCE_DIR}/test/common/blocking_queue_test.cpp
+)
+
+add_adviskv_common_gtest(published_view_test
+    ${CMAKE_SOURCE_DIR}/test/common/published_view_test.cpp
+)
+
 add_adviskv_common_gtest(codec_test
     ${CMAKE_SOURCE_DIR}/test/common/proto/codec_test.cpp
 )
 
 add_adviskv_common_gtest(shard_range_test
     ${CMAKE_SOURCE_DIR}/test/common/shard_range_test.cpp
+)
+
+add_adviskv_common_gtest(binary_writer_test
+    ${CMAKE_SOURCE_DIR}/test/common/binary_writer_test.cpp
 )
 
 add_adviskv_storage_gtest(map_engine_test
@@ -107,6 +119,14 @@ add_adviskv_storage_gtest(kv_state_machine_test
 
 add_adviskv_storage_gtest(replica_test
     ${CMAKE_SOURCE_DIR}/test/storage/replica/replica_test.cpp
+)
+
+add_adviskv_storage_gtest(read_request_state_test
+    ${CMAKE_SOURCE_DIR}/test/storage/replica/read_request_state_test.cpp
+)
+
+add_adviskv_storage_gtest(replica_loop_test
+    ${CMAKE_SOURCE_DIR}/test/storage/replica/replica_loop_test.cpp
 )
 
 add_adviskv_storage_gtest(replica_manager_test

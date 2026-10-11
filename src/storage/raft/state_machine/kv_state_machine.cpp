@@ -5,7 +5,7 @@
 
 #include "common/define.h"
 #include "common/metrics/metrics.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "storage/engine/map_engine.h"
 #include "storage/model/model.h"
@@ -147,7 +147,7 @@ Status KvStateMachine::apply(const LogEntry& entry) {
     ADVISKV_METRICS_COUNTER("storage_state_machine_apply_success");
     return Status::OK();
 }
-Status KvStateMachine::restore(const SnapshotPtr& snap, const KvForEach& for_each_kv,
+Status KvStateMachine::restore(const SnapshotHeaderPtr& snap, const KvForEach& for_each_kv,
                                const RequestForEach& for_each_request) {
     if (!snap) {
         return Status{StatusCode::ERROR, "snapshot is nullptr"};
@@ -191,8 +191,8 @@ Status KvStateMachine::capture_snapshot(SnapshotData& snapshot) const {
     }
 
     SnapshotData data;
-    data.apply_index = apply_index_;
-    data.apply_term = apply_term_;
+    data.header.apply_index = apply_index_;
+    data.header.apply_term = apply_term_;
     data.kvs = engine_->dump_all();
     data.request_records.reserve(request_records_.size());
     for (const auto& [_, record] : request_records_) {

@@ -1,11 +1,10 @@
 #pragma once
 
 #include <functional>
-#include <mutex>
 #include <vector>
 
 #include "common/define.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "common/thread_pool.h"
 #include "storage/model/model.h"
@@ -20,9 +19,7 @@ class ReplicaMessageDispatcher {
 public:
     using EventCallback = std::function<void(Event)>;
 
-    // 这里不用Context了，免得循环了，能简单点就简单点吧
-    ReplicaMessageDispatcher(int32 raft_rpc_timeout_ms, PersistEngine& persist, std::mutex& persist_snapshot_mutex,
-                             EventCallback event_callback);
+    ReplicaMessageDispatcher(int32 raft_rpc_timeout_ms, PersistEngine& persist, EventCallback event_callback);
     ~ReplicaMessageDispatcher();
 
     DISALLOW_COPY_AND_ASSIGN(ReplicaMessageDispatcher)
@@ -32,12 +29,6 @@ public:
 
     Status async_send(std::vector<RaftMessage> messages);
 
-    // 专门给ReadIndexChecker搞得接口
-    Status sync_send_append_entries(const PeerMember& target, const AppendEntriesParam& param,
-                                    AppendEntriesResult& result);
-    Status sync_send_install_snapshot(const PeerMember& target, const InstallSnapshotParam& param,
-                                      InstallSnapshotResult& result);
-
 private:
     Status async_send_one(const RaftMessage& msg);
     void send_task(RaftMessage msg);
@@ -45,7 +36,6 @@ private:
 
     RaftSender sender_;
     PersistEngine& persist_;
-    std::mutex& persist_snapshot_mutex_;
     EventCallback event_callback_;
     ThreadPool rpc_pool_;
 };

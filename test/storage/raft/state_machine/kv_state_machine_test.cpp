@@ -9,6 +9,8 @@
 
 #include "storage/model/model.h"
 #include "storage/persist/persist_engine.h"
+#include "storage/persist/snapshot_store.h"
+#include "test/storage/persist/snapshot_test_util.h"
 #include "test/test_env.h"
 
 namespace adviskv::storage {
@@ -91,10 +93,10 @@ TEST_F(KvStateMachineTest, SnapshotAndRestoreRoundTrip) {
 
     PersistEngine persist = make_engine();
     ASSERT_TRUE(persist.init().ok());
-    ASSERT_TRUE(persist.write_snapshot(source).ok());
+    ASSERT_TRUE(test::write_state_machine_snapshot(persist.snapshot(), source).ok());
 
-    SnapshotPtr snapshot = std::make_shared<Snapshot>();
-    ASSERT_TRUE(persist.load_snapshot_meta(snapshot).ok());
+    SnapshotHeaderPtr snapshot = std::make_shared<SnapshotHeader>();
+    ASSERT_TRUE(persist.snapshot().load_header(snapshot).ok());
     ASSERT_NE(snapshot, nullptr);
     EXPECT_EQ(snapshot->apply_index, 11);
     EXPECT_EQ(snapshot->apply_term, 4);
@@ -102,7 +104,7 @@ TEST_F(KvStateMachineTest, SnapshotAndRestoreRoundTrip) {
     KvStateMachine restored(EngineType::MAP);
     Status status = restored.restore(
         snapshot, [&persist](const KvVisitor& consume) -> Status {
-            return persist.for_each_snapshot_kv(consume);
+            return test::for_each_snapshot_kv(persist.snapshot(), consume);
         });
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(restored.apply_index(), 11);
@@ -126,17 +128,22 @@ TEST_F(KvStateMachineTest, CapturedSnapshotIsIndependentFromLaterApply) {
     ASSERT_TRUE(source.capture_snapshot(snapshot_data).ok());
     ASSERT_TRUE(source.apply(make_entry(4, 11, WriteOpType::PUT, "after", "v2")).ok());
 
+    bool unused_published = false;
+
     PersistEngine persist = make_engine();
     ASSERT_TRUE(persist.init().ok());
-    ASSERT_TRUE(persist.write_snapshot(snapshot_data).ok());
+    ASSERT_TRUE(
+            persist.snapshot().write_local_snapshot_candidate(snapshot_data, {}, snapshot_data.header.apply_index)
+                    .ok());
+    ASSERT_TRUE(persist.snapshot().publish_local_snapshot(snapshot_data.header.apply_index, unused_published).ok());
 
-    SnapshotPtr snapshot = std::make_shared<Snapshot>();
-    ASSERT_TRUE(persist.load_snapshot_meta(snapshot).ok());
+    SnapshotHeaderPtr snapshot = std::make_shared<SnapshotHeader>();
+    ASSERT_TRUE(persist.snapshot().load_header(snapshot).ok());
     EXPECT_EQ(snapshot->apply_index, 10);
     EXPECT_EQ(snapshot->apply_term, 4);
 
     std::vector<KV> kvs;
-    ASSERT_TRUE(persist.for_each_snapshot_kv([&kvs](const Key& key, const Value& value) {
+    ASSERT_TRUE(test::for_each_snapshot_kv(persist.snapshot(), [&kvs](const Key& key, const Value& value) {
                      kvs.emplace_back(key, value);
                      return Status::OK();
                  }).ok());
@@ -150,7 +157,7 @@ TEST_F(KvStateMachineTest, RestoreReplacesExistingData) {
         state_machine.apply(make_entry(1, 1, WriteOpType::PUT, "old", "x"))
             .ok());
 
-    SnapshotPtr snapshot = std::make_shared<Snapshot>();
+    SnapshotHeaderPtr snapshot = std::make_shared<SnapshotHeader>();
     snapshot->apply_index = 20;
     snapshot->apply_term = 5;
     std::vector<KV> kvs = {{"new", "y"}};
@@ -226,15 +233,17 @@ TEST_F(KvStateMachineTest, SnapshotRestoresRequestIdRecords) {
 
     PersistEngine persist = make_engine();
     ASSERT_TRUE(persist.init().ok());
-    ASSERT_TRUE(persist.write_snapshot(source).ok());
+    ASSERT_TRUE(test::write_state_machine_snapshot(persist.snapshot(), source).ok());
 
-    SnapshotPtr snapshot = std::make_shared<Snapshot>();
-    ASSERT_TRUE(persist.load_snapshot_meta(snapshot).ok());
+    SnapshotHeaderPtr snapshot = std::make_shared<SnapshotHeader>();
+    ASSERT_TRUE(persist.snapshot().load_header(snapshot).ok());
     KvStateMachine restored(EngineType::MAP);
     Status restore_status = restored.restore(
             snapshot,
-            [&persist](const KvVisitor& visitor) { return persist.for_each_snapshot_kv(visitor); },
-            [&persist](const RequestVisitor& visitor) { return persist.for_each_snapshot_request(visitor); });
+            [&persist](const KvVisitor& visitor) { return test::for_each_snapshot_kv(persist.snapshot(), visitor); },
+            [&persist](const RequestVisitor& visitor) {
+                return test::for_each_snapshot_request(persist.snapshot(), visitor);
+            });
     ASSERT_TRUE(restore_status.ok()) << test::status_debug_string(restore_status);
 
     RequestRecord record;

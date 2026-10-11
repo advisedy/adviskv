@@ -38,7 +38,7 @@ public:
 
     // recover 的产物
     struct RecoverResult {
-        SnapshotPtr snapshot;
+        SnapshotHeaderPtr snapshot;
         RaftMeta raft_meta;
         std::vector<LogEntry> wal_entries;
         bool need_recover{false};

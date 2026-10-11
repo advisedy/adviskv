@@ -1,15 +1,18 @@
 #include "maelstrom_node.h"
 
+#include <atomic>
 #include <cctype>
 #include <cstdio>
 #include <filesystem>
 #include <iostream>
+#include <stdexcept>
 #include <utility>
 
 #include <fmt/format.h>
 
 #include "common/log.h"
-#include "common/model/engine_type.h"
+#include "common/model/model.h"
+
 #include "common/status.h"
 #include "storage/model/model.h"
 #include "storage/raft/state_machine/state_machine.h"
@@ -191,17 +194,31 @@ void MaelstromRaftNode::on_init(const std::string& src, const Json& body) {
     }
     if (recovered.snapshot) {
         status = state_machine_->restore(recovered.snapshot, [this](const storage::KvVisitor& visitor) -> Status {
-            return persist_->for_each_snapshot_kv(visitor);
+            std::unique_ptr<storage::SnapshotFileReader> reader;
+            bool exists = false;
+            Status open_status = persist_->snapshot().open_reader(reader, exists);
+            if (open_status.fail()) {
+                return open_status;
+            }
+            if (!exists || !reader) {
+                return Status::OK();
+            }
+            Status load_status = reader->load(nullptr);
+            if (load_status.fail()) {
+                return load_status;
+            }
+            return reader->for_each_kv(visitor);
         });
         if (status.fail()) {
             reply_error(src, body.at("msg_id").get<int64_t>(), 13, status.to_string());
             return;
         }
-        core_->install_local_snapshot(storage::InstallSnapshotContext{
+        storage::RaftEffects unused_effects;
+        core_->install_snapshot(storage::SnapshotHeader{
                 recovered.snapshot->apply_index,
                 recovered.snapshot->apply_term,
                 recovered.snapshot->members,
-        });
+        }, unused_effects);
     }
     core_->update_raft_meta(recovered.raft_meta);
     core_->update_log_entries(recovered.wal_entries);
@@ -227,7 +244,7 @@ void MaelstromRaftNode::on_write(const std::string& src, const Json& body) {
     const std::string value = value_to_string(body.at("value"));
 
     storage::RaftEffects effects;
-    auto [status, index] = core_->propose(storage::ProposeParam::write(storage::WriteOpType::PUT, key, value), effects);
+    auto [status, index] = core_->propose(storage::ProposeParam::write(WriteOpType::PUT, key, value), effects);
     if (status.fail()) {
         reply_error(src, msg_id, kErrTemporarilyUnavailable, status.to_string());
         return;
@@ -251,10 +268,12 @@ void MaelstromRaftNode::on_read(const std::string& src, const Json& body) {
         return;
     }
 
-    storage::LogIndex read_index = 0;
+    LogIndex read_index = 0;
     Term read_term = 0;
+    std::vector<ReplicaID> voter_ids;
     storage::RaftEffects effects;
-    Status status = core_->build_append_entries_for_read(effects, read_index, read_term);
+    Status status = core_->build_read_quorum_check(effects, read_index, read_term, voter_ids,
+                                                  static_cast<uint64>(next_read_id_));
     if (status.fail()) {
         reply_error(src, msg_id, kErrTemporarilyUnavailable, status.to_string());
         return;
@@ -270,6 +289,8 @@ void MaelstromRaftNode::on_read(const std::string& src, const Json& body) {
     pending.acks = 1;
     pending.quorum = core_->quorum_size();
     pending.start = std::chrono::steady_clock::now();
+    pending.read_quorum_voters.insert(voter_ids.begin(), voter_ids.end());
+    pending.acked_voters.insert(self_id_);
 
     std::vector<int64_t> sent_ids;
     status = drive_effects(std::move(effects), &sent_ids);
@@ -302,7 +323,7 @@ void MaelstromRaftNode::on_cas(const std::string& src, const Json& body) {
 
     storage::RaftEffects effects;
     auto [status, index] = core_->propose(
-            storage::ProposeParam::write(storage::WriteOpType::CAS, key, to, request_id, from), effects);
+            storage::ProposeParam::write(WriteOpType::CAS, key, to, request_id, from), effects);
     if (status.fail()) {
         reply_error(src, msg_id, kErrTemporarilyUnavailable, status.to_string());
         return;
@@ -524,7 +545,7 @@ void MaelstromRaftNode::on_raft_append_entries_ok(const std::string&, const Json
     if (status.fail()) {
         LOG_WARN("handle_append_response effects failed: {}", status.to_string());
     }
-    note_read_index_peer_ack_unlocked(in_reply_to, result.term);
+    note_read_index_peer_ack_unlocked(in_reply_to, pending.target, result.term);
     apply_committed_unlocked();
     complete_pending_clients_unlocked();
     if (!core_->is_leader()) {
@@ -543,7 +564,8 @@ void MaelstromRaftNode::on_raft_install_snapshot(const std::string& src, const J
     param.to_replica_id = self_id_;
 
     storage::RaftEffects prepare_effects;
-    Status prepare_status = core_->prepare_install_snapshot(param, prepare_effects);
+    LogIndex watermark = 0;
+    Status prepare_status = core_->prepare_install_snapshot(param, prepare_effects, watermark);
     Status status = drive_effects(std::move(prepare_effects));
     if (status.fail()) {
         LOG_WARN("prepare_install_snapshot effects failed: {}", status.to_string());
@@ -553,42 +575,48 @@ void MaelstromRaftNode::on_raft_install_snapshot(const std::string& src, const J
     result.term = core_->current_term();
     result.status = prepare_status;
 
-    if (prepare_status.ok()) {
-        status = persist_->append_snapshot_chunk(param);
+    if (prepare_status.ok() && watermark >= param.snapshot_index) {
+        result.snapshot_watermark = watermark;
+    } else if (prepare_status.ok()) {
+        status = persist_->snapshot().append_snapshot_chunk(param);
         if (status.fail()) {
             result.status = status;
         } else if (param.done) {
-            status = persist_->finish_snapshot_receive();
+            status = persist_->snapshot().finish_snapshot_receive(param);
             if (status.ok()) {
                 storage::PersistEngine::RecoverResult recovered;
-                storage::SnapshotPtr snap;
-                status = persist_->load_snapshot_meta(snap);
+                storage::SnapshotHeaderPtr snap;
+                status = persist_->snapshot().load_header(snap);
                 if (status.ok() && snap) {
-                    status = state_machine_->restore(snap, [this](const storage::KvVisitor& visitor) -> Status {
-                        return persist_->for_each_snapshot_kv(visitor);
-                    });
+                    std::unique_ptr<storage::SnapshotFileReader> reader;
+                    bool exists = false;
+                    status = persist_->snapshot().open_reader(reader, exists);
+                    if (status.ok() && exists && reader) {
+                        status = reader->load(nullptr);
+                    }
+                    if (status.ok() && exists && reader) {
+                        status = state_machine_->restore(
+                                snap, [&reader](const storage::KvVisitor& visitor) -> Status {
+                                    return reader->for_each_kv(visitor);
+                                });
+                    }
                 }
                 if (status.ok()) {
-                    storage::InstallSnapshotContext context;
-                    context.snapshot_index = param.snapshot_index;
-                    context.snapshot_term = param.snapshot_term;
+                    storage::SnapshotHeader header;
+                    header.apply_index = param.snapshot_index;
+                    header.apply_term = param.snapshot_term;
                     if (snap) {
-                        context.snapshot_members = snap->members;
+                        header.members = snap->members;
                     }
                     storage::RaftEffects install_effects;
-                    core_->commit_install_snapshot(context, install_effects);
+                    core_->install_snapshot(header, install_effects);
                     status = drive_effects(std::move(install_effects));
                 }
             }
             result.status = status;
         }
-    } else if (prepare_status.code() == StatusCode::ALREADY_EXIST ||
-               (prepare_status.fail() && param.snapshot_index <= core_->snapshot_index())) {
-        if (prepare_status.code() == StatusCode::ALREADY_EXIST) {
-            result.snapshot_watermark = param.snapshot_index;
-        } else {
-            result.snapshot_watermark = core_->snapshot_index();
-        }
+        result.snapshot_watermark =
+                std::max(param.snapshot_index, core_->snapshot_index());
     }
 
     apply_committed_unlocked();
@@ -646,7 +674,7 @@ void MaelstromRaftNode::on_raft_install_snapshot_ok(const std::string&, const Js
     if (status.fail()) {
         LOG_WARN("handle_install_snapshot_response effects failed: {}", status.to_string());
     }
-    note_read_index_peer_ack_unlocked(in_reply_to, result.term);
+    note_read_index_peer_ack_unlocked(in_reply_to, pending.target, result.term);
     apply_committed_unlocked();
     complete_pending_clients_unlocked();
     if (!core_->is_leader()) {
@@ -661,13 +689,13 @@ Status MaelstromRaftNode::drive_effects(storage::RaftEffects effects, std::vecto
         return Status::INVALID_ARGUMENT("cannot append and rewrite raft log in one effects batch");
     }
     if (effects.hard_state.has_value()) {
-        RETURN_IF_INVALID_STATUS(persist_->save_raft_meta(*effects.hard_state))
+        RETURN_IF_INVALID_STATUS(persist_->raft_meta().save(*effects.hard_state))
     }
     if (effects.entries_to_rewrite.has_value()) {
-        RETURN_IF_INVALID_STATUS(persist_->rewrite_wal(*effects.entries_to_rewrite))
+        RETURN_IF_INVALID_STATUS(persist_->wal().rewrite(*effects.entries_to_rewrite))
     }
     if (!effects.entries_to_append.empty()) {
-        RETURN_IF_INVALID_STATUS(persist_->append_wal_batch(effects.entries_to_append))
+        RETURN_IF_INVALID_STATUS(persist_->wal().append_batch(effects.entries_to_append))
     }
     if (!effects.messages.empty()) {
         std::vector<int64_t> ids = send_raft_messages_unlocked(std::move(effects.messages));
@@ -680,8 +708,8 @@ Status MaelstromRaftNode::drive_effects(storage::RaftEffects effects, std::vecto
 
 void MaelstromRaftNode::apply_committed_unlocked() {
     if (!core_ || !state_machine_) return;
-    std::vector<storage::LogEntry> entries = core_->extract_committed_entries();
-    for (const storage::LogEntry& entry : entries) {
+    std::vector<LogEntry> entries = core_->extract_committed_entries();
+    for (const LogEntry& entry : entries) {
         if (is_config_change_op(entry.op_type)) {
             Status status = core_->apply_config_entry(entry);
             if (status.fail()) {
@@ -699,8 +727,8 @@ void MaelstromRaftNode::apply_committed_unlocked() {
 
 void MaelstromRaftNode::complete_pending_clients_unlocked() {
     if (!core_) return;
-    const storage::LogIndex applied = core_->last_applied();
-    std::vector<storage::LogIndex> done;
+    const LogIndex applied = core_->last_applied();
+    std::vector<LogIndex> done;
     for (const auto& [index, client] : pending_clients_) {
         if (index <= applied) {
             if (client.ok_type == "cas_ok") {
@@ -723,12 +751,13 @@ void MaelstromRaftNode::complete_pending_clients_unlocked() {
             done.push_back(index);
         }
     }
-    for (storage::LogIndex idx : done) {
+    for (LogIndex idx : done) {
         pending_clients_.erase(idx);
     }
 }
 
-void MaelstromRaftNode::note_read_index_peer_ack_unlocked(int64_t rpc_msg_id, Term response_term) {
+void MaelstromRaftNode::note_read_index_peer_ack_unlocked(int64_t rpc_msg_id, const ReplicaID& from,
+                                                          Term response_term) {
     auto map_it = rpc_msg_to_read_id_.find(rpc_msg_id);
     if (map_it == rpc_msg_to_read_id_.end()) {
         return;
@@ -742,7 +771,8 @@ void MaelstromRaftNode::note_read_index_peer_ack_unlocked(int64_t rpc_msg_id, Te
     }
     PendingRead& read = read_it->second;
     read.outstanding_rpc_ids.erase(rpc_msg_id);
-    if (response_term == read.read_term) {
+    if (response_term == read.read_term && read.read_quorum_voters.count(from) > 0 &&
+        read.acked_voters.insert(from).second) {
         read.acks++;
     }
 }
@@ -943,7 +973,7 @@ PeerMember MaelstromRaftNode::peer_of(const std::string& node_id) const {
     return member;
 }
 
-Json MaelstromRaftNode::encode_log_entry(const storage::LogEntry& entry) const {
+Json MaelstromRaftNode::encode_log_entry(const LogEntry& entry) const {
     Json json = Json::object();
     json["term"] = entry.term;
     json["index"] = entry.index;
@@ -955,11 +985,15 @@ Json MaelstromRaftNode::encode_log_entry(const storage::LogEntry& entry) const {
     return json;
 }
 
-storage::LogEntry MaelstromRaftNode::decode_log_entry(const Json& json) const {
-    storage::LogEntry entry;
+LogEntry MaelstromRaftNode::decode_log_entry(const Json& json) const {
+    LogEntry entry;
     entry.term = json.at("term").get<int64_t>();
     entry.index = json.at("index").get<int64_t>();
-    entry.op_type = static_cast<storage::WriteOpType>(json.at("op_type").get<int64_t>());
+    const int64_t raw_op_type = json.at("op_type").get<int64_t>();
+    if (!is_valid_enum_value<WriteOpType>(static_cast<int32_t>(raw_op_type))) {
+        throw std::runtime_error(fmt::format("invalid persisted op_type: {}", raw_op_type));
+    }
+    entry.op_type = static_cast<WriteOpType>(raw_op_type);
     entry.key = json.at("key").get<std::string>();
     entry.value = json.at("value").get<std::string>();
     if (json.contains("expected")) {
@@ -978,7 +1012,7 @@ Json MaelstromRaftNode::encode_append_param(const storage::AppendEntriesParam& p
     json["prev_log_term"] = param.prev_log_term;
     json["leader_commit"] = param.leader_commit;
     Json entries = Json::array();
-    for (const storage::LogEntry& entry : param.entries) {
+    for (const LogEntry& entry : param.entries) {
         entries.push_back(encode_log_entry(entry));
     }
     json["entries"] = Json(std::move(entries));

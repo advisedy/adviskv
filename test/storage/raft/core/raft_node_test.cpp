@@ -1,4 +1,4 @@
-#include "storage/raft/core/raft_core.h"
+#include "test/storage/raft/core/raft_core_test_access.h"
 
 #include <gtest/gtest.h>
 
@@ -50,14 +50,14 @@ class RaftCoreTest : public ::testing::Test {
         return param;
     }
 
-    static InstallSnapshotContext make_install_snapshot_context(
+    static SnapshotHeader make_install_snapshot_header(
         LogIndex snapshot_index, Term snapshot_term,
-        std::vector<RaftMember> snapshot_members = {}) {
-        InstallSnapshotContext context;
-        context.snapshot_index = snapshot_index;
-        context.snapshot_term = snapshot_term;
-        context.snapshot_members = std::move(snapshot_members);
-        return context;
+        std::vector<RaftMember> members = {}) {
+        SnapshotHeader header;
+        header.apply_index = snapshot_index;
+        header.apply_term = snapshot_term;
+        header.members = std::move(members);
+        return header;
     }
 
     static Status drive_raft_effects(PersistEngine& persist,
@@ -69,15 +69,15 @@ class RaftCoreTest : public ::testing::Test {
         }
         if (effects.hard_state.has_value()) {
             RETURN_IF_INVALID_STATUS(
-                persist.save_raft_meta(*effects.hard_state))
+                persist.raft_meta().save(*effects.hard_state))
         }
         if (effects.entries_to_rewrite.has_value()) {
             RETURN_IF_INVALID_STATUS(
-                persist.rewrite_wal(*effects.entries_to_rewrite))
+                persist.wal().rewrite(*effects.entries_to_rewrite))
         }
         if (!effects.entries_to_append.empty()) {
             RETURN_IF_INVALID_STATUS(
-                persist.append_wal_batch(effects.entries_to_append))
+                persist.wal().append_batch(effects.entries_to_append))
         }
         return Status::OK();
     }
@@ -131,7 +131,7 @@ TEST_F(RaftCoreTest, test_2) {
     status = drive_raft_effects(persist, effects);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
     std::vector<LogEntry> entries;
-    status = persist.read_wal_batch(entries);
+    status = persist.wal().read_batch(entries);
     ASSERT_EQ(status, Status::OK());
     ASSERT_EQ((int)entries.size(), 2);
     {
@@ -140,7 +140,7 @@ TEST_F(RaftCoreTest, test_2) {
     }
     {
         RaftMeta meta;
-        persist.load_raft_meta(meta);
+        persist.raft_meta().load(meta);
         RaftMeta real_meta{1, replica_id_};
         ASSERT_EQ(meta, real_meta);
     }
@@ -213,14 +213,15 @@ TEST_F(RaftCoreTest, RecoveringFinishesWhenSnapshotCoversTarget) {
     ASSERT_TRUE(core.is_recovering());
 
     RaftEffects prepare_effects;
+    LogIndex watermark = 0;
     status = core.prepare_install_snapshot(
-        make_install_snapshot_param(2, 5, 2), prepare_effects);
+        make_install_snapshot_param(2, 5, 2), prepare_effects, watermark);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
     status = drive_raft_effects(persist, prepare_effects);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
 
     RaftEffects effects;
-    core.commit_install_snapshot(InstallSnapshotContext{5, 2, {}}, effects);
+    core.install_snapshot(SnapshotHeader{5, 2, {}}, effects);
     status = drive_raft_effects(persist, effects);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
     ASSERT_EQ(core.snapshot_index(), 5);
@@ -241,7 +242,7 @@ TEST_F(RaftCoreTest,
         make_entry(1, 2, WriteOpType::PUT, "k2", "old2"),
         make_entry(1, 3, WriteOpType::PUT, "k3", "old3"),
     };
-    status = persist.append_wal_batch(initial_entries);
+    status = persist.wal().append_batch(initial_entries);
     ASSERT_EQ(status, Status::OK());
 
     ReplicaID leader_id{101, 7, 1};
@@ -268,7 +269,7 @@ TEST_F(RaftCoreTest,
     ASSERT_TRUE(result.success);
 
     std::vector<LogEntry> actual_entries;
-    status = persist.read_wal_batch(actual_entries);
+    status = persist.wal().read_batch(actual_entries);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
 
     std::vector<LogEntry> expected_entries{
@@ -379,7 +380,8 @@ TEST_F(RaftCoreTest, InstallSnapshotFromNonMemberDoesNotBumpTerm) {
     InstallSnapshotParam param = make_install_snapshot_param(10, 8, 10);
     param.from_replica_id = alien_id;
     RaftEffects effects;
-    Status status = core.prepare_install_snapshot(param, effects);
+    LogIndex watermark = 0;
+    Status status = core.prepare_install_snapshot(param, effects, watermark);
 
     EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT) << status.to_string();
     EXPECT_EQ(core.current_term(), 3);
@@ -421,7 +423,8 @@ TEST_F(RaftCoreTest, JoiningReplicaAcceptsSnapshotFromKnownLeader) {
     InstallSnapshotParam param = make_install_snapshot_param(3, 8, 3);
     param.from_replica_id = leader_id;
     RaftEffects effects;
-    Status status = core.prepare_install_snapshot(param, effects);
+    LogIndex watermark = 0;
+    Status status = core.prepare_install_snapshot(param, effects, watermark);
 
     EXPECT_EQ(status, Status::OK()) << status.to_string();
     EXPECT_EQ(core.current_term(), 3);
@@ -463,7 +466,8 @@ TEST_F(RaftCoreTest, InstallLocalSnapshotDoesNotSaveRaftMeta) {
     ASSERT_GT(fs::remove_all(persist_dir(), ec), 0U);
     ASSERT_FALSE(ec) << ec.message();
 
-    core.install_local_snapshot(InstallSnapshotContext{10, 5, {}});
+    RaftEffects unused_effects;
+    core.install_snapshot(SnapshotHeader{10, 5, {}}, unused_effects);
 
     ASSERT_EQ(core.snapshot_index(), 10);
     ASSERT_EQ(core.commit_index(), 10);
@@ -478,14 +482,15 @@ TEST_F(RaftCoreTest, InstallLeaderSnapshotStepsDownAndPersistsHigherTerm) {
     core.update_raft_meta(RaftMeta{3, replica_id_});
 
     RaftEffects prepare_effects;
+    LogIndex watermark = 0;
     status = core.prepare_install_snapshot(
-        make_install_snapshot_param(4, 10, 5), prepare_effects);
+        make_install_snapshot_param(4, 10, 5), prepare_effects, watermark);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
     status = drive_raft_effects(persist, prepare_effects);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
 
     RaftEffects effects;
-    core.commit_install_snapshot(InstallSnapshotContext{10, 5, {}}, effects);
+    core.install_snapshot(SnapshotHeader{10, 5, {}}, effects);
     status = drive_raft_effects(persist, effects);
     ASSERT_EQ(status, Status::OK()) << status.to_string();
     ASSERT_EQ(core.role(), ReplicaRole::FOLLOWER);
@@ -496,7 +501,7 @@ TEST_F(RaftCoreTest, InstallLeaderSnapshotStepsDownAndPersistsHigherTerm) {
     ASSERT_TRUE(effects.entries_to_rewrite->empty());
 
     RaftMeta meta;
-    status = persist.load_raft_meta(meta);
+    status = persist.raft_meta().load(meta);
     ASSERT_EQ(status, Status::OK());
     ASSERT_EQ(meta, (RaftMeta{4, std::nullopt}));
 }
@@ -517,9 +522,10 @@ TEST_F(RaftCoreTest, PrepareInstallSnapshotRejectsCoveredLogBoundary) {
     RaftEffects effects;
     InstallSnapshotParam param = make_install_snapshot_param(3, 2, 1);
     param.from_replica_id = leader_id;
-    Status status = core.prepare_install_snapshot(param, effects);
+    LogIndex watermark = 0;
+    Status status = core.prepare_install_snapshot(param, effects, watermark);
 
-    ASSERT_EQ(status.code(), StatusCode::ALREADY_EXIST) << status.to_string();
+    ASSERT_EQ(status, Status::OK()) << status.to_string();
     ASSERT_EQ(core.current_term(), 3);
     ASSERT_EQ(core.snapshot_index(), 0);
     ASSERT_EQ(core.last_log_index(), 3);
@@ -553,9 +559,10 @@ TEST_F(RaftCoreTest, PrepareInstallSnapshotRejectsCommittedSnapshot) {
     RaftEffects effects;
     InstallSnapshotParam param = make_install_snapshot_param(2, 2, 2);
     param.from_replica_id = leader_id;
-    Status status = core.prepare_install_snapshot(param, effects);
+    LogIndex watermark = 0;
+    Status status = core.prepare_install_snapshot(param, effects, watermark);
 
-    ASSERT_EQ(status.code(), StatusCode::ALREADY_EXIST) << status.to_string();
+    ASSERT_EQ(status, Status::OK()) << status.to_string();
     ASSERT_EQ(core.snapshot_index(), 0);
     ASSERT_EQ(core.last_log_index(), 3);
 }
@@ -592,10 +599,10 @@ TEST_F(RaftCoreTest, PreVoteQuorumStartsRealElection) {
     core.update_raft_meta(RaftMeta{2, std::nullopt});
 
     RaftEffects start_effects;
-    core.become_pre_candidate_for_test(start_effects);
-    ASSERT_TRUE(core.is_pre_candidate_for_test());
+    RaftCoreTestPeer::become_pre_candidate(core, start_effects);
+    ASSERT_TRUE(RaftCoreTestPeer::is_pre_candidate(core));
     ASSERT_EQ(core.role(), ReplicaRole::PRE_CANDIDATE);
-    ASSERT_EQ(core.pre_vote_term_for_test(), 3);
+    ASSERT_EQ(RaftCoreTestPeer::pre_vote_term(core), 3);
     ASSERT_EQ(core.current_term(), 2);
 
     int pre_vote_msgs = 0;
@@ -610,7 +617,7 @@ TEST_F(RaftCoreTest, PreVoteQuorumStartsRealElection) {
     RaftEffects resp_effects;
     core.handle_pre_vote_response(peer0, PreVoteResult{2, true}, resp_effects);
 
-    EXPECT_FALSE(core.is_pre_candidate_for_test());
+    EXPECT_FALSE(RaftCoreTestPeer::is_pre_candidate(core));
     EXPECT_EQ(core.role(), ReplicaRole::CANDIDATE);
     EXPECT_EQ(core.current_term(), 3);
     EXPECT_TRUE(resp_effects.hard_state.has_value());
@@ -637,15 +644,15 @@ TEST_F(RaftCoreTest, FailedPreVoteDoesNotStartCandidate) {
     core.update_raft_meta(RaftMeta{2, std::nullopt});
 
     RaftEffects start_effects;
-    core.become_pre_candidate_for_test(start_effects);
-    ASSERT_TRUE(core.is_pre_candidate_for_test());
+    RaftCoreTestPeer::become_pre_candidate(core, start_effects);
+    ASSERT_TRUE(RaftCoreTestPeer::is_pre_candidate(core));
     ASSERT_EQ(core.role(), ReplicaRole::PRE_CANDIDATE);
 
     RaftEffects resp_effects;
     core.handle_pre_vote_response(peer0, PreVoteResult{2, false}, resp_effects);
     core.handle_pre_vote_response(peer1, PreVoteResult{2, false}, resp_effects);
 
-    EXPECT_TRUE(core.is_pre_candidate_for_test());
+    EXPECT_TRUE(RaftCoreTestPeer::is_pre_candidate(core));
     EXPECT_EQ(core.role(), ReplicaRole::PRE_CANDIDATE);
     EXPECT_EQ(core.current_term(), 2);
     EXPECT_FALSE(resp_effects.hard_state.has_value());
@@ -676,7 +683,7 @@ TEST_F(RaftCoreTest, RecentLeaderActiveRejectsUpToDatePreVoteUntilTimeout) {
     EXPECT_EQ(core.role(), ReplicaRole::FOLLOWER);
 
     RaftEffects timeout_effects;
-    core.reset_election_tick_for_test(0);
+    RaftCoreTestPeer::reset_election_tick(core, 0);
     core.tick(timeout_effects);
     ASSERT_EQ(core.role(), ReplicaRole::PRE_CANDIDATE);
 
@@ -696,7 +703,7 @@ TEST_F(RaftCoreTest, PreVoteResponseAtCurrentTermUpdatesCandidate) {
     core.update_raft_meta(RaftMeta{2, std::nullopt});
 
     RaftEffects start_effects;
-    core.become_pre_candidate_for_test(start_effects);
+    RaftCoreTestPeer::become_pre_candidate(core, start_effects);
     ASSERT_EQ(core.role(), ReplicaRole::PRE_CANDIDATE);
 
     RaftEffects response_effects;
@@ -732,13 +739,13 @@ TEST_F(RaftCoreTest, PreVoteGrantFromRemovedVoterDoesNotCount) {
     });
 
     RaftEffects start_effects;
-    core.become_pre_candidate_for_test(start_effects);
+    RaftCoreTestPeer::become_pre_candidate(core, start_effects);
     ASSERT_EQ(core.role(), ReplicaRole::PRE_CANDIDATE);
 
     // z 尚未 apply 自身移除，仍回了 grant——不得计票。
     RaftEffects z_effects;
     core.handle_pre_vote_response(peer_z, PreVoteResult{2, true}, z_effects);
-    EXPECT_TRUE(core.is_pre_candidate_for_test()) << "ex-voter 的票不得凑成多数派";
+    EXPECT_TRUE(RaftCoreTestPeer::is_pre_candidate(core)) << "ex-voter 的票不得凑成多数派";
     EXPECT_EQ(core.role(), ReplicaRole::PRE_CANDIDATE);
 
     // 当前 voter x 的 grant 才是真多数派（self+x = 2/3）。
@@ -768,7 +775,7 @@ TEST_F(RaftCoreTest, VoteGrantFromRemovedVoterDoesNotElect) {
     });
 
     RaftEffects start_effects;
-    core.become_candidate_for_test(start_effects);
+    RaftCoreTestPeer::become_candidate(core, start_effects);
     ASSERT_EQ(core.role(), ReplicaRole::CANDIDATE);
     // become_candidate 递增 term（2→3），响应必须匹配新 term 才进入计票。
     const Term vote_term = core.current_term();

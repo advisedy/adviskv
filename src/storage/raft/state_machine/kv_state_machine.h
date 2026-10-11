@@ -5,7 +5,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "storage/engine/kv_engine.h"
 #include "storage/model/model.h"
 #include "storage/raft/state_machine/state_machine.h"
@@ -16,7 +16,7 @@ public:
     explicit KvStateMachine(EngineType engine_type);
 
     Status apply(const LogEntry& entry) override;
-    Status restore(const SnapshotPtr& snap, const KvForEach& for_each_kv,
+    Status restore(const SnapshotHeaderPtr& snap, const KvForEach& for_each_kv,
                    const RequestForEach& for_each_request = {}) override;
     LogIndex apply_index() const override;
     LogIndex apply_term() const override;

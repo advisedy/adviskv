@@ -9,9 +9,9 @@
 namespace adviskv::meta {
 
 struct MetaSnapshot {
-    std::shared_ptr<const DurableData> durable;
-    std::shared_ptr<const RuntimeData> runtime;
-    std::shared_ptr<const MetaIndex> index;
+    std::shared_ptr<const DurableData> durable{std::make_shared<const DurableData>()};
+    std::shared_ptr<const RuntimeData> runtime{std::make_shared<const RuntimeData>()};
+    std::shared_ptr<const MetaIndex> index{std::make_shared<const MetaIndex>()};
 };
 
 template <typename T>

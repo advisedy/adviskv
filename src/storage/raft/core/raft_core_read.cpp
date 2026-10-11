@@ -2,28 +2,57 @@
 
 namespace adviskv::storage {
 
-// 判判断当前这个term，这个leader是否已经提交过entry了
-// 原因的话是因为如果他没有提交过的话，那这个commit
-// index就还没有这个及时的更新到，那么就有可能会导致客户端最终那边会读到旧的数据。
 bool RaftCore::has_committed_current_term_entry() const {
     return raft_apply_.has_committed_current_term_entry(election_.current_term());
 }
 
-// 其实由于我们get操作会专门发送一次，所以导致同样的append_entires
-// 可能会多次发送
-// ，但是无伤大雅，handle_append_entries里面会判断出来new_entries是空的
-Status RaftCore::build_append_entries_for_read(RaftEffects& effects, LogIndex& read_index, Term& read_term) {
-    RETURN_IF_INVALID_STATUS(ensure_ready())
-
-    if (!election_.is_leader()) return Status::NOT_LEADER("not leader");
-    if (!has_committed_current_term_entry()) {
-        return Status::READ_INDEX_NOT_READY("current term entry is not committed");
-    }
+Status RaftCore::build_read_quorum_check(RaftEffects& effects, LogIndex& read_index, Term& read_term,
+                                       std::vector<ReplicaID>& voter_ids, uint64 read_quorum_seq) {
+    RETURN_IF_INVALID_STATUS(ensure_readable_leader())
 
     read_term = election_.current_term();
     read_index = raft_apply_.commit_index();
 
-    replication_.broadcast_append_entries(election_.current_term(), effects);
+    voter_ids.clear();
+    for (const RaftMember& member : membership_.raft_members()) {
+        if (member.member_type == RaftMemberType::VOTER) {
+            voter_ids.push_back(member.peer.replica_id);
+        }
+    }
+
+    const LogIndex prev_log_index = raft_log_.last_log_index();
+    const Term prev_log_term = raft_log_.last_log_term();
+    for (const RaftMember& member : membership_.raft_members()) {
+        if (member.member_type != RaftMemberType::VOTER) continue;
+        if (member.peer.replica_id == self_id_) continue;
+
+        AppendEntriesParam param;
+        param.from_replica_id = self_id_;
+        param.to_replica_id = member.peer.replica_id;
+        param.term = read_term;
+        param.prev_log_index = prev_log_index;
+        param.prev_log_term = prev_log_term;
+        param.leader_commit = raft_apply_.commit_index();
+        param.read_quorum_seq = read_quorum_seq;
+
+        RaftMessage msg;
+        msg.type = RaftMessageType::APPEND_ENTRIES;
+        msg.target = member.peer;
+        msg.append_param = std::move(param);
+        effects.messages.push_back(std::move(msg));
+    }
+    return Status::OK();
+}
+
+Status RaftCore::confirm_read_index(LogIndex read_index, Term read_term) const {
+    RETURN_IF_INVALID_STATUS(ensure_readable_leader())
+
+    if (read_term != election_.current_term()) {
+        return Status::NOT_LEADER("leader term changed during read");
+    }
+    if (raft_apply_.commit_index() < read_index) {
+        return Status::READ_INDEX_NOT_READY("commit index moved behind read index");
+    }
     return Status::OK();
 }
 

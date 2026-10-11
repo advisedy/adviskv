@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "common/tick_trigger.h"
 #include "storage/model/param.h"
@@ -17,7 +17,7 @@
 
 namespace adviskv::storage {
 
-// 上锁的逻辑都交给了外部，需持有 raft_core_mutex_。
+// RaftCore 本身不加锁，调用方要保证所有访问串行进行。
 class RaftCore {
 public:
     RaftCore(const ReplicaID& self_id, const std::vector<PeerMember>& members);
@@ -56,25 +56,24 @@ public:
     std::vector<RaftMember> raft_members() const;
 
     bool is_recovering() const;
-    bool is_ready() const;
 
     // apply 相关的推进
-    std::vector<LogEntry> extract_committed_entries();
+    std::vector<LogEntry> extract_committed_entries(size_t budget_entries = static_cast<size_t>(-1),
+                                                    size_t budget_bytes = 0, bool* has_more = nullptr);
     const LogEntry* find_request(const std::string& request_id) const;
     void advance_last_applied(LogIndex applied);
     Status apply_config_entry(const LogEntry& entry);
 
     // 快照相关
     Status truncate_log(LogIndex index);
-    void install_local_snapshot(const InstallSnapshotContext& context);
-    void commit_install_snapshot(const InstallSnapshotContext& context, RaftEffects& effects);
+    void install_snapshot(const SnapshotHeader& header, RaftEffects& effects);
 
     void handle_install_snapshot_response(const ReplicaID& from, const InstallSnapshotParam& sent_param,
                                           const InstallSnapshotResult& result, RaftEffects& effects);
     void handle_install_snapshot_send_failed(const ReplicaID& from, const InstallSnapshotParam& sent_param,
                                              const Status& status);
 
-    Status prepare_install_snapshot(const InstallSnapshotParam& param, RaftEffects& effects);
+    Status prepare_install_snapshot(const InstallSnapshotParam& param, RaftEffects& effects, LogIndex& watermark_out);
 
     // recovery 的时候会用到的更新
     void update_raft_meta(const RaftMeta& meta);
@@ -86,44 +85,29 @@ public:
     Status ensure_add_learner(const PeerMember& member, RaftEffects& effects);
     Status ensure_remove_member(const ReplicaID& replica_id, RaftEffects& effects);
 
-    // 读一致性准备心跳
-    Status build_append_entries_for_read(RaftEffects& effects, LogIndex& read_index, Term& read_term);
+    // 读之前先向多数派确认 Leader 身份，不然被隔离的旧 Leader 可能返回旧数据。
+    Status build_read_quorum_check(RaftEffects& effects, LogIndex& read_index, Term& read_term,
+                                  std::vector<ReplicaID>& voter_ids, uint64 read_quorum_seq);
+    Status confirm_read_index(LogIndex read_index, Term read_term) const;
 
     ///////////////////////////////////////
     // 测试用的入口
-    const std::vector<LogEntry>& log_entries_for_test() const { return raft_log_.entries(); }
-
-    std::pair<LogIndex, Term> snapshot_for_test() const {
-        return {raft_log_.snapshot_index(), raft_log_.snapshot_term()};
-    }
-
-    void set_next_index_for_test(ReplicaID target, LogIndex index) {
-        replication_.set_next_index_for_test(target, index);
-    }
-
-    void become_candidate_for_test(RaftEffects& effects) { become_candidate(effects); }
-    void become_pre_candidate_for_test(RaftEffects& effects) { become_pre_candidate(effects); }
-    bool is_pre_candidate_for_test() const { return election_.is_pre_candidate(); }
-    Term pre_vote_term_for_test() const { return election_.pre_vote_term(); }
-    int32_t granted_vote_count_for_test() const { return election_.granted_vote_count(); }
-
-    void reset_heartbeat_tick_for_test(int32 val) { heartbeat_tick_trigger_.reset(val); }
-    void reset_election_tick_for_test(int32 val) { election_tick_trigger_.reset(val); }
-
     LogIndex next_index_for_test(const ReplicaID& target) const { return replication_.next_index(target); }
-
-    LogIndex snapshot_watermark_for_test(const ReplicaID& target) const {
-        return replication_.snapshot_watermark(target);
-    }
 
     LogIndex inflight_snapshot_index_for_test(const ReplicaID& target) const {
         return replication_.inflight_snapshot_index(target);
     }
     ///////////////////////////////////////
 private:
+    friend class RaftCoreTestPeer;
+
+
     Status ensure_ready() const;
+    Status ensure_writable_leader() const;
+    Status ensure_readable_leader() const;
     bool later_than_other(Term other_term, LogIndex other_index) const;
-    
+    Status ensure_vote_preconditions(const RequestVoteParam& param) const;
+
     // recent_leader_active
     bool is_recent_leader_active() const;
     void clear_recent_leader_active();
@@ -150,7 +134,7 @@ private:
     void try_update_commit_index(RaftEffects& effects);
     void broadcast_append_entries(RaftEffects& effects);
 
-    RaftLog::InstallSnapshotResult install_snapshot(const InstallSnapshotContext& context);
+    RaftLog::InstallSnapshotResult install_snapshot_into_log(const SnapshotHeader& header);
 
     void finish_recovering();
     bool has_committed_current_term_entry() const;

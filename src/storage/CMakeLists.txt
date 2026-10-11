@@ -2,21 +2,19 @@ set(STORAGE_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/node_agent/node_agent.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/completion_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_applier.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_loop.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_loop_queue.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/proposal_tracker.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/replica/read_tracker.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/raft_step.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_message_dispatcher.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_read_index_checker.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_snapshot_coordinator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/replica/snapshot_tracker.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/replica/snapshot_writer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_apply.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_log.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_membership.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_election.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_replication.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_peer_progress.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_sender.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/grpc_raft_rpc_transport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/raft_background_task.cpp
@@ -29,6 +27,9 @@ set(STORAGE_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/raft/state_machine/kv_state_machine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/map_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/persist/persist_engine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/persist/wal_store.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/persist/raft_meta_store.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/persist/snapshot_store.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/persist/replica_meta_persist_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/handler/storage_service_impl.cpp
 )

@@ -496,10 +496,10 @@ grpc::Status StorageServiceImpl::InstallSnapshot(grpc::ServerContext* context,
     response->set_term(replica->current_term());
     response->set_snapshot_watermark(0);
 
-    if (status.ok() || status.code() == StatusCode::ALREADY_EXIST) {
+    if (status.ok()) {
         response->set_snapshot_watermark(std::max(param.snapshot_index, replica->snapshot_index()));
     }
-    if (status.fail() && status.code() != StatusCode::ALREADY_EXIST) {
+    if (status.fail()) {
         LOG_WARN("replica handle install snapshot failed, status:{}", status.to_string());
     }
 

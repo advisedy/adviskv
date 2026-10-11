@@ -65,11 +65,6 @@ Status WalStore::rewrite(const std::vector<LogEntry>& entries) {
     return rewrite_wal_unlocked(entries);
 }
 
-Status WalStore::truncate(const LogIndex& snapshot_index) {
-    std::unique_lock lock{mutex_};
-    return truncate_wal_unlocked(snapshot_index);
-}
-
 Status WalStore::read_wal_batch_unlocked(std::vector<LogEntry>& entries) const {
     WalReadResult result;
     RETURN_IF_INVALID_STATUS(read_wal_from_disk(wal_path_, result))
@@ -78,18 +73,6 @@ Status WalStore::read_wal_batch_unlocked(std::vector<LogEntry>& entries) const {
         return Status::ERROR(result.error_msg);
     }
     return Status::OK();
-}
-
-Status WalStore::truncate_wal_unlocked(const LogIndex& snapshot_index) {
-    std::vector<LogEntry> entries, remain;
-    RETURN_IF_INVALID_STATUS(read_wal_batch_unlocked(entries))
-
-    for (LogEntry& entry : entries) {
-        if (entry.index <= snapshot_index) continue;
-        remain.push_back(std::move(entry));
-    }
-
-    return rewrite_wal_unlocked(remain);
 }
 
 Status WalStore::rewrite_wal_unlocked(const std::vector<LogEntry>& entries) {
@@ -160,9 +143,8 @@ Status WalStore::recover(LogIndex snapshot_index, RecoverResult& result) {
         return Status::OK();
     }
 
-    // 即使 WAL 本身完整，也可能在 snapshot 发布后、WAL 重写前崩溃。
-    // 这里用 snapshot index 重写 WAL，丢弃已经被 snapshot 覆盖的前缀。
-    RETURN_IF_INVALID_STATUS(truncate_wal_unlocked(snapshot_index))
+    // 即使 WAL 本身完整，也可能在 snapshot 发布后、WAL 重写前崩溃，这里把保留的日志重写回磁盘。
+    RETURN_IF_INVALID_STATUS(rewrite_wal_unlocked(result.entries))
     return Status::OK();
 }
 

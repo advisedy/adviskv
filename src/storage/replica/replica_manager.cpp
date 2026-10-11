@@ -10,7 +10,7 @@
 
 #include "common/define.h"
 #include "common/log.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "storage/model/param.h"
 #include "storage/replica/replica.h"
@@ -63,6 +63,9 @@ Status ReplicaManager::add_replica(const ReplicaInitParam& param) {
 
     auto replica = std::make_shared<Replica>();
     RETURN_IF_INVALID_STATUS(replica->init(filled_param))
+    if (!replica->needs_recover()) {
+        RETURN_IF_INVALID_STATUS(replica->start())
+    }
 
     ReplicaMetaPayload payload;
     payload.init_param = filled_param;
@@ -158,9 +161,18 @@ void ReplicaManager::recover() {
     }
 
     for (const auto& [_, replica] : replica_map_) {
+        if (!replica->needs_recover()) {
+            continue;
+        }
         Status status = replica->recover();
         if (status.fail()) {
             LOG_WARN("replica recover failed, table_id={}, shard_index={}", replica->shard_id_.table_id,
+                     replica->shard_id_.shard_index);
+            continue;
+        }
+        status = replica->start();
+        if (status.fail()) {
+            LOG_WARN("replica start failed, table_id={}, shard_index={}", replica->shard_id_.table_id,
                      replica->shard_id_.shard_index);
         }
     }

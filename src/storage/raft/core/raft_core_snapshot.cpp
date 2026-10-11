@@ -22,22 +22,18 @@ Status RaftCore::truncate_log(LogIndex new_snapshot_index) {
     return raft_log_.truncate(new_snapshot_index);
 }
 
-RaftLog::InstallSnapshotResult RaftCore::install_snapshot(const InstallSnapshotContext& context) {
-    RaftLog::InstallSnapshotResult result = raft_log_.install_snapshot(context.snapshot_index, context.snapshot_term);
-    raft_apply_.install_snapshot(context.snapshot_index);
-    if (!context.snapshot_members.empty()) {
-        membership_.update_raft_members(context.snapshot_members);
+RaftLog::InstallSnapshotResult RaftCore::install_snapshot_into_log(const SnapshotHeader& header) {
+    RaftLog::InstallSnapshotResult result = raft_log_.install_snapshot(header.apply_index, header.apply_term);
+    raft_apply_.install_snapshot(header.apply_index);
+    if (!header.members.empty()) {
+        membership_.update_raft_members(header.members);
     }
     finish_recovering();
     return result;
 }
 
-void RaftCore::install_local_snapshot(const InstallSnapshotContext& context) {
-    IGNORE_RESULT(install_snapshot(context));
-}
-
-void RaftCore::commit_install_snapshot(const InstallSnapshotContext& context, RaftEffects& effects) {
-    RaftLog::InstallSnapshotResult result = install_snapshot(context);
+void RaftCore::install_snapshot(const SnapshotHeader& header, RaftEffects& effects) {
+    RaftLog::InstallSnapshotResult result = install_snapshot_into_log(header);
     effects.entries_to_rewrite = std::move(result.retained_entries);
 }
 
@@ -63,10 +59,9 @@ void RaftCore::handle_install_snapshot_response(const ReplicaID& from, const Ins
 
     replication_.clear_snapshot_inflight(from, sent_param.snapshot_index);
 
-    if (LogIndex watermark = result.snapshot_watermark;
-        (result.status.ok()) ||
-        (result.status.code() == StatusCode::ALREADY_EXIST && watermark >= sent_param.snapshot_index)) {
-        replication_.update_snapshot_watermark(from, std::max(watermark, sent_param.snapshot_index));
+    if (result.status.ok()) {
+        LogIndex watermark = std::max(result.snapshot_watermark, sent_param.snapshot_index);
+        replication_.update_snapshot_watermark(from, watermark);
         return;
     }
 
@@ -103,7 +98,9 @@ void RaftCore::handle_install_snapshot_send_failed(const ReplicaID& from, const 
             self_id_.to_string(), from.to_string(), sent_param.snapshot_index, status.to_string());
 }
 
-Status RaftCore::prepare_install_snapshot(const InstallSnapshotParam& param, RaftEffects& effects) {
+Status RaftCore::prepare_install_snapshot(const InstallSnapshotParam& param, RaftEffects& effects,
+                                          LogIndex& watermark_out) {
+    watermark_out = 0;
     if (!membership_.contains(param.from_replica_id)) {
         LOG_WARN(
                 "[RaftCore Snapshot] replica:{} reject InstallSnapshot from "
@@ -112,7 +109,7 @@ Status RaftCore::prepare_install_snapshot(const InstallSnapshotParam& param, Raf
         return Status::INVALID_ARGUMENT("install snapshot from non-member");
     }
 
-    if (param.term < election_.current_term()) {  // 发送过来的leader的term低
+    if (param.term < election_.current_term()) {
         return Status::ERROR(fmt::format("[RaftCore Snapshot] leade term:{} is oldear than current term:{}", param.term,
                                          election_.current_term()));
     }
@@ -125,22 +122,26 @@ Status RaftCore::prepare_install_snapshot(const InstallSnapshotParam& param, Raf
     mark_recent_leader_active();
 
     if (param.snapshot_index <= raft_apply_.commit_index()) {
-        return Status::ALREADY_EXIST(
-                fmt::format("[RaftCore Snapshot] prepare_install_snapshot: leader "
-                            "snapshot_index:{} <= "
-                            "commit_index:{}, snapshot_index:{}, last_applied:{}",
-                            param.snapshot_index, raft_apply_.commit_index(), raft_log_.snapshot_index(),
-                            raft_apply_.last_applied()));
+        LOG_INFO(
+                "[RaftCore Snapshot] prepare_install_snapshot: leader "
+                "snapshot_index:{} <= "
+                "commit_index:{}, snapshot_index:{}, last_applied:{}",
+                param.snapshot_index, raft_apply_.commit_index(), raft_log_.snapshot_index(),
+                raft_apply_.last_applied());
+        watermark_out = raft_apply_.commit_index();
+        return Status::OK();
     }
 
     if (!recovering_ && param.snapshot_index <= raft_log_.last_log_index() &&
         raft_log_.term_at(param.snapshot_index) == param.snapshot_term) {
-        return Status::ALREADY_EXIST(
-                fmt::format("[RaftCore Snapshot] follower already has the log, "
-                            "leader snapshot can not "
-                            "bring something new, snapshot_index:{}, "
-                            "snapshot_term:{}",
-                            param.snapshot_index, param.snapshot_term));
+        LOG_INFO(
+                "[RaftCore Snapshot] follower already has the log, "
+                "leader snapshot can not "
+                "bring something new, snapshot_index:{}, "
+                "snapshot_term:{}",
+                param.snapshot_index, param.snapshot_term);
+        watermark_out = param.snapshot_index;
+        return Status::OK();
     }
 
     return Status::OK();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -45,6 +46,13 @@ struct RaftMeta {
     DEFINE_OPERATOR_NOT_EQUAL(RaftMeta)
 };
 
+struct SnapshotHeader {
+    LogIndex apply_index{0};
+    Term apply_term{0};
+    std::vector<RaftMember> members;
+};
+using SnapshotHeaderPtr = std::shared_ptr<SnapshotHeader>;
+
 struct RequestRecord {
     std::string request_id;
     WriteOpType op{WriteOpType::NONE};
@@ -79,8 +87,7 @@ struct RequestRecord {
 };
 
 struct SnapshotData {
-    LogIndex apply_index{0};
-    Term apply_term{0};
+    SnapshotHeader header;
     std::vector<KV> kvs;
     std::vector<RequestRecord> request_records;
 };
@@ -110,13 +117,12 @@ struct AppendEntriesParam {
     LogIndex prev_log_index;
     Term prev_log_term;
     LogIndex leader_commit;
-    // 读探测轮次标识。0 = 不是读探测；>0 = 这条 AppendEntries 是某次
-    // ReadIndex 的纯探测（heartbeat 形参、空 entries），取值 = 建立该读的
-    // read_seq。响应走 ReadProbeResponseEvent 计票路径，不进普通复制 handle
-    // （不推进 next/match index）。只在发送端内存里用，不上线路。计票时要求
-    // 响应所属轮次 == 该读的 read_seq，防止上一轮探测/旧心跳的迟到响应冒充
-    // 本轮多数派确认。
-    uint64 read_probe_seq{0};
+    // 读多数派确认的轮次标识。0 = 普通复制；>0 = 这条 AppendEntries 是某次
+    // ReadIndex 的多数派检查（心跳形式、空 entries），取值是该读的 read_seq。
+    // 响应走 ReadQuorumResponseEvent 计票路径，不推进复制的 next/match index。
+    // 只在发送端内存里用，不上线路。计票时要求轮次匹配，不然上一轮检查或
+    // 旧心跳的迟到响应可能被当成本轮多数派确认。
+    uint64 read_quorum_seq{0};
 };
 
 struct AppendEntriesResult {
@@ -134,21 +140,12 @@ struct InstallSnapshotParam {
     uint64 offset{0};
     std::string data;
     bool done{false};
-    // 接收会话的临时文件 nonce，接收端在 offset==0 首块时生成，只在接收端
-    // 内存里，不上线路。发送方保持为空。
-    std::string session_nonce;
 };
 
 struct InstallSnapshotResult {
     Term term{0};
     Status status{Status::OK()};
     LogIndex snapshot_watermark{0};
-};
-
-struct InstallSnapshotContext {
-    LogIndex snapshot_index{0};
-    Term snapshot_term{0};
-    std::vector<RaftMember> snapshot_members;
 };
 
 struct RaftMessage {
