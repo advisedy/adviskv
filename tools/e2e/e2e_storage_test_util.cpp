@@ -8,7 +8,7 @@
 #include <thread>
 
 #include "common/define.h"
-#include "common/proto/proto.h"
+#include "common/proto/codec.h"
 #include "e2e_assert.h"
 #include "e2e_route_util.h"
 #include "storage.grpc.pb.h"
@@ -50,14 +50,16 @@ bool get_replica_state_for_test(const Endpoint& endpoint, TableID table_id,
     }
 
     state->exists = response.exists();
-    if (!decode_pb_raft_role(response.role(), state->role)) {
+    if (!is_valid_enum_value<ReplicaRole>(response.role())) {
         *error = "replica role is not valid";
         return false;
     }
-    if (!decode_pb_storage_replica_status(response.status(), state->status)) {
+    state->role = static_cast<ReplicaRole>(response.role());
+    if (!is_valid_enum_value<StorageReplicaStatus>(response.status())) {
         *error = "replica storage status is not valid";
         return false;
     }
+    state->status = static_cast<StorageReplicaStatus>(response.status());
     state->current_term = response.current_term();
     state->commit_index = response.commit_index();
     state->last_applied = response.last_applied();

@@ -13,7 +13,8 @@
 #include <fmt/format.h>
 
 #include "common/confmgr.h"
-#include "common/model/type.h"
+
+#include "common/model/model.h"
 #include "common/path_util.h"
 #include "common/stable_hash.h"
 #include "meta_client.h"
@@ -113,14 +114,11 @@ bool parse_engine_type(const std::string& value, EngineType* out) {
 
     int32_t parsed = 0;
     if (parse_i32(value, &parsed)) {
-        EngineType engine_type = static_cast<EngineType>(parsed);
-        switch (engine_type) {
-            case EngineType::MAP:
-                *out = engine_type;
-                return true;
-            default:
-                return false;
+        if (!adviskv::is_valid_enum_value<EngineType>(parsed)) {
+            return false;
         }
+        *out = static_cast<EngineType>(parsed);
+        return true;
     }
     return false;
 }
@@ -143,8 +141,6 @@ std::string table_phase_to_string(adviskv::meta::TablePhase phase) {
             return "DELETING";
         case adviskv::meta::TablePhase::DELETED:
             return "DELETED";
-        case adviskv::meta::TablePhase::FAILED:
-            return "FAILED";
         case adviskv::meta::TablePhase::RESIZING:
             return "RESIZING";
     }
@@ -385,10 +381,6 @@ private:
             if (!fetch_table(tokens[1], tokens[2], &table_info)) return;
             if (table_info.phase == adviskv::meta::TablePhase::READY) {
                 fmt::print("OK phase=READY\n");
-                return;
-            }
-            if (table_info.phase == adviskv::meta::TablePhase::FAILED) {
-                print_table(table_info);
                 return;
             }
             std::this_thread::sleep_for(adviskv::Milliseconds(500));

@@ -5,6 +5,7 @@
 #include <fmt/core.h>
 
 #include "e2e_assert.h"
+#include "meta/model/model.h"
 
 namespace adviskv::e2e {
 
@@ -102,7 +103,7 @@ bool wait_table_normal(E2EContext* context) {
                     return CheckResult::fail(fmt::format("GetTable code={}, msg={}", response.base_rsp().code(),
                                                          response.base_rsp().msg()));
                 }
-                if (response.phase() != pb::TablePhase::TABLE_PHASE_READY) {
+                if (response.phase() != static_cast<int32_t>(meta::TablePhase::READY)) {
                     return CheckResult::fail(fmt::format("phase={}, last_error={}",
                                                          static_cast<int32_t>(response.phase()),
                                                          response.last_error_msg()));
@@ -136,7 +137,7 @@ bool wait_table_replica_count(E2EContext* context, int32_t replica_count) {
                     return CheckResult::fail(fmt::format("GetTable code={}, msg={}", response.base_rsp().code(),
                                                          response.base_rsp().msg()));
                 }
-                if (response.phase() != pb::TablePhase::TABLE_PHASE_READY) {
+                if (response.phase() != static_cast<int32_t>(meta::TablePhase::READY)) {
                     return CheckResult::fail(fmt::format("phase={}, replica_count={}, last_error={}",
                                                          static_cast<int32_t>(response.phase()),
                                                          response.replica_count(), response.last_error_msg()));
@@ -172,7 +173,7 @@ bool wait_table_deleted(E2EContext* context) {
                 if (response.base_rsp().code() == to_rpc_code(StatusCode::TABLE_NOT_FOUND)) {
                     return CheckResult::pass(response.base_rsp().msg());
                 }
-                if (response.phase() == pb::TablePhase::TABLE_PHASE_DELETED) {
+                if (response.phase() == static_cast<int32_t>(meta::TablePhase::DELETED)) {
                     return CheckResult::pass("table phase is DELETED");
                 }
                 return CheckResult::fail(fmt::format("GetTable code={}, phase={}, msg={}", response.base_rsp().code(),

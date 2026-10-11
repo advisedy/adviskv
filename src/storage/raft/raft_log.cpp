@@ -8,7 +8,7 @@
 
 #include "common/log.h"
 #include "common/metrics/metrics.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "storage/model/param.h"
 
 namespace adviskv::storage {

@@ -5,7 +5,7 @@
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "storage/model/param.h"
 #include "storage/raft/core/raft_core.h"
@@ -50,21 +50,14 @@ Status RaftCore::validate_proposal(const ProposeParam& param) const {
         if (!is_config_change_op(config->op)) {
             return Status::INVALID_ARGUMENT("invalid config change op");
         }
-        if (!membership_.is_voter(self_id_)) {
-            return Status::NOT_VOTER("self is not voter");
-        }
         return Status::OK();
     }
     return Status::INVALID_ARGUMENT("unknown proposal type");
 }
 
 std::pair<Status, LogIndex> RaftCore::propose(const ProposeParam& param, RaftEffects& effects) {
-    Status ready_status = ensure_ready();
-    if (ready_status.fail()) return {ready_status, -1};
-
-    if (!election_.is_leader()) {
-        return {Status::NOT_LEADER(), -1};
-    }
+    Status leader_status = ensure_writable_leader();
+    if (leader_status.fail()) return {leader_status, -1};
 
     Status validate_status = validate_proposal(param);
     if (validate_status.fail()) return {validate_status, -1};
@@ -88,25 +81,9 @@ std::vector<std::pair<Status, LogIndex>> RaftCore::propose_batch(const std::vect
 
     results.reserve(params.size());
 
-    if (Status status = ensure_ready(); status.fail()) {
+    if (Status leader_status = ensure_writable_leader(); leader_status.fail()) {
         for (size_t i = 0; i < params.size(); i++) {
-            results.emplace_back(status, -1);
-        }
-        return results;
-    }
-
-    if (!election_.is_leader()) {
-        Status status{StatusCode::NOT_LEADER, "not leader"};
-        for (size_t i = 0; i < params.size(); i++) {
-            results.emplace_back(status, -1);
-        }
-        return results;
-    }
-
-    if (!membership_.is_voter(self_id_)) {
-        Status status = Status::NOT_VOTER("self is not voter");
-        for (size_t i = 0; i < params.size(); i++) {
-            results.emplace_back(status, -1);
+            results.emplace_back(leader_status, -1);
         }
         return results;
     }
@@ -191,15 +168,12 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param, AppendEntr
 
     if (param.prev_log_index > 0) {
         if (param.prev_log_index < raft_log_.snapshot_index()) {
-            // 在这个情况下，目前的处理是:
-            // leader那边会一直prev_log_index--，然后直到达不到leader的
-            // snapshot_index，然后发送快照让follower安装leader的快照。
+            ADVISKV_METRICS_COUNTER("storage_raft_handle_append_entries_prev_behind_snapshot");
             LOG_INFO(
                     "[RaftCore Append] handle_append_entries, replica_id:{} "
-                    "follower "
-                    "receive append entries: "
-                    "param.prev_log_index:{} < snapshot_index_:{}",
+                    "reject append entries: param.prev_log_index:{} < snapshot_index_:{}",
                     self_id_.to_string(), param.prev_log_index, raft_log_.snapshot_index());
+            return;
         } else if (raft_log_.term_at(param.prev_log_index) != param.prev_log_term) {
             ADVISKV_METRICS_COUNTER("storage_raft_handle_append_entries_prev_mismatch");
             return;
@@ -217,7 +191,6 @@ void RaftCore::handle_append_entries(const AppendEntriesParam& param, AppendEntr
     // }
 
     if (param.entries.empty()) {
-        // 这里是心跳
         LOG_DEBUG(
                 "[RaftCore Append] handle_append_entries: this is heartbeat, from "
                 "replica_id:{}, term:{}, prev_log_index:{}, prev_log_term:{}, "
@@ -285,6 +258,14 @@ Status RaftCore::handle_append_response(const ReplicaID& from, const AppendEntri
     }
 
     if (result.success) {
+        if (replication_.is_stale_append_response(from, sent_param)) {
+            LOG_DEBUG(
+                    "[RaftCore Append] leader replica:{} ignore stale success response, from:{}, "
+                    "sent prev:{} + 1 != next:{}",
+                    self_id_.to_string(), from.to_string(), sent_param.prev_log_index,
+                    replication_.next_index(from));
+            return Status::OK();
+        }
         ADVISKV_METRICS_COUNTER("storage_raft_handle_append_response_success");
         LOG_DEBUG(
                 "[RaftCore Append] leader replica:{} append enrties to replica:{} "
@@ -370,13 +351,7 @@ const LogEntry* RaftCore::first_unapplied_config_entry() const {
 bool RaftCore::has_unapplied_config_entry() const { return first_unapplied_config_entry() != nullptr; }
 
 Status RaftCore::ensure_add_learner(const PeerMember& member, RaftEffects& effects) {
-    RETURN_IF_INVALID_STATUS(ensure_ready())
-    if (!election_.is_leader()) {
-        return Status::NOT_LEADER("not leader");
-    }
-    if (!membership_.is_voter(self_id_)) {
-        return Status::NOT_VOTER("self is not voter");
-    }
+    RETURN_IF_INVALID_STATUS(ensure_writable_leader())
     if (membership_.contains(member.replica_id)) {
         return Status::OK();
     }
@@ -392,13 +367,7 @@ Status RaftCore::ensure_add_learner(const PeerMember& member, RaftEffects& effec
 }
 
 Status RaftCore::ensure_remove_member(const ReplicaID& replica_id, RaftEffects& effects) {
-    RETURN_IF_INVALID_STATUS(ensure_ready())
-    if (!election_.is_leader()) {
-        return Status::NOT_LEADER("not leader");
-    }
-    if (!membership_.is_voter(self_id_)) {
-        return Status::NOT_VOTER("self is not voter");
-    }
+    RETURN_IF_INVALID_STATUS(ensure_writable_leader())
     if (!membership_.contains(replica_id)) {
         return Status::OK();
     }
@@ -415,9 +384,7 @@ Status RaftCore::ensure_remove_member(const ReplicaID& replica_id, RaftEffects& 
 // 当接收到了follower的消息时触发
 // 如果一个learner追上了最新的last_log_index的话，就可以升级成voter
 void RaftCore::maybe_promote_ready_learner(RaftEffects& effects) {
-    if (ensure_ready().fail()) return;
-    if (!election_.is_leader()) return;
-    if (!membership_.is_voter(self_id_)) return;
+    if (ensure_writable_leader().fail()) return;
     if (has_unapplied_config_entry()) return;
 
     LogIndex target_index = raft_log_.last_log_index();

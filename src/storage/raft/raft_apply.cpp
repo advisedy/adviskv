@@ -4,6 +4,7 @@
 #include <cassert>
 
 #include "common/log.h"
+#include "common/metrics/metrics.h"
 #include "storage/raft/raft_log.h"
 
 namespace adviskv::storage {
@@ -33,12 +34,16 @@ void RaftApply::install_snapshot(LogIndex snapshot_index) {
     }
 }
 
-// 提取出来已经commit，但是还没有apply的entry
-std::vector<LogEntry> RaftApply::extract_committed_entries() const {
+std::vector<LogEntry> RaftApply::extract_committed_entries(size_t budget_entries, size_t budget_bytes,
+                                                           bool& has_more) const {
     std::vector<LogEntry> entries;
+    has_more = false;
 
     assert(last_applied_ >= raft_log_.snapshot_index());
 
+    size_t kv_count = 0;
+    size_t kv_bytes = 0;
+    bool budget_exhausted = false;
     for (LogIndex i = last_applied_ + 1; i <= commit_index_; ++i) {
         const LogEntry* entry = raft_log_.entry_at(i);
         if (entry == nullptr) {
@@ -48,10 +53,33 @@ std::vector<LogEntry> RaftApply::extract_committed_entries() const {
                     i, raft_log_.index_to_offset(i), raft_log_.snapshot_index(), commit_index_);
             continue;
         }
-        LOG_DEBUG(
-                "entry, index:{}, offset:{} entry:[{}], snapshot_index:{}, "
-                "commit_index:{}",
-                i, raft_log_.index_to_offset(i), entry->to_string(), raft_log_.snapshot_index(), commit_index_);
+
+        if (is_config_change_op(entry->op_type)) {
+            entries.push_back(*entry);
+            continue;
+        }
+
+        if (budget_exhausted) {
+            has_more = true;
+            break;
+        }
+
+        if (kv_count >= budget_entries) {
+            budget_exhausted = true;
+            has_more = true;
+            continue;
+        }
+        const size_t entry_bytes = entry->key.size() + entry->value.size();
+        if (kv_count > 0 && budget_bytes > 0 && kv_bytes + entry_bytes > budget_bytes) {
+            budget_exhausted = true;
+            has_more = true;
+            break;
+        }
+        if (budget_bytes > 0 && kv_count == 0 && entry_bytes > budget_bytes) {
+            ADVISKV_METRICS_COUNTER("storage_raft_extract_oversized_entry");
+        }
+        ++kv_count;
+        kv_bytes += entry_bytes;
         entries.push_back(*entry);
     }
     return entries;

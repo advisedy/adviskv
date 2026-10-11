@@ -18,7 +18,7 @@
 #include "common/metrics/latency_recorder.h"
 #include "common/metrics/metrics.h"
 #include "common/status.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "e2e_context.h"
 #include "e2e_options.h"
 #include "e2e_table_util.h"

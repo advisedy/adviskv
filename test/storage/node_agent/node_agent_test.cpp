@@ -12,7 +12,7 @@
 #include <grpcpp/server_builder.h>
 #include <gtest/gtest.h>
 
-#include "common/proto/proto.h"
+#include "common/proto/codec.h"
 #include "meta.grpc.pb.h"
 #include "storage/model/param.h"
 #include "storage/replica/replica_manager.h"
@@ -49,7 +49,7 @@ public:
             std::lock_guard lock(mutex_);
             ++heartbeat_count_;
             last_heartbeat_ = *request;
-            for (const meta_rpc::ExpectedReplica& expected : next_expects_) {
+            for (const pb::ExpectedReplica& expected : next_expects_) {
                 *response->add_expects() = expected;
             }
             next_expects_.clear();
@@ -61,7 +61,7 @@ public:
         return grpc::Status::OK;
     }
 
-    void set_next_expects(std::vector<meta_rpc::ExpectedReplica> expects) {
+    void set_next_expects(std::vector<pb::ExpectedReplica> expects) {
         std::lock_guard lock(mutex_);
         next_expects_ = std::move(expects);
     }
@@ -134,7 +134,7 @@ private:
     std::string last_register_resource_pool_;
     std::string last_register_dc_;
     meta_rpc::HeartbeatRequest last_heartbeat_;
-    std::vector<meta_rpc::ExpectedReplica> next_expects_;
+    std::vector<pb::ExpectedReplica> next_expects_;
     Status next_register_status_{Status::OK()};
     Status next_heartbeat_status_{Status::OK()};
 };
@@ -275,16 +275,14 @@ protected:
         };
     }
 
-    meta_rpc::ExpectedReplica make_expected_replica(meta_rpc::ExpectedReplicaType type, const ReplicaID& replica_id,
+    pb::ExpectedReplica make_expected_replica(ExpectedReplicaType type, const ReplicaID& replica_id,
                                                     int32_t port = 50050) const {
         Endpoint endpoint{"127.0.0.1", port};
-        meta_rpc::ExpectedReplica expected;
-        expected.set_type(type);
-        encode_pb_replica_id(replica_id, *expected.mutable_replica_id());
-        pb::EngineType engine_type_pb;
-        EXPECT_TRUE(encode_pb_engine_type(EngineType::MAP, engine_type_pb));
-        expected.set_engine_type(engine_type_pb);
-        encode_pb_peer_member(PeerMember{"node-1", replica_id, endpoint}, *expected.add_initial_members());
+        pb::ExpectedReplica expected;
+        expected.set_type(static_cast<int32_t>(type));
+        codec::encode(replica_id, *expected.mutable_replica_id());
+        expected.set_engine_type(static_cast<int32_t>(EngineType::MAP));
+        codec::encode(PeerMember{"node-1", replica_id, endpoint}, *expected.add_initial_members());
         return expected;
     }
 
@@ -329,9 +327,9 @@ TEST_F(NodeAgentTest, StartRegistersNodeAndSendsPeriodicHeartbeat) {
     EXPECT_EQ(heartbeat.replica_info_list(0).replica_id().table_id(), 101);
     EXPECT_EQ(heartbeat.replica_info_list(0).replica_id().shard_index(), 7);
     EXPECT_EQ(heartbeat.replica_info_list(0).replica_id().replica_seq(), 0);
-    EXPECT_EQ(heartbeat.replica_info_list(0).role(), pb::RaftRole::RAFT_ROLE_FOLLOWER);
-    EXPECT_EQ(heartbeat.replica_info_list(0).status(), pb::StorageReplicaStatus::STORAGE_REPLICA_STATUS_READY);
-    EXPECT_EQ(heartbeat.replica_info_list(0).member_type(), pb::RaftMemberType::RAFT_MEMBER_TYPE_VOTER);
+    EXPECT_EQ(heartbeat.replica_info_list(0).role(), to<int32_t>(ReplicaRole::FOLLOWER));
+    EXPECT_EQ(heartbeat.replica_info_list(0).status(), to<int32_t>(StorageReplicaStatus::READY));
+    EXPECT_EQ(heartbeat.replica_info_list(0).member_type(), to<int32_t>(RaftMemberType::VOTER));
 }
 
 // 检测 heartbeat 响应里的 PRESENT/ABSENT 指令会触发本地 replica 创建和删除。
@@ -339,8 +337,8 @@ TEST_F(NodeAgentTest, HeartbeatAppliesExpectedReplicaCreateAndDelete) {
     ReplicaID create_id{101, 7, 0};
     ReplicaID delete_id{101, 8, 0};
     fake_meta_.service().set_next_expects({
-            make_expected_replica(meta_rpc::PRESENT, create_id),
-            make_expected_replica(meta_rpc::ABSENT, delete_id),
+            make_expected_replica(ExpectedReplicaType::PRESENT, create_id),
+            make_expected_replica(ExpectedReplicaType::ABSENT, delete_id),
     });
 
     std::mutex mutex;

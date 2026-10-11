@@ -6,7 +6,7 @@
 
 #include "common/func.h"
 #include "common/log.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "storage/model/model.h"
 

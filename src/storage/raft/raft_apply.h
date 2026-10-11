@@ -2,15 +2,13 @@
 
 #include <vector>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "storage/model/model.h"
 
 namespace adviskv::storage {
 
 class RaftLog;
 
-// 负责记录已经 commit / apply 到哪里的进度。
-// 和名字不同，不仅会负责apply的推进，还有commit的推进
 class RaftApply {
 public:
     explicit RaftApply(const RaftLog& raft_log);
@@ -23,7 +21,8 @@ public:
     void advance_last_applied(LogIndex applied);
     void install_snapshot(LogIndex snapshot_index);
 
-    std::vector<LogEntry> extract_committed_entries() const;
+    std::vector<LogEntry> extract_committed_entries(size_t budget_entries, size_t budget_bytes,
+                                                    bool& has_more) const;
     bool has_committed_current_term_entry(Term current_term) const;
 
 private:

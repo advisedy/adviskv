@@ -6,7 +6,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/status.h"
 #include "meta/model/param.h"
 #include "storage.grpc.pb.h"

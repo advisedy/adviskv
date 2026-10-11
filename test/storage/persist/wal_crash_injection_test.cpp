@@ -38,13 +38,13 @@ class WalCrashInjectionTest : public ::testing::Test {
         Status status = persist.init();
         ASSERT_TRUE(status.ok()) << adviskv::test::status_debug_string(status);
 
-        status = persist.append_wal_batch({
+        status = persist.wal().append_batch({
             make_entry(1, 1, "stable-1", "value-1"),
             make_entry(1, 2, "stable-2", "value-2"),
         });
         ASSERT_TRUE(status.ok()) << adviskv::test::status_debug_string(status);
 
-        status = persist.save_raft_meta(RaftMeta{1, std::nullopt});
+        status = persist.raft_meta().save(RaftMeta{1, std::nullopt});
         ASSERT_TRUE(status.ok()) << adviskv::test::status_debug_string(status);
         ASSERT_TRUE(persist.close().ok());
     }
@@ -60,7 +60,7 @@ class WalCrashInjectionTest : public ::testing::Test {
                     ::_exit(3);
                 }
 
-                status = persist.append_wal(
+                status = persist.wal().append(
                     make_entry(2, 3, "crash-key", "crash-value"));
                 if (status.fail()) {
                     ::_exit(4);
@@ -85,7 +85,7 @@ class WalCrashInjectionTest : public ::testing::Test {
         EXPECT_TRUE(result.need_recover);
 
         std::vector<LogEntry> entries_after_repair;
-        status = recovered.read_wal_batch(entries_after_repair);
+        status = recovered.wal().read_batch(entries_after_repair);
         ASSERT_TRUE(status.ok()) << adviskv::test::status_debug_string(status);
         ASSERT_EQ(entries_after_repair.size(), 2U);
         EXPECT_EQ(entries_after_repair.back().key, "stable-2");
@@ -106,7 +106,7 @@ class WalCrashInjectionTest : public ::testing::Test {
         EXPECT_FALSE(result.need_recover);
 
         std::vector<LogEntry> entries_after_repair;
-        status = recovered.read_wal_batch(entries_after_repair);
+        status = recovered.wal().read_batch(entries_after_repair);
         ASSERT_TRUE(status.ok()) << adviskv::test::status_debug_string(status);
         ASSERT_EQ(entries_after_repair.size(), 3U);
         EXPECT_EQ(entries_after_repair.back().key, "crash-key");
@@ -119,15 +119,6 @@ class WalCrashInjectionTest : public ::testing::Test {
 TEST_F(WalCrashInjectionTest,
        RecoverTruncatesPartialWalRecordAfterProcessCrash) {
     save_basic_wal();
-    /*
-            testhook::crash_point("framed_record.after_len_write");
-            RETURN_IF_INVALID_STATUS(func::write_value(fd, crc))
-            testhook::crash_point("framed_record.after_crc_write");
-            RETURN_IF_INVALID_STATUS(func::write_full(
-                fd, payload.data(), payload.size(),
-                "framed_record.payload_write.after_partial_write"))
-            testhook::crash_point("framed_record.after_payload_write");
-    */
     {
         expect_append_wal_crashes_at("framed_record.after_len_write");
         assert_recovery_truncates_crashed_tail();

@@ -50,8 +50,6 @@ std::vector<RaftMember> RaftCore::raft_members() const { return membership_.raft
 
 bool RaftCore::is_recovering() const { return recovering_; }
 
-bool RaftCore::is_ready() const { return !recovering_; }
-
 bool RaftCore::later_than_other(Term other_term, LogIndex other_index) const {
     if (raft_log_.last_log_term() != other_term) {
         return raft_log_.last_log_term() > other_term;
@@ -76,9 +74,34 @@ Status RaftCore::ensure_ready() const {
     return Status::OK();
 }
 
+Status RaftCore::ensure_writable_leader() const {
+    RETURN_IF_INVALID_STATUS(ensure_ready())
+    if (!election_.is_leader()) {
+        return Status::NOT_LEADER("not leader");
+    }
+    if (!membership_.is_voter(self_id_)) {
+        return Status::NOT_VOTER("self is not voter");
+    }
+    return Status::OK();
+}
+
+Status RaftCore::ensure_readable_leader() const {
+    RETURN_IF_INVALID_STATUS(ensure_ready())
+    if (!election_.is_leader()) return Status::NOT_LEADER("not leader");
+    if (!has_committed_current_term_entry()) {
+        return Status::READ_INDEX_NOT_READY("current term entry is not committed");
+    }
+    return Status::OK();
+}
+
 void RaftCore::record_hard_state(RaftEffects& effects) const { effects.hard_state = election_.hard_state(); }
 
-std::vector<LogEntry> RaftCore::extract_committed_entries() { return raft_apply_.extract_committed_entries(); }
+std::vector<LogEntry> RaftCore::extract_committed_entries(size_t budget_entries, size_t budget_bytes,
+                                                          bool* has_more) {
+    bool unused_has_more = false;
+    bool& has_more_ref = has_more != nullptr ? *has_more : unused_has_more;
+    return raft_apply_.extract_committed_entries(budget_entries, budget_bytes, has_more_ref);
+}
 
 const LogEntry* RaftCore::find_request(const std::string& request_id) const {
     return raft_log_.find_request(request_id);

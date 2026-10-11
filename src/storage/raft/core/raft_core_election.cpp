@@ -98,21 +98,38 @@ void RaftCore::send_request_vote_to(const PeerMember& member, RaftEffects& effec
     effects.messages.push_back(std::move(msg));
 }
 
+Status RaftCore::ensure_vote_preconditions(const RequestVoteParam& param) const {
+    if (!membership_.is_voter(self_id_)) {
+        LOG_WARN(
+                "[RaftCore Election] replica:{} reject vote because self is "
+                "not voter, from:{}, term:{}, current_term:{}",
+                self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term());
+        return Status::ERROR("self is not voter");
+    }
+    if (!membership_.is_voter(param.from_replica_id)) {
+        LOG_WARN(
+                "[RaftCore Election] replica:{} reject vote from non-voter "
+                "replica:{}, term:{}, current_term:{}",
+                self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term());
+        return Status::ERROR("candidate is not voter");
+    }
+    Status ready_status = ensure_ready();
+    if (ready_status.fail()) {
+        LOG_WARN(
+                "[RaftCore Election] replica:{} reject vote because raft is not ready, from:{}, "
+                "request_term:{}, current_term:{}, status:{}",
+                self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term(),
+                ready_status.to_string());
+        return ready_status;
+    }
+    return Status::OK();
+}
+
 void RaftCore::handle_pre_vote(const PreVoteParam& param, PreVoteResult& result, RaftEffects& effects) {
     UNUSED(effects);
     result.term = election_.current_term();
     result.vote_granted = false;
 
-    if (!membership_.is_voter(self_id_)) {
-        return;
-    }
-
-    if (!membership_.is_voter(param.from_replica_id)) {
-        return;
-    }
-
-    // param.term 是对方“如果正式选会用的 term”，一般是 current_term+1。
-    // 比这个还旧就没必要给了。
     if (param.term < election_.current_term() + 1) {
         LOG_DEBUG(
                 "[RaftCore Election] replica:{} reject PreVote with stale prospective term, from:{}, "
@@ -121,13 +138,7 @@ void RaftCore::handle_pre_vote(const PreVoteParam& param, PreVoteResult& result,
         return;
     }
 
-    Status ready_status = ensure_ready();
-    if (ready_status.fail()) {
-        LOG_WARN(
-                "[RaftCore Election] replica:{} reject PreVote because raft is not ready, from:{}, "
-                "request_term:{}, current_term:{}, status:{}",
-                self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term(),
-                ready_status.to_string());
+    if (ensure_vote_preconditions(param).fail()) {
         return;
     }
 
@@ -200,6 +211,14 @@ void RaftCore::handle_pre_vote_response(const ReplicaID& from, const PreVoteResu
         return;
     }
 
+    if (!membership_.is_voter(from)) {
+        LOG_DEBUG(
+                "[RaftCore Election] replica:{} ignore PreVote grant from non-voter, "
+                "from:{}, term:{}",
+                self_id_.to_string(), from.to_string(), result.term);
+        return;
+    }
+
     if (!election_.record_pre_vote_granted_from(from)) {
         return;
     }
@@ -216,24 +235,7 @@ void RaftCore::handle_request_vote(const RequestVoteParam& param, RequestVoteRes
     result.term = election_.current_term();
     result.vote_granted = false;
 
-    // 这边对于recovering状态，我们是会去更新它的current
-    // term的，以防止在恢复正常之后可能会接收到一些比较旧的term的节点的消息，并且做出回复
-    // if (ensure_not_faulted_unlocked().fail()) {
-    //     return;
-    // }
-
-    if (!membership_.is_voter(self_id_)) {
-        LOG_WARN(
-                "[RaftCore Election] replica:{} reject RequestVote because self is "
-                "not voter, from:{}, term:{}, current_term:{}",
-                self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term());
-        return;
-    }
-    if (!membership_.is_voter(param.from_replica_id)) {
-        LOG_WARN(
-                "[RaftCore Election] replica:{} reject RequestVote from non-voter "
-                "replica:{}, term:{}, current_term:{}",
-                self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term());
+    if (ensure_vote_preconditions(param).fail()) {
         return;
     }
 
@@ -256,17 +258,6 @@ void RaftCore::handle_request_vote(const RequestVoteParam& param, RequestVoteRes
         result.term = election_.current_term();
     }
 
-    Status ready_status = ensure_ready();
-    if (ready_status.fail()) {
-        LOG_WARN(
-                "[RaftCore Election] replica:{} reject RequestVote because raft is not ready, "
-                "from:{}, request_term:{}, current_term:{}, status:{}",
-                self_id_.to_string(), param.from_replica_id.to_string(), param.term, election_.current_term(),
-                ready_status.to_string());
-        return;
-    }
-
-    // 如果比人家的新 （是一定会新，不包括相等）
     if (later_than_other(param.last_log_term, param.last_log_index)) {
         return;
     }
@@ -331,6 +322,12 @@ void RaftCore::handle_vote_response(const ReplicaID& from, const RequestVoteResu
         return;
     }
 
+    if (!membership_.is_voter(from)) {
+        LOG_DEBUG("[RaftCore Election] candidate replica:{} ignore vote grant from non-voter, from:{}, term:{}",
+                  self_id_.to_string(), from.to_string(), result.term);
+        return;
+    }
+
     if (!election_.record_vote_granted_from(from)) {
         return;
     }
@@ -371,7 +368,6 @@ void RaftCore::become_leader(RaftEffects& effects) {
     election_tick_trigger_.stop();
     heartbeat_tick_trigger_.reset();
 
-    // TODO 为什么当上了leader之后需要把这些全都初始化呢？ 保留原来的值不行吗？
     replication_.reset_for_leader();
 
     append_new_entry(ProposeParam::noop(), effects);

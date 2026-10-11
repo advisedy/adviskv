@@ -7,8 +7,7 @@
 #include <grpcpp/create_channel.h>
 
 #include "common/define.h"
-#include "common/proto/proto.h"
-#include "meta/proto/table_phase_proto.h"
+#include "common/proto/codec.h"
 
 namespace adviskv::cli {
 
@@ -35,7 +34,7 @@ Status MetaClient::create_db(const std::string& db_name, const std::string& zone
         return Status::RPC_ERROR(fmt::format("Meta CreateDB RPC failed, grpc code = {}, msg = {}",
                                              static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
     }
-    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
+    RETURN_IF_INVALID_STATUS(codec::base_rsp_to_status(response.base_rsp()))
     *db_id = response.db_id();
     return Status::OK();
 }
@@ -56,7 +55,7 @@ Status MetaClient::drop_db(const std::string& db_name, DatabaseID* db_id) const 
         return Status::RPC_ERROR(fmt::format("Meta DropDB RPC failed, grpc code = {}, msg = {}",
                                              static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
     }
-    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
+    RETURN_IF_INVALID_STATUS(codec::base_rsp_to_status(response.base_rsp()))
     *db_id = response.db_id();
     return Status::OK();
 }
@@ -73,9 +72,7 @@ Status MetaClient::create_table(const std::string& db_name, const std::string& t
     request.set_shard_count(shard_count);
     request.set_replica_count(replica_count);
     request.set_resource_pool(resource);
-    pb::EngineType engine_type_pb;
-    RETURN_IF_INVALID_CONDITION(encode_pb_engine_type(engine_type, engine_type_pb), "engine_type is not valid")
-    request.set_engine_type(engine_type_pb);
+    request.set_engine_type(static_cast<int32_t>(engine_type));
 
     meta_rpc::CreateTableResponse response;
     grpc::ClientContext context;
@@ -86,7 +83,7 @@ Status MetaClient::create_table(const std::string& db_name, const std::string& t
         return Status::RPC_ERROR(fmt::format("Meta CreateTable RPC failed, grpc code = {}, msg = {}",
                                              static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
     }
-    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
+    RETURN_IF_INVALID_STATUS(codec::base_rsp_to_status(response.base_rsp()))
     *table_id = response.table_id();
     return Status::OK();
 }
@@ -110,7 +107,7 @@ Status MetaClient::alter_table_replica_count(const std::string& db_name, const s
         return Status::RPC_ERROR(fmt::format("Meta AlterTableReplicaCount RPC failed, grpc code = {}, msg = {}",
                                              static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
     }
-    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
+    RETURN_IF_INVALID_STATUS(codec::base_rsp_to_status(response.base_rsp()))
     *table_id = response.table_id();
     return Status::OK();
 }
@@ -132,14 +129,17 @@ Status MetaClient::get_table(const std::string& db_name, const std::string& tabl
         return Status::RPC_ERROR(fmt::format("Meta GetTable RPC failed, grpc code = {}, msg = {}",
                                              static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
     }
-    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
+    RETURN_IF_INVALID_STATUS(codec::base_rsp_to_status(response.base_rsp()))
     table_info->db_id = response.db_id();
     table_info->table_id = response.table_id();
     table_info->shard_count = response.shard_count();
     table_info->replica_count = response.replica_count();
-    RETURN_IF_INVALID_CONDITION(decode_pb_engine_type(response.engine_type(), table_info->engine_type),
+    RETURN_IF_INVALID_CONDITION(is_valid_enum_value<EngineType>(response.engine_type()),
                                 "engine_type is not valid")
-    RETURN_IF_INVALID_CONDITION(decode_pb_table_phase(response.phase(), table_info->phase), "table phase is not valid")
+    table_info->engine_type = static_cast<EngineType>(response.engine_type());
+    RETURN_IF_INVALID_CONDITION(is_valid_enum_value<meta::TablePhase>(response.phase()),
+                                "table phase is not valid")
+    table_info->phase = static_cast<meta::TablePhase>(response.phase());
     table_info->last_error_msg = response.last_error_msg();
     return Status::OK();
 }

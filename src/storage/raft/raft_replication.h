@@ -2,17 +2,17 @@
 
 #include <cstddef>
 #include <optional>
+#include <unordered_map>
+#include <vector>
 
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "storage/model/model.h"
 #include "storage/raft/raft_apply.h"
 #include "storage/raft/raft_log.h"
 #include "storage/raft/raft_membership.h"
-#include "storage/raft/raft_peer_progress.h"
 
 namespace adviskv::storage {
 
-// 负责Raft的复制相关内容
 class RaftReplication {
 public:
     struct CommitAdvanceResult {
@@ -42,11 +42,27 @@ public:
 private:
     RaftMessageOr build_append_entries_message(const PeerMember& member, LogIndex next_index, Term current_term);
 
+    LogIndex get_next_index(ReplicaID replica_id) const;
+    void update_next_index(ReplicaID replica_id, LogIndex log_index);
+    LogIndex get_match_index(ReplicaID replica_id) const;
+    void update_match_index(ReplicaID replica_id, LogIndex log_index);
+    void reset_peer_progress_for_leader(const RaftMembership& membership, LogIndex last_log_index);
+    LogIndex get_snapshot_watermark(ReplicaID replica_id) const;
+    LogIndex get_inflight_snapshot_index(ReplicaID replica_id) const;
+    bool mark_snapshot_inflight(ReplicaID replica_id, LogIndex snapshot_index);
+    void handle_peer_append_ok(ReplicaID replica_id, LogIndex prev_log_index, size_t entries_size);
+    void handle_peer_append_failed(ReplicaID replica_id, LogIndex follower_last_log_index,
+                                   LogIndex leader_last_log_index);
+
     ReplicaID self_id_;
     const RaftMembership& membership_;
     const RaftLog& raft_log_;
     RaftApply& raft_apply_;
-    RaftPeerProgress peer_progress_;
+
+    std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> next_index_;
+    std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> match_index_;
+    std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> snapshot_watermark_;
+    std::unordered_map<ReplicaID, LogIndex, ReplicaIDHash> inflight_snapshot_index_;
 };
 
 }  // namespace adviskv::storage

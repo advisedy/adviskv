@@ -7,7 +7,7 @@
 
 #include "common.pb.h"
 #include "common/define.h"
-#include "common/proto/proto.h"
+#include "common/proto/codec.h"
 #include "common/status.h"
 
 namespace adviskv::tools {
@@ -39,14 +39,10 @@ Status StorageClient::create_replica(const CreateReplicaParam& param) {
     }
 
     rpc::CreateReplicaRequest request;
-    encode_pb_replica_id(param.replica_id, *request.mutable_replica_id());
-    pb::EngineType engine_type_pb;
-    RETURN_IF_INVALID_CONDITION(
-        encode_pb_engine_type(param.engine_type, engine_type_pb),
-        "engine_type is not valid")
-    request.set_engine_type(engine_type_pb);
+    codec::encode(param.replica_id, *request.mutable_replica_id());
+    request.set_engine_type(static_cast<int32_t>(param.engine_type));
     for (const PeerMember& member : param.members) {
-        encode_pb_peer_member(member, *request.add_initial_members());
+        codec::encode(member, *request.add_initial_members());
     }
 
     rpc::CreateReplicaResponse response;
@@ -59,7 +55,7 @@ Status StorageClient::create_replica(const CreateReplicaParam& param) {
                         param.endpoint.ip, param.endpoint.port,
                         grpc_status.error_message()));
     }
-    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
+    RETURN_IF_INVALID_STATUS(codec::base_rsp_to_status(response.base_rsp()))
     return Status::OK();
 }
 
@@ -75,7 +71,7 @@ Status StorageClient::delete_replica(const DeleteReplicaParam& param) {
     }
 
     rpc::DeleteReplicaRequest request;
-    encode_pb_replica_id(param.replica_id, *request.mutable_replica_id());
+    codec::encode(param.replica_id, *request.mutable_replica_id());
 
     rpc::DeleteReplicaResponse response;
     grpc::ClientContext context;
@@ -87,7 +83,7 @@ Status StorageClient::delete_replica(const DeleteReplicaParam& param) {
                         param.endpoint.ip, param.endpoint.port,
                         grpc_status.error_message()));
     }
-    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
+    RETURN_IF_INVALID_STATUS(codec::base_rsp_to_status(response.base_rsp()))
     return Status::OK();
 }
 
@@ -104,7 +100,7 @@ Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
     }
 
     rpc::GetReplicaInfoRequest request;
-    encode_pb_replica_id(param.replica_id, *request.mutable_replica_id());
+    codec::encode(param.replica_id, *request.mutable_replica_id());
 
     rpc::GetReplicaInfoResponse response;
     grpc::ClientContext context;
@@ -116,7 +112,7 @@ Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
                         param.endpoint.ip, param.endpoint.port,
                         grpc_status.error_message()));
     }
-    RETURN_IF_INVALID_STATUS(decode_base_rsp_status(response.base_rsp()))
+    RETURN_IF_INVALID_STATUS(codec::base_rsp_to_status(response.base_rsp()))
     exists = response.exists();
     if (!response.exists()) return Status::OK();
 
@@ -125,13 +121,15 @@ Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
     out.replica_id =
         ReplicaID{replica.table_id(), replica.shard_id(), replica.replica_seq()};
     ReplicaRole role = ReplicaRole::FOLLOWER;
-    RETURN_IF_INVALID_CONDITION(decode_pb_raft_role(replica.role(), role),
+    RETURN_IF_INVALID_CONDITION(is_valid_enum_value<ReplicaRole>(replica.role()),
                                 "replica role is not valid")
+    role = static_cast<ReplicaRole>(replica.role());
     out.raft_role = role;
     StorageReplicaStatus storage_status = StorageReplicaStatus::INITIALIZING;
     RETURN_IF_INVALID_CONDITION(
-        decode_pb_storage_replica_status(replica.status(), storage_status),
+        is_valid_enum_value<StorageReplicaStatus>(replica.status()),
         "replica storage status is not valid")
+    storage_status = static_cast<StorageReplicaStatus>(replica.status());
     out.storage_status = storage_status;
     out.endpoint = Endpoint{replica.endpoint().ip(), replica.endpoint().port()};
     out.term = replica.term();

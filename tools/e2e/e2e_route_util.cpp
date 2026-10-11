@@ -6,7 +6,7 @@
 #include <fmt/core.h>
 #include <grpcpp/client_context.h>
 
-#include "common/proto/proto.h"
+#include "common/proto/codec.h"
 #include "common/shard_range.h"
 #include "e2e_assert.h"
 #include "sdk/model.h"
@@ -49,15 +49,16 @@ bool get_route(E2EContext* context, const Key& key, sdk::RouteInfo* route, std::
         one.replicas.reserve(static_cast<size_t>(route_pb.replicas_size()));
         for (const auto& replica : route_pb.replicas()) {
             sdk::RouteReplica out;
-            if (!decode_pb_replica_id(replica.replica_id(), out.replica_id)) {
+            if (!codec::decode(replica.replica_id(), out.replica_id)) {
                 *error = "route replica id is not valid";
                 return false;
             }
             out.endpoint = Endpoint{replica.endpoint().ip(), replica.endpoint().port()};
-            if (!decode_pb_raft_role(replica.role(), out.role)) {
+            if (!is_valid_enum_value<ReplicaRole>(replica.role())) {
                 *error = "route replica role is not valid";
                 return false;
             }
+            out.role = static_cast<ReplicaRole>(replica.role());
             one.replicas.push_back(std::move(out));
         }
         table.routes.push_back(std::move(one));

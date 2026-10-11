@@ -4,8 +4,8 @@
 #include <string>
 
 #include "common/define.h"
-#include "common/model/type.h"
-#include "common/proto/proto.h"
+#include "common/model/model.h"
+#include "common/proto/codec.h"
 #include "common/status.h"
 #include "meta.grpc.pb.h"
 #include "meta/model/model.h"

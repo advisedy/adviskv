@@ -3,8 +3,8 @@
 #include <memory>
 #include <string>
 
-#include "common/model/type.h"
-#include "common/proto/proto.h"
+#include "common/model/model.h"
+#include "common/proto/codec.h"
 #include "e2e_options.h"
 #include "meta.grpc.pb.h"
 #include "sdk/model.h"

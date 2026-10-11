@@ -13,6 +13,8 @@
 
 #include "common/pause_point.h"
 #include "storage/raft/state_machine/kv_state_machine.h"
+#include "storage/persist/snapshot_store.h"
+#include "test/storage/persist/snapshot_test_util.h"
 #include "test/test_env.h"
 
 namespace fs = std::filesystem;
@@ -105,7 +107,7 @@ class RaftSenderTest : public ::testing::Test {
         EXPECT_TRUE(
             machine.apply(LogEntry{1, 1, WriteOpType::PUT, "snap-key", value})
                 .ok());
-        EXPECT_TRUE(persist->write_snapshot(machine).ok());
+        EXPECT_TRUE(test::write_state_machine_snapshot(persist->snapshot(), machine).ok());
 
         return InstallSnapshotParam{
             ReplicaID{101, 7, 0}, member_.replica_id, 3, 1, 1, 0, "", false,
@@ -303,7 +305,7 @@ TEST(RaftSenderSnapshotVersionTest, AllChunksComeFromSameFileVersionAfterPublish
     KvStateMachine machine_s(EngineType::MAP);
     ASSERT_TRUE(machine_s.apply(LogEntry{1, 2, WriteOpType::PUT, "s-one", "1"}).ok());
     ASSERT_TRUE(machine_s.apply(LogEntry{1, 3, WriteOpType::PUT, "s-two", "2"}).ok());
-    ASSERT_TRUE(persist.write_snapshot(machine_s).ok());
+    ASSERT_TRUE(test::write_state_machine_snapshot(persist.snapshot(), machine_s).ok());
     // 发布 T 之前先把 S 的原文读出来（此后 snapshot 路径会被 T 换掉）。
     const fs::path snapshot_path = dir / "101-7" / "snapshot";
     auto read_file = [](const fs::path& path) -> std::string {
@@ -330,7 +332,7 @@ TEST(RaftSenderSnapshotVersionTest, AllChunksComeFromSameFileVersionAfterPublish
             // T 与 S 内容截然不同（长度也不同），保证拼接结果不可能来自 T。
             KvStateMachine machine_t(EngineType::MAP);
             EXPECT_TRUE(machine_t.apply(LogEntry{2, 100, WriteOpType::PUT, "t-key", "long-t-value"}).ok());
-            EXPECT_TRUE(persist.write_snapshot(machine_t).ok());
+            EXPECT_TRUE(test::write_state_machine_snapshot(persist.snapshot(), machine_t).ok());
             return false;
         });
     struct Unregister {
@@ -373,7 +375,7 @@ TEST(RaftSenderSnapshotVersionTest, HeaderMismatchCancelsSend) {
 
     KvStateMachine machine_t(EngineType::MAP);
     ASSERT_TRUE(machine_t.apply(LogEntry{2, 20, WriteOpType::PUT, "t-key", "tv"}).ok());
-    ASSERT_TRUE(persist.write_snapshot(machine_t).ok());
+    ASSERT_TRUE(test::write_state_machine_snapshot(persist.snapshot(), machine_t).ok());
 
     const PeerMember member{"peer", ReplicaID{101, 7, 1}, Endpoint{"127.0.0.1", 50052}};
     InstallSnapshotParam param_stale{ReplicaID{101, 7, 0}, member.replica_id, 3, 10, 1, 0, "", false};

@@ -1,18 +1,15 @@
 #include "meta/persist/meta_persist_engine.h"
 
 #include <algorithm>
-#include <cerrno>
 #include <filesystem>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
-#include <fcntl.h>
 #include <nlohmann/json.hpp>
-#include <unistd.h>
 
-#include "common/defer.h"
 #include "common/define.h"
+#include "common/file.h"
 #include "common/func.h"
 #include "common/shard_range.h"
 
@@ -229,33 +226,17 @@ Status MetaPersistEngine::save_meta(const MetaPersistedRecord& record) {
         return Status::ERROR(fmt::format("meta.json too large: {}", payload.size()));
     }
 
-    return func::atomic_replace_file(meta_path_,
-                                     [&](int fd) { return func::write_full(fd, payload.data(), payload.size()); });
+    return File::atomic_replace(meta_path_, [&](const File& file) { return file.write(payload.data(), payload.size()); });
 }
 
 Status MetaPersistEngine::load_meta(MetaPersistedRecord& record) {
     if (!init_flag_) return Status::NOT_INIT("meta persist engine is not init");
     record = {};
-    int fd = ::open(meta_path_.c_str(), O_RDONLY);
-    if (fd < 0) {
-        if (errno == ENOENT) return Status::OK();
-        return Status::ERROR(fmt::format("failed to open meta.json: {}", meta_path_));
-    }
-    auto fd_guard = Defer([fd]() { ::close(fd); });
     std::string payload;
-    char buf[4096];
-    while (true) {
-        ssize_t n = ::read(fd, buf, sizeof(buf));
-        if (n == 0) break;
-        if (n < 0) {
-            if (errno == EINTR) continue;
-            return Status::ERROR("failed to read meta.json");
-        }
-        payload.append(buf, static_cast<size_t>(n));
-        if (static_cast<int64>(payload.size()) > K_MAX_META_JSON_BYTES) {
-            return Status::ERROR("meta.json too large");
-        }
-    }
+    bool exists = false;
+    RETURN_IF_INVALID_STATUS(File::read_to_string(meta_path_, static_cast<size_t>(K_MAX_META_JSON_BYTES), payload, exists))
+    // 文件不存在视为空 meta（首次启动），空文件反而是异常。
+    if (!exists) return Status::OK();
     if (payload.empty()) return Status::ERROR("meta.json is empty");
     Json root;
     try {

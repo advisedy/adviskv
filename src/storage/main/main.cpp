@@ -11,7 +11,7 @@
 #include "common/confmgr.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
-#include "common/model/type.h"
+#include "common/model/model.h"
 #include "common/path_util.h"
 #include "storage/engine/map_engine.h"
 #include "storage/handler/storage_service_impl.h"
