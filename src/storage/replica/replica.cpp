@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "common/constants.h"
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
@@ -15,6 +16,7 @@
 #include "common/status.h"
 #include "common/types.h"
 #include "storage/model/param.h"
+#include "common/path.h"
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/core/raft_core.h"
 #include "storage/raft/state_machine/kv_state_machine.h"
@@ -24,12 +26,6 @@
 
 namespace adviskv::storage {
 
-namespace {
-
-constexpr Milliseconds K_REPLICA_PROPOSAL_COMMIT_TIMEOUT = Milliseconds{1000};
-
-}  // namespace
-
 Replica::Replica() = default;
 
 Replica::~Replica() { shutdown(); }
@@ -37,11 +33,11 @@ Replica::~Replica() { shutdown(); }
 namespace {
 
 bool disk_has_replica_state(const ReplicaInitParam& param) {
-    const std::filesystem::path dir = PersistEngine::replica_dir(param.runtime.data_dir, param.replica_id);
+    const std::filesystem::path dir = adviskv::replica_dir(param.runtime.data_dir, param.replica_id);
     std::error_code ec;
-    return std::filesystem::exists(PersistEngine::wal_file(dir), ec) ||
-           std::filesystem::exists(PersistEngine::raft_meta_file(dir), ec) ||
-           std::filesystem::exists(PersistEngine::snapshot_file(dir), ec);
+    return std::filesystem::exists(adviskv::wal_file(dir), ec) ||
+           std::filesystem::exists(adviskv::raft_meta_file(dir), ec) ||
+           std::filesystem::exists(adviskv::snapshot_file(dir), ec);
 }
 
 }
@@ -112,7 +108,7 @@ Status Replica::put(const PutParam& param) {
     RETURN_IF_INVALID_STATUS(ensure_serving());
 
     ProposeCall call{ProposeParam::write(WriteOpType::PUT, param.key, param.value, param.request_id),
-                     K_REPLICA_PROPOSAL_COMMIT_TIMEOUT};
+                     Milliseconds{K_REPLICA_PROPOSAL_COMMIT_TIMEOUT_MS}};
     loop_->submit_and_wait(&call);
     RETURN_IF_INVALID_STATUS(call.status)
 
@@ -151,7 +147,7 @@ Status Replica::del(const DelParam& param) {
     RETURN_IF_INVALID_STATUS(ensure_serving());
 
     ProposeCall call{ProposeParam::write(WriteOpType::DEL, param.key, "", param.request_id),
-                     K_REPLICA_PROPOSAL_COMMIT_TIMEOUT};
+                     Milliseconds{K_REPLICA_PROPOSAL_COMMIT_TIMEOUT_MS}};
     loop_->submit_and_wait(&call);
     RETURN_IF_INVALID_STATUS(call.status)
 
@@ -164,7 +160,7 @@ Status Replica::cas(const CasParam& param) {
     RETURN_IF_INVALID_STATUS(ensure_serving());
 
     ProposeCall call{ProposeParam::write(WriteOpType::CAS, param.key, param.value, param.request_id, param.expected),
-                     K_REPLICA_PROPOSAL_COMMIT_TIMEOUT};
+                     Milliseconds{K_REPLICA_PROPOSAL_COMMIT_TIMEOUT_MS}};
     loop_->submit_and_wait(&call);
     RETURN_IF_INVALID_STATUS(call.status)
     return Status::OK();

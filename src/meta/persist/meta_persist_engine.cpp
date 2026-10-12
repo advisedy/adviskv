@@ -8,10 +8,12 @@
 
 #include <nlohmann/json.hpp>
 
+#include "common/constants.h"
 #include "common/define.h"
 #include "common/file.h"
 #include "common/func.h"
 #include "common/shard_range.h"
+#include "common/path.h"
 
 namespace adviskv {
 using Json = nlohmann::json;
@@ -156,7 +158,6 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(MetaPersistedRecord, next_db_id, next_table_i
                                    replica_groups)
 
 namespace {
-constexpr int64 K_MAX_META_JSON_BYTES = 256 * 1024 * 1024;
 
 Status validate_record(const MetaPersistedRecord& record) {
     std::unordered_set<DatabaseID> database_ids;
@@ -200,7 +201,7 @@ Status validate_record(const MetaPersistedRecord& record) {
 }  // namespace
 
 MetaPersistEngine::MetaPersistEngine(const std::string& data_dir)
-        : data_dir_(data_dir), meta_path_(data_dir_ + "/meta.json") {}
+        : data_dir_(data_dir), meta_path_(adviskv::meta_file(data_dir_).string()) {}
 
 Status MetaPersistEngine::init() {
     if (data_dir_.empty()) return Status::INVALID_ARGUMENT("meta persist engine data_dir is empty");

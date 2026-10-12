@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -7,6 +8,8 @@
 #include <utility>
 #include <vector>
 
+#include "common/constants.h"
+#include "common/crash_injection.h"
 #include "common/crc.h"
 #include "common/define.h"
 #include "common/file.h"
@@ -23,6 +26,8 @@ public:
 class BinaryReader {
 public:
     virtual ~BinaryReader() = default;
+    // 起点就到末尾返回 GET_EOF
+    // 读到一半返回 PARTIAL_READ
     virtual Status read_raw(void* data, size_t size) = 0;
 };
 
@@ -61,18 +66,23 @@ public:
     template <typename T>
     bool read_raw(T& v) {
         static_assert(std::is_trivially_copyable_v<T>, "raw read needs a fixed-layout type; use binary::decode");
-        if (pos_ + sizeof(T) > data_.size()) return false;
-        memcpy(&v, data_.data() + pos_, sizeof(T));
-        pos_ += sizeof(T);
-        return true;
+        return read_raw(&v, sizeof(T)).ok();
     }
 
     Status read_raw(void* data, size_t size) override {
-        if (pos_ + size > data_.size()) {
-            return Status::ERROR("read past end of buffer");
+        if (size == 0) {
+            return Status::OK();
         }
-        memcpy(data, data_.data() + pos_, size);
-        pos_ += size;
+        const size_t remaining = data_.size() - pos_;
+        if (remaining == 0) {
+            return Status::GET_EOF("read hit end of buffer");
+        }
+        const size_t count = std::min(size, remaining);
+        memcpy(data, data_.data() + pos_, count);
+        pos_ += count;
+        if (count < size) {
+            return Status::PARTIAL_READ("read hit end of buffer before requested bytes");
+        }
         return Status::OK();
     }
 
@@ -84,23 +94,21 @@ private:
     size_t pos_{0};
 };
 
-// 析构故意不 flush；fsync/close 之前必须显式 flush，不然缓冲里最后一段没出手。
+// 析构故意不 flush；只要写出缓冲就用 flush，要落盘就用 sync。
 class FileWriter : public BinaryWriter {
 public:
-    static constexpr size_t K_BUFFER_BYTES = 64 * 1024;
-
     // 借 file 的 fd 用，不持有；file 的生命周期必须盖过 writer。
-    explicit FileWriter(const File& file) : file_(file) { buf_.reserve(K_BUFFER_BYTES); }
+    explicit FileWriter(const File& file) : file_(file) { buf_.reserve(K_FILE_WRITE_BUFFER_BYTES); }
 
     Status write_raw(const void* data, size_t size) override {
         if (size == 0) {
             return Status::OK();
         }
-        if (size >= K_BUFFER_BYTES) {
+        if (size >= K_FILE_WRITE_BUFFER_BYTES) {
             RETURN_IF_INVALID_STATUS(flush())
-            return file_.write(data, size);
+            return write_to_file(data, size, "binary.file_writer.direct_write.after_partial_write");
         }
-        if (buf_.size() + size > K_BUFFER_BYTES) {
+        if (buf_.size() + size > K_FILE_WRITE_BUFFER_BYTES) {
             RETURN_IF_INVALID_STATUS(flush())
         }
         const auto* p = static_cast<const uint8_t*>(data);
@@ -112,12 +120,24 @@ public:
         if (buf_.empty()) {
             return Status::OK();
         }
-        RETURN_IF_INVALID_STATUS(file_.write(buf_.data(), buf_.size()))
+        RETURN_IF_INVALID_STATUS(
+                write_to_file(buf_.data(), buf_.size(), "binary.file_writer.flush.after_partial_write"))
         buf_.clear();
         return Status::OK();
     }
 
+    Status sync() {
+        RETURN_IF_INVALID_STATUS(flush())
+        return file_.fsync();
+    }
+
 private:
+    Status write_to_file(const void* data, size_t size, const char* crash_point_name) {
+        RETURN_IF_INVALID_STATUS(file_.write(data, size, crash_point_name))
+        testhook::crash_point("binary.file_writer.after_write");
+        return Status::OK();
+    }
+
     const File& file_;
     std::vector<uint8_t> buf_;
 };

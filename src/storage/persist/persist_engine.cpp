@@ -12,31 +12,17 @@
 #include "common/log.h"
 #include "common/status.h"
 #include "storage/model/model.h"
+#include "common/path.h"
 
 namespace adviskv::storage {
 
-
-std::string PersistEngine::replica_dir_name(const ReplicaID& replica_id) {
-    return std::to_string(replica_id.table_id) + "-" + std::to_string(replica_id.shard_index);
-}
-
-std::filesystem::path PersistEngine::replica_dir(const std::string& data_dir, const ReplicaID& replica_id) {
-    return std::filesystem::path(data_dir) / replica_dir_name(replica_id);
-}
-
-std::filesystem::path PersistEngine::wal_file(const std::filesystem::path& dir) { return dir / "wal.log"; }
-
-std::filesystem::path PersistEngine::raft_meta_file(const std::filesystem::path& dir) { return dir / "raft_meta"; }
-
-std::filesystem::path PersistEngine::snapshot_file(const std::filesystem::path& dir) { return dir / "snapshot"; }
-
 PersistEngine::PersistEngine(const std::string& data_dir, const ReplicaID& replica_id)
         : data_dir_(data_dir),
-          dir_path_(replica_dir(data_dir, replica_id).string()),
+          dir_path_(adviskv::replica_dir(data_dir, replica_id).string()),
           replica_id_(replica_id),
-          wal_(wal_file(dir_path_).string(), dir_path_),
-          raft_meta_(raft_meta_file(dir_path_).string(), dir_path_),
-          snapshot_(snapshot_file(dir_path_).string(), dir_path_) {}
+          wal_(adviskv::wal_file(dir_path_).string(), dir_path_),
+          raft_meta_(adviskv::raft_meta_file(dir_path_).string(), dir_path_),
+          snapshot_(adviskv::snapshot_file(dir_path_).string(), dir_path_) {}
 
 PersistEngine::~PersistEngine() {
     Status status = close();
@@ -62,7 +48,8 @@ Status PersistEngine::init() {
     }
 
     LOG_DEBUG("[PersistEngine] init, dir_path_={}, wal_path={}, raft_meta_path={}, snapshot_path={}", dir_path_,
-              wal_file(dir_path_).string(), raft_meta_file(dir_path_).string(), snapshot_file(dir_path_).string());
+              adviskv::wal_file(dir_path_).string(), adviskv::raft_meta_file(dir_path_).string(),
+              adviskv::snapshot_file(dir_path_).string());
 
     RETURN_IF_INVALID_STATUS(wal_.open())
     return Status::OK();

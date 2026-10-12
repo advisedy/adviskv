@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include "common/status.h"
+#include "common/path.h"
 #include "test_env.h"
 
 namespace fs = std::filesystem;
@@ -27,7 +28,7 @@ protected:
         fs::remove_all(base_dir_, ec);
     }
 
-    fs::path meta_path() const { return base_dir_ / "meta.json"; }
+    fs::path meta_path() const { return adviskv::meta_file(base_dir_); }
 
     static MetaPersistedRecord make_minimal_record() {
         MetaPersistedRecord record;
@@ -445,6 +446,12 @@ TEST_F(MetaPersistEngineTest, InvalidRangesCannotOverwriteValidMetadata) {
     MetaPersistedRecord loaded;
     ASSERT_TRUE(engine.load_meta(loaded).ok());
     expect_record_equal(loaded, record);
+}
+
+TEST_F(MetaPersistEngineTest, PersistencePathsKeepExistingLayout) {
+    // 钉死磁盘格式：meta 就 data_dir/meta.json 一个文件，格式变了这个测试要报警。
+    EXPECT_EQ(adviskv::meta_file(base_dir_), base_dir_ / "meta.json");
+    EXPECT_EQ(adviskv::meta_file("/data/meta"), fs::path("/data/meta") / "meta.json");
 }
 
 }  // namespace adviskv::meta

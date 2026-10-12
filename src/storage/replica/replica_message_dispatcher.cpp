@@ -2,17 +2,12 @@
 
 #include <utility>
 
+#include "common/constants.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
 #include "storage/persist/persist_engine.h"
 
 namespace adviskv::storage {
-
-namespace {
-
-constexpr size_t K_REPLICA_RAFT_RPC_WORKER_COUNT = 8;
-
-}  // namespace
 
 ReplicaMessageDispatcher::ReplicaMessageDispatcher(int32 raft_rpc_timeout_ms, PersistEngine& persist,
                                                    EventCallback event_callback)

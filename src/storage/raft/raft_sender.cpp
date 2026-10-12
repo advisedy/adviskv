@@ -2,6 +2,7 @@
 
 #include <memory>
 
+#include "common/constants.h"
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
@@ -22,7 +23,9 @@ RaftSender::RaftSender(std::unique_ptr<IRaftRpcTransport> transport, int32_t tim
     set_timeout_ms(timeout_ms);
 }
 
-void RaftSender::set_timeout_ms(int32_t timeout_ms) { timeout_ms_ = timeout_ms > 0 ? timeout_ms : 1000; }
+void RaftSender::set_timeout_ms(int32_t timeout_ms) {
+    timeout_ms_ = timeout_ms > 0 ? timeout_ms : K_DEFAULT_RAFT_RPC_TIMEOUT_MS;
+}
 
 Status RaftSender::send_request_vote(const PeerMember& member, const RequestVoteParam& param,
                                      RequestVoteResult& result) const {
@@ -93,7 +96,6 @@ Status RaftSender::send_install_snapshot(const PeerMember& member, const Install
             param.from_replica_id.to_string(), param.to_replica_id.to_string(), param.snapshot_index,
             param.snapshot_term);
 
-    constexpr size_t kChunkSize = 1 << 20;
     uint64 offset = 0;
 
     // 这里的result代表的是发送单次read_snapshot_chunk的结果
@@ -116,7 +118,7 @@ Status RaftSender::send_install_snapshot(const PeerMember& member, const Install
     while (true) {
         std::string data;
         bool eof = false;
-        RETURN_IF_INVALID_STATUS(reader->read_chunk(offset, kChunkSize, data, eof))
+        RETURN_IF_INVALID_STATUS(reader->read_chunk(offset, K_RAFT_SNAPSHOT_CHUNK_BYTES, data, eof))
 
         InstallSnapshotParam chunk_param = param;
         chunk_param.offset = offset;

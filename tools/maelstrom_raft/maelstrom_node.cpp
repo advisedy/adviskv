@@ -203,10 +203,6 @@ void MaelstromRaftNode::on_init(const std::string& src, const Json& body) {
             if (!exists || !reader) {
                 return Status::OK();
             }
-            Status load_status = reader->load(nullptr);
-            if (load_status.fail()) {
-                return load_status;
-            }
             return reader->for_each_kv(visitor);
         });
         if (status.fail()) {
@@ -591,9 +587,6 @@ void MaelstromRaftNode::on_raft_install_snapshot(const std::string& src, const J
                     std::unique_ptr<storage::SnapshotFileReader> reader;
                     bool exists = false;
                     status = persist_->snapshot().open_reader(reader, exists);
-                    if (status.ok() && exists && reader) {
-                        status = reader->load(nullptr);
-                    }
                     if (status.ok() && exists && reader) {
                         status = state_machine_->restore(
                                 snap, [&reader](const storage::KvVisitor& visitor) -> Status {

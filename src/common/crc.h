@@ -7,6 +7,8 @@ namespace adviskv {
 
 namespace crc_detail {
 
+inline constexpr uint32_t K_CRC32_POLYNOMIAL = 0xEDB88320;
+
 inline uint32_t* crc32_table() {
     static uint32_t tab[256];
     static bool initialized = false;
@@ -15,7 +17,7 @@ inline uint32_t* crc32_table() {
             uint32_t crc = i;
             for (int j = 0; j < 8; j++) {
                 if (crc & 1)
-                    crc = (crc >> 1) ^ 0xEDB88320;
+                    crc = (crc >> 1) ^ K_CRC32_POLYNOMIAL;
                 else
                     crc >>= 1;
             }

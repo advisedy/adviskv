@@ -4,14 +4,13 @@
 #include <unordered_set>
 #include <vector>
 
+#include "common/constants.h"
 #include "common/define.h"
 #include "common/stable_hash.h"
 #include "common/status.h"
 #include "common/types.h"
 
 namespace adviskv {
-
-inline constexpr uint32 K_HASH_BUCKET_COUNT = 65536;
 
 struct HashRange {
     uint32 start{0};

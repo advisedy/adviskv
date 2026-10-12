@@ -8,28 +8,25 @@
 
 #include <fmt/format.h>
 
+#include "common/binary/codec.h"
 #include "common/define.h"
 #include "common/file.h"
-#include "common/framed_record_codec.h"
+#include "common/path.h"
 #include "storage/persist/persist_codecs.h"
 
 namespace adviskv::storage {
 
 ReplicaMetaPersistEngine::ReplicaMetaPersistEngine(std::string data_dir) : data_dir_(std::move(data_dir)) {}
 
-std::filesystem::path ReplicaMetaPersistEngine::replica_dir(const ReplicaID& replica_id) const {
-    return std::filesystem::path(data_dir_) / fmt::format("{}-{}", replica_id.table_id, replica_id.shard_index);
-}
-
-std::filesystem::path ReplicaMetaPersistEngine::meta_path(const ReplicaID& replica_id) const {
-    return replica_dir(replica_id) / kFileName;
-}
-
 Status ReplicaMetaPersistEngine::save_replica_meta(const ReplicaMetaPayload& payload) const {
-    std::filesystem::path path = meta_path(payload.init_param.replica_id);
+    const std::filesystem::path path =
+            adviskv::replica_meta_file(adviskv::replica_dir(data_dir_, payload.init_param.replica_id));
 
     return File::atomic_replace(path.string(), [&payload](const File& file) {
-        return FramedRecord<ReplicaMetaPayload>::encode_to(file, payload);
+        FileWriter writer(file);
+        RETURN_IF_INVALID_STATUS(binary::encode_crc(payload, writer))
+        // 原子替换统一负责 fsync 和发布，这里先把 Writer 的缓冲交给它。
+        return writer.flush();
     });
 }
 
@@ -42,17 +39,16 @@ Status ReplicaMetaPersistEngine::load_replica_meta(const std::filesystem::path& 
         return Status::ERROR(fmt::format("open replica meta failed: {}", path.string()));
     }
 
-    RETURN_IF_INVALID_STATUS(FramedRecord<ReplicaMetaPayload>::decode_from(file, payload))
-
-    return Status::OK();
+    FileReader reader(file);
+    return binary::decode_crc(reader, payload);
 }
 
 Status ReplicaMetaPersistEngine::load_replica_meta(const ReplicaID& replica_id, ReplicaMetaPayload& payload) const {
-    return load_replica_meta(meta_path(replica_id), payload);
+    return load_replica_meta(adviskv::replica_meta_file(adviskv::replica_dir(data_dir_, replica_id)), payload);
 }
 
 Status ReplicaMetaPersistEngine::delete_replica_data(const ReplicaID& replica_id) const {
-    std::filesystem::path dir = replica_dir(replica_id);
+    std::filesystem::path dir = adviskv::replica_dir(data_dir_, replica_id);
     try {
         if (!std::filesystem::exists(dir)) {
             return Status::OK();
@@ -75,7 +71,7 @@ std::vector<std::filesystem::path> ReplicaMetaPersistEngine::scan_replica_meta_f
         if (!entry.is_directory()) {
             continue;
         }
-        std::filesystem::path path = entry.path() / kFileName;
+        std::filesystem::path path = adviskv::replica_meta_file(entry.path());
         if (std::filesystem::exists(path)) {
             paths.push_back(std::move(path));
         }

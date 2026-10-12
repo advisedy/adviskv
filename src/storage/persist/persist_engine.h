@@ -1,6 +1,5 @@
 #pragma once
 
-#include <filesystem>
 #include <string>
 
 #include "common/model/model.h"
@@ -14,13 +13,6 @@ namespace adviskv::storage {
 
 class PersistEngine {
 public:
-
-    static std::string replica_dir_name(const ReplicaID& replica_id);
-    static std::filesystem::path replica_dir(const std::string& data_dir, const ReplicaID& replica_id);
-    static std::filesystem::path wal_file(const std::filesystem::path& dir);
-    static std::filesystem::path raft_meta_file(const std::filesystem::path& dir);
-    static std::filesystem::path snapshot_file(const std::filesystem::path& dir);
-
     PersistEngine(const std::string& data_dir, const ReplicaID& replica_id);
     ~PersistEngine();
 

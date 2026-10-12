@@ -3,8 +3,14 @@
 #include <cstdint>
 #include <string>
 #include <type_traits>
+#include <utility>
+#include <vector>
+
+#include <fmt/format.h>
 
 #include "common/binary/base.h"
+#include "common/constants.h"
+#include "common/crc.h"
 #include "common/define.h"
 #include "common/model/model.h"
 #include "common/status.h"
@@ -262,6 +268,61 @@ inline Status encode(const T& value, BinaryWriter& writer) {
 template <typename T, std::enable_if_t<detail::is_registered_v<T>, int>>
 inline Status decode(BinaryReader& reader, T& value) {
     return BinaryCodec<detail::normalized_t<T>>::decode(reader, value);
+}
+
+// [长度][CRC][payload]
+template <typename T, std::enable_if_t<detail::is_registered_v<T>, int> = 0>
+inline Status encode_crc(const T& value, BinaryWriter& writer) {
+    BufferWriter payload;
+    ChecksumWriter checksum(payload);
+    RETURN_IF_INVALID_STATUS(binary::encode(value, checksum))
+
+    if (payload.size() == 0 || payload.size() > static_cast<size_t>(K_MAX_FRAMED_PAYLOAD_BYTES)) {
+        return Status::ERROR(fmt::format("invalid crc payload size: {}, max={}", payload.size(),
+                                         K_MAX_FRAMED_PAYLOAD_BYTES));
+    }
+
+    int32_t length = static_cast<int32_t>(payload.size());
+    uint32_t crc = checksum.result();
+    RETURN_IF_INVALID_STATUS(binary::encode(length, writer))
+    RETURN_IF_INVALID_STATUS(binary::encode(crc, writer))
+    return writer.write_raw(payload.data(), payload.size());
+}
+
+template <typename T, std::enable_if_t<detail::is_registered_v<T>, int> = 0>
+inline Status decode_crc(BinaryReader& reader, T& value) {
+    int32_t length{0};
+    // 只有还没开始下一条记录时的 GET_EOF 才是正常结束。
+    RETURN_IF_INVALID_STATUS(binary::decode(reader, length))
+    if (length <= 0 || length > K_MAX_FRAMED_PAYLOAD_BYTES) {
+        return Status::ERROR(fmt::format("invalid crc payload length: {}, max={}", length,
+                                         K_MAX_FRAMED_PAYLOAD_BYTES));
+    }
+
+    auto require_complete = [](const Status& status) -> Status {
+        if (status.code() == StatusCode::GET_EOF) {
+            return Status::PARTIAL_READ(fmt::format("incomplete crc record: {}", status.msg()));
+        }
+        return status;
+    };
+
+    uint32_t stored_crc{0};
+    RETURN_IF_INVALID_STATUS(require_complete(binary::decode(reader, stored_crc)))
+    std::vector<uint8_t> payload(static_cast<size_t>(length));
+    RETURN_IF_INVALID_STATUS(require_complete(reader.read_raw(payload.data(), payload.size())))
+    if (compute_crc32(payload.data(), payload.size()) != stored_crc) {
+        return Status::ERROR("crc mismatch");
+    }
+
+    BufferReader payload_reader(std::move(payload));
+    Status status = binary::decode(payload_reader, value);
+    if (status.fail()) {
+        return Status::ERROR(fmt::format("invalid crc payload: {}", status.msg()));
+    }
+    if (!payload_reader.is_end()) {
+        return Status::ERROR("crc payload has trailing bytes");
+    }
+    return Status::OK();
 }
 
 }  // namespace binary

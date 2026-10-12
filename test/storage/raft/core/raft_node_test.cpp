@@ -5,6 +5,7 @@
 #include "common/status.h"
 #include "common/model/model.h"
 #include "storage/model/param.h"
+#include "common/path.h"
 #include "storage/persist/persist_engine.h"
 #include "test_env.h"
 
@@ -29,8 +30,7 @@ class RaftCoreTest : public ::testing::Test {
     }
 
     fs::path persist_dir() const {
-        return base_dir_ / (std::to_string(replica_id_.table_id) + "-" +
-                            std::to_string(replica_id_.shard_index));
+        return adviskv::replica_dir(base_dir_, replica_id_);
     }
 
     static LogEntry make_entry(Term term, LogIndex index, WriteOpType op_type,

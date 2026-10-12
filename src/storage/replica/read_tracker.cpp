@@ -35,12 +35,14 @@ std::shared_ptr<ReadRequestState> ReadTracker::new_request(const Key& key, Compl
     auto state = std::make_shared<ReadRequestState>();
     state->key = key;
     state->ticket = ticket;
-    state->deadline = std::chrono::steady_clock::now() + kReadTimeout;
     return state;
 }
 
 Status ReadTracker::establish(const std::shared_ptr<ReadRequestState>& state) {
-    state->membership_epoch = membership_epoch_;
+    // 排队时已经结束等待，就不再发起读确认。
+    if (!completions_.needs_result(state->ticket)) {
+        return Status::OK();
+    }
     state->read_seq = next_read_seq_++;
 
     RaftEffects effects;
@@ -80,27 +82,17 @@ void ReadTracker::advance() {
 
     const Term current_term = raft_core_.current_term();
     const bool is_leader = raft_core_.is_leader();
-    const uint64_t current_epoch = membership_epoch_;
-    const auto now = std::chrono::steady_clock::now();
 
     for (auto it = pending_reads_.begin(); it != pending_reads_.end();) {
         auto& state = it->second;
-        if (state->done) {
+        if (state->done || !completions_.needs_result(state->ticket)) {
             it = pending_reads_.erase(it);
             continue;
         }
 
-        if (!is_leader || current_term != state->read_term || current_epoch != state->membership_epoch) {
+        if (!is_leader || current_term != state->read_term) {
             state->done = true;
-            state->status = Status::NOT_LEADER("leader or membership changed during read");
-            IGNORE_RESULT(completions_.finish(state->ticket, state->status))
-            it = pending_reads_.erase(it);
-            continue;
-        }
-
-        if (now >= state->deadline) {
-            state->done = true;
-            state->status = Status::NOT_LEADER("read index quorum not reached before timeout");
+            state->status = Status::NOT_LEADER("leader or term changed during read");
             IGNORE_RESULT(completions_.finish(state->ticket, state->status))
             it = pending_reads_.erase(it);
             continue;

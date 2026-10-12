@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 
 #include "common/define.h"
@@ -24,7 +23,7 @@ class SnapshotTracker {
 public:
     SnapshotTracker(ReplicaID replica_id, RaftCore& raft_core, StateMachine& state_machine, PersistEngine& persist,
                     RaftEffectExecutor& effect_executor, FaultReporter fault_reporter, int32_t raft_do_snapshot_limit,
-                    std::function<void()> on_membership_changed, SnapshotWriter::DoneCallback on_snapshot_written);
+                    SnapshotWriter::DoneCallback on_snapshot_written);
 
     DISALLOW_COPY_AND_ASSIGN(SnapshotTracker)
 
@@ -52,7 +51,6 @@ private:
     PersistEngine& persist_;
     RaftEffectExecutor& effect_executor_;
     FaultReporter fault_reporter_;
-    std::function<void()> on_membership_changed_;
     ReplicaID replica_id_;
 
     SnapshotWriter snapshot_writer_;

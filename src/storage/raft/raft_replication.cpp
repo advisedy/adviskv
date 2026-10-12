@@ -4,18 +4,13 @@
 #include <optional>
 #include <utility>
 
+#include "common/constants.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
 #include "storage/model/model.h"
 #include "storage/raft/raft_log.h"
 
 namespace adviskv::storage {
-
-namespace {
-
-constexpr size_t K_MAX_APPEND_ENTRIES_PER_MESSAGE = 256;
-
-}  // namespace
 
 RaftReplication::RaftReplication(const ReplicaID& self_id, const RaftMembership& membership, const RaftLog& raft_log,
                                  RaftApply& raft_apply)
@@ -275,7 +270,7 @@ RaftMessageOr RaftReplication::build_append_entries_message(const PeerMember& me
     param.prev_log_index = prev_log_index;
     param.prev_log_term = raft_log_.term_at(prev_log_index);
     param.leader_commit = raft_apply_.commit_index();
-    param.entries = raft_log_.entries_from(next_index, K_MAX_APPEND_ENTRIES_PER_MESSAGE);
+    param.entries = raft_log_.entries_from(next_index, K_RAFT_MAX_APPEND_ENTRIES_PER_MESSAGE);
 
     LOG_DEBUG(
             "[Raft Replication] replica:{} build message, append entries to "

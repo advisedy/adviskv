@@ -15,6 +15,8 @@ public:
     using Ticket = uint64_t;
 
     Ticket create();
+    // 已完成或超时的 ticket 不再需要结果。
+    bool needs_result(Ticket ticket);
     Status wait(Ticket ticket);
     Status wait_for(Ticket ticket, Milliseconds timeout, const Status& timeout_status);
     bool finish(Ticket ticket, const Status& status);

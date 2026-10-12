@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <string>
 
+#include "common/constants.h"
 #include "storage/model/model.h"
 #include "storage/persist/persist_engine.h"
 #include "test/test_env.h"
@@ -49,7 +50,7 @@ class WalCrashInjectionTest : public ::testing::Test {
         ASSERT_TRUE(persist.close().ok());
     }
 
-    void expect_append_wal_crashes_at(const char* crash_point) const {
+    void expect_append_wal_crashes_at(const char* crash_point, bool large_payload = false) const {
         ASSERT_EXIT(
             {
                 ::setenv("ADVISKV_ENABLE_CRASH_POINT", crash_point, 1);
@@ -60,8 +61,9 @@ class WalCrashInjectionTest : public ::testing::Test {
                     ::_exit(3);
                 }
 
-                status = persist.wal().append(
-                    make_entry(2, 3, "crash-key", "crash-value"));
+                const std::string value = large_payload ? std::string(K_FILE_WRITE_BUFFER_BYTES, 'x')
+                                                        : "crash-value";
+                status = persist.wal().append(make_entry(2, 3, "crash-key", value));
                 if (status.fail()) {
                     ::_exit(4);
                 }
@@ -116,29 +118,28 @@ class WalCrashInjectionTest : public ::testing::Test {
     ReplicaID replica_id_{910, 1, 0};
 };
 
-TEST_F(WalCrashInjectionTest,
-       RecoverTruncatesPartialWalRecordAfterProcessCrash) {
+TEST_F(WalCrashInjectionTest, RecoverTruncatesBufferedPartialWriteCrash) {
     save_basic_wal();
-    {
-        expect_append_wal_crashes_at("framed_record.after_len_write");
-        assert_recovery_truncates_crashed_tail();
-    }
-    {
-        expect_append_wal_crashes_at("framed_record.after_crc_write");
-        assert_recovery_truncates_crashed_tail();
-    }
-    {
-        expect_append_wal_crashes_at("framed_record.after_payload_write");
-        assert_recovery_not_truncates_crashed_tail();
-    }
+    expect_append_wal_crashes_at("binary.file_writer.flush.after_partial_write");
+    assert_recovery_truncates_crashed_tail();
 }
 
-TEST_F(WalCrashInjectionTest, RecoverTruncatesPayloadPartialWriteCrash) {
+TEST_F(WalCrashInjectionTest, RecoverKeepsCompleteRecordWrittenBeforeSync) {
     save_basic_wal();
+    expect_append_wal_crashes_at("binary.file_writer.after_write");
+    assert_recovery_not_truncates_crashed_tail();
+}
 
-    expect_append_wal_crashes_at(
-        "framed_record.payload_write.after_partial_write");
+TEST_F(WalCrashInjectionTest, RecoverTruncatesHeaderWrittenBeforeLargePayload) {
+    save_basic_wal();
+    // 大 payload 会先 flush 长度和 CRC，再直接写正文；在两步之间崩溃不能算正常 EOF。
+    expect_append_wal_crashes_at("binary.file_writer.after_write", true);
+    assert_recovery_truncates_crashed_tail();
+}
 
+TEST_F(WalCrashInjectionTest, RecoverTruncatesDirectPayloadPartialWriteCrash) {
+    save_basic_wal();
+    expect_append_wal_crashes_at("binary.file_writer.direct_write.after_partial_write", true);
     assert_recovery_truncates_crashed_tail();
 }
 

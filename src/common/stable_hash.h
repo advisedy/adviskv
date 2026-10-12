@@ -6,9 +6,6 @@
 
 namespace adviskv {
 
-inline constexpr uint64 K_FNV1A64_OFFSET_BASIS = 0xcbf29ce484222325ULL;
-inline constexpr uint64 K_FNV1A64_PRIME = 0x100000001b3ULL;
-
 class StableHash64 {
 public:
     void append(std::string_view data) {
@@ -28,9 +25,9 @@ public:
     uint64 get_mixed_hash() const {
         uint64 value = hash_;
         value ^= value >> 33;
-        value *= 0xff51afd7ed558ccdULL;
+        value *= K_STABLE_HASH_MIX_MULTIPLIER_1;
         value ^= value >> 33;
-        value *= 0xc4ceb9fe1a85ec53ULL;
+        value *= K_STABLE_HASH_MIX_MULTIPLIER_2;
         value ^= value >> 33;
         return value;
     }
@@ -38,6 +35,11 @@ public:
     void clear() { hash_ = K_FNV1A64_OFFSET_BASIS; }
 
 private:
+    static constexpr uint64 K_FNV1A64_OFFSET_BASIS = 0xcbf29ce484222325ULL;
+    static constexpr uint64 K_FNV1A64_PRIME = 0x100000001b3ULL;
+    static constexpr uint64 K_STABLE_HASH_MIX_MULTIPLIER_1 = 0xff51afd7ed558ccdULL;
+    static constexpr uint64 K_STABLE_HASH_MIX_MULTIPLIER_2 = 0xc4ceb9fe1a85ec53ULL;
+
     void append_byte(uint8 byte) {
         hash_ ^= static_cast<uint64>(byte);
         hash_ *= K_FNV1A64_PRIME;

@@ -39,7 +39,6 @@ inline adviskv::Status for_each_snapshot_kv(storage::SnapshotStore& store,
     if (!exists || !reader) {
         return Status::OK();
     }
-    RETURN_IF_INVALID_STATUS(reader->load(nullptr))
     return reader->for_each_kv(visitor);
 }
 
@@ -51,7 +50,6 @@ inline adviskv::Status for_each_snapshot_request(storage::SnapshotStore& store,
     if (!exists || !reader) {
         return Status::OK();
     }
-    RETURN_IF_INVALID_STATUS(reader->load(nullptr))
     RETURN_IF_INVALID_STATUS(reader->skip_kv_region())
     return reader->for_each_request(visitor);
 }

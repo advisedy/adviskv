@@ -33,11 +33,9 @@ private:
     struct WalReadResult {
         std::vector<LogEntry> entries;
         bool error{false};
-        int64_t last_good_offset{0};
         std::string error_msg;
     };
 
-    Status write_wal_to_disk(const File& file, const LogEntry& entry);
     Status read_wal_batch_unlocked(std::vector<LogEntry>& entries) const;
     Status read_wal_from_disk(const std::string& path, WalReadResult& result) const;
     Status rewrite_wal_unlocked(const std::vector<LogEntry>& entries);

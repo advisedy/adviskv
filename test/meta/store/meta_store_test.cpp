@@ -10,6 +10,7 @@
 #include <thread>
 #include <vector>
 
+#include "common/path.h"
 #include "test/meta/store/meta_store_test_helper.h"
 #include "test_env.h"
 
@@ -233,10 +234,10 @@ TEST(MetaStoreTest, RuntimeAndEmptyTransactionsDoNotInheritDurableDirty) {
     ASSERT_TRUE(store.write_with([](MetaStoreTxn& txn) {
         return txn.put_database(Database{11, "commerce", "zone-a"});
     }).ok());
-    ASSERT_TRUE(fs::exists(dir / "meta.json"));
+    ASSERT_TRUE(fs::exists(adviskv::meta_file(dir)));
 
     // 阻止下一次快照写入。纯运行时事务和空事务不应访问这个路径。
-    ASSERT_TRUE(fs::create_directory(dir / "meta.json.tmp"));
+    ASSERT_TRUE(fs::create_directory(adviskv::atomic_replace_temp_path(adviskv::meta_file(dir))));
     ASSERT_TRUE(store.write_with([](MetaStoreTxn& txn) {
         EXPECT_FALSE(txn.durable_dirty());
         return Status::OK();
@@ -282,7 +283,7 @@ TEST(MetaStoreTest, PersistentStoreReportsCorruptedMetaOnInit) {
     const fs::path dir = test::make_unique_test_dir("meta_store_corrupt", 1);
     fs::create_directories(dir);
     {
-        std::ofstream out(dir / "meta.json", std::ios::binary);
+        std::ofstream out(adviskv::meta_file(dir), std::ios::binary);
         out << "corrupted meta";
     }
 
@@ -309,7 +310,7 @@ TEST(MetaStoreTest, RouteOnlyWriteDoesNotCreatePersistentSnapshot) {
         ASSERT_TRUE(store_test::get_shard_route(store, ShardID{1001, 0}, route)
                         .ok());
         ASSERT_FALSE(route.is_empty());
-        EXPECT_FALSE(fs::exists(data_dir / "meta.json"));
+        EXPECT_FALSE(fs::exists(adviskv::meta_file(data_dir)));
     }
 
     {

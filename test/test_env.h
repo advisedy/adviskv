@@ -8,13 +8,14 @@
 #include <filesystem>
 #include <string>
 
-#include "common/path_util.h"
+#include "common/confmgr.h"
+#include "common/path.h"
 #include "common/status.h"
 
 namespace adviskv::test {
 
 inline std::filesystem::path test_data_dir() {
-    return adviskv::path_from_config("data_dir");
+    return adviskv::path_from_project_root(CONF_GET_STR("data_dir"));
 }
 
 inline std::filesystem::path make_unique_test_dir(const std::string& prefix,

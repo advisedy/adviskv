@@ -12,9 +12,10 @@
 #include "common/log.h"
 #include "common/metrics/metrics.h"
 #include "common/model/model.h"
-#include "common/path_util.h"
+#include "common/path.h"
 #include "storage/engine/map_engine.h"
 #include "storage/handler/storage_service_impl.h"
+#include "storage/model/param.h"
 #include "storage/node_agent/node_agent.h"
 #include "storage/replica/replica_manager.h"
 
@@ -40,7 +41,7 @@ void init_conf(const std::string& conf_file) {
 void init_logger() {
     adviskv::LogConfig config;
     config.logger_name = CONF_GET_STR("logger_name");
-    config.log_dir = adviskv::path_from_config("log_dir").string();
+    config.log_dir = adviskv::path_from_project_root(CONF_GET_STR("log_dir")).string();
     config.log_filename = CONF_GET_STR("log_filename");
     config.log_level = CONF_GET_STR("log_level");
     config.log_to_console = CONF_GET_BOOL("log_to_console");
@@ -53,9 +54,17 @@ void init_logger() {
             config.log_to_file);
 }
 
+adviskv::storage::ReplicaRuntimeOptions load_replica_runtime_options(const adviskv::ConfMgr& conf) {
+    adviskv::storage::ReplicaRuntimeOptions options;
+    options.data_dir = adviskv::path_from_project_root(conf.Get<std::string>("data_dir")).string();
+    options.raft_rpc_timeout_ms = conf.Get<int32_t>("raft_rpc_timeout_ms", options.raft_rpc_timeout_ms);
+    options.raft_do_snapshot_limit = conf.Get<int32_t>("raft_do_snapshot_limit", options.raft_do_snapshot_limit);
+    return options;
+}
+
 void init_metrics() {
     adviskv::MetricsOptions options;
-    options.http_enable = CONF_GET_BOOL("metrics_http_enable", false);
+    options.http_enable = CONF_GET_BOOL("metrics_http_enable", options.http_enable);
     if (options.http_enable) {
         options.http_host = CONF_GET_STR("metrics_http_host", options.http_host);
         options.http_port = CONF_GET_INT("metrics_http_port", options.http_port);
@@ -95,13 +104,8 @@ int main(int argc, char* argv[]) {
     {
         using namespace adviskv::storage;
 
-        std::string data_dir = adviskv::path_from_config("data_dir").string();
         int32_t listen_port = CONF_GET_INT("port");
-        ReplicaRuntimeOptions runtime_options{
-                std::move(data_dir),
-                CONF_GET_INT("raft_rpc_timeout_ms", 1000),
-                CONF_GET_INT("raft_do_snapshot_limit", 1000),
-        };
+        auto runtime_options = load_replica_runtime_options(adviskv::ConfMgr::get_instance());
 
         auto replica_manager = std::make_unique<ReplicaManager>(std::move(runtime_options));
         ReplicaManager* replica_manager_ptr = replica_manager.get();
@@ -118,8 +122,8 @@ int main(int argc, char* argv[]) {
         agent_conf.meta_host = CONF_GET_STR("meta_host");
         agent_conf.meta_port = CONF_GET_INT("meta_port");
         agent_conf.heartbeat_interval_ms = CONF_GET_INT("heartbeat_interval_ms");
-        agent_conf.register_interval_ms = CONF_GET_INT("register_interval_ms", 30 * 1000);
-        agent_conf.rpc_timeout_ms = CONF_GET_INT("node_agent_rpc_timeout_ms", 3000);
+        agent_conf.register_interval_ms = CONF_GET_INT("register_interval_ms", agent_conf.register_interval_ms);
+        agent_conf.rpc_timeout_ms = CONF_GET_INT("node_agent_rpc_timeout_ms", agent_conf.rpc_timeout_ms);
         agent_conf.replica_ops.list_replicas = [replica_manager_ptr]() { return replica_manager_ptr->get_replicas(); };
         agent_conf.replica_ops.create_replica = [replica_manager_ptr](const ReplicaInitParam& param) {
             return replica_manager_ptr->add_replica(param);

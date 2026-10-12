@@ -2,8 +2,8 @@
 
 #include <utility>
 
+#include "common/binary/codec.h"
 #include "common/define.h"
-#include "common/framed_record_codec.h"
 #include "storage/persist/persist_codecs.h"
 
 namespace adviskv::storage {
@@ -12,8 +12,12 @@ RaftMetaStore::RaftMetaStore(std::string raft_meta_path, std::string dir_path)
         : raft_meta_path_(std::move(raft_meta_path)), dir_path_(std::move(dir_path)) {}
 
 Status RaftMetaStore::save(const RaftMeta& meta) {
-    return File::atomic_replace(raft_meta_path_,
-                                [&meta](const File& file) { return FramedRecord<RaftMeta>::encode_to(file, meta); });
+    return File::atomic_replace(raft_meta_path_, [&meta](const File& file) {
+        FileWriter writer(file);
+        RETURN_IF_INVALID_STATUS(binary::encode_crc(meta, writer))
+        // 原子替换统一负责 fsync 和发布，这里先把 Writer 的缓冲交给它。
+        return writer.flush();
+    });
 }
 
 Status RaftMetaStore::load(RaftMeta& meta) const {
@@ -24,7 +28,8 @@ Status RaftMetaStore::load(RaftMeta& meta) const {
         meta = {};
         return Status::OK();
     }
-    return FramedRecord<RaftMeta>::decode_from(file, meta);
+    FileReader reader(file);
+    return binary::decode_crc(reader, meta);
 }
 
 }  // namespace adviskv::storage

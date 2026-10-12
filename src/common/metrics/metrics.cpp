@@ -30,15 +30,6 @@ struct MetricsSnapshot {
     std::unordered_map<std::string, int64_t> counters;
 };
 
-const std::vector<int64_t>& latency_buckets_us() {
-    static const std::vector<int64_t> buckets = {
-            10,    25,    50,     75,     100,    150,     200,
-            250,   500,   750,    1000,   2000,   5000,    10000,
-            20000, 50000, 100000, 250000, 500000, 1000000, std::numeric_limits<int64_t>::max(),
-    };
-    return buckets;
-}
-
 std::string http_response(const std::string& status, const std::string& content_type, const std::string& body) {
     std::ostringstream out;
     out << "HTTP/1.1 " << status << "\r\n"
@@ -72,18 +63,18 @@ std::string prometheus_bucket_label(int64_t upper_bound) {
 
 class AdvisMetrics::Registry {
 public:
-    Registry() : bucket_bounds_(latency_buckets_us()) {}
+    Registry() = default;
 
     void record_latency(const std::string& name, int64_t latency_us) {
         std::lock_guard lock(mutex_);
         Histogram& histogram = latencies_[name];
         if (histogram.bucket_counts.empty()) {
-            histogram.bucket_counts.assign(bucket_bounds_.size(), 0);
+            histogram.bucket_counts.assign(K_METRICS_LATENCY_BUCKETS_US.size(), 0);
         }
         histogram.count += 1;
         histogram.sum_us += latency_us;
-        for (size_t i = 0; i < bucket_bounds_.size(); ++i) {
-            if (latency_us <= bucket_bounds_[i]) {
+        for (size_t i = 0; i < K_METRICS_LATENCY_BUCKETS_US.size(); ++i) {
+            if (latency_us <= K_METRICS_LATENCY_BUCKETS_US[i]) {
                 histogram.bucket_counts[i] += 1;
                 break;
             }
@@ -114,16 +105,16 @@ public:
             HistogramSnapshot histogram_snapshot;
             histogram_snapshot.count = histogram.count;
             histogram_snapshot.sum_us = histogram.sum_us;
-            histogram_snapshot.buckets.reserve(bucket_bounds_.size());
+            histogram_snapshot.buckets.reserve(K_METRICS_LATENCY_BUCKETS_US.size());
 
             int64_t cumulative = 0;
-            for (size_t i = 0; i < bucket_bounds_.size(); ++i) {
+            for (size_t i = 0; i < K_METRICS_LATENCY_BUCKETS_US.size(); ++i) {
                 int64_t count = 0;
                 if (i < histogram.bucket_counts.size()) {
                     count = histogram.bucket_counts[i];
                 }
                 cumulative += count;
-                histogram_snapshot.buckets.emplace_back(bucket_bounds_[i], cumulative);
+                histogram_snapshot.buckets.emplace_back(K_METRICS_LATENCY_BUCKETS_US[i], cumulative);
             }
             snapshot.latencies[name] = std::move(histogram_snapshot);
         }
@@ -138,7 +129,6 @@ private:
         int64_t sum_us{0};
     };
 
-    const std::vector<int64_t>& bucket_bounds_;
     mutable std::mutex mutex_;
     std::unordered_map<std::string, Histogram> latencies_;
     std::unordered_map<std::string, int64_t> counters_;
@@ -178,7 +168,7 @@ public:
             return Status::ERROR(msg);
         }
 
-        if (::listen(listen_fd_, 16) != 0) {
+        if (::listen(listen_fd_, K_METRICS_HTTP_LISTEN_BACKLOG) != 0) {
             close_fd(&listen_fd_);
             return Status::ERROR("failed to listen metrics http socket");
         }
@@ -214,7 +204,7 @@ private:
     }
 
     void handle_client(int client_fd) const {
-        char buffer[4096];
+        char buffer[K_METRICS_HTTP_REQUEST_BUFFER_BYTES];
         const ssize_t n = ::recv(client_fd, buffer, sizeof(buffer), 0);
         if (n <= 0) {
             return;

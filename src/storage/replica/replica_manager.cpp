@@ -8,6 +8,7 @@
 
 #include <fmt/format.h>
 
+#include "common/constants.h"
 #include "common/define.h"
 #include "common/log.h"
 #include "common/model/model.h"
@@ -122,7 +123,7 @@ std::vector<ReplicaPtr> ReplicaManager::get_replicas() const {
 
 void ReplicaManager::start_tick() {
     raft_tick_task_ = std::make_unique<RaftTickTask>(this);
-    raft_tick_task_->start(Milliseconds(20));
+    raft_tick_task_->start(Milliseconds(K_RAFT_TICK_INTERVAL_MS));
 }
 
 void ReplicaManager::recover() {

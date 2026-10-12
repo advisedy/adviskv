@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "common/constants.h"
 #include "common/define.h"
 #include "common/model/model.h"
 #include "common/status.h"
@@ -127,7 +128,7 @@ struct HeartBeatParam {
     NodeID node_id;
     std::string ip;
     int32_t port{-1};
-    std::string resoure_pool_name{"default"};
+    std::string resoure_pool_name{K_DEFAULT_RESOURCE_POOL};
     std::string dc;
     std::vector<HeartBeatReplicaInfo> replica_list;
     int64_t last_heartbeat_ts{0};

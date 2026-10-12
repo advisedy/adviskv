@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "common/constants.h"
+#include "common/path.h"
 #include "storage/model/param.h"
 #include "storage/replica/replica.h"
 #include "test/test_env.h"
@@ -29,7 +31,7 @@ class ReplicaManagerTest : public ::testing::Test {
     }
 
     ReplicaInitParam make_param(ReplicaID replica_id,
-                                int32_t raft_rpc_timeout_ms = 1000) const {
+                                int32_t raft_rpc_timeout_ms = K_DEFAULT_RAFT_RPC_TIMEOUT_MS) const {
         return ReplicaInitParam{
             replica_id,
             EngineType::MAP,
@@ -109,9 +111,7 @@ TEST_F(ReplicaManagerTest, DeleteReplicaRemovesIndexes) {
     ReplicaID replica_id{5, 2, 0};
 
     ASSERT_TRUE(manager.add_replica(make_param(replica_id)).ok());
-    fs::path replica_dir =
-        base_dir_ / (std::to_string(replica_id.table_id) + "-" +
-                     std::to_string(replica_id.shard_index));
+    fs::path replica_dir = adviskv::replica_dir(base_dir_, replica_id);
     ASSERT_TRUE(fs::exists(replica_dir));
 
     ASSERT_TRUE(manager.delete_replica(replica_id).ok());
@@ -130,9 +130,7 @@ TEST_F(ReplicaManagerTest, DeleteReplicaShutsDownExistingReferences) {
     ReplicaID replica_id{6, 2, 0};
 
     ASSERT_TRUE(manager.add_replica(make_param(replica_id)).ok());
-    fs::path replica_dir =
-        base_dir_ / (std::to_string(replica_id.table_id) + "-" +
-                     std::to_string(replica_id.shard_index));
+    fs::path replica_dir = adviskv::replica_dir(base_dir_, replica_id);
     ASSERT_TRUE(fs::exists(replica_dir));
 
     ReplicaPtr replica = manager.get_replica_by_id(replica_id);

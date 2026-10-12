@@ -5,6 +5,7 @@
 
 #include "common/confmgr.h"
 #include "common/log.h"
+#include "common/path.h"
 #include "test/test_env.h"
 
 int main(int argc, char** argv) {
@@ -15,7 +16,7 @@ int main(int argc, char** argv) {
 
     adviskv::LogConfig config;
     config.logger_name = CONF_GET_STR("logger_name");
-    config.log_dir = adviskv::path_from_config("log_dir").string();
+    config.log_dir = adviskv::path_from_project_root(CONF_GET_STR("log_dir")).string();
     config.log_filename = CONF_GET_STR("log_filename");
     config.log_level = CONF_GET_STR("log_level");
     config.log_to_console = CONF_GET_BOOL("log_to_console");

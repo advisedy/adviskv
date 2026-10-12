@@ -6,6 +6,7 @@
 #include <variant>
 #include <vector>
 
+#include "common/constants.h"
 #include "storage/model/model.h"
 
 namespace adviskv::storage {
@@ -107,8 +108,8 @@ struct CasParam {
 
 struct ReplicaRuntimeOptions {
     std::string data_dir;
-    int32_t raft_rpc_timeout_ms{1000};
-    int32_t raft_do_snapshot_limit{1000};
+    int32_t raft_rpc_timeout_ms{K_DEFAULT_RAFT_RPC_TIMEOUT_MS};
+    int32_t raft_do_snapshot_limit{K_DEFAULT_RAFT_SNAPSHOT_LOG_LIMIT};
 
     bool operator==(const ReplicaRuntimeOptions& other) const {
         return data_dir == other.data_dir && raft_rpc_timeout_ms == other.raft_rpc_timeout_ms &&

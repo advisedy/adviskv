@@ -1,15 +1,5 @@
 #pragma once
 
-// 全项目唯一的文件 IO 入口：一个拥有 fd 的 RAII File。
-//
-//   - 所有权：move-only，析构自动 close；在乎 close 错误的关键路径（tmp 文件
-//     rename 之前）走显式 close()。
-//   - 错误：统一 Status，文案自带 路径 + strerror。
-//   - EOF 语义：read/pread 一开始就到 EOF 返回 GET_EOF，读到一半返回
-//     PARTIAL_READ，WAL / framed record 的解码循环靠这两个码停。
-//   - 不做缓冲（binary/base.h 的 FileWriter/FileReader 借 file 引用干这事），
-//     不做 pwrite / ftruncate（全项目没有调用方，需要时照对称接口补）。
-//   - 就是 fd 的值包装，不同步；谁持有谁负责串行化。
 
 #include <cerrno>
 #include <cstdint>
@@ -23,15 +13,14 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "common/constants.h"
 #include "common/crash_injection.h"
 #include "common/defer.h"
 #include "common/define.h"
+#include "common/path.h"
 #include "common/status.h"
 
 namespace adviskv {
-
-// 默认权限
-constexpr mode_t K_DEFAULT_FILE_MODE = 0644;
 
 class File {
 public:
@@ -304,7 +293,7 @@ public:
             return Status::ERROR(fmt::format("create dir {} failed: {}", p.parent_path().string(), e.what()));
         }
 
-        const std::string tmp_path = path + ".tmp";
+        const std::string tmp_path = atomic_replace_temp_path(path).string();
         File tmp;
         RETURN_IF_INVALID_STATUS(open_for_write(tmp_path, tmp))
         auto remove_tmp = Defer([&tmp_path]() {

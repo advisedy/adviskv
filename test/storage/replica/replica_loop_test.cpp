@@ -54,6 +54,8 @@ public:
         return loop.read_tracker_.establish(state);
     }
 
+    static void advance_reads(ReplicaLoop& loop) { loop.read_tracker_.advance(); }
+
     static std::thread::id worker_id(ReplicaLoop& loop) { return loop.worker_.get_id(); }
 
     static bool active(ReplicaLoop& loop) { return loop.active_.load(); }
@@ -160,6 +162,44 @@ private:
     bool arrived_{false};
     bool released_{false};
 };
+
+TEST(CompletionManagerTest, CompletedTicketsNoLongerNeedResults) {
+    CompletionManager completions;
+    const auto ticket = completions.create();
+    EXPECT_TRUE(completions.needs_result(ticket));
+    EXPECT_FALSE(completions.needs_result(0));
+
+    ASSERT_TRUE(completions.finish(ticket, Status::OK()));
+    EXPECT_FALSE(completions.needs_result(ticket));
+    EXPECT_TRUE(completions.wait(ticket).ok());
+    EXPECT_FALSE(completions.needs_result(ticket));
+    EXPECT_FALSE(completions.finish(ticket, Status::OK()));
+}
+
+TEST(CompletionManagerTest, TimeoutEndsWaitingAndRejectsLateResults) {
+    CompletionManager completions;
+    const auto ticket = completions.create();
+    const Status timeout = Status::NOT_LEADER("read index quorum not reached before timeout");
+
+    const Status status = completions.wait_for(ticket, Milliseconds{0}, timeout);
+    EXPECT_EQ(status.code(), timeout.code());
+    EXPECT_EQ(status.msg(), timeout.msg());
+    EXPECT_FALSE(completions.needs_result(ticket));
+    EXPECT_FALSE(completions.finish(ticket, Status::OK()));
+}
+
+TEST(CompletionManagerTest, FailAllEndsWaitingBeforeResultsAreConsumed) {
+    CompletionManager completions;
+    const auto first = completions.create();
+    const auto second = completions.create();
+    const Status failure = Status::ERROR("raft loop is stopped");
+
+    completions.fail_all(failure);
+    EXPECT_FALSE(completions.needs_result(first));
+    EXPECT_FALSE(completions.needs_result(second));
+    EXPECT_EQ(completions.wait(first).msg(), failure.msg());
+    EXPECT_EQ(completions.wait(second).msg(), failure.msg());
+}
 
 TEST(ReplicaLoopTest, ExecutesOrdinaryTasksInOrderOnItsWorkerThread) {
     LoopHarness harness;
@@ -360,6 +400,71 @@ TEST(ReplicaLoopTest, FaultTailRejectsCurrentCallSuccess) {
     EXPECT_EQ(ReplicaLoopTestPeer::wait_for(
                       loop, ticket, Milliseconds(500), Status::ERROR("fault tail did not finish ticket")).code(),
               StatusCode::IS_FAULTED);
+}
+
+TEST(ReplicaLoopTest, ExpiredQueuedReadDoesNotEstablishQuorum) {
+    LoopHarness harness;
+    ReplicaLoop& loop = harness.loop();
+    const auto ticket = ReplicaLoopTestPeer::create_ticket(loop);
+    const auto state = ReplicaLoopTestPeer::new_read(loop, ticket);
+    const Status timeout = Status::NOT_LEADER("read index quorum not reached before timeout");
+
+    EXPECT_EQ(ReplicaLoopTestPeer::wait_for(loop, ticket, Milliseconds{0}, timeout).code(),
+              StatusCode::NOT_LEADER);
+    ASSERT_TRUE(ReplicaLoopTestPeer::establish_read(loop, state).ok());
+    EXPECT_EQ(state->read_seq, 0U);
+    EXPECT_TRUE(state->voter_ids.empty());
+    loop.stop();
+    EXPECT_FALSE(state->done);
+}
+
+TEST(ReplicaLoopTest, TimedOutReadIsRemovedBeforeApplyAndStop) {
+    LoopHarness harness;
+    ReplicaLoop& loop = harness.loop();
+    RaftCore& core = harness.raft_core();
+    RaftEffects effects;
+    RaftCoreTestPeer::become_candidate(core, effects);
+    ASSERT_TRUE(core.is_leader());
+    ASSERT_GT(core.commit_index(), core.last_applied());
+
+    const auto ticket = ReplicaLoopTestPeer::create_ticket(loop);
+    const auto state = ReplicaLoopTestPeer::new_read(loop, ticket);
+    ASSERT_TRUE(ReplicaLoopTestPeer::establish_read(loop, state).ok());
+    const Status timeout = Status::NOT_LEADER("read index quorum not reached before timeout");
+    EXPECT_EQ(ReplicaLoopTestPeer::wait_for(loop, ticket, Milliseconds{0}, timeout).code(),
+              StatusCode::NOT_LEADER);
+
+    ReplicaLoopTestPeer::advance_reads(loop);
+    core.advance_last_applied(core.commit_index());
+    ReplicaLoopTestPeer::advance_reads(loop);
+    loop.stop();
+    EXPECT_FALSE(state->done);
+    EXPECT_TRUE(state->value.empty());
+    EXPECT_FALSE(ReplicaLoopTestPeer::finish(loop, ticket, Status::OK()));
+}
+
+TEST(ReplicaLoopTest, PendingReadWaitsForApplyThenCompletes) {
+    LoopHarness harness;
+    ReplicaLoop& loop = harness.loop();
+    RaftCore& core = harness.raft_core();
+    RaftEffects effects;
+    RaftCoreTestPeer::become_candidate(core, effects);
+    ASSERT_TRUE(core.is_leader());
+    ASSERT_GT(core.commit_index(), core.last_applied());
+
+    const auto ticket = ReplicaLoopTestPeer::create_ticket(loop);
+    const auto state = ReplicaLoopTestPeer::new_read(loop, ticket);
+    ASSERT_TRUE(ReplicaLoopTestPeer::establish_read(loop, state).ok());
+    ReplicaLoopTestPeer::advance_reads(loop);
+    EXPECT_FALSE(state->done);
+
+    core.advance_last_applied(core.commit_index());
+    ReplicaLoopTestPeer::advance_reads(loop);
+    EXPECT_TRUE(state->done);
+    EXPECT_EQ(state->status.code(), StatusCode::KEY_NOT_FOUND);
+    EXPECT_EQ(ReplicaLoopTestPeer::wait_for(
+                      loop, ticket, Milliseconds{0}, Status::ERROR("read did not complete")).code(),
+              StatusCode::KEY_NOT_FOUND);
 }
 
 TEST(ReplicaLoopTest, ResponseTailFailsPendingReadsAfterLeaderChanges) {

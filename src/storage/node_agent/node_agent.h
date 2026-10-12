@@ -9,6 +9,7 @@
 #include <grpcpp/channel.h>
 
 #include "common/background_task.h"
+#include "common/constants.h"
 #include "common/define.h"
 #include "common/model/model.h"
 #include "common/optional.h"
@@ -40,16 +41,16 @@ struct NodeAgentConf {
     NodeID node_id;
     std::string ip;
     int32_t port{-1};
-    std::string resource_pool{"default"};
+    std::string resource_pool{K_DEFAULT_RESOURCE_POOL};
     std::string dc;
 
     std::string meta_host;
     int32_t meta_port{-1};
 
-    int32_t heartbeat_interval_ms{3000};
-    int32_t register_interval_ms{30 * 1000};
-    int32_t first_sync_retry_ms{1000};
-    int32_t rpc_timeout_ms{3000};
+    int32_t heartbeat_interval_ms{K_DEFAULT_NODE_AGENT_HEARTBEAT_INTERVAL_MS};
+    int32_t register_interval_ms{K_DEFAULT_NODE_AGENT_REGISTER_INTERVAL_MS};
+    int32_t first_sync_retry_ms{K_DEFAULT_NODE_AGENT_FIRST_SYNC_RETRY_MS};
+    int32_t rpc_timeout_ms{K_DEFAULT_NODE_AGENT_RPC_TIMEOUT_MS};
     NodeAgentReplicaOps replica_ops;
 
     Status validate() const {

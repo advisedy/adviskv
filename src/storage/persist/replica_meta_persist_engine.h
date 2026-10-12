@@ -25,8 +25,6 @@ struct ReplicaMetaPayload {
 // replica_meta，前几个是persist干的，最后一个是这个persist干的
 class ReplicaMetaPersistEngine {
 public:
-    static constexpr const char* kFileName = "replica_meta";
-
     explicit ReplicaMetaPersistEngine(std::string data_dir);
 
     Status save_replica_meta(const ReplicaMetaPayload& payload) const;
@@ -36,9 +34,6 @@ public:
     std::vector<std::filesystem::path> scan_replica_meta_files() const;
 
 private:
-    std::filesystem::path replica_dir(const ReplicaID& replica_id) const;
-    std::filesystem::path meta_path(const ReplicaID& replica_id) const;
-
     std::string data_dir_;
 };
 

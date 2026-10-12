@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -16,13 +17,13 @@
 
 #include "common/binary/codec.h"
 #include "common/crc.h"
-#include "common/status.h"
 #include "common/model/model.h"
+#include "common/path.h"
+#include "common/status.h"
 #include "storage/model/model.h"
+#include "storage/persist/snapshot_store.h"
 #include "storage/raft/state_machine/kv_state_machine.h"
 #include "storage/raft/state_machine/state_machine.h"
-#include "storage/persist/snapshot_store.h"
-#include "test/storage/persist/snapshot_test_util.h"
 #include "test/storage/persist/snapshot_test_util.h"
 #include "test/test_env.h"
 
@@ -68,8 +69,7 @@ protected:
     }
 
     fs::path wal_path() const {
-        return base_dir_ / (std::to_string(replica_id_.table_id) + "-" + std::to_string(replica_id_.shard_index)) /
-               "wal.log";
+        return adviskv::wal_file(adviskv::replica_dir(base_dir_, replica_id_));
     }
 
     static LogEntry make_entry(Term term, LogIndex index, WriteOpType op_type, std::string key, std::string value) {
@@ -118,6 +118,18 @@ protected:
     fs::path base_dir_;
     ReplicaID replica_id_{101, 7, 2};
 };
+
+TEST_F(PersistEngineTest, PersistencePathsKeepExistingReplicaLayout) {
+    const fs::path dir = adviskv::replica_dir(base_dir_, replica_id_);
+    EXPECT_EQ(dir, base_dir_ / "101-7");
+    EXPECT_EQ(adviskv::replica_dir(base_dir_, ReplicaID{101, 7, 9}), dir);
+    EXPECT_EQ(adviskv::wal_file(dir), dir / "wal.log");
+    EXPECT_EQ(adviskv::raft_meta_file(dir), dir / "raft_meta");
+    EXPECT_EQ(adviskv::snapshot_file(dir), dir / "snapshot");
+    EXPECT_EQ(adviskv::replica_meta_file(dir), dir / "replica_meta");
+    EXPECT_EQ(adviskv::receiving_snapshot_file(dir, 12), dir / "snapshot.receiving.12.tmp");
+    EXPECT_EQ(adviskv::candidate_snapshot_file(dir, 12), dir / "snapshot.12.tmp");
+}
 
 // 测试一下append_wal_batch和read_wal_batch是否可以正常运行
 TEST_F(PersistEngineTest, AppendWalBatchAndReadBackEntries) {
@@ -258,6 +270,73 @@ TEST_F(PersistEngineTest, SnapshotPersistsRaftMembersBeforeKvs) {
     });
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     EXPECT_EQ(loaded_kvs, (std::vector<KV>{{"member-k1", "v1"}, {"member-k2", "v2"}}));
+}
+
+// open 后直接读 KV 和 Request，不能靠测试 helper 再 load 一次掩盖初始化问题。
+TEST_F(PersistEngineTest, OpenSnapshotReaderInitializesHeaderAndRecords) {
+    PersistEngine engine = make_engine();
+    ASSERT_TRUE(engine.init().ok());
+
+    KvStateMachine state_machine(EngineType::MAP);
+    LogEntry entry = make_entry(5, 20, WriteOpType::PUT, "reader-key", "reader-value");
+    entry.request_id = "reader-request";
+    ASSERT_TRUE(state_machine.apply(entry).ok());
+    const std::vector<RaftMember> members = {
+            RaftMember{PeerMember{"node-2", replica_id_, Endpoint{"127.0.0.1", 5002}}, RaftMemberType::VOTER},
+    };
+    ASSERT_TRUE(test::write_state_machine_snapshot(engine.snapshot(), state_machine, members).ok());
+
+    std::unique_ptr<SnapshotFileReader> reader;
+    bool exists = false;
+    Status status = engine.snapshot().open_reader(reader, exists);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    ASSERT_TRUE(exists);
+    ASSERT_NE(reader, nullptr);
+    EXPECT_EQ(reader->header().apply_index, 20);
+    EXPECT_EQ(reader->header().apply_term, 5);
+    EXPECT_EQ(reader->header().members, members);
+
+    std::vector<KV> kvs;
+    ASSERT_TRUE(reader->for_each_kv([&kvs](const Key& key, const Value& value) {
+        kvs.emplace_back(key, value);
+        return Status::OK();
+    }).ok());
+    EXPECT_EQ(kvs, (std::vector<KV>{{"reader-key", "reader-value"}}));
+
+    // 校验 header 只比较缓存，不能把位置重新拨回 KV 区域。
+    ASSERT_TRUE(engine.snapshot().verify_header(*reader, 20, 5).ok());
+    EXPECT_TRUE(engine.snapshot().verify_header(*reader, 21, 5).fail());
+    std::vector<RequestRecord> requests;
+    status = reader->for_each_request([&requests](const RequestRecord& record) {
+        requests.push_back(record);
+        return Status::OK();
+    });
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    ASSERT_EQ(requests.size(), 1U);
+    EXPECT_EQ(requests[0].request_id, entry.request_id);
+    EXPECT_EQ(requests[0].op, WriteOpType::PUT);
+    EXPECT_EQ(requests[0].payload_hash,
+              RequestRecord::request_payload_hash(WriteOpType::PUT, entry.key, entry.value));
+    EXPECT_TRUE(requests[0].apply_status.ok());
+}
+
+TEST_F(PersistEngineTest, OpenMissingSnapshotClearsPreviousReader) {
+    PersistEngine engine = make_engine();
+    ASSERT_TRUE(engine.init().ok());
+    KvStateMachine state_machine(EngineType::MAP);
+    ASSERT_TRUE(state_machine.apply(make_entry(1, 1, WriteOpType::PUT, "key", "value")).ok());
+    ASSERT_TRUE(test::write_state_machine_snapshot(engine.snapshot(), state_machine).ok());
+
+    std::unique_ptr<SnapshotFileReader> reader;
+    bool exists = false;
+    ASSERT_TRUE(engine.snapshot().open_reader(reader, exists).ok());
+    ASSERT_TRUE(exists);
+    ASSERT_NE(reader, nullptr);
+
+    ASSERT_TRUE(fs::remove(adviskv::snapshot_file(adviskv::replica_dir(base_dir_, replica_id_))));
+    ASSERT_TRUE(engine.snapshot().open_reader(reader, exists).ok());
+    EXPECT_FALSE(exists);
+    EXPECT_EQ(reader, nullptr);
 }
 
 // 搞4个entry，然后用 rewrite 只保留快照之后的两个，检测 read_wal_batch 是否正确
@@ -702,7 +781,7 @@ TEST_F(PersistEngineTest, RecoverRewritesWalWhenSnapshotPrefixAndCorruptionCoexi
 namespace {
 
 fs::path snapshot_path_of(const fs::path& base_dir, const ReplicaID& replica_id) {
-    return PersistEngine::snapshot_file(PersistEngine::replica_dir(base_dir.string(), replica_id));
+    return adviskv::snapshot_file(adviskv::replica_dir(base_dir, replica_id));
 }
 
 // 写一份带若干 KV 的正快照，之后各负例在这份"好的"文件上精准改一个字段。
@@ -742,8 +821,7 @@ void patch_at(const fs::path& file, off_t offset, uint8_t xor_mask) {
 }
 
 // trailer 布局（从尾部数）：magic 在最后 4 字节；total_len 是再往前 8 字节。
-// （body_crc32 在 load 时不重放，只有发布路径的 verify 会全文件重算，
-// 所以 crc 负例放在接收发布用例里。）
+// 打开 reader 和接收发布都会校验正文 CRC，不能只靠 trailer 判断文件有效。
 constexpr size_t K_TAIL_MAGIC_FROM_END = 4;
 constexpr size_t K_TOTAL_LEN_FROM_END = 4 + 8;
 
@@ -772,6 +850,31 @@ TEST_F(PersistEngineTest, SnapshotLoadRejectsBogusTotalLen) {
     EXPECT_TRUE(status.fail()) << test::status_debug_string(status);
 }
 
+TEST_F(PersistEngineTest, OpenSnapshotReaderRejectsBodyCrcMismatch) {
+    write_reference_snapshot(base_dir_, replica_id_);
+
+    PersistEngine engine = make_engine();
+    ASSERT_TRUE(engine.init().ok());
+    std::unique_ptr<SnapshotFileReader> reader;
+    bool exists = false;
+    ASSERT_TRUE(engine.snapshot().open_reader(reader, exists).ok());
+    ASSERT_TRUE(exists);
+    ASSERT_NE(reader, nullptr);
+
+    // 无成员时 header 共 24 字节，随后是 key 长度和 key 内容。
+    // 只改 key 内容，不动 header/trailer，打开时也必须发现正文损坏。
+    patch_at(snapshot_path_of(base_dir_, replica_id_), 28, 0x01);
+    Status status = engine.snapshot().open_reader(reader, exists);
+    EXPECT_TRUE(status.fail()) << test::status_debug_string(status);
+    EXPECT_TRUE(exists);
+    EXPECT_EQ(reader, nullptr);
+
+    SnapshotHeaderPtr snapshot;
+    status = engine.snapshot().load_header(snapshot);
+    EXPECT_TRUE(status.fail()) << test::status_debug_string(status);
+    EXPECT_EQ(snapshot, nullptr);
+}
+
 TEST_F(PersistEngineTest, ReceivedSnapshotPublishRejectsBodyCrcMismatch) {
     // 这条走接收发布路径：rename 前的 verify 是全文件 crc 重放，body 里
     // 改一个字节（不动 trailer）也必须被拦住，坏文件不许发布。
@@ -782,8 +885,8 @@ TEST_F(PersistEngineTest, ReceivedSnapshotPublishRejectsBodyCrcMismatch) {
     write_reference_snapshot(base_dir_, source_replica_id);
     const fs::path received = base_dir_ / "received.tmp";
     std::filesystem::copy_file(snapshot_path_of(base_dir_, source_replica_id), received);
-    // header = magic(4)+apply_index(8)+apply_term(8)+block_len(4)+count(4)，
-    // 偏移 28 起是第一个 KV 的 key 长度字段：改这里 body_crc 必挂而 trailer 完好。
+    // 无成员时 header 共 24 字节，偏移 28 是第一个 key 的内容。
+    // 改这里会触发 body_crc 校验失败，而 trailer 保持完好。
     patch_at(received, 28, 0x01);
 
     PersistEngine engine = make_engine();

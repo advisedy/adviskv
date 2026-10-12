@@ -6,11 +6,12 @@
 
 #include <fmt/format.h>
 
+#include "common/binary/codec.h"
 #include "common/define.h"
-#include "common/framed_record_codec.h"
 #include "common/func.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
+#include "common/path.h"
 
 namespace adviskv::storage {
 
@@ -26,12 +27,13 @@ Status WalStore::append(const LogEntry& entry) {
     ADVISKV_METRICS_COUNTER("storage_persist_append_wal_request");
 
     std::unique_lock lock{mutex_};
-    Status status = write_wal_to_disk(wal_file_, entry);
+    FileWriter writer(wal_file_);
+    Status status = binary::encode_crc(entry, writer);
     if (status.fail()) {
         ADVISKV_METRICS_COUNTER("storage_persist_append_wal_failure");
         return status;
     }
-    RETURN_IF_INVALID_STATUS(wal_file_.fsync())
+    RETURN_IF_INVALID_STATUS(writer.sync())
     ADVISKV_METRICS_COUNTER("storage_persist_append_wal_success");
     return Status::OK();
 }
@@ -42,14 +44,15 @@ Status WalStore::append_batch(const std::vector<LogEntry>& entries) {
     ADVISKV_METRICS_COUNTER("storage_persist_append_wal_batch_entry", static_cast<int64_t>(entries.size()));
 
     std::unique_lock lock{mutex_};
+    FileWriter writer(wal_file_);
     for (const LogEntry& entry : entries) {
-        Status status = write_wal_to_disk(wal_file_, entry);
+        Status status = binary::encode_crc(entry, writer);
         if (status.fail()) {
             ADVISKV_METRICS_COUNTER("storage_persist_append_wal_batch_failure");
             return status;
         }
     }
-    RETURN_IF_INVALID_STATUS(wal_file_.fsync())
+    RETURN_IF_INVALID_STATUS(writer.sync())
     ADVISKV_METRICS_COUNTER("storage_persist_append_wal_batch_success");
     return Status::OK();
 }
@@ -76,20 +79,22 @@ Status WalStore::read_wal_batch_unlocked(std::vector<LogEntry>& entries) const {
 }
 
 Status WalStore::rewrite_wal_unlocked(const std::vector<LogEntry>& entries) {
-    const std::string tmp_path = wal_path_ + ".tmp";
+    const std::string tmp_path = atomic_replace_temp_path(wal_path_).string();
     File tmp_file;
     RETURN_IF_INVALID_STATUS(File::open_for_write(tmp_path, tmp_file))
+    FileWriter writer(tmp_file);
 
     {
         ADVISKV_METRICS_TIMER("storage_persist_rewrite_wal_write");
         for (const LogEntry& entry : entries) {
-            RETURN_IF_INVALID_STATUS(write_wal_to_disk(tmp_file, entry))
+            RETURN_IF_INVALID_STATUS(binary::encode_crc(entry, writer))
         }
+        RETURN_IF_INVALID_STATUS(writer.flush())
     }
 
     {
         ADVISKV_METRICS_TIMER("storage_persist_rewrite_wal_fsync");
-        RETURN_IF_INVALID_STATUS(tmp_file.fsync())
+        RETURN_IF_INVALID_STATUS(writer.sync())
     }
     RETURN_IF_INVALID_STATUS(tmp_file.close())
 
@@ -148,11 +153,6 @@ Status WalStore::recover(LogIndex snapshot_index, RecoverResult& result) {
     return Status::OK();
 }
 
-// buf.len + crc + buf [term + index + op_type + key + value + config fields]
-Status WalStore::write_wal_to_disk(const File& file, const LogEntry& entry) {
-    return FramedRecord<LogEntry>::encode_to(file, entry);
-}
-
 Status WalStore::read_wal_from_disk(const std::string& path, WalReadResult& result) const {
     File file;
     bool exists = false;
@@ -163,21 +163,14 @@ Status WalStore::read_wal_from_disk(const std::string& path, WalReadResult& resu
     }
 
     result = {};
+    FileReader reader(file);
     LogIndex prev_index{0};
     bool has_prev_index{false};
 
     while (true) {
-        const int64 record_start_offset = result.last_good_offset;
-
         LogEntry entry;
-        size_t consumed_bytes{0};
-        Status read_status = FramedRecord<LogEntry>::decode_from(file, entry, consumed_bytes);
+        Status read_status = binary::decode_crc(reader, entry);
         if (read_status.code() == StatusCode::GET_EOF) {
-            uint64_t file_size{0};
-            if (file.size(file_size).ok() && static_cast<int64>(file_size) > result.last_good_offset) {
-                result.error = true;
-                result.error_msg = "partial wal record";
-            }
             break;
         }
         if (read_status.code() == StatusCode::PARTIAL_READ) {
@@ -200,7 +193,6 @@ Status WalStore::read_wal_from_disk(const std::string& path, WalReadResult& resu
         result.entries.push_back(std::move(entry));
         prev_index = result.entries.back().index;
         has_prev_index = true;
-        result.last_good_offset = record_start_offset + consumed_bytes;
     }
     return Status::OK();
 }

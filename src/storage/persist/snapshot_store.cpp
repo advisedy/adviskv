@@ -11,18 +11,21 @@
 #include <fmt/format.h>
 
 #include "common/binary/codec.h"
+#include "common/constants.h"
 #include "common/crc.h"
 #include "common/defer.h"
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
 #include "common/pause_point.h"
+#include "common/path.h"
 #include "storage/persist/persist_codecs.h"
 
 namespace adviskv::storage {
 
 namespace {
 
+constexpr int32_t K_SNAPSHOT_MAGIC = 0x4B534850;
 constexpr size_t K_SNAPSHOT_TRAILER_BYTES = 4 + 4 + 4 + 8 + 4;
 
 struct SnapshotTrailer {
@@ -39,7 +42,7 @@ Status read_snapshot_trailer(BinaryReader& reader, SnapshotTrailer& trailer) {
     RETURN_IF_INVALID_STATUS(binary::decode(reader, trailer.total_len))
     int32 tail_magic{0};
     RETURN_IF_INVALID_STATUS(binary::decode(reader, tail_magic))
-    if (tail_magic != SnapshotStore::K_SNAPSHOT_MAGIC) {
+    if (tail_magic != K_SNAPSHOT_MAGIC) {
         return Status::ERROR("snapshot trailer magic mismatch, not a snapshot file or not fully written");
     }
     if (trailer.kv_count < 0 || trailer.request_count < 0) {
@@ -49,12 +52,7 @@ Status read_snapshot_trailer(BinaryReader& reader, SnapshotTrailer& trailer) {
     return Status::OK();
 }
 
-}  // namespace
-
-SnapshotStore::SnapshotStore(std::string snapshot_path, std::string dir_path)
-        : snapshot_path_(std::move(snapshot_path)), dir_path_(std::move(dir_path)) {}
-
-Status SnapshotStore::verify_snapshot_file(const File& file) {
+Status verify_snapshot_file(const File& file, SnapshotTrailer& trailer) {
     uint64_t file_size{0};
     RETURN_IF_INVALID_STATUS(file.size(file_size))
     if (file_size <= K_SNAPSHOT_TRAILER_BYTES) {
@@ -63,7 +61,6 @@ Status SnapshotStore::verify_snapshot_file(const File& file) {
 
     FileReader reader(file);
     RETURN_IF_INVALID_STATUS(file.seek(file_size - K_SNAPSHOT_TRAILER_BYTES))
-    SnapshotTrailer trailer;
     RETURN_IF_INVALID_STATUS(read_snapshot_trailer(reader, trailer))
     if (trailer.total_len != static_cast<int64>(file_size)) {
         return Status::ERROR(
@@ -79,10 +76,10 @@ Status SnapshotStore::verify_snapshot_file(const File& file) {
     uint32_t running_crc = update_crc32(0, reinterpret_cast<const uint8_t*>(&head_magic), sizeof(head_magic));
     size_t done = sizeof(head_magic);
     const size_t body_size = file_size - K_SNAPSHOT_TRAILER_BYTES;
-    std::vector<uint8_t> chunk(64 * 1024);
+    std::vector<uint8_t> chunk(K_SNAPSHOT_VERIFY_BUFFER_BYTES);
     while (done < body_size) {
         size_t want = std::min(chunk.size(), body_size - done);
-        RETURN_IF_INVALID_STATUS(file.read(chunk.data(), want))
+        RETURN_IF_INVALID_STATUS(reader.read_raw(chunk.data(), want))
         running_crc = update_crc32(running_crc, chunk.data(), want);
         done += want;
     }
@@ -91,6 +88,11 @@ Status SnapshotStore::verify_snapshot_file(const File& file) {
     }
     return Status::OK();
 }
+
+}  // namespace
+
+SnapshotStore::SnapshotStore(std::string snapshot_path, std::string dir_path)
+        : snapshot_path_(std::move(snapshot_path)), dir_path_(std::move(dir_path)) {}
 
 Status SnapshotStore::write_snapshot_to_file(const File& file, const SnapshotData& snapshot,
                                              const std::vector<RaftMember>& members) {
@@ -128,43 +130,23 @@ Status SnapshotStore::write_snapshot_to_file(const File& file, const SnapshotDat
     RETURN_IF_INVALID_STATUS(binary::encode(K_SNAPSHOT_MAGIC, file_writer))
 
     ADVISKV_METRICS_COUNTER("storage_persist_snapshot_bytes_written", total_len);
-    RETURN_IF_INVALID_STATUS(file_writer.flush())
-    return Status::OK();
+    return file_writer.sync();
 }
 
-Status SnapshotFileReader::load(SnapshotHeader* snapshot) {
+Status SnapshotFileReader::initialize() {
     if (!file_.is_open()) {
         return Status::ERROR("snapshot reader is not open");
     }
-    uint64_t file_size{0};
-    RETURN_IF_INVALID_STATUS(file_.size(file_size))
-    if (file_size <= K_SNAPSHOT_TRAILER_BYTES) {
-        return Status::ERROR(fmt::format("snapshot file too small to be complete: {}", file_size));
-    }
 
-    FileReader reader(file_);
-    RETURN_IF_INVALID_STATUS(file_.seek(file_size - K_SNAPSHOT_TRAILER_BYTES))
     SnapshotTrailer trailer;
-    RETURN_IF_INVALID_STATUS(read_snapshot_trailer(reader, trailer))
-    if (trailer.total_len != static_cast<int64>(file_size)) {
-        return Status::ERROR(
-                fmt::format("snapshot total_len mismatch, trailer:{} actual:{}", trailer.total_len, file_size));
-    }
+    RETURN_IF_INVALID_STATUS(verify_snapshot_file(file_, trailer))
     kv_count_ = trailer.kv_count;
     request_count_ = trailer.request_count;
 
-    RETURN_IF_INVALID_STATUS(file_.seek(0))
-    int32 head_magic{0};
-    RETURN_IF_INVALID_STATUS(binary::decode(reader, head_magic))
-    if (head_magic != SnapshotStore::K_SNAPSHOT_MAGIC) {
-        return Status::ERROR("snapshot head magic mismatch, not a snapshot file");
-    }
-    SnapshotHeader header;
-    RETURN_IF_INVALID_STATUS(binary::decode(reader, header))
-    if (snapshot) {
-        *snapshot = std::move(header);
-    }
-    return Status::OK();
+
+    RETURN_IF_INVALID_STATUS(file_.seek(sizeof(int32)))
+    FileReader reader(file_);
+    return binary::decode(reader, header_);
 }
 
 Status SnapshotFileReader::for_each_kv(const KvVisitor& fn) const {
@@ -239,30 +221,26 @@ Status SnapshotFileReader::read_chunk(uint64 offset, size_t max_bytes, std::stri
     return Status::OK();
 }
 
-std::string SnapshotStore::session_snapshot_tmp_path(const InstallSnapshotParam& param) const {
-    return dir_path_ + "/snapshot.receiving." + std::to_string(param.snapshot_index) + ".tmp";
-}
-
 Status SnapshotStore::open_reader(std::unique_ptr<SnapshotFileReader>& reader, bool& exists) const {
     reader.reset();
     exists = false;
-    std::lock_guard lock(mutex_);
     File file;
-    RETURN_IF_INVALID_STATUS(File::open_for_read(snapshot_path_, file, exists))
+    {
+        std::lock_guard lock(mutex_);
+        RETURN_IF_INVALID_STATUS(File::open_for_read(snapshot_path_, file, exists))
+    }
     if (!exists) {
         return Status::OK();
     }
-    reader = std::make_unique<SnapshotFileReader>(std::move(file));
-    exists = true;
+
+    auto candidate = std::unique_ptr<SnapshotFileReader>(new SnapshotFileReader(std::move(file)));
+    RETURN_IF_INVALID_STATUS(candidate->initialize())
+    reader = std::move(candidate);
     return Status::OK();
 }
 
-Status SnapshotStore::verify_header(SnapshotFileReader& reader, LogIndex expected_index, Term expected_term) const {
-    SnapshotHeader actual;
-    Status status = reader.load(&actual);
-    if (status.fail()) {
-        return status;
-    }
+Status SnapshotStore::verify_header(const SnapshotFileReader& reader, LogIndex expected_index, Term expected_term) const {
+    const SnapshotHeader& actual = reader.header();
     if (actual.apply_index != expected_index || actual.apply_term != expected_term) {
         LOG_WARN(
                 "[SnapshotStore] snapshot header mismatch, expected:{}:{}, actual:{}:{}",
@@ -286,13 +264,13 @@ Status SnapshotStore::load_header(SnapshotHeaderPtr& snapshot) const {
     if (!snapshot) {
         snapshot = std::make_shared<SnapshotHeader>();
     }
-    RETURN_IF_INVALID_STATUS(reader->load(snapshot.get()))
+    *snapshot = reader->header();
     return Status::OK();
 }
 
 Status SnapshotStore::append_snapshot_chunk(const InstallSnapshotParam& param) {
     std::lock_guard lock(mutex_);
-    const std::string session_path = session_snapshot_tmp_path(param);
+    const std::string session_path = adviskv::receiving_snapshot_file(dir_path_, param.snapshot_index).string();
 
     File session_file;
     if (param.offset == 0) {
@@ -305,16 +283,14 @@ Status SnapshotStore::append_snapshot_chunk(const InstallSnapshotParam& param) {
     if (current_size != param.offset) {
         return Status::ERROR("snapshot chunk offset mismatch");
     }
-    if (!param.data.empty()) {
-        RETURN_IF_INVALID_STATUS(session_file.write(param.data.data(), param.data.size()))
-    }
-    RETURN_IF_INVALID_STATUS(session_file.fsync())
-    return Status::OK();
+    FileWriter writer(session_file);
+    RETURN_IF_INVALID_STATUS(writer.write_raw(param.data.data(), param.data.size()))
+    return writer.sync();
 }
 
 Status SnapshotStore::finish_snapshot_receive(const InstallSnapshotParam& param) {
     std::lock_guard lock(mutex_);
-    const std::string session_path = session_snapshot_tmp_path(param);
+    const std::string session_path = adviskv::receiving_snapshot_file(dir_path_, param.snapshot_index).string();
     {
         File verify_file;
         bool exists = false;
@@ -322,7 +298,8 @@ Status SnapshotStore::finish_snapshot_receive(const InstallSnapshotParam& param)
         if (!exists) {
             return Status::ERROR("failed to open received snapshot for verify: session file missing");
         }
-        RETURN_IF_INVALID_STATUS(verify_snapshot_file(verify_file))
+        SnapshotFileReader reader(std::move(verify_file));
+        RETURN_IF_INVALID_STATUS(reader.initialize())
     }
     RETURN_IF_INVALID_STATUS(publish_tmp_snapshot(session_path, snapshot_path_, dir_path_))
     testhook::crash_point("persist.after_remote_snapshot_publish");
@@ -336,21 +313,16 @@ Status SnapshotStore::publish_tmp_snapshot(const std::string& tmp_path, const st
     return Status::OK();
 }
 
-std::string SnapshotStore::candidate_snapshot_tmp_path(LogIndex capture_index) const {
-    return dir_path_ + "/snapshot." + std::to_string(capture_index) + ".tmp";
-}
-
 Status SnapshotStore::write_local_snapshot_candidate(const SnapshotData& snapshot,
                                                      const std::vector<RaftMember>& members, LogIndex capture_index) {
     ADVISKV_METRICS_COUNTER("storage_persist_write_snapshot_request");
     ADVISKV_METRICS_TIMER("storage_persist_write_snapshot");
 
-    const std::string candidate_path = candidate_snapshot_tmp_path(capture_index);
+    const std::string candidate_path = adviskv::candidate_snapshot_file(dir_path_, capture_index).string();
 
     File candidate_file;
     RETURN_IF_INVALID_STATUS(File::open_for_write(candidate_path, candidate_file))
     RETURN_IF_INVALID_STATUS(write_snapshot_to_file(candidate_file, snapshot, members))
-    RETURN_IF_INVALID_STATUS(candidate_file.fsync())
     RETURN_IF_INVALID_STATUS(candidate_file.close())
     return Status::OK();
 }
@@ -366,18 +338,17 @@ Status SnapshotStore::publish_local_snapshot(LogIndex capture_index, bool& publi
         RETURN_IF_INVALID_STATUS(File::open_for_read(snapshot_path_, current_file, exists))
         if (exists) {
             SnapshotFileReader reader(std::move(current_file));
-            SnapshotHeader current;
-            Status status = reader.load(&current);
+            Status status = reader.initialize();
             if (status.fail()) {
-                LOG_WARN("[SnapshotStore] current snapshot header unreadable, treat index as 0, status:{}",
+                LOG_WARN("[SnapshotStore] current snapshot invalid, treat index as 0, status:{}",
                          status.to_string());
             } else {
-                current_index = current.apply_index;
+                current_index = reader.header().apply_index;
             }
         }
     }
 
-    const std::string candidate_path = candidate_snapshot_tmp_path(capture_index);
+    const std::string candidate_path = adviskv::candidate_snapshot_file(dir_path_, capture_index).string();
 
     auto remove_candidate = Defer([&candidate_path]() {
         std::error_code ec;

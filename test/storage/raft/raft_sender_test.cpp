@@ -13,6 +13,7 @@
 
 #include "common/pause_point.h"
 #include "storage/raft/state_machine/kv_state_machine.h"
+#include "common/path.h"
 #include "storage/persist/snapshot_store.h"
 #include "test/storage/persist/snapshot_test_util.h"
 #include "test/test_env.h"
@@ -307,7 +308,7 @@ TEST(RaftSenderSnapshotVersionTest, AllChunksComeFromSameFileVersionAfterPublish
     ASSERT_TRUE(machine_s.apply(LogEntry{1, 3, WriteOpType::PUT, "s-two", "2"}).ok());
     ASSERT_TRUE(test::write_state_machine_snapshot(persist.snapshot(), machine_s).ok());
     // 发布 T 之前先把 S 的原文读出来（此后 snapshot 路径会被 T 换掉）。
-    const fs::path snapshot_path = dir / "101-7" / "snapshot";
+    const fs::path snapshot_path = adviskv::snapshot_file(adviskv::replica_dir(dir, ReplicaID{101, 7, 0}));
     auto read_file = [](const fs::path& path) -> std::string {
         std::ifstream in(path, std::ios::binary);
         if (!in.is_open()) return {};

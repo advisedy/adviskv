@@ -18,7 +18,7 @@
 #include "common/arg_parser.h"
 #include "common/confmgr.h"
 #include "common/log.h"
-#include "common/path_util.h"
+#include "common/path.h"
 #include "e2e_assert.h"
 #include "e2e_options.h"
 
@@ -32,7 +32,7 @@ void init_conf(const char* conf_file) {
 void init_e2e_logger() {
     adviskv::LogConfig config;
     config.logger_name = CONF_GET_STR("logger_name");
-    config.log_dir = adviskv::path_from_config("log_dir").string();
+    config.log_dir = adviskv::path_from_project_root(CONF_GET_STR("log_dir")).string();
     config.log_filename = CONF_GET_STR("log_filename");
     config.log_level = CONF_GET_STR("log_level");
     config.log_to_console = CONF_GET_BOOL("log_to_console");

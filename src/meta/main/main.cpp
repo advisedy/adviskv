@@ -8,9 +8,10 @@
 
 #include "common/arg_parser.h"
 #include "common/confmgr.h"
+#include "common/constants.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
-#include "common/path_util.h"
+#include "common/path.h"
 #include "meta/background/background.h"
 #include "meta/handler/meta_service_impl.h"
 #include "meta/placement/node_selector.h"
@@ -40,7 +41,7 @@ void init_conf(const char* conf_file) {
 void init_logger() {
     adviskv::LogConfig config;
     config.logger_name = CONF_GET_STR("logger_name");
-    config.log_dir = adviskv::path_from_config("log_dir").string();
+    config.log_dir = adviskv::path_from_project_root(CONF_GET_STR("log_dir")).string();
     config.log_filename = CONF_GET_STR("log_filename");
     config.log_level = CONF_GET_STR("log_level");
     config.log_to_console = CONF_GET_BOOL("log_to_console");
@@ -50,7 +51,7 @@ void init_logger() {
 
 void init_metrics() {
     adviskv::MetricsOptions options;
-    options.http_enable = CONF_GET_BOOL("metrics_http_enable", false);
+    options.http_enable = CONF_GET_BOOL("metrics_http_enable", options.http_enable);
     if (options.http_enable) {
         options.http_host = CONF_GET_STR("metrics_http_host", options.http_host);
         options.http_port = CONF_GET_INT("metrics_http_port", options.http_port);
@@ -83,9 +84,9 @@ int main(int argc, char* argv[]) {
     {
         using namespace adviskv::meta;
         int32_t listen_port = CONF_GET_INT("port");
-        std::string listen_host = CONF_GET_STR("listen_host", std::string("127.0.0.1"));
-        std::string data_dir =
-                adviskv::path_from_project_root(CONF_GET_STR("data_dir", std::string("build/demo/data/meta"))).string();
+        std::string listen_host = CONF_GET_STR("listen_host", std::string(adviskv::K_DEFAULT_META_LISTEN_HOST));
+        std::string data_dir = adviskv::path_from_project_root(
+                CONF_GET_STR("data_dir", std::string(adviskv::K_DEFAULT_META_DATA_DIR))).string();
 
         auto store = std::make_unique<MetaStore>(PersistentMetaStoreParam{data_dir});
         if (adviskv::Status status = store->init(); status.fail()) {
@@ -106,7 +107,7 @@ int main(int argc, char* argv[]) {
         }
 
         auto reconcile_task = std::make_unique<MetaReconcileTask>(service_manager.get());
-        reconcile_task->start(adviskv::Milliseconds(3000));
+        reconcile_task->start(adviskv::Milliseconds(adviskv::K_META_RECONCILE_INTERVAL_MS));
 
         LOG_INFO("Meta server listening on {}:{}", listen_host, listen_port);
         server->Wait();

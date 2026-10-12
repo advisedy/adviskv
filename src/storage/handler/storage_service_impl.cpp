@@ -9,12 +9,12 @@
 #include <grpcpp/support/status.h>
 
 #include "common/confmgr.h"
+#include "common/constants.h"
 #include "common/defer.h"
 #include "common/define.h"
 #include "common/log.h"
 #include "common/metrics/metrics.h"
 #include "common/model/model.h"
-#include "common/path_util.h"
 #include "common/proto/codec.h"
 #include "common/status.h"
 #include "storage.pb.h"
@@ -55,7 +55,7 @@ void record_storage_write_handler_result(std::string_view op_name, const Status&
 }
 
 Status check_test_api_enabled() {
-    if (CONF_GET_BOOL("enable_test_api", false)) {
+    if (CONF_GET_BOOL("enable_test_api", K_DEFAULT_STORAGE_TEST_API_ENABLED)) {
         return Status::OK();
     }
     return Status::ERROR("enable_test_api is false");

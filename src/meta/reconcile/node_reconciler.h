@@ -12,11 +12,6 @@ class MetaStoreTxn;
 class NodeService;
 
 class NodeReconciler {
-public:
-    static constexpr int64_t HEARTBEAT_SUSPECT_TIMEOUT_MS = 10 * 1000;
-    static constexpr int64_t HEARTBEAT_OFFLINE_TIMEOUT_MS = 30 * 1000;
-    static constexpr int64_t HEARTBEAT_STARTUP_GRACE_MS = 30 * 1000;
-
 private:
     friend class NodeService;
 

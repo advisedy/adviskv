@@ -2,18 +2,13 @@
 
 #include <algorithm>
 
+#include "common/constants.h"
 #include "common/func.h"
 #include "common/log.h"
 #include "meta/store/meta_store.h"
 #include "meta/store/meta_store_txn.h"
 
 namespace adviskv::meta {
-
-namespace {
-
-constexpr size_t K_HEARTBEAT_CHECK_BATCH_SIZE = 16;
-
-}  // namespace
 
 NodeReconciler::NodeReconciler(MetaStore* store) : NodeReconciler(store, func::get_current_ts_ms()) {}
 
@@ -41,8 +36,8 @@ Status NodeReconciler::run() {
     }
 
     // 分批处理，避免长时间持锁。
-    for (size_t begin = 0; begin < node_ids.size(); begin += K_HEARTBEAT_CHECK_BATCH_SIZE) {
-        size_t end = std::min(begin + K_HEARTBEAT_CHECK_BATCH_SIZE, node_ids.size());
+    for (size_t begin = 0; begin < node_ids.size(); begin += K_META_HEARTBEAT_CHECK_BATCH_SIZE) {
+        size_t end = std::min(begin + K_META_HEARTBEAT_CHECK_BATCH_SIZE, node_ids.size());
         status = store_->write_with([&](MetaStoreTxn& txn) -> Status {
             for (size_t index = begin; index < end; ++index) {
                 NodeOr current;
@@ -76,9 +71,9 @@ Status NodeReconciler::check_and_modify_node(MetaStoreTxn& txn, Node& node) {
 
     int64_t current_ts_ms = func::get_current_ts_ms();
     int64_t diff = current_ts_ms - node.state.last_heartbeat_ts;
-    bool in_startup_grace = (current_ts_ms - start_ts_ms_ <= HEARTBEAT_STARTUP_GRACE_MS);
+    bool in_startup_grace = (current_ts_ms - start_ts_ms_ <= K_META_HEARTBEAT_STARTUP_GRACE_MS);
 
-    if (diff <= HEARTBEAT_SUSPECT_TIMEOUT_MS) {
+    if (diff <= K_META_HEARTBEAT_SUSPECT_TIMEOUT_MS) {
         if (node.state.status != NodeStatus::ONLINE) {
             return mark_node_online(txn, node);
         }
@@ -89,7 +84,7 @@ Status NodeReconciler::check_and_modify_node(MetaStoreTxn& txn, Node& node) {
         return Status::OK();
     }
 
-    if (diff > HEARTBEAT_OFFLINE_TIMEOUT_MS) {
+    if (diff > K_META_HEARTBEAT_OFFLINE_TIMEOUT_MS) {
         if (node.state.status != NodeStatus::OFFLINE) {
             return mark_node_offline(txn, node);
         }

@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include "common/binary/codec.h"
+#include "common/constants.h"
 #include "common/crc.h"
 #include "common/define.h"
 #include "common/file.h"
@@ -88,7 +89,7 @@ TEST(BinaryWriterTest, FileWriterBufferedBytesEqualPlainStream) {
             expected.append(small);
 
             if (round % 97 == 0) {
-                const std::string big(FileWriter::K_BUFFER_BYTES + static_cast<size_t>(round),
+                const std::string big(K_FILE_WRITE_BUFFER_BYTES + static_cast<size_t>(round),
                                       static_cast<char>('A' + round % 26));
                 ASSERT_TRUE(writer.write_raw(big.data(), big.size()).ok());
                 expected.append(big);
@@ -113,6 +114,55 @@ TEST(BinaryWriterTest, FileWriterDoesNotFlushOnDestruction) {
     }
     EXPECT_EQ(std::filesystem::file_size(file), 0U);
     std::filesystem::remove_all(dir);
+}
+
+TEST(BinaryWriterTest, FileWriterSyncFlushesCrcRecords) {
+    const std::filesystem::path dir = make_tmp_dir("sync");
+    const std::filesystem::path path = dir / "data.bin";
+    const std::vector<std::string> values{"first", "second"};
+    File out;
+    ASSERT_TRUE(File::open_for_write(path.string(), out).ok());
+    FileWriter writer(out);
+    for (const std::string& value : values) {
+        ASSERT_TRUE(binary::encode_crc(value, writer).ok());
+    }
+    EXPECT_EQ(std::filesystem::file_size(path), 0U);
+    ASSERT_TRUE(writer.sync().ok());
+    const uintmax_t size = std::filesystem::file_size(path);
+    EXPECT_GT(size, 0U);
+    ASSERT_TRUE(writer.sync().ok());
+    EXPECT_EQ(std::filesystem::file_size(path), size);
+
+    File in;
+    bool exists{false};
+    ASSERT_TRUE(File::open_for_read(path.string(), in, exists).ok());
+    ASSERT_TRUE(exists);
+    FileReader reader(in);
+    std::string restored;
+    for (const std::string& value : values) {
+        ASSERT_TRUE(binary::decode_crc(reader, restored).ok());
+        EXPECT_EQ(restored, value);
+    }
+    EXPECT_EQ(binary::decode_crc(reader, restored).code(), StatusCode::GET_EOF);
+    std::filesystem::remove_all(dir);
+}
+
+TEST(BinaryWriterTest, FileWriterSyncPropagatesFlushFailure) {
+    File file;
+    FileWriter writer(file);
+    ASSERT_TRUE(binary::encode(int32_t{7}, writer).ok());
+    const Status status = writer.sync();
+    EXPECT_TRUE(status.fail());
+    EXPECT_NE(status.msg().find("write"), std::string::npos);
+}
+
+TEST(BinaryWriterTest, FileWriterFlushDoesNotSyncEmptyBuffer) {
+    File file;
+    FileWriter writer(file);
+    EXPECT_TRUE(writer.flush().ok());
+    const Status status = writer.sync();
+    EXPECT_TRUE(status.fail());
+    EXPECT_NE(status.msg().find("fsync"), std::string::npos);
 }
 
 TEST(BinaryWriterTest, ChecksumWriterMatchesOneShotCrc) {

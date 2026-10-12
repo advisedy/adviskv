@@ -12,6 +12,8 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
+#include "common/path.h"
+
 namespace adviskv {
 
 namespace {
@@ -67,7 +69,7 @@ void Logger::init(const LogConfig& config) {
             }
         }
 
-        std::string log_path = config.log_dir + "/" + config.log_filename;
+        const std::string log_path = log_file(config.log_dir, config.log_filename).string();
         auto file_sink = std::make_shared<spdlog::sinks::hourly_file_sink_mt>(log_path);
         sinks.push_back(file_sink);
     }

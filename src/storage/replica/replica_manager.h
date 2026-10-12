@@ -8,6 +8,7 @@
 
 #include <google/protobuf/stubs/port.h>
 
+#include "common/constants.h"
 #include "common/status.h"
 #include "storage/persist/replica_meta_persist_engine.h"
 #include "storage/raft/raft_background_task.h"
@@ -18,7 +19,7 @@ class ReplicaManager {
 public:
     explicit ReplicaManager(ReplicaRuntimeOptions runtime)
             : runtime_options_(std::move(runtime)), meta_persist_(runtime_options_.data_dir) {}
-    ReplicaManager(std::string data_dir, int32 raft_rpc_timeout_ms = 1000)
+    ReplicaManager(std::string data_dir, int32 raft_rpc_timeout_ms = K_DEFAULT_RAFT_RPC_TIMEOUT_MS)
             : ReplicaManager(ReplicaRuntimeOptions{std::move(data_dir), raft_rpc_timeout_ms}) {}
     ~ReplicaManager() {
         if (raft_tick_task_) {

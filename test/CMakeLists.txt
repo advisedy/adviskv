@@ -93,8 +93,16 @@ add_adviskv_common_gtest(shard_range_test
     ${CMAKE_SOURCE_DIR}/test/common/shard_range_test.cpp
 )
 
+add_adviskv_common_gtest(path_test
+    ${CMAKE_SOURCE_DIR}/test/common/path_test.cpp
+)
+
 add_adviskv_common_gtest(binary_writer_test
     ${CMAKE_SOURCE_DIR}/test/common/binary_writer_test.cpp
+)
+
+add_adviskv_common_gtest(binary_crc_test
+    ${CMAKE_SOURCE_DIR}/test/common/binary_crc_test.cpp
 )
 
 add_adviskv_storage_gtest(map_engine_test

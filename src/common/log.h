@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 
+#include "common/constants.h"
 #include "common/define.h"
 #include "spdlog/logger.h"
 #include "spdlog/spdlog.h"
@@ -14,8 +15,8 @@ struct LogConfig {
     std::string log_dir;
     std::string log_filename;
     std::string log_level;
-    bool log_to_console{true};
-    bool log_to_file{true};
+    bool log_to_console{K_DEFAULT_LOG_TO_CONSOLE};
+    bool log_to_file{K_DEFAULT_LOG_TO_FILE};
 };
 
 class Logger {

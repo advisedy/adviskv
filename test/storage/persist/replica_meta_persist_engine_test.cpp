@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "common/model/model.h"
+#include "common/path.h"
 #include "test_env.h"
 namespace fs = std::filesystem;
 
@@ -28,13 +29,11 @@ class ReplicaMetaPersistEngineTest : public ::testing::Test {
     }
 
     fs::path replica_dir(const ReplicaID& replica_id) const {
-        return std::filesystem::path(base_dir_) /
-               fmt::format("{}-{}", replica_id.table_id,
-                           replica_id.shard_index);
+        return adviskv::replica_dir(base_dir_, replica_id);
     }
 
     fs::path meta_path(const ReplicaID& replica_id) const {
-        return replica_dir(replica_id) / ReplicaMetaPersistEngine::kFileName;
+        return adviskv::replica_meta_file(replica_dir(replica_id));
     }
 
     static PeerMember make_member(std::string node_id, ReplicaID replica_id,
@@ -115,8 +114,8 @@ TEST_F(ReplicaMetaPersistEngineTest,
 
     std::vector<fs::path> paths = persist.scan_replica_meta_files();
     ASSERT_EQ(paths.size(), 2U);
-    EXPECT_EQ(paths[0].filename(), ReplicaMetaPersistEngine::kFileName);
-    EXPECT_EQ(paths[1].filename(), ReplicaMetaPersistEngine::kFileName);
+    EXPECT_EQ(paths[0], meta_path(first));
+    EXPECT_EQ(paths[1], meta_path(second));
     EXPECT_NE(std::find(paths.begin(), paths.end(), meta_path(first)),
               paths.end());
     EXPECT_NE(std::find(paths.begin(), paths.end(), meta_path(second)),

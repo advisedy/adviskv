@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 
+#include "common/constants.h"
 #include "common/define.h"
 #include "common/metrics/latency_recorder.h"
 #include "common/status.h"
@@ -12,10 +13,10 @@
 namespace adviskv {
 
 struct MetricsOptions {
-    bool http_enable{false};
-    std::string http_host{"127.0.0.1"};
+    bool http_enable{K_DEFAULT_METRICS_HTTP_ENABLED};
+    std::string http_host{K_DEFAULT_METRICS_HTTP_HOST};
     int32_t http_port{0};
-    std::string http_path{"/metrics"};
+    std::string http_path{K_DEFAULT_METRICS_HTTP_PATH};
 };
 
 class AdvisMetrics {

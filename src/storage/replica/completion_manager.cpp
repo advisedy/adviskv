@@ -9,6 +9,12 @@ CompletionManager::Ticket CompletionManager::create() {
     return ticket;
 }
 
+bool CompletionManager::needs_result(Ticket ticket) {
+    std::lock_guard lock(mutex_);
+    auto it = pending_.find(ticket);
+    return it != pending_.end() && !it->second.done;
+}
+
 Status CompletionManager::wait(Ticket ticket) {
     std::unique_lock lock(mutex_);
     auto it = pending_.find(ticket);

@@ -16,8 +16,8 @@
 #include <grpcpp/server.h>
 #include <grpcpp/server_builder.h>
 
-#include "common/binary/codec.h"
-#include "common/crc.h"
+#include "common/constants.h"
+#include "common/define.h"
 #include "common/model/model.h"
 #include "common/pause_point.h"
 #include "common/proto/codec.h"
@@ -25,7 +25,7 @@
 #include "common/status.h"
 #include "storage.grpc.pb.h"
 #include "storage/model/param.h"
-#include "storage/persist/persist_codecs.h"
+#include "common/path.h"
 #include "storage/persist/persist_engine.h"
 #include "common/proto/codec.h"
 #include "storage/raft/state_machine/kv_state_machine.h"
@@ -261,8 +261,7 @@ class ReplicaTest : public ::testing::Test {
     }
 
     fs::path replica_directory() const {
-        return base_dir_ / (std::to_string(replica_id_.table_id) + "-" +
-                            std::to_string(replica_id_.shard_index));
+        return adviskv::replica_dir(base_dir_, replica_id_);
     }
 
     static LogEntry make_entry(Term term, LogIndex index, WriteOpType op_type,
@@ -581,6 +580,48 @@ TEST_F(ReplicaTest, CasSucceedsAndRejectsMismatchAndMissingKey) {
     ASSERT_EQ(status.code(), StatusCode::CONDITION_NOT_MET) << test::status_debug_string(status);
 }
 
+// 快照里的 KV 和去重记录都得恢复，不能只恢复 apply_index 然后当作成功。
+TEST_F(ReplicaTest, RecoverRestoresSnapshotKvAndRequestRecords) {
+    constexpr const char* request_id = "snapshot-recovered-request";
+    LogEntry entry = make_entry(1, 1, WriteOpType::PUT, "snapshot-key", "snapshot-value");
+    entry.request_id = request_id;
+    {
+        KvStateMachine state_machine(EngineType::MAP);
+        ASSERT_TRUE(state_machine.apply(entry).ok());
+        PersistEngine writer(base_dir_.string(), replica_id_);
+        ASSERT_TRUE(writer.init().ok());
+        ASSERT_TRUE(test::write_state_machine_snapshot(writer.snapshot(), state_machine).ok());
+        ASSERT_TRUE(writer.close().ok());
+    }
+
+    ReplicaManager manager(base_dir_.string());
+    ReplicaPtr replica = add_single_replica(manager);
+    ASSERT_NE(replica, nullptr);
+    manager.recover();
+    manager.start_tick();
+    replica = wait_until_leader(manager);
+    ASSERT_NE(replica, nullptr);
+    ASSERT_EQ(replica->get_role(), ReplicaRole::LEADER);
+
+    Value value;
+    Status status = replica->get(GetParam{"snapshot-key"}, value);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    EXPECT_EQ(value, "snapshot-value");
+
+    status = replica->put(PutParam{"snapshot-key", "snapshot-value", request_id});
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    status = replica->put(PutParam{"snapshot-key", "conflicting-value", request_id});
+    EXPECT_EQ(status.code(), StatusCode::INVALID_ARGUMENT) << test::status_debug_string(status);
+
+    PersistEngine wal_reader(base_dir_.string(), replica_id_);
+    ASSERT_TRUE(wal_reader.init().ok());
+    std::vector<LogEntry> entries;
+    ASSERT_TRUE(wal_reader.wal().read_batch(entries).ok());
+    for (const LogEntry& wal_entry : entries) {
+        EXPECT_NE(wal_entry.request_id, request_id);
+    }
+}
+
 TEST_F(ReplicaTest, RecoveredUnappliedRequestIdRetryDoesNotAppend) {
     constexpr const char* request_id = "recovered-unapplied-request";
     LogEntry recovered = make_entry(1, 1, WriteOpType::PUT, "recovered-key", "v1");
@@ -746,10 +787,7 @@ TEST_F(ReplicaTest, WalCatchupRecoveryRejectsRequestsUntilEntriesApplied) {
         ASSERT_TRUE(persist.close().ok());
     }
 
-    const fs::path wal_path = base_dir_ /
-                              (std::to_string(replica_id_.table_id) + "-" +
-                               std::to_string(replica_id_.shard_index)) /
-                              "wal.log";
+    const fs::path wal_path = adviskv::wal_file(replica_directory());
     std::ofstream wal(wal_path, std::ios::binary | std::ios::app);
     ASSERT_TRUE(wal.is_open()) << wal_path.string();
     wal.put('\x01');
@@ -808,10 +846,7 @@ TEST_F(ReplicaTest, SnapshotCatchupRecoveryFinishesWhenSnapshotCoversTarget) {
         ASSERT_TRUE(persist.close().ok());
     }
 
-    const fs::path wal_path = base_dir_ /
-                              (std::to_string(replica_id_.table_id) + "-" +
-                               std::to_string(replica_id_.shard_index)) /
-                              "wal.log";
+    const fs::path wal_path = adviskv::wal_file(replica_directory());
     std::ofstream wal(wal_path, std::ios::binary | std::ios::app);
     ASSERT_TRUE(wal.is_open()) << wal_path.string();
     wal.put('\x01');
@@ -1006,9 +1041,7 @@ TEST_F(ReplicaTest, FaultedReplicaFailsFastAndRejectsNewRequests) {
     status = replica->handle_install_snapshot(first_param);
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
 
-    const fs::path replica_dir =
-        base_dir_ / (std::to_string(replica_id_.table_id) + "-" +
-                     std::to_string(replica_id_.shard_index));
+    const fs::path replica_dir = replica_directory();
     const std::string session_prefix = "snapshot.receiving.100.";
     std::string session_file;
     for (const auto& item : fs::directory_iterator(replica_dir)) {
@@ -1314,7 +1347,7 @@ TEST_F(ReplicaTest, WalRewriteFailureFailsPendingProposalAndRejectsNewRequests) 
 
     BatchAPendingPut pending(replica, peer);
     ASSERT_TRUE(pending.wait_until_pending());
-    ASSERT_TRUE(fs::create_directory(replica_directory() / "wal.log.tmp"));
+    ASSERT_TRUE(fs::create_directory(adviskv::atomic_replace_temp_path(adviskv::wal_file(replica_directory()))));
 
     const Term term = replica->current_term();
     AppendEntriesResult result;
@@ -1338,7 +1371,7 @@ TEST_F(ReplicaTest, RaftMetaSaveFailureFailsPendingProposalAndRejectsNewRequests
 
     BatchAPendingPut pending(replica, peer);
     ASSERT_TRUE(pending.wait_until_pending());
-    ASSERT_TRUE(fs::create_directory(replica_directory() / "raft_meta.tmp"));
+    ASSERT_TRUE(fs::create_directory(adviskv::atomic_replace_temp_path(adviskv::raft_meta_file(replica_directory()))));
 
     RequestVoteResult result;
     Status status = replica->handle_request_vote(RequestVoteParam{
@@ -1349,30 +1382,32 @@ TEST_F(ReplicaTest, RaftMetaSaveFailureFailsPendingProposalAndRejectsNewRequests
     expect_batch_a_faulted(replica);
 }
 
-static std::string encode_single_kv_snapshot(LogIndex index, Term term, const Key& key, const Value& value) {
-    constexpr int32 kMagic = SnapshotStore::K_SNAPSHOT_MAGIC;
-    constexpr size_t kTrailerBytes = 4 + 4 + 4 + 8 + 4;
+// 测试快照也走正式写入流程，别再手工拼一套文件格式。
+static Status make_single_kv_snapshot(const fs::path& source_dir, LogIndex index, Term term,
+                                      const Key& key, const Value& value, std::string& data) {
+    std::error_code ec;
+    fs::create_directories(source_dir, ec);
+    if (ec) {
+        return Status::ERROR("failed to create snapshot source directory: " + source_dir.string() + ": " + ec.message());
+    }
 
-    BufferWriter body;
-    binary::encode(kMagic, body);
-    binary::encode(index, body);
-    binary::encode(term, body);
-    binary::encode(static_cast<int32>(0), body);
-    binary::encode(key, body);
-    binary::encode(value, body);
+    KvStateMachine source_state(EngineType::MAP);
+    RETURN_IF_INVALID_STATUS(source_state.apply(LogEntry{term, index, WriteOpType::PUT, key, value}))
+    SnapshotStore source_snapshot(adviskv::snapshot_file(source_dir).string(), source_dir.string());
+    RETURN_IF_INVALID_STATUS(test::write_state_machine_snapshot(source_snapshot, source_state))
 
-    std::vector<uint8_t> body_bytes = body.take();
-    const uint32_t body_crc = compute_crc32(body_bytes.data(), body_bytes.size());
-
-    BufferWriter file;
-    file.write_raw(body_bytes.data(), body_bytes.size());
-    binary::encode(static_cast<int32>(1), file);
-    binary::encode(static_cast<int32>(0), file);
-    binary::encode(body_crc, file);
-    binary::encode(static_cast<int64>(body_bytes.size() + kTrailerBytes), file);
-    binary::encode(kMagic, file);
-    auto bytes = file.take();
-    return std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    std::unique_ptr<SnapshotFileReader> reader;
+    bool exists = false;
+    RETURN_IF_INVALID_STATUS(source_snapshot.open_reader(reader, exists))
+    if (!exists || !reader) {
+        return Status::ERROR("source snapshot missing");
+    }
+    bool eof = false;
+    RETURN_IF_INVALID_STATUS(reader->read_chunk(0, K_RAFT_SNAPSHOT_CHUNK_BYTES, data, eof))
+    if (!eof) {
+        return Status::ERROR("single KV snapshot does not fit in one chunk");
+    }
+    return Status::OK();
 }
 
 TEST_F(ReplicaTest, SnapshotRestoreFailureFailsPendingProposalAndRejectsNewRequests) {
@@ -1384,17 +1419,24 @@ TEST_F(ReplicaTest, SnapshotRestoreFailureFailsPendingProposalAndRejectsNewReque
     ASSERT_NE(replica, nullptr);
     manager.reset();
 
+    const LogIndex snapshot_index = 100;
+    const Term snapshot_term = replica->current_term();
+    std::string truncated;
+    Status status = make_single_kv_snapshot(base_dir_ / "snapshot-source", snapshot_index, snapshot_term,
+                                           "truncated-key", "tv", truncated);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    ASSERT_GT(truncated.size(), 4U);
+    truncated.resize(truncated.size() - 4);
+
+    // 构造文件放在 pending 之前，免得文件 IO 把提案自己的超时预算耗掉。
     BatchAPendingPut pending(replica, peer);
     ASSERT_TRUE(pending.wait_until_pending());
-
-    std::string truncated = encode_single_kv_snapshot(100, replica->current_term(), "truncated-key", "tv");
-    truncated.resize(truncated.size() - 4);
-    Status status = replica->handle_install_snapshot(InstallSnapshotParam{
-        replica_id_, replica_id_, replica->current_term(), 100, replica->current_term(),
+    status = replica->handle_install_snapshot(InstallSnapshotParam{
+        replica_id_, replica_id_, replica->current_term(), snapshot_index, snapshot_term,
         0, truncated, true});
     EXPECT_TRUE(status.fail()) << test::status_debug_string(status);
 
-    EXPECT_FALSE(fs::exists(PersistEngine::snapshot_file(replica_directory())));
+    EXPECT_FALSE(fs::exists(adviskv::snapshot_file(replica_directory())));
     pending.expect_fault_error();
     expect_batch_a_faulted(replica);
 }
@@ -1418,7 +1460,7 @@ TEST_F(ReplicaTest, SnapshotWorkerWriteFailureFailsPendingProposalAndRejectsNewR
     }
     BatchAPendingPut pending(replica, peer);
     ASSERT_TRUE(pending.wait_until_pending());
-    ASSERT_TRUE(fs::create_directory(replica_directory() / "wal.log.tmp"));
+    ASSERT_TRUE(fs::create_directory(adviskv::atomic_replace_temp_path(adviskv::wal_file(replica_directory()))));
     first_worker.release();
     ASSERT_TRUE(wait_for([&] { return replica->snapshot_index() == 3; }));
 
@@ -1449,7 +1491,7 @@ TEST_F(ReplicaTest, SnapshotWalTruncateFailureFailsPendingProposalAndRejectsNewR
     ASSERT_TRUE(worker.wait_until_arrived());
     BatchAPendingPut pending(replica, peer);
     ASSERT_TRUE(pending.wait_until_pending());
-    ASSERT_TRUE(fs::create_directory(replica_directory() / "wal.log.tmp"));
+    ASSERT_TRUE(fs::create_directory(adviskv::atomic_replace_temp_path(adviskv::wal_file(replica_directory()))));
     worker.release();
     pending.expect_fault_error();
     expect_batch_a_faulted(replica);
@@ -1467,9 +1509,7 @@ TEST_F(ReplicaTest, FaultedManagerRecoverKeepsOldObjectFaultedAndRebuildRestores
     EXPECT_EQ(replica->handle_install_snapshot(InstallSnapshotParam{
                   replica_id_, replica_id_, cur_term, 100, cur_term,
                   0, "aaaa", false}).code(), StatusCode::OK);
-    const fs::path replica_dir =
-        base_dir_ / (std::to_string(replica_id_.table_id) + "-" +
-                     std::to_string(replica_id_.shard_index));
+    const fs::path replica_dir = replica_directory();
     const std::string session_prefix = "snapshot.receiving.100.";
     std::string session_file;
     for (const auto& item : fs::directory_iterator(replica_dir)) {
@@ -1592,8 +1632,11 @@ TEST_F(ReplicaTest, RemoteSnapshotBeatsStaleLocalCandidate) {
     ASSERT_GT(capture_index, 0);
 
     const Term cur_term = replica->current_term();
-    const std::string t_payload = encode_single_kv_snapshot(100, cur_term, "t-key", "tv");
-    Status status = replica->handle_install_snapshot(InstallSnapshotParam{
+    std::string t_payload;
+    Status status = make_single_kv_snapshot(base_dir_ / "snapshot-source", 100, cur_term,
+                                           "t-key", "tv", t_payload);
+    ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
+    status = replica->handle_install_snapshot(InstallSnapshotParam{
         replica_id_, replica_id_, cur_term, 100, cur_term, 0, t_payload, true});
     ASSERT_TRUE(status.ok()) << test::status_debug_string(status);
     peer.service()->set_own_term(cur_term);
@@ -1658,7 +1701,7 @@ TEST_F(ReplicaTest, LocalCandidateAndReceiveSessionDoNotShareFiles) {
     fs::path session_file = find_session_tmp_file(replica_directory(), session_prefix);
     ASSERT_FALSE(session_file.empty()) << "T receive session file not found";
     EXPECT_NE(session_file.filename().string(), candidate_name);
-    EXPECT_FALSE(fs::exists(replica_directory() / "snapshot"));
+    EXPECT_FALSE(fs::exists(adviskv::snapshot_file(replica_directory())));
     {
         auto size = fs::file_size(replica_directory() / candidate_name);
         EXPECT_GT(size, 0U);
@@ -1674,7 +1717,7 @@ TEST_F(ReplicaTest, LocalCandidateAndReceiveSessionDoNotShareFiles) {
     bool s_published = wait_for(
         [&] { return replica->snapshot_index() >= capture_index_of(candidate_name); });
     ASSERT_TRUE(s_published) << "local candidate S was not published";
-    EXPECT_TRUE(fs::exists(replica_directory() / "snapshot"));
+    EXPECT_TRUE(fs::exists(adviskv::snapshot_file(replica_directory())));
     EXPECT_FALSE(fs::exists(replica_directory() / candidate_name));
     EXPECT_TRUE(fs::exists(session_file));
     replica = wait_until_leader(*manager);
@@ -1836,7 +1879,8 @@ TEST_F(ReplicaTest, RemotePublishCrashRecoversWithSnapshotAsAuthority) {
         param.snapshot_term = 7;
         param.offset = 0;
         param.done = true;
-        param.data = encode_single_kv_snapshot(100, 7, "snap-key", "snap-value");
+        if (make_single_kv_snapshot(base_dir_ / "snapshot-source", 100, 7,
+                                    "snap-key", "snap-value", param.data).fail()) ::_exit(7);
 
         if (persist.snapshot().append_snapshot_chunk(param).fail()) ::_exit(5);
         if (persist.snapshot().finish_snapshot_receive(param).fail()) ::_exit(6);

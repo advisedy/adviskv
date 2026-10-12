@@ -2,6 +2,7 @@
 
 #include <memory>
 
+#include "common/constants.h"
 #include "common/status.h"
 #include "storage/model/model.h"
 #include "storage/persist/persist_engine.h"
@@ -11,7 +12,7 @@ namespace adviskv::storage {
 
 class RaftSender {
 public:
-    explicit RaftSender(int32 timeout_ms = 1000);
+    explicit RaftSender(int32 timeout_ms = K_DEFAULT_RAFT_RPC_TIMEOUT_MS);
     RaftSender(std::unique_ptr<IRaftRpcTransport> transport, int32 timeout_ms);
 
     void set_timeout_ms(int32 timeout_ms);
@@ -28,7 +29,7 @@ public:
 
 private:
     std::unique_ptr<IRaftRpcTransport> transport_;
-    int32 timeout_ms_{1000};
+    int32 timeout_ms_{K_DEFAULT_RAFT_RPC_TIMEOUT_MS};
 };
 
 }  // namespace adviskv::storage

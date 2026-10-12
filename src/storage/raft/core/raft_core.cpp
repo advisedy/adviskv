@@ -2,15 +2,15 @@
 
 #include <functional>
 
+#include "common/constants.h"
 #include "common/func.h"
 
 namespace adviskv::storage {
 
 namespace {
 
-constexpr int32 K_HEARTBEAT_INTERVAL = 3;
-
-const TickTrigger::TickLimitFunc K_ELECTION_TIMEOUT_FUNC = std::bind(func::get_random_int32, 15, 30);
+const TickTrigger::TickLimitFunc K_ELECTION_TIMEOUT_FUNC =
+        std::bind(func::get_random_int32, K_RAFT_ELECTION_TIMEOUT_MIN_TICKS, K_RAFT_ELECTION_TIMEOUT_MAX_TICKS);
 
 }  // namespace
 
@@ -22,7 +22,7 @@ RaftCore::RaftCore(const ReplicaID& self_id, const std::vector<PeerMember>& memb
           membership_(members),
           replication_(self_id_, membership_, raft_log_, raft_apply_),
           election_tick_trigger_(K_ELECTION_TIMEOUT_FUNC),
-          heartbeat_tick_trigger_(K_HEARTBEAT_INTERVAL) {}
+          heartbeat_tick_trigger_(K_RAFT_HEARTBEAT_INTERVAL_TICKS) {}
 
 LogIndex RaftCore::last_log_index() const { return raft_log_.last_log_index(); }
 

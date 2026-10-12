@@ -13,14 +13,13 @@ namespace adviskv::storage {
 
 SnapshotTracker::SnapshotTracker(ReplicaID replica_id, RaftCore& raft_core, StateMachine& state_machine,
                                  PersistEngine& persist, RaftEffectExecutor& effect_executor, FaultReporter fault_reporter,
-                                 int32_t raft_do_snapshot_limit, std::function<void()> on_membership_changed,
+                                 int32_t raft_do_snapshot_limit,
                                  SnapshotWriter::DoneCallback on_snapshot_written)
         : raft_core_(raft_core),
           state_machine_(state_machine),
           persist_(persist),
           effect_executor_(effect_executor),
           fault_reporter_(std::move(fault_reporter)),
-          on_membership_changed_(std::move(on_membership_changed)),
           replica_id_(std::move(replica_id)),
           snapshot_writer_(persist.snapshot(), std::move(on_snapshot_written)),
           raft_do_snapshot_limit_(raft_do_snapshot_limit) {}
@@ -95,10 +94,6 @@ Status SnapshotTracker::on_snapshot_done(const SnapshotDoneEvent& event) {
                  replica_id_.to_string(), exec_status.to_string());
         fault_reporter_.report(Status::ERROR("replica fault"));
         return exec_status;
-    }
-
-    if (on_membership_changed_) {
-        on_membership_changed_();
     }
 
     LOG_INFO("[SnapshotTracker] local snapshot published, replica_id:{}, snapshot_index:{}, snapshot_term:{}",
@@ -185,8 +180,7 @@ Status SnapshotTracker::finish_install_snapshot(const InstallSnapshotParam& para
         return Status::ERROR("published snapshot is unreadable right after receive");
     }
 
-    SnapshotHeaderPtr snap = std::make_shared<SnapshotHeader>();
-    RETURN_IF_INVALID_STATUS(fault_reporter_.fail_if(reader->load(snap.get())))
+    SnapshotHeaderPtr snap = std::make_shared<SnapshotHeader>(reader->header());
 
     SnapshotFileReader* reader_ptr = reader.get();
     Status restore_status = fault_reporter_.fail_if(state_machine_.restore(
@@ -204,9 +198,6 @@ Status SnapshotTracker::finish_install_snapshot(const InstallSnapshotParam& para
         raft_core_.install_snapshot(install_header, effects);
         return Status::OK();
     });
-    if (status.ok() && !install_header.members.empty() && on_membership_changed_) {
-        on_membership_changed_();
-    }
     return status;
 }
 

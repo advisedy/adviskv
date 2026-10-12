@@ -15,7 +15,7 @@
 #include "common/confmgr.h"
 
 #include "common/model/model.h"
-#include "common/path_util.h"
+#include "common/path.h"
 #include "common/stable_hash.h"
 #include "meta_client.h"
 #include "sdk/client.h"

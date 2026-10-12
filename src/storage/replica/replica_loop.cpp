@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <utility>
 
+#include "common/constants.h"
 #include "common/define.h"
 #include "common/defer.h"
 #include "common/log.h"
@@ -19,8 +20,6 @@ namespace adviskv::storage {
 
 namespace {
 
-constexpr size_t K_MAX_PROPOSAL_BATCH_SIZE = 64;
-constexpr size_t K_INLINE_APPLY_BATCH = 256;
 thread_local const ReplicaLoop* current_replica_loop = nullptr;
 
 }  // namespace
@@ -39,7 +38,7 @@ ReplicaLoop::ReplicaLoop(ReplicaID replica_id, RaftCore& raft_core, PersistEngin
           proposal_tracker_(raft_core, state_machine, raft_effect_executor_, completions_),
           read_tracker_(raft_core, state_machine, message_dispatcher_, completions_, fault_reporter_),
           snapshot_tracker_(replica_id_, raft_core, state_machine, persist, raft_effect_executor_, fault_reporter_,
-                            raft_do_snapshot_limit, [this]() { read_tracker_.note_membership_changed(); },
+                            raft_do_snapshot_limit,
                             [this](LogIndex capture_index, Term capture_term, Status status) {
                                 on_snapshot_written(capture_index, capture_term, std::move(status));
                             }),
@@ -107,10 +106,10 @@ void ReplicaLoop::run() {
 std::vector<ProposalItem> ReplicaLoop::collect_write_batch(ProposalItem first,
                                                             std::optional<PendingTask>& pending) {
     std::vector<ProposalItem> items;
-    items.reserve(K_MAX_PROPOSAL_BATCH_SIZE);
+    items.reserve(K_REPLICA_MAX_PROPOSAL_BATCH_SIZE);
     items.push_back(std::move(first));
 
-    while (items.size() < K_MAX_PROPOSAL_BATCH_SIZE) {
+    while (items.size() < K_REPLICA_MAX_PROPOSAL_BATCH_SIZE) {
         PendingTask next;
         if (!queue_.try_pop(next)) {
             break;
@@ -201,7 +200,7 @@ Status ReplicaLoop::wait_call(const ProposeCall& call, CompletionManager::Ticket
 
 Status ReplicaLoop::wait_call(const SubmitReadCall& call, CompletionManager::Ticket ticket) {
     UNUSED(call);
-    return completions_.wait_for(ticket, ReadTracker::wait_deadline(),
+    return completions_.wait_for(ticket, Milliseconds{K_REPLICA_READ_TIMEOUT_MS},
                                  Status::NOT_LEADER("read index quorum not reached before timeout"));
 }
 
@@ -254,7 +253,6 @@ Status ReplicaLoop::apply_one_entry(const LogEntry& entry) {
                          status.msg());
                 return status;
             }
-            read_tracker_.note_membership_changed();
             ADVISKV_METRICS_COUNTER("storage_replica_apply_entry_success");
             return Status::OK();
         }
@@ -270,7 +268,7 @@ Status ReplicaLoop::apply_committed_entries_inline() {
     while (true) {
         bool has_more = false;
         std::vector<LogEntry> entries =
-                raft_core_.extract_committed_entries(K_INLINE_APPLY_BATCH, 0, &has_more);
+                raft_core_.extract_committed_entries(K_REPLICA_INLINE_APPLY_BATCH_SIZE, 0, &has_more);
         if (entries.empty()) {
             break;
         }
