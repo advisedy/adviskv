@@ -1,14 +1,17 @@
 flowchart LR
-    client["Client / SDK"]
-    catalog["Catalog"]
-    topo["Topo"]
-    storage["Storage Raft Group"]
-    persist["WAL / Snapshot"]
+    client["Client / CLI"]
+    sdk["SDK<br/>Table RouteCache"]
+    meta["Meta<br/>DDL / Placement / Routes"]
+    storage["Storage Raft Group<br/>Leader / Followers"]
+    meta_files[("meta.json")]
+    storage_files[("Raft Meta / WAL / Snapshot")]
 
-    client -->|DDL| catalog
-    catalog -->|"Table Info"| topo
-    client -->|GetRoute| topo
-    topo -->|Route| client
-    client -->|"Put / Get / Delete"| storage
-    storage -->|Heartbeat| topo
-    storage -->|Persist| persist
+    client -->|"KV requests"| sdk
+    client -->|"DDL / GetTable"| meta
+    sdk -.->|"GetTableRoutes<br/>cache miss / refresh"| meta
+    meta -.->|"Whole-table hash-range routes"| sdk
+    sdk -->|"Put / Get / Delete / CAS"| storage
+    storage -->|"RegisterNode / Heartbeat"| meta
+    meta -->|"ExpectedReplica<br/>heartbeat response"| storage
+    meta -->|"persist metadata / intent"| meta_files
+    storage -->|"persist / recover"| storage_files
