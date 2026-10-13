@@ -18,7 +18,7 @@ struct RouteCache::TableRouteSnapshot {
     TableID table_id{-1};
     int32_t shard_count{0};
     std::vector<ShardRange> shard_ranges;
-    std::vector<RouteInfo> routes;
+    std::vector<ShardRoute> routes;
 };
 
 class RouteCache::RefreshTask : public BackgroundTask {
@@ -59,7 +59,7 @@ void RouteCache::stop() {
     }
 }
 
-Status RouteCache::resolve_route(const Key& key, RouteInfo* route) {
+Status RouteCache::resolve_route(const Key& key, ShardRoute* route) {
     ADVISKV_METRICS_TIMER("sdk_route_cache_lookup");
     Status status = lookup_cached_route(key, route);
     if (status.ok()) {
@@ -88,7 +88,7 @@ Status RouteCache::refresh(Milliseconds timeout) {
     return publish_table_routes(std::move(table_routes));
 }
 
-Status RouteCache::lookup_cached_route(const Key& key, RouteInfo* route) const {
+Status RouteCache::lookup_cached_route(const Key& key, ShardRoute* route) const {
     RETURN_IF_NULLPTR(route, "route should not be nullptr")
 
     const auto snapshot = snapshot_.load();
@@ -101,7 +101,7 @@ Status RouteCache::lookup_cached_route(const Key& key, RouteInfo* route) const {
         return Status::ROUTE_NOT_FOUND("key is outside the cached hash ranges");
     }
 
-    const RouteInfo& cached = snapshot->routes[pos];
+    const ShardRoute& cached = snapshot->routes[pos];
     if (cached.replicas.empty()) {
         return Status::ROUTE_NOT_FOUND("route cache shard is not ready");
     }
@@ -119,7 +119,7 @@ Status RouteCache::publish_table_routes(TableRouteInfo table_routes) {
     next->routes = std::move(table_routes.routes);
     next->shard_ranges.reserve(next->routes.size());
     for (const auto& route : next->routes) {
-        next->shard_ranges.push_back({route.shard_id, route.hash_range});
+        next->shard_ranges.push_back({route.shard_id.shard_index, route.hash_range});
     }
     snapshot_.publish(next);
     ADVISKV_METRICS_COUNTER("sdk_route_cache_table_routes_update");

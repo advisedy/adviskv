@@ -115,15 +115,6 @@ struct GetTableRoutesParam {
     }
 };
 
-struct HeartBeatReplicaInfo {
-    ReplicaID replica_id;
-    ReplicaRole role;
-    StorageReplicaStatus storage_status;
-    Term term;  // 用来帮助判断leader，term高的优先被认定是leader
-    RaftMemberType member_type{RaftMemberType::NON_MEMBER};
-    std::vector<RaftMember> full_membership;
-};
-
 struct HeartBeatParam {
     NodeID node_id;
     std::string ip;

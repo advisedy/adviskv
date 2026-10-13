@@ -89,8 +89,8 @@ TEST(RouteServiceReconcileTest, DeleteShardRouteWhenLeaderCountLessThanOne) {
             store,
             ShardRoute{
                 test_shard_id(),
-                {RouteEntry{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, 0},
-                            "node-0", "127.0.0.1", 18080, ReplicaRole::LEADER}},
+                {RouteReplica{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, 0},
+                              Endpoint{"127.0.0.1", 18080}, ReplicaRole::LEADER}},
             })
             .ok());
 
@@ -194,8 +194,8 @@ TEST(RouteServiceReconcileTest, ClearsRouteWhenLeadersShareMaxTerm) {
             store,
             ShardRoute{
                 test_shard_id(),
-                {RouteEntry{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, 0},
-                            "node-0", "127.0.0.1", 18080, ReplicaRole::LEADER}},
+                {RouteReplica{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, 0},
+                              Endpoint{"127.0.0.1", 18080}, ReplicaRole::LEADER}},
             })
             .ok());
 
@@ -245,11 +245,9 @@ TEST(RouteServiceReconcileTest, MultipleLeadersWithDifferentTermsChooseMaxTermLe
 
     EXPECT_EQ(route->replicas[0].replica_id.replica_seq, 1);
     EXPECT_EQ(route->replicas[0].role, ReplicaRole::LEADER);
-    EXPECT_EQ(route->replicas[0].term, 30);
 
     EXPECT_EQ(route->replicas[1].replica_id.replica_seq, 3);
     EXPECT_EQ(route->replicas[1].role, ReplicaRole::FOLLOWER);
-    EXPECT_EQ(route->replicas[1].term, 30);
 }
 
 // 检测 leader 切换后，旧路由被删除、新路由被重新发布。
@@ -271,12 +269,10 @@ TEST(RouteServiceReconcileTest, DeleteStaleRouteAndRepublishAfterLeaderRecovery)
             store,
             ShardRoute{
                 test_shard_id(),
-                {RouteEntry{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, 0},
-                            "node-0", "127.0.0.1", 18080, ReplicaRole::LEADER,
-                            10},
-                 RouteEntry{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, 1},
-                            "node-1", "127.0.0.1", 18081, ReplicaRole::FOLLOWER,
-                            10}},
+                {RouteReplica{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, 0},
+                              Endpoint{"127.0.0.1", 18080}, ReplicaRole::LEADER},
+                 RouteReplica{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, 1},
+                              Endpoint{"127.0.0.1", 18081}, ReplicaRole::FOLLOWER}},
             })
             .ok());
 
@@ -314,10 +310,8 @@ TEST(RouteServiceReconcileTest, DeleteStaleRouteAndRepublishAfterLeaderRecovery)
     ASSERT_EQ(route->replicas.size(), 2U);
     EXPECT_EQ(route->replicas[0].replica_id.replica_seq, 1);
     EXPECT_EQ(route->replicas[0].role, ReplicaRole::LEADER);
-    EXPECT_EQ(route->replicas[0].term, 12);
     EXPECT_EQ(route->replicas[1].replica_id.replica_seq, 0);
     EXPECT_EQ(route->replicas[1].role, ReplicaRole::FOLLOWER);
-    EXPECT_EQ(route->replicas[1].term, 12);
 }
 
 TEST(RouteServiceReconcileTest, DeletedTableRouteIsCleared) {
@@ -334,9 +328,8 @@ TEST(RouteServiceReconcileTest, DeletedTableRouteIsCleared) {
             store,
             ShardRoute{
                 test_shard_id(),
-                {RouteEntry{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, 0},
-                            "node-0", "127.0.0.1", 18080, ReplicaRole::LEADER,
-                            10}},
+                {RouteReplica{ReplicaID{K_TEST_TABLE_ID, K_TEST_SHARD_INDEX, 0},
+                              Endpoint{"127.0.0.1", 18080}, ReplicaRole::LEADER}},
             })
             .ok());
 

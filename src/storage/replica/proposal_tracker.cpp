@@ -10,8 +10,8 @@
 
 namespace adviskv::storage {
 
-ProposalTracker::ProposalTracker(RaftCore& raft_core, StateMachine& state_machine,
-                                 RaftEffectExecutor& effect_executor, CompletionManager& completions)
+ProposalTracker::ProposalTracker(RaftCore& raft_core, StateMachine& state_machine, RaftEffectExecutor& effect_executor,
+                                 CompletionManager& completions)
         : raft_core_(raft_core),
           state_machine_(state_machine),
           effect_executor_(effect_executor),
@@ -31,6 +31,8 @@ Status ProposalTracker::submit_batch(std::vector<ProposalItem> items) {
             continue;
         }
 
+        uint64_t write_hash = RequestRecord::request_payload_hash(*write);
+
         ADVISKV_METRICS_COUNTER("storage_replica_request_record_check_request");
         RequestRecord record;
         Status find_status;
@@ -41,7 +43,7 @@ Status ProposalTracker::submit_batch(std::vector<ProposalItem> items) {
         }
         if (find_status.ok()) {
             ADVISKV_METRICS_COUNTER("storage_replica_request_record_hit");
-            Status status = record.matches(*write)
+            Status status = record.payload_hash == write_hash
                                     ? record.apply_status
                                     : Status::INVALID_ARGUMENT("request_id was reused with a different write");
             IGNORE_RESULT(completions_.finish(item.ticket, status))
@@ -56,7 +58,7 @@ Status ProposalTracker::submit_batch(std::vector<ProposalItem> items) {
 
         auto tracked = entries_.find(write->request_id);
         if (tracked != entries_.end()) {
-            if (tracked->second.proposal != *write) {
+            if (tracked->second.payload_hash != write_hash) {
                 IGNORE_RESULT(completions_.finish(
                         item.ticket, Status::INVALID_ARGUMENT("request_id was reused with a different write")))
             } else if (tracked->second.committed && write->op != WriteOpType::CAS) {
@@ -70,12 +72,12 @@ Status ProposalTracker::submit_batch(std::vector<ProposalItem> items) {
         }
 
         Entry entry;
-        entry.proposal = *write;
+        entry.op = write->op;
+        entry.payload_hash = write_hash;
         entry.tickets.push_back(item.ticket);
         if (auto* logged = raft_core_.find_request(write->request_id)) {
-            WriteProposal logged_write{logged->op_type, logged->key, logged->value,
-                                       logged->request_id, logged->expected};
-            if (logged_write != *write) {
+            uint64_t logged_hash = RequestRecord::request_payload_hash(*logged);
+            if (logged_hash != write_hash) {
                 IGNORE_RESULT(completions_.finish(
                         item.ticket, Status::INVALID_ARGUMENT("request_id was reused with a different write")))
                 continue;
@@ -144,16 +146,16 @@ void ProposalTracker::advance() {
         Entry& entry = it->second;
         if (!entry.committed && entry.index > 0 && entry.index <= commit_index) {
             entry.committed = true;
-            if (entry.proposal.op != WriteOpType::CAS) {
+            if (entry.op != WriteOpType::CAS) {
                 finish_tickets(entry, Status::OK(), true);
             }
         }
         if (entry.committed && entry.index > 0 && entry.index <= last_applied) {
-            if (entry.proposal.op == WriteOpType::CAS) {
+            if (entry.op == WriteOpType::CAS) {
                 RequestRecord record;
-                Status status = state_machine_.find_request(entry.proposal.request_id, record);
+                Status status = state_machine_.find_request(it->first, record);
                 if (status.ok()) {
-                    status = record.matches(entry.proposal)
+                    status = record.payload_hash == entry.payload_hash
                                      ? record.apply_status
                                      : Status::INVALID_ARGUMENT("request_id was reused with a different write");
                 }

@@ -32,7 +32,7 @@ std::vector<PeerMember> build_shard_members(const MetaStoreTxn& txn, const Shard
         if (!txn.get_replica_observed(replica_id, observed_or).ok() || observed_or.is_empty()) {
             continue;
         }
-        if (voter_only && (observed_or->member_type != RaftMemberType::VOTER)) {
+        if (voter_only && !is_raft_voter(observed_or->member_type)) {
             continue;
         }
         PeerMember member;
@@ -98,15 +98,8 @@ Status append_reconfig_command_for_leader(const MetaStoreTxn& txn, const HeartBe
           由于之前判断 add_target 的逻辑只是通过 READY + NON_MEMBER筛选，所以有可能会和victim撞车
           */
 
-        // 关于这里 filter 的逻辑，只有当我们目前的desired_members 的数量超过了 target 的，才会也把 health
-        // 的纳入考虑范围，否则就不会。
-        bool include_healthy = static_cast<int32_t>(group.desired_members.size()) > group.target_replica_count;
-        std::vector<ReplicaID> victims;
-        RETURN_IF_INVALID_STATUS(select_remove_member_victims(txn, group, 1, !include_healthy, victims))
         Optional<ReplicaID> victim;
-        if (!victims.empty()) {
-            victim = victims.front();
-        }
+        RETURN_IF_INVALID_STATUS(select_single_remove_victim(txn, group, victim))
         if (victim.has_value() && add_target.has_value() && add_target.value() == victim.value()) {
             add_target.reset();
         }

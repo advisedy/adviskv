@@ -55,8 +55,8 @@ private:
 
     Milliseconds remaining_rpc_timeout(SteadyClock::time_point deadline) const;
 
-    Status resolve_route(const Key& key, RouteInfo* route, SteadyClock::time_point deadline);
-    Status refresh_route(const Key& key, RouteInfo* route, SteadyClock::time_point deadline);
+    Status resolve_route(const Key& key, ShardRoute* route, SteadyClock::time_point deadline);
+    Status refresh_route(const Key& key, ShardRoute* route, SteadyClock::time_point deadline);
 
     template <typename Send>
     Status run_kv_request(Operation operation, const Key& key, Milliseconds total_timeout,

@@ -64,7 +64,6 @@ Status Replica::init(const ReplicaInitParam& param) {
         auto info = std::make_shared<ReplicaRuntimeInfo>();
         info->role = raft_core_->role();
         info->current_term = raft_core_->current_term();
-        info->member_type = raft_core_->member_type(replica_id_);
         info->members = raft_core_->raft_members();
         info->snapshot_index = raft_core_->snapshot_index();
         info->snapshot_term = raft_core_->snapshot_term();

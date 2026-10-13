@@ -118,20 +118,13 @@ Status StorageClient::get_replica_info(const GetReplicaInfoParam& param,
 
     const auto& replica = response.replica();
 
-    out.replica_id =
-        ReplicaID{replica.table_id(), replica.shard_id(), replica.replica_seq()};
-    ReplicaRole role = ReplicaRole::FOLLOWER;
-    RETURN_IF_INVALID_CONDITION(is_valid_enum_value<ReplicaRole>(replica.role()),
-                                "replica role is not valid")
-    role = static_cast<ReplicaRole>(replica.role());
-    out.raft_role = role;
-    StorageReplicaStatus storage_status = StorageReplicaStatus::INITIALIZING;
-    RETURN_IF_INVALID_CONDITION(
-        is_valid_enum_value<StorageReplicaStatus>(replica.status()),
-        "replica storage status is not valid")
-    storage_status = static_cast<StorageReplicaStatus>(replica.status());
-    out.storage_status = storage_status;
-    out.endpoint = Endpoint{replica.endpoint().ip(), replica.endpoint().port()};
+    RETURN_IF_INVALID_CONDITION(codec::decode(replica.replica_id(), out.replica_id), "replica id is not valid")
+    RETURN_IF_INVALID_CONDITION(is_valid_enum_value<ReplicaRole>(replica.role()), "replica role is not valid")
+    out.raft_role = static_cast<ReplicaRole>(replica.role());
+    RETURN_IF_INVALID_CONDITION(is_valid_enum_value<StorageReplicaStatus>(replica.status()),
+                                "replica storage status is not valid")
+    out.storage_status = static_cast<StorageReplicaStatus>(replica.status());
+    RETURN_IF_INVALID_CONDITION(codec::decode(replica.endpoint(), out.endpoint), "replica endpoint is not valid")
     out.term = replica.term();
     return Status::OK();
 }

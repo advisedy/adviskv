@@ -30,7 +30,6 @@ class ReplicaMessageDispatcher;
 struct ReplicaRuntimeInfo {
     ReplicaRole role{ReplicaRole::FOLLOWER};
     Term current_term{0};
-    RaftMemberType member_type{RaftMemberType::NON_MEMBER};
     std::vector<RaftMember> members;
     LogIndex snapshot_index{0};
     Term snapshot_term{0};
@@ -48,7 +47,6 @@ public:
     ReplicaID get_replica_id() const { return replica_id_; }
 
     ReplicaRole get_role() const { return runtime_info_.load()->role; }
-    RaftMemberType get_member_type() const { return runtime_info_.load()->member_type; }
     std::vector<RaftMember> get_raft_members() const { return runtime_info_.load()->members; }
     Term current_term() const { return runtime_info_.load()->current_term; }
     LogIndex snapshot_index() const { return runtime_info_.load()->snapshot_index; }

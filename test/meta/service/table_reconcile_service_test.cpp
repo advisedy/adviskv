@@ -153,7 +153,7 @@ void expect_table_phase_and_msg(MetaStore& store, TablePhase phase, const std::s
     }
 }
 
-void put_route(MetaStore& store, std::vector<RouteEntry> replicas) {
+void put_route(MetaStore& store, std::vector<RouteReplica> replicas) {
     ShardRoute route;
     route.shard_id = ShardID{1001, 0};
     route.replicas = std::move(replicas);
@@ -163,8 +163,7 @@ void put_route(MetaStore& store, std::vector<RouteEntry> replicas) {
 GetTableRoutesParam make_get_table_routes_param() { return GetTableRoutesParam{"commerce", "orders", false}; }
 
 void report_replica_heartbeat(ServiceHarness& services, const NodeID& node_id, int32_t port, ReplicaIndex replica_index,
-                              ReplicaRole role, StorageReplicaStatus status, Term term,
-                              RaftMemberType member_type = RaftMemberType::VOTER) {
+                              ReplicaRole role, StorageReplicaStatus status, Term term) {
     HeartBeatParam param;
     param.node_id = node_id;
     param.ip = "127.0.0.1";
@@ -177,7 +176,6 @@ void report_replica_heartbeat(ServiceHarness& services, const NodeID& node_id, i
             role,
             status,
             term,
-            member_type,
             {},
     });
     ASSERT_TRUE(services.node.heartbeat(param).ok());
@@ -483,7 +481,6 @@ TEST(TableReconcilerTest, ReplicaGroupReplacesBadMemberAfterBackfill) {
             ReplicaRole::LEADER,
             StorageReplicaStatus::READY,
             1,
-            RaftMemberType::VOTER,
             {},
     });
 
@@ -603,7 +600,6 @@ TEST(TableReconcilerTest, LostReplicaIsReplacedAfterLeaderReportsMembershipWitho
             ReplicaRole::LEADER,
             StorageReplicaStatus::READY,
             2,
-            RaftMemberType::VOTER,
             {},
     });
 
@@ -662,7 +658,7 @@ TEST(TableReconcilerTest, LostReplicaIsReplacedAfterLeaderReportsMembershipWitho
     EXPECT_EQ(route->replicas.size(), 3U);
     auto route_has_replica = [&](const ReplicaID& rid) {
         return std::find_if(route->replicas.begin(), route->replicas.end(),
-                            [&](const RouteEntry& entry) { return entry.replica_id == rid; }) != route->replicas.end();
+                            [&](const RouteReplica& r) { return r.replica_id == rid; }) != route->replicas.end();
     };
     EXPECT_TRUE(route_has_replica(leader_id));
     EXPECT_TRUE(route_has_replica(healthy_follower_id));
@@ -750,7 +746,6 @@ TEST(TableReconcilerTest, ReplicaGroupShrinksAfterObservedMemberRemoved) {
             ReplicaRole::LEADER,
             StorageReplicaStatus::READY,
             1,
-            RaftMemberType::VOTER,
             {},
     });
 
@@ -869,8 +864,8 @@ TEST(TableReconcilerTest, TableDoesNotBecomeReadyWhenRouteHasMultipleLeaders) {
     ASSERT_TRUE(services.replica_group.reconcile_all().ok());
     ASSERT_TRUE(services.table.reconcile_all().ok());
 
-    put_route(store, {RouteEntry{ReplicaID{1001, 0, 0}, "node-a", "127.0.0.1", 18080, ReplicaRole::LEADER, 5},
-                      RouteEntry{ReplicaID{1001, 0, 1}, "node-b", "127.0.0.1", 18081, ReplicaRole::LEADER, 4}});
+    put_route(store, {RouteReplica{ReplicaID{1001, 0, 0}, Endpoint{"127.0.0.1", 18080}, ReplicaRole::LEADER},
+                      RouteReplica{ReplicaID{1001, 0, 1}, Endpoint{"127.0.0.1", 18081}, ReplicaRole::LEADER}});
 
     ASSERT_TRUE(services.table.reconcile_all().ok());
     EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::CREATING);
@@ -892,8 +887,8 @@ TEST(TableReconcilerTest, TableDoesNotBecomeReadyWhenLeaderEndpointInvalid) {
     ASSERT_TRUE(services.replica_group.reconcile_all().ok());
     ASSERT_TRUE(services.table.reconcile_all().ok());
 
-    put_route(store, {RouteEntry{ReplicaID{1001, 0, 0}, "node-a", "", 0, ReplicaRole::LEADER, 5},
-                      RouteEntry{ReplicaID{1001, 0, 1}, "node-b", "127.0.0.1", 18081, ReplicaRole::FOLLOWER, 5}});
+    put_route(store, {RouteReplica{ReplicaID{1001, 0, 0}, Endpoint{"", 0}, ReplicaRole::LEADER},
+                      RouteReplica{ReplicaID{1001, 0, 1}, Endpoint{"127.0.0.1", 18081}, ReplicaRole::FOLLOWER}});
 
     ASSERT_TRUE(services.table.reconcile_all().ok());
     EXPECT_EQ(get_table_or_die(store).state.phase, TablePhase::CREATING);
@@ -946,9 +941,7 @@ TEST(TableReconcilerTest, RouteIsRepublishedAfterHeartbeatRecoversLeader) {
     ASSERT_EQ(routes[0].replicas.size(), 2U);
     EXPECT_EQ(routes[0].replicas[0].replica_id.replica_seq, 0);
     EXPECT_EQ(routes[0].replicas[0].role, ReplicaRole::LEADER);
-    EXPECT_EQ(routes[0].replicas[0].term, 11);
-    EXPECT_EQ(routes[0].replicas[0].ip, "127.0.0.1");
-    EXPECT_EQ(routes[0].replicas[0].port, 18080);
+    EXPECT_EQ(routes[0].replicas[0].endpoint, (Endpoint{"127.0.0.1", 18080}));
     EXPECT_EQ(routes[0].replicas[1].replica_id.replica_seq, 1);
     EXPECT_EQ(routes[0].replicas[1].role, ReplicaRole::FOLLOWER);
 

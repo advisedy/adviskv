@@ -329,7 +329,6 @@ TEST_F(NodeAgentTest, StartRegistersNodeAndSendsPeriodicHeartbeat) {
     EXPECT_EQ(heartbeat.replica_info_list(0).replica_id().replica_seq(), 0);
     EXPECT_EQ(heartbeat.replica_info_list(0).role(), to<int32_t>(ReplicaRole::FOLLOWER));
     EXPECT_EQ(heartbeat.replica_info_list(0).status(), to<int32_t>(StorageReplicaStatus::READY));
-    EXPECT_EQ(heartbeat.replica_info_list(0).member_type(), to<int32_t>(RaftMemberType::VOTER));
 }
 
 // 检测 heartbeat 响应里的 PRESENT/ABSENT 指令会触发本地 replica 创建和删除。

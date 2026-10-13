@@ -47,7 +47,7 @@ Status ReplicaGroupPlanReconciler::reconcile_table(const Table& table) {
 
 Status ReplicaGroupPlanReconciler::reconcile_present_table(const Table& table) {
     for (const auto& range : table.spec.shard_ranges) {
-        ShardIndex shard_index = range.shard_id;
+        ShardIndex shard_index = range.shard_index;
         Status status = ensure_group_for_shard(table, shard_index);
         if (status.fail()) {
             LOG_WARN(
@@ -110,7 +110,7 @@ Status ReplicaGroupPlanReconciler::reconcile_absent_table(const Table& table) {
         }
 
         for (const auto& range : current->spec.shard_ranges) {
-            ShardIndex shard_index = range.shard_id;
+            ShardIndex shard_index = range.shard_index;
             ShardID shard_id{current->table_id, shard_index};
             ReplicaGroupOr group_or;
             RETURN_IF_INVALID_STATUS(txn.get_replica_group(shard_id, group_or))

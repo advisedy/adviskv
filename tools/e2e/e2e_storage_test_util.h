@@ -25,14 +25,14 @@ struct ReplicaState {
 };
 
 bool get_replica_state_for_test(const Endpoint& endpoint, TableID table_id,
-                                ShardIndex shard_id, const Options& options,
+                                ShardIndex shard_index, const Options& options,
                                 ReplicaState* state, std::string* error);
 
 struct RouteReplicaStatesForTest {
-    sdk::RouteInfo route;
-    sdk::RouteReplica leader;
+    ShardRoute route;
+    RouteReplica leader;
     ReplicaState leader_state;
-    std::vector<sdk::RouteReplica> followers;
+    std::vector<RouteReplica> followers;
 };
 
 bool get_route_replica_states_for_test(E2EContext* context, const Key& key,
@@ -40,12 +40,12 @@ bool get_route_replica_states_for_test(E2EContext* context, const Key& key,
                                        std::string* error);
 
 bool wait_replica_apply_index_at_least_for_test(
-    const Endpoint& endpoint, TableID table_id, ShardIndex shard_id,
+    const Endpoint& endpoint, TableID table_id, ShardIndex shard_index,
     int64_t target_apply_index, const Options& options,
     std::chrono::milliseconds timeout);
 
 bool wait_replica_snapshot_index_at_least_for_test(
-    const Endpoint& endpoint, TableID table_id, ShardIndex shard_id,
+    const Endpoint& endpoint, TableID table_id, ShardIndex shard_index,
     int64_t target_snapshot_index, const Options& options,
     std::chrono::milliseconds timeout);
 

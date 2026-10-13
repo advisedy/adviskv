@@ -26,7 +26,7 @@ std::vector<PeerMember> RaftMembership::peer_members() const {
 std::vector<PeerMember> RaftMembership::voters() const {
     std::vector<PeerMember> peers;
     for (const RaftMember& member : members_) {
-        if (member.member_type == RaftMemberType::VOTER) {
+        if (is_raft_voter(member.member_type)) {
             peers.push_back(member.peer);
         }
     }
@@ -55,7 +55,7 @@ const RaftMember* RaftMembership::find_raft_member(const ReplicaID& replica_id) 
 bool RaftMembership::contains(const ReplicaID& replica_id) const { return find_raft_member(replica_id) != nullptr; }
 
 bool RaftMembership::is_voter(const ReplicaID& replica_id) const {
-    return member_type(replica_id) == RaftMemberType::VOTER;
+    return is_raft_voter(member_type(replica_id));
 }
 
 RaftMemberType RaftMembership::member_type(const ReplicaID& replica_id) const {

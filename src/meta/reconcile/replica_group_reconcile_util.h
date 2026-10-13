@@ -18,4 +18,7 @@ inline bool is_healthy(const Replica& replica) {
 Status select_remove_member_victims(const MetaStoreTxn& txn, const ReplicaGroup& group, int32_t count,
                                     bool filter_healthy, std::vector<ReplicaID>& victims);
 
+
+Status select_single_remove_victim(const MetaStoreTxn& txn, const ReplicaGroup& group, Optional<ReplicaID>& victim);
+
 }  // namespace adviskv::meta

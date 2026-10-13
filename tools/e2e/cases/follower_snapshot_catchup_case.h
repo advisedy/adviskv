@@ -82,8 +82,8 @@ inline bool run_follower_snapshot_catchup_write_gap_case(
     }
 
     if (!wait_replica_snapshot_index_at_least_for_test(
-            states.leader.endpoint, states.route.table_id,
-            states.route.shard_id, 1, gap_options,
+            states.leader.endpoint, states.route.shard_id.table_id,
+            states.route.shard_id.shard_index, 1, gap_options,
             std::chrono::milliseconds(gap_options.timeout_ms))) {
         return false;
     }
@@ -139,8 +139,8 @@ inline bool run_follower_snapshot_catchup_verify_case(const Options& options) {
         return false;
     }
     if (!wait_replica_snapshot_index_at_least_for_test(
-            replica_states.leader.endpoint, replica_states.route.table_id,
-            replica_states.route.shard_id, 1, options,
+            replica_states.leader.endpoint, replica_states.route.shard_id.table_id,
+            replica_states.route.shard_id.shard_index, 1, options,
             std::chrono::milliseconds(options.timeout_ms))) {
         return false;
     }
@@ -156,14 +156,14 @@ inline bool run_follower_snapshot_catchup_verify_case(const Options& options) {
                fmt::format("ok, last_applied:{}", target_index));
     for (const auto& replica : replica_states.followers) {
         if (!wait_replica_apply_index_at_least_for_test(
-                replica.endpoint, replica_states.route.table_id,
-                replica_states.route.shard_id, target_index, options,
+                replica.endpoint, replica_states.route.shard_id.table_id,
+                replica_states.route.shard_id.shard_index, target_index, options,
                 std::chrono::milliseconds(options.timeout_ms))) {
             return false;
         }
         if (!wait_replica_snapshot_index_at_least_for_test(
-                replica.endpoint, replica_states.route.table_id,
-                replica_states.route.shard_id, 1, options,
+                replica.endpoint, replica_states.route.shard_id.table_id,
+                replica_states.route.shard_id.shard_index, 1, options,
                 std::chrono::milliseconds(options.timeout_ms))) {
             return false;
         }

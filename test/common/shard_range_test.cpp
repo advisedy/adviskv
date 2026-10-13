@@ -31,7 +31,7 @@ TEST(ShardRangeTest, RejectsGapsOverlapsAndDuplicates) {
     invalid[1].range.start--;
     EXPECT_TRUE(check_shard_ranges_is_valid(3, invalid).fail());
     invalid = good;
-    invalid[1].shard_id = invalid[0].shard_id;
+    invalid[1].shard_index = invalid[0].shard_index;
     EXPECT_TRUE(check_shard_ranges_is_valid(3, invalid).fail());
     invalid = good;
     invalid.back().range.end = K_HASH_BUCKET_COUNT - 1;

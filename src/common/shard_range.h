@@ -22,7 +22,7 @@ struct HashRange {
 };
 
 struct ShardRange {
-    ShardIndex shard_id{-1};
+    ShardIndex shard_index{-1};
     HashRange range;
 };
 
@@ -60,18 +60,18 @@ inline Status check_shard_ranges_is_valid(int32 count, const std::vector<ShardRa
     uint32 expected_start = 0;
     for (size_t i = 0; i < ranges.size(); ++i) {
         auto& shard_range = ranges[i];
-        if (shard_range.shard_id < 0) {
-            return Status::INVALID_ARGUMENT("shard_range.shard_id < 0");
+        if (shard_range.shard_index < 0) {
+            return Status::INVALID_ARGUMENT("shard_range.shard_index < 0");
         }
-        if (auto it = ids.find(shard_range.shard_id); it != ids.end()) {
-            return Status::INVALID_ARGUMENT("shard_range.shard_id is not unqiue");
+        if (auto it = ids.find(shard_range.shard_index); it != ids.end()) {
+            return Status::INVALID_ARGUMENT("shard_range.shard_index is not unqiue");
         }
         if (shard_range.range.start != expected_start || shard_range.range.end <= shard_range.range.start ||
             shard_range.range.end > K_HASH_BUCKET_COUNT ||
             (i + 1 == ranges.size() && shard_range.range.end != K_HASH_BUCKET_COUNT)) {
             return Status::INVALID_ARGUMENT("hash ranges is not valid");
         }
-        ids.insert(shard_range.shard_id);
+        ids.insert(shard_range.shard_index);
         expected_start = shard_range.range.end;
     }
     return Status::OK();

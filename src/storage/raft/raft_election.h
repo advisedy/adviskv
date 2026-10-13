@@ -5,6 +5,7 @@
 #include <unordered_set>
 
 #include "common/model/model.h"
+#include "common/optional.h"
 #include "storage/model/model.h"
 
 namespace adviskv::storage {

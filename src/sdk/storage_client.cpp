@@ -15,10 +15,10 @@ namespace adviskv::sdk {
 
 StorageClient::StorageClient(const KVClientConf& conf) : conf_(conf) {}
 
-Status StorageClient::select_leader_replica(const RouteInfo& route, RouteReplica* selected) {
+Status StorageClient::select_leader_replica(const ShardRoute& route, RouteReplica* selected) {
     RETURN_IF_NULLPTR(selected, "selected replica should not be nullptr")
-    RETURN_IF_INVALID_CONDITION(route.table_id >= 0, "route.table_id invalid")
-    RETURN_IF_INVALID_CONDITION(route.shard_id >= 0, "route.shard_id invalid")
+    RETURN_IF_INVALID_CONDITION(route.shard_id.table_id >= 0, "route.shard_id.table_id invalid")
+    RETURN_IF_INVALID_CONDITION(route.shard_id.shard_index >= 0, "route.shard_id.shard_index invalid")
     RETURN_IF_INVALID_CONDITION(!route.replicas.empty(), "route replicas should not empty")
 
     for (const RouteReplica& replica : route.replicas) {
@@ -48,245 +48,138 @@ rpc::StorageService::Stub* StorageClient::make_stub(const Endpoint& endpoint) co
     return raw;
 }
 
-Status StorageClient::put(const RouteInfo& route, const Key& key, const Value& value,
+Milliseconds StorageClient::effective_timeout(Milliseconds timeout) const {
+    return timeout > Milliseconds::zero() ? timeout : Milliseconds(conf_.rpc_timeout_ms);
+}
+template <typename Response, typename Func>
+Status StorageClient::call_leader(const ShardRoute& route, std::string_view op_name, const Key& key,
+                                  Milliseconds timeout, Response* response, Func&& send_rpc) const {
+    RouteReplica leader;
+    Status status = select_leader_replica(route, &leader);
+    if (status.fail()) {
+        ADVISKV_METRICS_COUNTER(fmt::format("sdk_storage_{}_select_endpoint_failure", op_name));
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "select leader replica for {} failed, table_id={}, shard_index={}, key={}, status={}", op_name,
+                        route.shard_id.table_id, route.shard_id.shard_index, key, status.to_string());
+        return status;
+    }
+
+    rpc::StorageService::Stub* stub = make_stub(leader.endpoint);
+    if (stub == nullptr) {
+        ADVISKV_METRICS_COUNTER(fmt::format("sdk_storage_{}_stub_missing", op_name));
+        return Status{StatusCode::INVALID_ARGUMENT, "storage stub is nullptr"};
+    }
+
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + effective_timeout(timeout));
+
+    grpc::Status grpc_status;
+    {
+        ADVISKV_METRICS_TIMER(fmt::format("sdk_storage_{}_rpc", op_name));
+        grpc_status = send_rpc(leader, stub, &context, response);
+    }
+    if (!grpc_status.ok()) {
+        ADVISKV_METRICS_COUNTER(fmt::format("sdk_storage_{}_rpc_failure", op_name));
+        ADVISKV_SDK_LOG(LogLevel::ERROR,
+                        "Storage {} RPC failed, endpoint={}:{}, table_id={}, "
+                        "shard_index={}, replica_id={}, key={}, grpc_code={}, "
+                        "msg={}",
+                        op_name, leader.endpoint.ip, leader.endpoint.port, route.shard_id.table_id,
+                        route.shard_id.shard_index, leader.replica_id.to_string(), key,
+                        static_cast<int>(grpc_status.error_code()), grpc_status.error_message());
+        return Status::RPC_ERROR(fmt::format("Storage {} RPC failed, grpc code = {}, msg = {}", op_name,
+                                             static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
+    }
+    if (Status status = codec::base_rsp_to_status(response->base_rsp()); status.fail()) {
+        ADVISKV_SDK_LOG(LogLevel::WARN,
+                        "Storage {} returns non-ok, endpoint={}:{}, "
+                        "table_id={}, shard_index={}, replica_id={}, key={}, "
+                        "code={}, msg={}",
+                        op_name, leader.endpoint.ip, leader.endpoint.port, route.shard_id.table_id,
+                        route.shard_id.shard_index, leader.replica_id.to_string(), key, response->base_rsp().code(),
+                        response->base_rsp().msg());
+        return status;
+    }
+
+    return Status::OK();
+}
+
+Status StorageClient::put(const ShardRoute& route, const Key& key, const Value& value,
                           const std::string& request_id, Milliseconds timeout) const {
     ADVISKV_METRICS_TIMER("sdk_storage_put");
     ADVISKV_METRICS_COUNTER("sdk_storage_put_request");
 
-    RouteReplica leader;
-    Status status = select_leader_replica(route, &leader);
-    if (status.fail()) {
-        ADVISKV_METRICS_COUNTER("sdk_storage_put_select_endpoint_failure");
-        ADVISKV_SDK_LOG(LogLevel::WARN,
-                        "select leader replica for put failed, table_id={}, "
-                        "shard_id={}, key={}, status={}",
-                        route.table_id, route.shard_id, key, status.to_string());
-        return status;
-    }
-
-    rpc::StorageService::Stub* stub = make_stub(leader.endpoint);
-    if (stub == nullptr) {
-        ADVISKV_METRICS_COUNTER("sdk_storage_put_stub_missing");
-        return Status{StatusCode::INVALID_ARGUMENT, "storage stub is nullptr"};
-    }
-
-    rpc::PutRequest request;
-    codec::encode(leader.replica_id, *request.mutable_replica_id());
-    request.set_key(key);
-    request.set_value(value);
-    request.set_request_id(request_id);
-
     rpc::PutResponse response;
-    grpc::ClientContext context;
-    Milliseconds real_timeout = timeout > Milliseconds::zero() ? timeout : Milliseconds(conf_.rpc_timeout_ms);
-    context.set_deadline(std::chrono::system_clock::now() + real_timeout);
-
-    grpc::Status grpc_status;
-    {
-        ADVISKV_METRICS_TIMER("sdk_storage_put_rpc");
-        grpc_status = stub->Put(&context, request, &response);
-    }
-    if (!grpc_status.ok()) {
-        ADVISKV_METRICS_COUNTER("sdk_storage_put_rpc_failure");
-        ADVISKV_SDK_LOG(LogLevel::ERROR,
-                        "Storage Put RPC failed, endpoint={}:{}, table_id={}, "
-                        "shard_id={}, replica_id={}, key={}, grpc_code={}, "
-                        "msg={}",
-                        leader.endpoint.ip, leader.endpoint.port, route.table_id, route.shard_id,
-                        leader.replica_id.to_string(), key, static_cast<int>(grpc_status.error_code()),
-                        grpc_status.error_message());
-        return Status::RPC_ERROR(fmt::format("Storage Put RPC failed, grpc code = {}, msg = {}",
-                                             static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
-    }
-    if (Status status = codec::base_rsp_to_status(response.base_rsp()); status.fail()) {
-        ADVISKV_SDK_LOG(LogLevel::WARN,
-                        "Storage Put returns non-ok, endpoint={}:{}, "
-                        "table_id={}, shard_id={}, replica_id={}, key={}, "
-                        "code={}, msg={}",
-                        leader.endpoint.ip, leader.endpoint.port, route.table_id, route.shard_id,
-                        leader.replica_id.to_string(), key, response.base_rsp().code(), response.base_rsp().msg());
-        return status;
-    }
-
-    return Status::OK();
+    return call_leader(
+            route, "put", key, timeout, &response,
+            [&](const RouteReplica& leader, rpc::StorageService::Stub* stub, grpc::ClientContext* context,
+                rpc::PutResponse* out) {
+                rpc::PutRequest request;
+                codec::encode(leader.replica_id, *request.mutable_replica_id());
+                request.set_key(key);
+                request.set_value(value);
+                request.set_request_id(request_id);
+                return stub->Put(context, request, out);
+            });
 }
 
-Status StorageClient::del(const RouteInfo& route, const Key& key, const std::string& request_id,
+Status StorageClient::del(const ShardRoute& route, const Key& key, const std::string& request_id,
                           Milliseconds timeout) const {
     ADVISKV_METRICS_TIMER("sdk_storage_delete");
     ADVISKV_METRICS_COUNTER("sdk_storage_delete_request");
 
-    RouteReplica leader;
-    Status status = select_leader_replica(route, &leader);
-    if (status.fail()) {
-        ADVISKV_METRICS_COUNTER("sdk_storage_delete_select_endpoint_failure");
-        ADVISKV_SDK_LOG(LogLevel::WARN,
-                        "select leader replica for delete failed, "
-                        "table_id={}, shard_id={}, key={}, status={}",
-                        route.table_id, route.shard_id, key, status.to_string());
-        return status;
-    }
-
-    rpc::StorageService::Stub* stub = make_stub(leader.endpoint);
-    if (stub == nullptr) {
-        ADVISKV_METRICS_COUNTER("sdk_storage_delete_stub_missing");
-        return Status{StatusCode::INVALID_ARGUMENT, "storage stub is nullptr"};
-    }
-
-    rpc::DeleteRequest request;
-    codec::encode(leader.replica_id, *request.mutable_replica_id());
-    request.set_key(key);
-    request.set_request_id(request_id);
-
     rpc::DeleteResponse response;
-    grpc::ClientContext context;
-    Milliseconds real_timeout = timeout > Milliseconds::zero() ? timeout : Milliseconds(conf_.rpc_timeout_ms);
-    context.set_deadline(std::chrono::system_clock::now() + real_timeout);
-
-    grpc::Status grpc_status;
-    {
-        ADVISKV_METRICS_TIMER("sdk_storage_delete_rpc");
-        grpc_status = stub->Delete(&context, request, &response);
-    }
-    if (!grpc_status.ok()) {
-        ADVISKV_METRICS_COUNTER("sdk_storage_delete_rpc_failure");
-        ADVISKV_SDK_LOG(LogLevel::ERROR,
-                        "Storage Delete RPC failed, endpoint={}:{}, "
-                        "table_id={}, shard_id={}, replica_id={}, key={}, "
-                        "grpc_code={}, msg={}",
-                        leader.endpoint.ip, leader.endpoint.port, route.table_id, route.shard_id,
-                        leader.replica_id.to_string(), key, static_cast<int>(grpc_status.error_code()),
-                        grpc_status.error_message());
-        return Status::RPC_ERROR(
-                fmt::format("Storage Delete RPC failed, grpc code = {}, msg = {}",
-                            static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
-    }
-    if (Status status = codec::base_rsp_to_status(response.base_rsp()); status.fail()) {
-        ADVISKV_SDK_LOG(LogLevel::WARN,
-                        "Storage Delete returns non-ok, endpoint={}:{}, "
-                        "table_id={}, shard_id={}, replica_id={}, key={}, "
-                        "code={}, msg={}",
-                        leader.endpoint.ip, leader.endpoint.port, route.table_id, route.shard_id,
-                        leader.replica_id.to_string(), key, response.base_rsp().code(), response.base_rsp().msg());
-        return status;
-    }
-
-    return Status::OK();
+    return call_leader(
+            route, "delete", key, timeout, &response,
+            [&](const RouteReplica& leader, rpc::StorageService::Stub* stub, grpc::ClientContext* context,
+                rpc::DeleteResponse* out) {
+                rpc::DeleteRequest request;
+                codec::encode(leader.replica_id, *request.mutable_replica_id());
+                request.set_key(key);
+                request.set_request_id(request_id);
+                return stub->Delete(context, request, out);
+            });
 }
 
-Status StorageClient::cas(const RouteInfo& route, const Key& key, const Value& expected, const Value& value,
+Status StorageClient::cas(const ShardRoute& route, const Key& key, const Value& expected, const Value& value,
                           const std::string& request_id, Milliseconds timeout) const {
     ADVISKV_METRICS_TIMER("sdk_storage_cas");
     ADVISKV_METRICS_COUNTER("sdk_storage_cas_request");
 
-    RouteReplica leader;
-    Status status = select_leader_replica(route, &leader);
-    if (status.fail()) {
-        ADVISKV_METRICS_COUNTER("sdk_storage_cas_select_endpoint_failure");
-        ADVISKV_SDK_LOG(LogLevel::WARN,
-                        "select leader replica for cas failed, table_id={}, "
-                        "shard_id={}, key={}, status={}",
-                        route.table_id, route.shard_id, key, status.to_string());
-        return status;
-    }
-
-    rpc::StorageService::Stub* stub = make_stub(leader.endpoint);
-    if (stub == nullptr) {
-        ADVISKV_METRICS_COUNTER("sdk_storage_cas_stub_missing");
-        return Status{StatusCode::INVALID_ARGUMENT, "storage stub is nullptr"};
-    }
-
-    rpc::CasRequest request;
-    codec::encode(leader.replica_id, *request.mutable_replica_id());
-    request.set_key(key);
-    request.set_expected(expected);
-    request.set_value(value);
-    request.set_request_id(request_id);
-
     rpc::CasResponse response;
-    grpc::ClientContext context;
-    Milliseconds real_timeout = timeout > Milliseconds::zero() ? timeout : Milliseconds(conf_.rpc_timeout_ms);
-    context.set_deadline(std::chrono::system_clock::now() + real_timeout);
-
-    grpc::Status grpc_status;
-    {
-        ADVISKV_METRICS_TIMER("sdk_storage_cas_rpc");
-        grpc_status = stub->Cas(&context, request, &response);
-    }
-    if (!grpc_status.ok()) {
-        ADVISKV_METRICS_COUNTER("sdk_storage_cas_rpc_failure");
-        ADVISKV_SDK_LOG(LogLevel::ERROR,
-                        "Storage Cas RPC failed, endpoint={}:{}, table_id={}, "
-                        "shard_id={}, replica_id={}, key={}, grpc_code={}, "
-                        "msg={}",
-                        leader.endpoint.ip, leader.endpoint.port, route.table_id, route.shard_id,
-                        leader.replica_id.to_string(), key, static_cast<int>(grpc_status.error_code()),
-                        grpc_status.error_message());
-        return Status::RPC_ERROR(fmt::format("Storage Cas RPC failed, grpc code = {}, msg = {}",
-                                             static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
-    }
-    if (Status status = codec::base_rsp_to_status(response.base_rsp()); status.fail()) {
-        ADVISKV_SDK_LOG(LogLevel::WARN,
-                        "Storage Cas returns non-ok, endpoint={}:{}, "
-                        "table_id={}, shard_id={}, replica_id={}, key={}, "
-                        "code={}, msg={}",
-                        leader.endpoint.ip, leader.endpoint.port, route.table_id, route.shard_id,
-                        leader.replica_id.to_string(), key, response.base_rsp().code(), response.base_rsp().msg());
-        return status;
-    }
-
-    return Status::OK();
+    return call_leader(
+            route, "cas", key, timeout, &response,
+            [&](const RouteReplica& leader, rpc::StorageService::Stub* stub, grpc::ClientContext* context,
+                rpc::CasResponse* out) {
+                rpc::CasRequest request;
+                codec::encode(leader.replica_id, *request.mutable_replica_id());
+                request.set_key(key);
+                request.set_expected(expected);
+                request.set_value(value);
+                request.set_request_id(request_id);
+                return stub->Cas(context, request, out);
+            });
 }
 
-Status StorageClient::get(const RouteInfo& route, const Key& key, Value* value, Milliseconds timeout) const {
+Status StorageClient::get(const ShardRoute& route, const Key& key, Value* value, Milliseconds timeout) const {
+    ADVISKV_METRICS_TIMER("sdk_storage_get");
+    ADVISKV_METRICS_COUNTER("sdk_storage_get_request");
+
     RETURN_IF_NULLPTR(value, "value should not be nullptr")
-    RouteReplica leader;
-    Status status = select_leader_replica(route, &leader);
-    if (status.fail()) {
-        ADVISKV_SDK_LOG(LogLevel::WARN,
-                        "select leader replica for get failed, table_id={}, "
-                        "shard_id={}, key={}, status={}",
-                        route.table_id, route.shard_id, key, status.to_string());
-        return status;
-    }
-
-    rpc::StorageService::Stub* stub = make_stub(leader.endpoint);
-    RETURN_IF_NULLPTR(stub, "storage stub is nullptr")
-
-    rpc::GetRequest request;
-    codec::encode(leader.replica_id, *request.mutable_replica_id());
-    request.set_key(key);
 
     rpc::GetResponse response;
-    grpc::ClientContext context;
-    Milliseconds real_timeout = timeout > Milliseconds::zero() ? timeout : Milliseconds(conf_.rpc_timeout_ms);
-    context.set_deadline(std::chrono::system_clock::now() + real_timeout);
-
-    grpc::Status grpc_status = stub->Get(&context, request, &response);
-    if (!grpc_status.ok()) {
-        ADVISKV_SDK_LOG(LogLevel::ERROR,
-                        "Storage Get RPC failed, endpoint={}:{}, table_id={}, "
-                        "shard_id={}, replica_id={}, key={}, grpc_code={}, "
-                        "msg={}",
-                        leader.endpoint.ip, leader.endpoint.port, route.table_id, route.shard_id,
-                        leader.replica_id.to_string(), key, static_cast<int>(grpc_status.error_code()),
-                        grpc_status.error_message());
-        return Status::RPC_ERROR(fmt::format("Storage Get RPC failed, grpc code = {}, msg = {}",
-                                             static_cast<int>(grpc_status.error_code()), grpc_status.error_message()));
+    Status status = call_leader(route, "get", key, timeout, &response,
+                                [&](const RouteReplica& leader, rpc::StorageService::Stub* stub,
+                                    grpc::ClientContext* context, rpc::GetResponse* out) {
+                                    rpc::GetRequest request;
+                                    codec::encode(leader.replica_id, *request.mutable_replica_id());
+                                    request.set_key(key);
+                                    return stub->Get(context, request, out);
+                                });
+    if (status.ok()) {
+        *value = response.value();
     }
-
-    if (Status status = codec::base_rsp_to_status(response.base_rsp()); status.fail()) {
-        ADVISKV_SDK_LOG(LogLevel::WARN,
-                        "Storage Get returns non-ok, endpoint={}:{}, "
-                        "table_id={}, shard_id={}, replica_id={}, key={}, "
-                        "code={}, msg={}",
-                        leader.endpoint.ip, leader.endpoint.port, route.table_id, route.shard_id,
-                        leader.replica_id.to_string(), key, response.base_rsp().code(), response.base_rsp().msg());
-        return status;
-    }
-
-    *value = response.value();
-    return Status::OK();
+    return status;
 }
 
 }  // namespace adviskv::sdk

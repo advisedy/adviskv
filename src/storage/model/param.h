@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "common/constants.h"
-#include "storage/model/model.h"
+#include "common/model/model.h"
 
 namespace adviskv::storage {
 
@@ -17,17 +17,6 @@ struct WriteProposal {
     Value value;
     std::string request_id;
     Value expected;
-
-    bool operator==(const WriteProposal& other) const {
-        if (!(op == other.op)) return false;
-        if (!(key == other.key)) return false;
-        if (!(value == other.value)) return false;
-        if (!(request_id == other.request_id)) return false;
-        if (!(expected == other.expected)) return false;
-        return true;
-    }
-
-    DEFINE_OPERATOR_NOT_EQUAL(WriteProposal)
 };
 
 struct NoopProposal {};

@@ -29,14 +29,14 @@ inline std::string first_dataset_key(const std::string& prefix) {
 }
 
 inline bool print_route_replicas(E2EContext* context, const std::string& key) {
-    sdk::RouteInfo route;
+    ShardRoute route;
     std::string error;
     if (!get_route(context, key, &route, &error)) {
         print_fail("get route replicas", error);
         return false;
     }
 
-    for (const sdk::RouteReplica& replica : route.replicas) {
+    for (const RouteReplica& replica : route.replicas) {
         const char* role = "UNKNOWN";
         if (replica.role == ReplicaRole::LEADER) {
             role = "LEADER";

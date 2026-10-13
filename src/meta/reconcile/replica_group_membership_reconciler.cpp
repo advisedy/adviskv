@@ -40,7 +40,7 @@ bool all_members_ready(const MetaStoreTxn& txn, const ReplicaGroup& group) {
         if (txn.get_replica_observed(rid, observed_or).fail() || observed_or.is_empty()) {
             return false;
         }
-        if (observed_or->member_type != RaftMemberType::VOTER) {
+        if (!is_raft_voter(observed_or->member_type)) {
             return false;
         }
     }
@@ -156,13 +156,8 @@ Status ReplicaGroupMembershipReconciler::reconcile_group(const ReplicaGroup& gro
                 bad_members.push_back(rid);
             }
         }
-        // 关于这里 filter 的逻辑，只有当我们目前的desired_members 的数量超过了 target 的，才会也把 health
-        // 的纳入考虑范围，否则就不会。
-        bool include_healthy = to<int32_t>(current_group.desired_members.size()) > current_group.target_replica_count;
-        std::vector<ReplicaID> victims;
-        RETURN_IF_INVALID_STATUS(select_remove_member_victims(txn, current_group, 1, !include_healthy, victims))
-        if (!victims.empty()) {
-            remove_victim = victims.front();
+        RETURN_IF_INVALID_STATUS(select_single_remove_victim(txn, current_group, remove_victim))
+        if (remove_victim.has_value()) {
             ReplicaObservedOr victim_observed_or;
             RETURN_IF_INVALID_STATUS(txn.get_replica_observed(remove_victim.value(), victim_observed_or))
             // 没有观测不等于已退组：member_type 是 runtime 观测，meta 一重启就没了。

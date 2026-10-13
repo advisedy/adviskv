@@ -45,8 +45,8 @@ Replica make_replica(const ReplicaID& replica_id, const NodeID& node_id) {
 ShardRoute make_route(const ShardID& shard_id) {
     return ShardRoute{
         shard_id,
-        {RouteEntry{ReplicaID{shard_id.table_id, shard_id.shard_index, 0},
-                    "node-a", "127.0.0.1", 18080, ReplicaRole::LEADER, 7}}};
+        {RouteReplica{ReplicaID{shard_id.table_id, shard_id.shard_index, 0},
+                      Endpoint{"127.0.0.1", 18080}, ReplicaRole::LEADER}}};
 }
 
 std::vector<NodeID> node_ids(std::vector<Node> nodes) {

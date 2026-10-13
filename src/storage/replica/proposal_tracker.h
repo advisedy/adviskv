@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -30,7 +31,8 @@ public:
 
 private:
     struct Entry {
-        WriteProposal proposal;
+        WriteOpType op{WriteOpType::NONE};
+        uint64_t payload_hash{0};
         LogIndex index{0};
         bool committed{false};
         std::vector<CompletionManager::Ticket> tickets;

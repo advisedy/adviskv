@@ -15,7 +15,7 @@ Status RaftCore::build_read_quorum_check(RaftEffects& effects, LogIndex& read_in
 
     voter_ids.clear();
     for (const RaftMember& member : membership_.raft_members()) {
-        if (member.member_type == RaftMemberType::VOTER) {
+        if (is_raft_voter(member.member_type)) {
             voter_ids.push_back(member.peer.replica_id);
         }
     }
@@ -23,7 +23,7 @@ Status RaftCore::build_read_quorum_check(RaftEffects& effects, LogIndex& read_in
     const LogIndex prev_log_index = raft_log_.last_log_index();
     const Term prev_log_term = raft_log_.last_log_term();
     for (const RaftMember& member : membership_.raft_members()) {
-        if (member.member_type != RaftMemberType::VOTER) continue;
+        if (!is_raft_voter(member.member_type)) continue;
         if (member.peer.replica_id == self_id_) continue;
 
         AppendEntriesParam param;

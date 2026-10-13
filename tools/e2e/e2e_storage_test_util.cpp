@@ -18,7 +18,7 @@ namespace adviskv::e2e {
 using Clock = std::chrono::steady_clock;
 
 bool get_replica_state_for_test(const Endpoint& endpoint, TableID table_id,
-                                ShardIndex shard_id, const Options& options,
+                                ShardIndex shard_index, const Options& options,
                                 ReplicaState* state, std::string* error) {
     if (state == nullptr) {
         *error = "state is nullptr";
@@ -33,7 +33,7 @@ bool get_replica_state_for_test(const Endpoint& endpoint, TableID table_id,
 
     rpc::TestGetReplicaStateRequest request;
     request.set_table_id(table_id);
-    request.set_shard_id(shard_id);
+    request.set_shard_index(shard_index);
 
     rpc::TestGetReplicaStateResponse response;
     grpc::ClientContext client_context;
@@ -82,7 +82,7 @@ bool get_route_replica_states_for_test(E2EContext* context, const Key& key,
     }
 
     bool leader_found = false;
-    for (const sdk::RouteReplica& replica : states->route.replicas) {
+    for (const RouteReplica& replica : states->route.replicas) {
         if (replica.role == ReplicaRole::LEADER) {
             states->leader = replica;
             leader_found = true;
@@ -97,8 +97,8 @@ bool get_route_replica_states_for_test(E2EContext* context, const Key& key,
     }
 
     if (!get_replica_state_for_test(states->leader.endpoint,
-                                    states->route.table_id,
-                                    states->route.shard_id, context->options(),
+                                    states->route.shard_id.table_id,
+                                    states->route.shard_id.shard_index, context->options(),
                                     &states->leader_state, error)) {
         return false;
     }
@@ -106,7 +106,7 @@ bool get_route_replica_states_for_test(E2EContext* context, const Key& key,
 }
 
 bool wait_replica_apply_index_at_least_for_test(
-    const Endpoint& endpoint, TableID table_id, ShardIndex shard_id,
+    const Endpoint& endpoint, TableID table_id, ShardIndex shard_index,
     int64_t target_apply_index, const Options& options,
     std::chrono::milliseconds timeout) {
     const auto deadline = Clock::now() + timeout;
@@ -114,14 +114,14 @@ bool wait_replica_apply_index_at_least_for_test(
     ReplicaState last_state;
     while (Clock::now() < deadline) {
         std::string error;
-        if (get_replica_state_for_test(endpoint, table_id, shard_id, options,
+        if (get_replica_state_for_test(endpoint, table_id, shard_index, options,
                                        &last_state, &error) &&
             last_state.exists &&
             last_state.last_applied >= target_apply_index) {
             print_pass(
                 "wait replica apply index",
-                fmt::format("{}:{} shard={} last_applied={} target={}",
-                            endpoint.ip, endpoint.port, shard_id,
+                fmt::format("{}:{} shard_index={} last_applied={} target={}",
+                            endpoint.ip, endpoint.port, shard_index,
                             last_state.last_applied, target_apply_index));
             return true;
         }
@@ -136,13 +136,13 @@ bool wait_replica_apply_index_at_least_for_test(
     }
 
     print_fail("wait replica apply index",
-               fmt::format("{}:{} shard={} timed out: {}", endpoint.ip,
-                           endpoint.port, shard_id, last_error));
+               fmt::format("{}:{} shard_index={} timed out: {}", endpoint.ip,
+                           endpoint.port, shard_index, last_error));
     return false;
 }
 
 bool wait_replica_snapshot_index_at_least_for_test(
-    const Endpoint& endpoint, TableID table_id, ShardIndex shard_id,
+    const Endpoint& endpoint, TableID table_id, ShardIndex shard_index,
     int64_t target_snapshot_index, const Options& options,
     std::chrono::milliseconds timeout) {
     const auto deadline = Clock::now() + timeout;
@@ -150,14 +150,14 @@ bool wait_replica_snapshot_index_at_least_for_test(
     ReplicaState last_state;
     while (Clock::now() < deadline) {
         std::string error;
-        if (get_replica_state_for_test(endpoint, table_id, shard_id, options,
+        if (get_replica_state_for_test(endpoint, table_id, shard_index, options,
                                        &last_state, &error) &&
             last_state.exists &&
             last_state.snapshot_index >= target_snapshot_index) {
             print_pass(
                 "wait replica snapshot index",
-                fmt::format("{}:{} shard={} snapshot_index={} target={}",
-                            endpoint.ip, endpoint.port, shard_id,
+                fmt::format("{}:{} shard_index={} snapshot_index={} target={}",
+                            endpoint.ip, endpoint.port, shard_index,
                             last_state.snapshot_index, target_snapshot_index));
             return true;
         }
@@ -172,8 +172,8 @@ bool wait_replica_snapshot_index_at_least_for_test(
     }
 
     print_fail("wait replica snapshot index",
-               fmt::format("{}:{} shard={} timed out: {}", endpoint.ip,
-                           endpoint.port, shard_id, last_error));
+               fmt::format("{}:{} shard_index={} timed out: {}", endpoint.ip,
+                           endpoint.port, shard_index, last_error));
     return false;
 }
 

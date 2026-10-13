@@ -173,8 +173,88 @@ inline bool decode(const pb::LogEntry& in, LogEntry& out) {
     return true;
 }
 
-// RPC 响应统一带 base_rsp，这里做 Status <-> base_rsp 的转换。
-// 未知 code 兜底成 ERROR，避免远端返回了本地不认识的状态码时被当成成功。
+inline void encode(const HashRange& in, pb::HashRange& out) {
+    out.set_start(in.start);
+    out.set_end(in.end);
+}
+
+inline bool decode(const pb::HashRange& in, HashRange& out) {
+    out.start = in.start();
+    out.end = in.end();
+    return true;
+}
+
+inline void encode(const RouteReplica& in, pb::RouteReplica& out) {
+    encode(in.replica_id, *out.mutable_replica_id());
+    encode(in.endpoint, *out.mutable_endpoint());
+    out.set_role(static_cast<int32_t>(in.role));
+}
+
+inline bool decode(const pb::RouteReplica& in, RouteReplica& out) {
+    if (!decode(in.replica_id(), out.replica_id)) {
+        return false;
+    }
+    if (!decode(in.endpoint(), out.endpoint)) {
+        return false;
+    }
+    if (!is_valid_enum_value<ReplicaRole>(in.role())) {
+        return false;
+    }
+    out.role = static_cast<ReplicaRole>(in.role());
+    return true;
+}
+
+inline void encode(const ShardRoute& in, pb::ShardRoute& out) {
+    out.set_shard_index(in.shard_id.shard_index);
+    for (const RouteReplica& replica : in.replicas) {
+        encode(replica, *out.add_replicas());
+    }
+    encode(in.hash_range, *out.mutable_hash_range());
+}
+
+inline bool decode(const pb::ShardRoute& in, ShardRoute& out) {
+    out.shard_id.shard_index = in.shard_index();
+    out.replicas.clear();
+    for (const auto& replica_pb : in.replicas()) {
+        RouteReplica replica;
+        if (!decode(replica_pb, replica)) {
+            return false;
+        }
+        out.replicas.push_back(std::move(replica));
+    }
+    if (in.has_hash_range()) {
+        if (!decode(in.hash_range(), out.hash_range)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+
+inline bool decode(const pb::HeartbeatReplicaInfo& in, HeartBeatReplicaInfo& out) {
+    if (!decode(in.replica_id(), out.replica_id)) {
+        return false;
+    }
+    if (!is_valid_enum_value<ReplicaRole>(in.role())) {
+        return false;
+    }
+    out.role = static_cast<ReplicaRole>(in.role());
+    if (!is_valid_enum_value<StorageReplicaStatus>(in.status())) {
+        return false;
+    }
+    out.storage_status = static_cast<StorageReplicaStatus>(in.status());
+    out.term = in.term();
+    out.full_membership.clear();
+    for (const auto& member_pb : in.full_membership()) {
+        RaftMember member;
+        if (!decode(member_pb, member)) {
+            return false;
+        }
+        out.full_membership.push_back(std::move(member));
+    }
+    return true;
+}
+
 inline Status base_rsp_to_status(const pb::BaseRsp& rsp) {
     Status status;
     if (!decode(rsp, status)) {
@@ -183,7 +263,7 @@ inline Status base_rsp_to_status(const pb::BaseRsp& rsp) {
     return status;
 }
 
-// 要求 Response 带 mutable_base_rsp()，即 proto 里嵌了 adviskv.pb.BaseRsp。
+// 要求 Response 带 mutable_base_rsp()
 template <typename Response>
 inline void status_to_base_rsp(Response* rsp, const Status& status) {
     static_assert(std::is_same_v<std::remove_pointer_t<decltype(std::declval<Response*>()->mutable_base_rsp())>,

@@ -274,11 +274,9 @@ meta_rpc::HeartbeatRequest NodeAgent::make_heartbeat_request() const {
         info->set_role(static_cast<int32_t>(role));
         info->set_status(static_cast<int32_t>(replica->get_status()));
         info->set_term(replica->current_term());
-        info->set_member_type(static_cast<int32_t>(replica->get_member_type()));
         if (role == ReplicaRole::LEADER) {
             for (const RaftMember& member : replica->get_raft_members()) {
-                auto* member_pb = info->add_full_membership();
-                IGNORE_RESULT(codec::encode(member, *member_pb));
+                codec::encode(member, *info->add_full_membership());
             }
         }
     }

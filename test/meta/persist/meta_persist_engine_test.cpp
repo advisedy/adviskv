@@ -142,7 +142,8 @@ protected:
             EXPECT_EQ(actual_table.shard_count(), expected_table.shard_count());
             ASSERT_EQ(actual_table.spec.shard_ranges.size(), expected_table.spec.shard_ranges.size());
             for (size_t i = 0; i < actual_table.spec.shard_ranges.size(); ++i) {
-                EXPECT_EQ(actual_table.spec.shard_ranges[i].shard_id, expected_table.spec.shard_ranges[i].shard_id);
+                EXPECT_EQ(actual_table.spec.shard_ranges[i].shard_index,
+                          expected_table.spec.shard_ranges[i].shard_index);
                 EXPECT_EQ(actual_table.spec.shard_ranges[i].range, expected_table.spec.shard_ranges[i].range);
             }
             EXPECT_EQ(actual_table.spec.target_replica_count, expected_table.spec.target_replica_count);

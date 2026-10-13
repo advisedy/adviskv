@@ -2,6 +2,7 @@
 
 // 对于需要和protobuf转换的模型，都放在了这个文件里面。如果不需要转换的，会放在meta或者storage的model里面
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -180,6 +181,33 @@ struct ExpectedReplica {
 };
 
 using LogIndex = int64_t;
+
+struct RouteReplica {
+    ReplicaID replica_id;
+    Endpoint endpoint;
+    ReplicaRole role{ReplicaRole::FOLLOWER};
+
+    bool is_writable_leader() const { return role == ReplicaRole::LEADER && !endpoint.ip.empty() && endpoint.port > 0; }
+};
+
+struct ShardRoute {
+    ShardID shard_id;
+    std::vector<RouteReplica> replicas;
+    HashRange hash_range{};
+
+    bool is_writable() const {
+        return std::count_if(replicas.begin(), replicas.end(),
+                             [](const RouteReplica& r) { return r.is_writable_leader(); }) == 1;
+    }
+};
+
+struct HeartBeatReplicaInfo {
+    ReplicaID replica_id;
+    ReplicaRole role{ReplicaRole::FOLLOWER};
+    StorageReplicaStatus storage_status{StorageReplicaStatus::INITIALIZING};
+    Term term{0};  // 用来帮助判断 leader，term 高的优先被认定是 leader
+    std::vector<RaftMember> full_membership;
+};
 
 enum class WriteOpType : int32_t {
     NONE = 0,

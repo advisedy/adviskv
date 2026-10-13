@@ -1,6 +1,5 @@
 #include "meta/reconcile/table_reconciler.h"
 
-#include <algorithm>
 #include <unordered_set>
 
 #include <fmt/format.h>
@@ -15,14 +14,6 @@
 #include "meta/store/meta_store_txn.h"
 
 namespace adviskv::meta {
-
-namespace {
-bool has_exactly_one_writable_leader(const ShardRoute& route) {
-    int leader_count = std::count_if(route.replicas.begin(), route.replicas.end(),
-                                     [](const RouteEntry& entry) { return entry.is_writable_leader(); });
-    return leader_count == 1;
-}
-}  // namespace
 
 TableReconciler::TableReconciler(MetaStore* store) : store_(store) {}
 
@@ -141,7 +132,7 @@ Status TableReconciler::ensure_all_shards_ok(MetaStoreTxn& txn, Table& table, bo
     all_shards_ok = true;
     RETURN_IF_INVALID_STATUS(check_shard_ranges_is_valid(table.shard_count(), table.spec.shard_ranges))
     for (const auto& range : table.spec.shard_ranges) {
-        ShardIndex shard_index = range.shard_id;
+        ShardIndex shard_index = range.shard_index;
         ShardID shard_id{table.table_id, shard_index};
 
         std::vector<Replica> replicas;
@@ -226,7 +217,7 @@ Status TableReconciler::ensure_all_shards_ok(MetaStoreTxn& txn, Table& table, bo
         // 确保这个 shard 的 route 没有问题
         ShardRouteOr route;
         RETURN_IF_INVALID_STATUS(txn.get_shard_route(shard_id, route))
-        if (route.is_empty() || route->replicas.empty() || !has_exactly_one_writable_leader(*route)) {
+        if (route.is_empty() || !route->is_writable()) {
             LOG_WARN(
                     "[TableReconciler] shard not ready: route not writable, "
                     "table_id={}, shard_index={}, route_empty={}, entries={}",
@@ -272,7 +263,7 @@ Status TableReconciler::finalize_absent_table(Table& table) {
 Status TableReconciler::ensure_all_shards_deleted(MetaStoreTxn& txn, Table& table, bool& all_shards_deleted) {
     all_shards_deleted = true;
     for (const auto& range : table.spec.shard_ranges) {
-        ShardIndex shard_index = range.shard_id;
+        ShardIndex shard_index = range.shard_index;
         ShardID shard_id{table.table_id, shard_index};
 
         std::vector<Replica> replicas;

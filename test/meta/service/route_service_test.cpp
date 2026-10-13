@@ -24,18 +24,14 @@ ShardRoute make_route(const ShardID& shard_id,
     route.shard_id = shard_id;
     for (size_t i = 0; i < roles.size(); ++i) {
         const bool leader = roles[i] == ReplicaRole::LEADER;
-        route.replicas.push_back(RouteEntry{
-            ReplicaID{shard_id.table_id, shard_id.shard_index,
-                      static_cast<ReplicaIndex>(i)},
-            "node-" + std::to_string(i),
-            leader && !valid_leader_endpoint
-                ? ""
-                : "127.0.0." + std::to_string(i + 1),
-            leader && !valid_leader_endpoint ? 0
-                                             : static_cast<int32_t>(18080 + i),
-            roles[i],
-            7,
-        });
+        RouteReplica replica;
+        replica.replica_id = ReplicaID{shard_id.table_id, shard_id.shard_index,
+                                       static_cast<ReplicaIndex>(i)};
+        replica.endpoint = Endpoint{
+            leader && !valid_leader_endpoint ? "" : "127.0.0." + std::to_string(i + 1),
+            leader && !valid_leader_endpoint ? 0 : static_cast<int32_t>(18080 + i)};
+        replica.role = roles[i];
+        route.replicas.push_back(replica);
     }
     return route;
 }

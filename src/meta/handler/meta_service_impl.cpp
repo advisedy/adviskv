@@ -121,53 +121,20 @@ grpc::Status MetaServiceImpl::GetTable(grpc::ServerContext* context, const meta_
 grpc::Status MetaServiceImpl::Heartbeat(grpc::ServerContext* context, const meta_rpc::HeartbeatRequest* request,
                                         meta_rpc::HeartbeatResponse* response) {
     UNUSED(context);
-    std::vector<HeartBeatReplicaInfo> replica_info_list;
-    for (const auto& replica_info_pb : request->replica_info_list()) {
-        ReplicaRole role = ReplicaRole::FOLLOWER;
-        if (!is_valid_enum_value<ReplicaRole>(replica_info_pb.role())) {
-            codec::status_to_base_rsp(response, Status{StatusCode::INVALID_ARGUMENT, "replica role is not valid"});
-            return grpc::Status::OK;
-        }
-        role = static_cast<ReplicaRole>(replica_info_pb.role());
-
-        StorageReplicaStatus storage_status = StorageReplicaStatus::INITIALIZING;
-        if (!is_valid_enum_value<StorageReplicaStatus>(replica_info_pb.status())) {
-            codec::status_to_base_rsp(response, Status{StatusCode::INVALID_ARGUMENT, "replica status is not valid"});
-            return grpc::Status::OK;
-        }
-        storage_status = static_cast<StorageReplicaStatus>(replica_info_pb.status());
-
-        HeartBeatReplicaInfo one;
-        if (!codec::decode(replica_info_pb.replica_id(), one.replica_id)) {
-            codec::status_to_base_rsp(response, Status{StatusCode::INVALID_ARGUMENT, "replica id is not valid"});
-            return grpc::Status::OK;
-        }
-        one.role = role;
-        one.storage_status = storage_status;
-        one.term = replica_info_pb.term();
-        if (!is_valid_enum_value<RaftMemberType>(replica_info_pb.member_type())) {
-            codec::status_to_base_rsp(response, Status{StatusCode::INVALID_ARGUMENT, "replica member type is not valid"});
-            return grpc::Status::OK;
-        }
-        one.member_type = static_cast<RaftMemberType>(replica_info_pb.member_type());
-        for (const auto& member_pb : replica_info_pb.full_membership()) {
-            RaftMember member;
-            if (!codec::decode(member_pb, member)) {
-                codec::status_to_base_rsp(response,
-                              Status{StatusCode::INVALID_ARGUMENT, "replica full membership member is not valid"});
-                return grpc::Status::OK;
-            }
-            one.full_membership.push_back(std::move(member));
-        }
-        replica_info_list.emplace_back(std::move(one));
-    }
     HeartBeatParam param;
+    for (const auto& replica_info_pb : request->replica_info_list()) {
+        HeartBeatReplicaInfo one;
+        if (!codec::decode(replica_info_pb, one)) {
+            codec::status_to_base_rsp(response, Status{StatusCode::INVALID_ARGUMENT, "replica info is not valid"});
+            return grpc::Status::OK;
+        }
+        param.replica_list.push_back(std::move(one));
+    }
     param.node_id = request->node_id();
     param.ip = request->ip();
     param.port = request->port();
     param.resoure_pool_name = request->resource_pool();
     param.dc = request->dc();
-    param.replica_list = std::move(replica_info_list);
 
     HeartBeatResult result;
     Status status = service_manager_->heartbeat(param, &result);
@@ -219,19 +186,8 @@ grpc::Status MetaServiceImpl::GetTableRoutes(grpc::ServerContext* context,
 
     response->set_table_id(table.table_id);
     response->set_shard_count(table.shard_count());
-    for (const auto& route : routes) {
-        auto* route_pb = response->add_routes();
-        route_pb->set_shard_id(route.shard_id.shard_index);
-        route_pb->mutable_hash_range()->set_start(route.hash_range.start);
-        route_pb->mutable_hash_range()->set_end(route.hash_range.end);
-        for (const auto& replica : route.replicas) {
-            auto* route_replica = route_pb->add_replicas();
-            codec::encode(replica.replica_id, *route_replica->mutable_replica_id());
-            auto* endpoint = route_replica->mutable_endpoint();
-            endpoint->set_ip(replica.ip);
-            endpoint->set_port(replica.port);
-            route_replica->set_role(static_cast<int32_t>(replica.role));
-        }
+    for (const ShardRoute& route : routes) {
+        codec::encode(route, *response->add_routes());
     }
 
     LOG_INFO("[MetaServiceImpl] GetTableRoutes ok, db={}, table={}, table_id={}, shard_count={}, routes={}",

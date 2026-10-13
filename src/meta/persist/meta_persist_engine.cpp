@@ -22,7 +22,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ReplicaID, table_id, shard_index, replica_seq
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ShardID, table_id, shard_index)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Endpoint, ip, port)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(HashRange, start, end)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ShardRange, shard_id, range)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ShardRange, shard_index, range)
 
 template <typename T>
 void to_json(Json& j, const IDAllocator<T>& allocator) {

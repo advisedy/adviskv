@@ -3,6 +3,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 #include "common/model/model.h"
@@ -17,18 +18,25 @@ class StorageClient {
 public:
     explicit StorageClient(const KVClientConf& conf);
 
-    Status put(const RouteInfo& route, const Key& key, const Value& value, const std::string& request_id,
+    Status put(const ShardRoute& route, const Key& key, const Value& value, const std::string& request_id,
                Milliseconds timeout = Milliseconds::zero()) const;
-    Status get(const RouteInfo& route, const Key& key, Value* value,
+    Status get(const ShardRoute& route, const Key& key, Value* value,
                Milliseconds timeout = Milliseconds::zero()) const;
-    Status del(const RouteInfo& route, const Key& key, const std::string& request_id,
+    Status del(const ShardRoute& route, const Key& key, const std::string& request_id,
                Milliseconds timeout = Milliseconds::zero()) const;
-    Status cas(const RouteInfo& route, const Key& key, const Value& expected, const Value& value,
+    Status cas(const ShardRoute& route, const Key& key, const Value& expected, const Value& value,
                const std::string& request_id, Milliseconds timeout = Milliseconds::zero()) const;
 
 private:
-    static Status select_leader_replica(const RouteInfo& route, RouteReplica* replica);
+    static Status select_leader_replica(const ShardRoute& route, RouteReplica* replica);
     rpc::StorageService::Stub* make_stub(const Endpoint& endpoint) const;
+
+
+    template <typename Response, typename Func>
+    Status call_leader(const ShardRoute& route, std::string_view op_name, const Key& key, Milliseconds timeout,
+                       Response* response, Func&& send_rpc) const;
+
+    Milliseconds effective_timeout(Milliseconds timeout) const;
 
     KVClientConf conf_;
     mutable std::mutex mutex_;

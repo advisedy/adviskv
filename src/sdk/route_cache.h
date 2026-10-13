@@ -22,14 +22,14 @@ public:
     Status init();
     void stop();
 
-    Status resolve_route(const Key& key, RouteInfo* route);
+    Status resolve_route(const Key& key, ShardRoute* route);
     Status refresh(Milliseconds timeout = Milliseconds::zero());
 
 private:
     struct TableRouteSnapshot;
     class RefreshTask;
 
-    Status lookup_cached_route(const Key& key, RouteInfo* route) const;
+    Status lookup_cached_route(const Key& key, ShardRoute* route) const;
     Status publish_table_routes(TableRouteInfo table_routes);
 
     KVClientConf conf_;

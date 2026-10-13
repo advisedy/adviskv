@@ -46,7 +46,6 @@ HeartBeatParam make_heartbeat_param() {
                                   ReplicaRole::LEADER,
                                   StorageReplicaStatus::READY,
                                   7,
-                                  RaftMemberType::VOTER,
                                   {}}},
             987654,
     };
@@ -195,7 +194,6 @@ TEST(NodeHeartbeatServiceTest, LeaderMembershipProjectsObservedMemberTypes) {
                                                ReplicaRole::LEADER,
                                                StorageReplicaStatus::READY,
                                                7,
-                                               RaftMemberType::VOTER,
                                                {make_heartbeat_member(r0, "node-0", RaftMemberType::VOTER),
                                                 make_heartbeat_member(r1, "node-1", RaftMemberType::LEARNER)}}};
 
@@ -238,7 +236,7 @@ TEST(NodeHeartbeatServiceTest, LeaderEmptyMembershipDoesNotProject) {    MetaSto
     HeartBeatParam param = make_heartbeat_param();
     param.node_id = "node-0";
     param.replica_list = {
-            HeartBeatReplicaInfo{r0, ReplicaRole::LEADER, StorageReplicaStatus::READY, 6, RaftMemberType::VOTER, {}}};
+            HeartBeatReplicaInfo{r0, ReplicaRole::LEADER, StorageReplicaStatus::READY, 6, {}}};
 
     ASSERT_TRUE(service.heartbeat(param).ok());
 
@@ -272,7 +270,6 @@ TEST(NodeHeartbeatServiceTest, SameTermDifferentLeaderMembershipRejected) {
                                                ReplicaRole::LEADER,
                                                StorageReplicaStatus::READY,
                                                7,
-                                               RaftMemberType::VOTER,
                                                {make_heartbeat_member(r1, "node-1", RaftMemberType::VOTER)}}};
 
     ASSERT_TRUE(service.heartbeat(param).ok());
@@ -304,7 +301,6 @@ TEST(NodeHeartbeatServiceTest, HeartbeatIgnoresMissingAndOtherNodeReplicas) {
             ReplicaRole::LEADER,
             StorageReplicaStatus::READY,
             9,
-            RaftMemberType::VOTER,
             {},
     });
     param.replica_list.push_back(HeartBeatReplicaInfo{
@@ -312,7 +308,6 @@ TEST(NodeHeartbeatServiceTest, HeartbeatIgnoresMissingAndOtherNodeReplicas) {
             ReplicaRole::LEADER,
             StorageReplicaStatus::READY,
             9,
-            RaftMemberType::VOTER,
             {},
     });
 
@@ -395,7 +390,6 @@ TEST(NodeHeartbeatServiceTest, ReplicaGroupServiceBuildsHeartbeatExpectations) {
             ReplicaRole::FOLLOWER,
             StorageReplicaStatus::READY,
             1,
-            RaftMemberType::VOTER,
             {},
     });
 
@@ -441,7 +435,6 @@ TEST(NodeHeartbeatServiceTest, EmptyMetaDoesNotDeleteUnknownStorageReplicas) {
             ReplicaRole::LEADER,
             StorageReplicaStatus::READY,
             1,
-            RaftMemberType::VOTER,
             {},
     });
 
@@ -548,12 +541,12 @@ TEST(NodeHeartbeatServiceTest, RemovedMemberLeaderDoesNotProjectMembership) {
     NodeService service(&store);
     HeartBeatParam param = make_heartbeat_param();
     param.node_id = "node-old";
-    param.replica_list = {HeartBeatReplicaInfo{old_leader,
-                                               ReplicaRole::LEADER,
-                                               StorageReplicaStatus::READY,
-                                               99,
-                                               RaftMemberType::VOTER,
-                                               {make_heartbeat_member(old_leader, "node-old", RaftMemberType::VOTER)}}};
+    param.replica_list = {HeartBeatReplicaInfo{
+            old_leader,
+            ReplicaRole::LEADER,
+            StorageReplicaStatus::READY,
+            99,
+            {make_heartbeat_member(old_leader, "node-old", RaftMemberType::VOTER)}}};
     ASSERT_TRUE(service.heartbeat(param).ok());
 
     // old_leader 不在 desired_members 里，上报被过滤，观测不被覆盖。

@@ -99,8 +99,8 @@ inline bool run_follower_log_catchup_verify_case(const Options& options) {
                fmt::format("ok, last_applied:{}", target_index));
     for (const auto& replica : replica_states.followers) {
         if (!wait_replica_apply_index_at_least_for_test(
-                replica.endpoint, replica_states.route.table_id,
-                replica_states.route.shard_id, target_index, options,
+                replica.endpoint, replica_states.route.shard_id.table_id,
+                replica_states.route.shard_id.shard_index, target_index, options,
                 std::chrono::seconds(30))) {
             return false;
         }

@@ -119,7 +119,7 @@ inline bool wait_route_replica_count(E2EContext* context,
     return eventually(
         fmt::format("route replica_count {}", replica_count), options,
         [&]() {
-            sdk::RouteInfo route;
+            ShardRoute route;
             std::string error;
             if (!get_route(context, key, &route, &error)) {
                 return CheckResult::fail(error);

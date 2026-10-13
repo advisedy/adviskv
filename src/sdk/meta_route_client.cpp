@@ -68,35 +68,19 @@ Status MetaRouteClient::get_table_routes(TableRouteInfo* table_routes, Milliseco
 
     int32 decoded_count{0};
     for (const auto& route_pb : response.routes()) {
-        ShardIndex shard_id = route_pb.shard_id();
+        ShardRoute route;
+        route.shard_id.table_id = next.table_id;
+        RETURN_IF_INVALID_CONDITION(codec::decode(route_pb, route), "table route is not valid")
+        ShardIndex shard_index = route.shard_id.shard_index;
         RETURN_IF_INVALID_CONDITION(
-                shard_id >= 0,
-                fmt::format("table route shard_id invalid, shard_id={}, shard_count={}", shard_id, shard_count))
-        RETURN_IF_INVALID_CONDITION(include_unavailable || route_pb.replicas_size() > 0,
-                                    fmt::format("table route replicas should not empty, shard_id={}", shard_id))
-
-        RouteInfo route;
-        route.table_id = next.table_id;
-        route.shard_id = shard_id;
-        RETURN_IF_INVALID_CONDITION(route_pb.has_hash_range(), "missing shard hash range")
-        route.hash_range = {route_pb.hash_range().start(), route_pb.hash_range().end()};
-        route.replicas.reserve(route_pb.replicas_size());
-        for (const auto& replica_pb : route_pb.replicas()) {
-            RouteReplica route_replica;
-            RETURN_IF_INVALID_CONDITION(codec::decode(replica_pb.replica_id(), route_replica.replica_id),
-                                        "route replica id is not valid")
-            RETURN_IF_INVALID_CONDITION(route_replica.replica_id.table_id == next.table_id &&
-                                                route_replica.replica_id.shard_index == shard_id,
+                shard_index >= 0,
+                fmt::format("table route shard_index invalid, shard_index={}, shard_count={}", shard_index, shard_count))
+        RETURN_IF_INVALID_CONDITION(include_unavailable || route.replicas.size() > 0,
+                                    fmt::format("table route replicas should not empty, shard_index={}", shard_index))
+        for (const RouteReplica& route_replica : route.replicas) {
+            RETURN_IF_INVALID_CONDITION(route_replica.replica_id.get_shard_id() == route.shard_id,
                                         "route replica belongs to another shard")
-            route_replica.endpoint = Endpoint{replica_pb.endpoint().ip(), replica_pb.endpoint().port()};
-            ReplicaRole role = ReplicaRole::FOLLOWER;
-            RETURN_IF_INVALID_CONDITION(is_valid_enum_value<ReplicaRole>(replica_pb.role()),
-                                        "route replica role is not valid")
-            role = static_cast<ReplicaRole>(replica_pb.role());
-            route_replica.role = role;
-            route.replicas.push_back(std::move(route_replica));
         }
-
         next.routes.push_back(std::move(route));
         ++decoded_count;
     }

@@ -79,4 +79,16 @@ Status select_remove_member_victims(const MetaStoreTxn& txn, const ReplicaGroup&
     return Status::OK();
 }
 
+Status select_single_remove_victim(const MetaStoreTxn& txn, const ReplicaGroup& group, Optional<ReplicaID>& victim) {
+    // 关于这里 filter 的逻辑，只有当我们目前的desired_members 的数量超过了 target 的，才会也把 health
+    // 的纳入考虑范围，否则就不会。
+    bool include_healthy = to<int32_t>(group.desired_members.size()) > group.target_replica_count;
+    std::vector<ReplicaID> victims;
+    RETURN_IF_INVALID_STATUS(select_remove_member_victims(txn, group, 1, !include_healthy, victims))
+    if (!victims.empty()) {
+        victim = victims.front();
+    }
+    return Status::OK();
+}
+
 }  // namespace adviskv::meta

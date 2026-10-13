@@ -15,6 +15,7 @@
 #include "common/optional.h"
 #include "common/status.h"
 #include "common/stable_hash.h"
+#include "storage/model/param.h"
 
 namespace adviskv::storage {
 
@@ -71,6 +72,14 @@ struct RequestRecord {
         hash.append_uint64(static_cast<uint64_t>(expected.size()));
         hash.append(expected);
         return hash.get_hash();
+    }
+
+    static uint64_t request_payload_hash(const LogEntry& entry) {
+        return request_payload_hash(entry.op_type, entry.key, entry.value, entry.expected);
+    }
+
+    static uint64_t request_payload_hash(const WriteProposal& proposal) {
+        return request_payload_hash(proposal.op, proposal.key, proposal.value, proposal.expected);
     }
 
     bool matches(const LogEntry& entry) const {

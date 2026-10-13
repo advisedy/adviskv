@@ -7,24 +7,6 @@ message BaseRsp {
     string msg = 2;
 }
 
-message NodeInfo {
-  string node_name = 1;
-  string host = 2;
-  int32 port = 3;
-  int32 status = 4;  // adviskv::meta::NodeStatus
-}
-
-message ReplicaInfo {
-  int32 table_id = 1;
-  int32 shard_id = 2;
-  int32 replica_seq = 3;
-  string node_id = 4;
-  int32 role = 5;      // adviskv::ReplicaRole
-  int32 status = 6;    // adviskv::StorageReplicaStatus
-  Endpoint endpoint = 7;
-  int64 term = 8;
-}
-
 message ReplicaID {
   int32 table_id = 1;
   int32 shard_index = 2;
@@ -34,6 +16,15 @@ message ReplicaID {
 message Endpoint {
   string ip = 1;
   int32 port = 2;
+}
+
+message ReplicaInfo {
+  adviskv.pb.ReplicaID replica_id = 1;
+  string node_id = 2;
+  int32 role = 3;      // adviskv::ReplicaRole
+  int32 status = 4;    // adviskv::StorageReplicaStatus
+  Endpoint endpoint = 5;
+  int64 term = 6;
 }
 
 message PeerMember {
@@ -59,7 +50,7 @@ message HashRange {
 }
 
 message ShardRoute {
-    int32 shard_id = 1;
+    int32 shard_index = 1;
     repeated RouteReplica replicas = 2;
     HashRange hash_range = 3;
 }
@@ -69,8 +60,7 @@ message HeartbeatReplicaInfo{
     int32 role = 2;        // adviskv::ReplicaRole
     int32 status = 3;      // adviskv::StorageReplicaStatus
     int64 term = 4;
-    int32 member_type = 5; // adviskv::RaftMemberType
-    repeated adviskv.pb.RaftMember full_membership = 6;
+    repeated adviskv.pb.RaftMember full_membership = 5;
 }
 
 message ExpectedReplica {

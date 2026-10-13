@@ -28,7 +28,7 @@ Status RouteReconciler::run() {
     }
     for (auto& table : tables) {
         for (const ShardRange& range : table.spec.shard_ranges) {
-            ShardIndex i = range.shard_id;
+            ShardIndex i = range.shard_index;
             Status s = check_shard_route(table, to<ShardIndex>(i));
             if (s.fail()) {
                 LOG_WARN(
@@ -69,7 +69,7 @@ Status RouteReconciler::check_shard_route(const Table& table, ShardIndex shard_i
             (current_table->state.phase != TablePhase::CREATING && current_table->state.phase != TablePhase::RESIZING &&
              current_table->state.phase != TablePhase::READY) ||
             std::none_of(current_table->spec.shard_ranges.begin(), current_table->spec.shard_ranges.end(),
-                         [&](const ShardRange& range) { return range.shard_id == shard_index; })) {
+                         [&](const ShardRange& range) { return range.shard_index == shard_index; })) {
             ADVISKV_METRICS_COUNTER("meta_route_delete_shard_route_request");
             RETURN_IF_INVALID_STATUS(txn.delete_shard_route(shard_id))
             return Status::OK();
@@ -78,8 +78,13 @@ Status RouteReconciler::check_shard_route(const Table& table, ShardIndex shard_i
         std::vector<Replica> replicas;
         RETURN_IF_INVALID_STATUS(txn.list_replicas_by_shard(shard_id, replicas))
 
-        std::vector<RouteEntry> leader_entries;
-        std::vector<RouteEntry> follower_entries;
+        struct RouteEntryLocal {
+            RouteReplica replica;
+            NodeID node_id;
+            Term term{0};
+        };
+        std::vector<RouteEntryLocal> leader_entries;
+        std::vector<RouteEntryLocal> follower_entries;
 
         for (const Replica& replica : replicas) {
             if (replica.state.phase != ReplicaPhase::READY) {
@@ -112,24 +117,24 @@ Status RouteReconciler::check_shard_route(const Table& table, ShardIndex shard_i
             // 没有心跳观测的副本不进入路由。
             ReplicaObservedOr observed_or;
             RETURN_IF_INVALID_STATUS(txn.get_replica_observed(replica.replica_id, observed_or))
-            if (observed_or.is_empty() || observed_or->member_type != RaftMemberType::VOTER) {
+            if (observed_or.is_empty() || !is_raft_voter(observed_or->member_type)) {
                 LOG_INFO("[RouteReconciler] replica_id:{} not routable, no observed facts or not voter",
                          replica.replica_id.to_string());
                 continue;
             }
             const ReplicaObserved& observed = observed_or.value();
 
-            RouteEntry entry;
-            entry.replica_id = replica.replica_id;
+            RouteEntryLocal entry;
+            entry.replica.replica_id = replica.replica_id;
+            entry.replica.endpoint = observed.endpoint;
+            entry.replica.role = observed.raft_role;
             entry.node_id = replica.spec.assign_node_id;
-            entry.ip = observed.endpoint.ip;
-            entry.port = observed.endpoint.port;
-            entry.role = observed.raft_role;
             entry.term = observed.term;
-            if (entry.role == ReplicaRole::LEADER) {
+            if (entry.replica.role == ReplicaRole::LEADER) {
                 leader_entries.push_back(std::move(entry));
-            } else if (entry.role == ReplicaRole::FOLLOWER || entry.role == ReplicaRole::PRE_CANDIDATE) {
-                entry.role = ReplicaRole::FOLLOWER;
+            } else if (entry.replica.role == ReplicaRole::FOLLOWER ||
+                       entry.replica.role == ReplicaRole::PRE_CANDIDATE) {
+                entry.replica.role = ReplicaRole::FOLLOWER;
                 follower_entries.push_back(std::move(entry));
             }
         }
@@ -140,7 +145,7 @@ Status RouteReconciler::check_shard_route(const Table& table, ShardIndex shard_i
 
         if (leader_entries.size() > 1U) {
             std::sort(leader_entries.begin(), leader_entries.end(),
-                      [](const RouteEntry& lhs, const RouteEntry& rhs) { return lhs.term > rhs.term; });
+                      [](const RouteEntryLocal& lhs, const RouteEntryLocal& rhs) { return lhs.term > rhs.term; });
             if (leader_entries[0].term == leader_entries[1].term) {
                 return clear_route_and_return(
                         fmt::format("multiple leaders share max term, term={}", leader_entries[0].term));
@@ -148,15 +153,16 @@ Status RouteReconciler::check_shard_route(const Table& table, ShardIndex shard_i
             leader_entries.resize(1);
         }
 
-        std::sort(follower_entries.begin(), follower_entries.end(), [](const RouteEntry& lhs, const RouteEntry& rhs) {
-            return lhs.replica_id.replica_seq < rhs.replica_id.replica_seq;
-        });
+        std::sort(follower_entries.begin(), follower_entries.end(),
+                  [](const RouteEntryLocal& lhs, const RouteEntryLocal& rhs) {
+                      return lhs.replica.replica_id.replica_seq < rhs.replica.replica_id.replica_seq;
+                  });
 
         ShardRoute route;
         route.shard_id = shard_id;
-        route.replicas.push_back(std::move(leader_entries.front()));
-        for (RouteEntry& follower_entry : follower_entries) {
-            route.replicas.push_back(std::move(follower_entry));
+        route.replicas.push_back(std::move(leader_entries.front().replica));
+        for (RouteEntryLocal& follower_entry : follower_entries) {
+            route.replicas.push_back(std::move(follower_entry.replica));
         }
 
         ADVISKV_METRICS_COUNTER("meta_route_put_shard_route_request");

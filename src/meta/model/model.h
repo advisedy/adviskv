@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -174,25 +175,6 @@ struct Table {
 };
 
 using TablePtr = std::shared_ptr<Table>;
-
-struct RouteEntry {
-    ReplicaID replica_id;
-    NodeID node_id;
-    std::string ip;
-    int32_t port{0};
-    ReplicaRole role{ReplicaRole::FOLLOWER};
-    Term term{0};
-
-    bool is_writable_leader() const { return role == ReplicaRole::LEADER && !ip.empty() && port > 0; }
-};
-
-struct ShardRoute {
-    ShardID shard_id;
-    std::vector<RouteEntry> replicas;
-    HashRange hash_range{};
-};
-
-using ShardRoutePtr = std::shared_ptr<ShardRoute>;
 
 using ReplicaGroupOr = Optional<ReplicaGroup>;
 using NodeOr = Optional<Node>;

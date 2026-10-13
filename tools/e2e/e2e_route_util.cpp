@@ -13,7 +13,7 @@
 
 namespace adviskv::e2e {
 
-bool get_route(E2EContext* context, const Key& key, sdk::RouteInfo* route, std::string* error) {
+bool get_route(E2EContext* context, const Key& key, ShardRoute* route, std::string* error) {
     if (route == nullptr) {
         *error = "route is nullptr";
         return false;
@@ -42,24 +42,11 @@ bool get_route(E2EContext* context, const Key& key, sdk::RouteInfo* route, std::
     table.shard_count = response.shard_count();
     table.routes.reserve(static_cast<size_t>(response.routes_size()));
     for (const auto& route_pb : response.routes()) {
-        sdk::RouteInfo one;
-        one.table_id = table.table_id;
-        one.shard_id = route_pb.shard_id();
-        one.hash_range = {route_pb.hash_range().start(), route_pb.hash_range().end()};
-        one.replicas.reserve(static_cast<size_t>(route_pb.replicas_size()));
-        for (const auto& replica : route_pb.replicas()) {
-            sdk::RouteReplica out;
-            if (!codec::decode(replica.replica_id(), out.replica_id)) {
-                *error = "route replica id is not valid";
-                return false;
-            }
-            out.endpoint = Endpoint{replica.endpoint().ip(), replica.endpoint().port()};
-            if (!is_valid_enum_value<ReplicaRole>(replica.role())) {
-                *error = "route replica role is not valid";
-                return false;
-            }
-            out.role = static_cast<ReplicaRole>(replica.role());
-            one.replicas.push_back(std::move(out));
+        ShardRoute one;
+        one.shard_id.table_id = table.table_id;
+        if (!codec::decode(route_pb, one)) {
+            *error = "table route is not valid";
+            return false;
         }
         table.routes.push_back(std::move(one));
     }
@@ -73,24 +60,24 @@ bool get_route(E2EContext* context, const Key& key, sdk::RouteInfo* route, std::
     return true;
 }
 
-bool wait_route_has_leader(E2EContext* context, const Key& key, sdk::RouteReplica* leader) {
+bool wait_route_has_leader(E2EContext* context, const Key& key, RouteReplica* leader) {
     const Options& options = context->options();
     std::string last_error;
     return eventually(
             "route has leader", options,
             [&]() {
-                sdk::RouteInfo route;
+                ShardRoute route;
                 std::string error;
                 if (!get_route(context, key, &route, &error)) {
                     return CheckResult::fail(error);
                 }
-                for (const sdk::RouteReplica& replica : route.replicas) {
+                for (const RouteReplica& replica : route.replicas) {
                     if (replica.role == ReplicaRole::LEADER) {
                         if (leader != nullptr) {
                             *leader = replica;
                         }
                         return CheckResult::pass(fmt::format("{}:{} shard={}", replica.endpoint.ip,
-                                                             replica.endpoint.port, route.shard_id));
+                                                             replica.endpoint.port, route.shard_id.shard_index));
                     }
                 }
                 return CheckResult::fail("leader replica not found");
@@ -99,7 +86,7 @@ bool wait_route_has_leader(E2EContext* context, const Key& key, sdk::RouteReplic
 }
 
 bool print_current_leader(E2EContext* context, const std::string& key) {
-    sdk::RouteReplica leader;
+    RouteReplica leader;
     if (!wait_route_has_leader(context, key, &leader)) {
         return false;
     }

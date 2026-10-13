@@ -5,6 +5,7 @@
 
 #include "common/define.h"
 #include "common/log.h"
+#include "common/optional.h"
 #include "common/status.h"
 #include "storage/model/model.h"
 #include "storage/model/param.h"

@@ -183,7 +183,7 @@ Status KVClient::init() {
     return route_cache_.init();
 }
 
-Status KVClient::resolve_route(const Key& key, RouteInfo* route, SteadyClock::time_point deadline) {
+Status KVClient::resolve_route(const Key& key, ShardRoute* route, SteadyClock::time_point deadline) {
     RETURN_IF_NULLPTR(route, "route should not be nullptr")
 
     Status status = route_cache_.resolve_route(key, route);
@@ -196,7 +196,7 @@ Status KVClient::resolve_route(const Key& key, RouteInfo* route, SteadyClock::ti
     return refresh_route(key, route, deadline);
 }
 
-Status KVClient::refresh_route(const Key& key, RouteInfo* route, SteadyClock::time_point deadline) {
+Status KVClient::refresh_route(const Key& key, ShardRoute* route, SteadyClock::time_point deadline) {
     RETURN_IF_NULLPTR(route, "route should not be nullptr")
 
     Milliseconds timeout = remaining_rpc_timeout(deadline);
@@ -225,7 +225,7 @@ Status KVClient::run_kv_request(Operation operation, const Key& key, Millisecond
         return status;
     }
 
-    RouteInfo route;
+    ShardRoute route;
     {
         ADVISKV_METRICS_TIMER(fmt::format("sdk_{}_route_resolve", op_name));
         status = resolve_route(key, &route, deadline);
@@ -262,7 +262,7 @@ Status KVClient::put(const Key& key, const Value& value, const std::string& requ
     RETURN_IF_INVALID_CONDITION(!request_id.empty(), "request_id should not be empty")
 
     return run_kv_request(Operation::PUT, key, Milliseconds(conf_.write_timeout_ms), request_id,
-                          [&](const RouteInfo& route, Milliseconds timeout) {
+                          [&](const ShardRoute& route, Milliseconds timeout) {
                               return storage_client_.put(route, key, value, request_id, timeout);
                           });
 }
@@ -275,7 +275,7 @@ Status KVClient::del(const Key& key, const std::string& request_id) {
     RETURN_IF_INVALID_CONDITION(!request_id.empty(), "request_id should not be empty")
 
     return run_kv_request(Operation::DELETE, key, Milliseconds(conf_.write_timeout_ms), request_id,
-                          [&](const RouteInfo& route, Milliseconds timeout) {
+                          [&](const ShardRoute& route, Milliseconds timeout) {
                               return storage_client_.del(route, key, request_id, timeout);
                           });
 }
@@ -290,7 +290,7 @@ Status KVClient::cas(const Key& key, const Value& expected, const Value& value, 
     RETURN_IF_INVALID_CONDITION(!request_id.empty(), "request_id should not be empty")
 
     return run_kv_request(Operation::CAS, key, Milliseconds(conf_.write_timeout_ms), request_id,
-                          [&](const RouteInfo& route, Milliseconds timeout) {
+                          [&](const ShardRoute& route, Milliseconds timeout) {
                               return storage_client_.cas(route, key, expected, value, request_id, timeout);
                           });
 }
@@ -302,7 +302,7 @@ Status KVClient::get(const Key& key, Value* value) {
     RETURN_IF_NULLPTR(value, "value should not be nullptr")
 
     return run_kv_request(Operation::GET, key, Milliseconds(conf_.read_timeout_ms), "",
-                          [&](const RouteInfo& route, Milliseconds timeout) {
+                          [&](const ShardRoute& route, Milliseconds timeout) {
                               return storage_client_.get(route, key, value, timeout);
                           });
 }

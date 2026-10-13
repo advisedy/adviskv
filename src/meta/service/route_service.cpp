@@ -1,7 +1,5 @@
 #include "meta/service/route_service.h"
 
-#include <algorithm>
-
 #include <fmt/format.h>
 
 #include "common/status.h"
@@ -15,11 +13,8 @@ RouteService::RouteService(MetaStore* store) : store_(store), reconciler_(store)
 Status RouteService::reconcile_all() { return reconciler_.run(); }
 
 Status RouteService::validate_writable_route(const ShardRoute& route) {
-    int leader_count = std::count_if(route.replicas.begin(), route.replicas.end(),
-                                     [](const RouteEntry& entry) { return entry.is_writable_leader(); });
-    if (leader_count != 1) {
-        return Status::ROUTE_NOT_FOUND(
-                fmt::format("writable leader route is not ready。 leader_count={}", leader_count));
+    if (!route.is_writable()) {
+        return Status::ROUTE_NOT_FOUND("writable leader route is not ready");
     }
     return Status::OK();
 }
@@ -41,7 +36,7 @@ Status RouteService::get_table_routes(const GetTableRoutesParam& param, Table* o
         RETURN_IF_INVALID_STATUS(check_shard_ranges_is_valid(table->shard_count(), table->spec.shard_ranges))
         routes.reserve(to<size_t>(table->shard_count()));
         for (const ShardRange& range : table->spec.shard_ranges) {
-            ShardIndex shard_index = range.shard_id;
+            ShardIndex shard_index = range.shard_index;
             ShardRouteOr route;
             ShardID shard_id{table->table_id, shard_index};
             RETURN_IF_INVALID_STATUS(txn.get_shard_route(shard_id, route))

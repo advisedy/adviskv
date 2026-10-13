@@ -436,7 +436,7 @@ private:
             fmt::print("usage: route <db> <table> <key>\n");
             return;
         }
-        adviskv::sdk::RouteInfo route_info;
+        adviskv::ShardRoute route_info;
         auto route_client = make_route_client(tokens[1], tokens[2]);
         adviskv::sdk::TableRouteInfo table_routes;
         Status status = route_client.get_table_routes(&table_routes, adviskv::Milliseconds::zero(), true);
@@ -481,15 +481,11 @@ private:
         }
     }
 
-    void print_route(const adviskv::sdk::RouteInfo& route_info, const std::string& indent) const {
-        fmt::print("{}shard: table_id={} shard_id={}\n", indent, route_info.table_id, route_info.shard_id);
+    void print_route(const adviskv::ShardRoute& route_info, const std::string& indent) const {
+        fmt::print("{}shard: table_id={} shard_index={}\n", indent, route_info.shard_id.table_id,
+                   route_info.shard_id.shard_index);
         fmt::print("{}hash_range: [{}, {})\n", indent, route_info.hash_range.start, route_info.hash_range.end);
-        const bool writable = std::count_if(route_info.replicas.begin(), route_info.replicas.end(),
-                                            [](const adviskv::sdk::RouteReplica& r) {
-                                                return r.role == adviskv::ReplicaRole::LEADER &&
-                                                       !r.endpoint.ip.empty() && r.endpoint.port > 0;
-                                            }) == 1;
-        fmt::print("{}route_state: {}\n", indent, writable ? "WRITABLE" : "UNAVAILABLE");
+        fmt::print("{}route_state: {}\n", indent, route_info.is_writable() ? "WRITABLE" : "UNAVAILABLE");
         fmt::print("{}replicas:\n", indent);
         for (const auto& replica : route_info.replicas) {
             fmt::print("{}  - replica_id={} endpoint={}:{} role={}\n", indent, replica.replica_id.to_string(),
