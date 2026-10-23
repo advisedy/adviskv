@@ -1,6 +1,5 @@
 set(STORAGE_LIB_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/node_agent/node_agent.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/replica/completion_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_manager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/replica/replica_loop.cpp

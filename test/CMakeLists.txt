@@ -105,6 +105,10 @@ add_adviskv_common_gtest(binary_crc_test
     ${CMAKE_SOURCE_DIR}/test/common/binary_crc_test.cpp
 )
 
+add_adviskv_common_gtest(completion_test
+    ${CMAKE_SOURCE_DIR}/test/common/completion_test.cpp
+)
+
 add_adviskv_storage_gtest(map_engine_test
     ${CMAKE_SOURCE_DIR}/test/storage/engine/map_engine_test.cpp
 )
@@ -129,8 +133,12 @@ add_adviskv_storage_gtest(replica_test
     ${CMAKE_SOURCE_DIR}/test/storage/replica/replica_test.cpp
 )
 
-add_adviskv_storage_gtest(read_request_state_test
-    ${CMAKE_SOURCE_DIR}/test/storage/replica/read_request_state_test.cpp
+add_adviskv_storage_gtest(completion_registry_test
+    ${CMAKE_SOURCE_DIR}/test/storage/replica/completion_registry_test.cpp
+)
+
+add_adviskv_storage_gtest(read_tracker_test
+    ${CMAKE_SOURCE_DIR}/test/storage/replica/read_tracker_test.cpp
 )
 
 add_adviskv_storage_gtest(replica_loop_test

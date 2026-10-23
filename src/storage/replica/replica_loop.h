@@ -1,149 +1,32 @@
 #pragma once
 
 #include <atomic>
-#include <chrono>
-#include <cstddef>
 #include <functional>
 #include <memory>
 #include <optional>
-#include <string>
 #include <thread>
-#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "common/blocking_queue.h"
+#include "common/completion.h"
+#include "common/defer.h"
 #include "common/define.h"
-#include "common/model/model.h"
-#include "common/status.h"
-#include "common/types.h"
-#include "storage/model/model.h"
-#include "storage/model/param.h"
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/core/raft_core.h"
 #include "storage/raft/state_machine/state_machine.h"
-#include "storage/replica/completion_manager.h"
+#include "storage/replica/completion_registry.h"
 #include "storage/replica/fault_reporter.h"
 #include "storage/replica/proposal_tracker.h"
-#include "storage/replica/read_tracker.h"
 #include "storage/replica/raft_step.h"
+#include "storage/replica/read_tracker.h"
+#include "storage/replica/replica_work.h"
 #include "storage/replica/snapshot_tracker.h"
-#include "storage/replica/snapshot_writer.h"
 
 namespace adviskv::storage {
 
 class ReplicaMessageDispatcher;
-
-struct TickEvent {};
-
-struct AppendResponseEvent {
-    ReplicaID from;
-    AppendEntriesParam sent_param;
-    AppendEntriesResult result;
-};
-
-struct VoteResponseEvent {
-    ReplicaID from;
-    RequestVoteResult result;
-};
-
-struct PreVoteResponseEvent {
-    ReplicaID from;
-    PreVoteResult result;
-};
-
-struct SnapshotResponseEvent {
-    ReplicaID from;
-    InstallSnapshotParam sent_param;
-    InstallSnapshotResult result;
-};
-
-struct AppendSendFailedEvent {
-    ReplicaID from;
-    AppendEntriesParam sent_param;
-    Status status;
-};
-
-struct SnapshotSendFailedEvent {
-    ReplicaID from;
-    InstallSnapshotParam sent_param;
-    Status status;
-};
-
-struct FaultEvent {
-    Status status;
-};
-
-struct ReadQuorumResponseEvent {
-    ReplicaID from;
-    uint64 read_seq{0};
-    Term response_term{0};
-};
-
-struct SnapshotDoneEvent {
-    LogIndex capture_index{0};
-    Term capture_term{0};
-    Status status{Status::OK()};
-};
-
-using Event = std::variant<TickEvent, AppendResponseEvent, VoteResponseEvent, PreVoteResponseEvent,
-                           SnapshotResponseEvent, AppendSendFailedEvent, SnapshotSendFailedEvent, SnapshotDoneEvent,
-                           ReadQuorumResponseEvent, FaultEvent>;
-
-struct RequestVoteCall {
-    RequestVoteParam param;
-    RequestVoteResult result{};
-    Status status{Status::OK()};
-};
-
-struct PreVoteCall {
-    PreVoteParam param;
-    PreVoteResult result{};
-    Status status{Status::OK()};
-};
-
-struct AppendEntriesCall {
-    AppendEntriesParam param;
-    AppendEntriesResult result{};
-    Status status{Status::OK()};
-};
-
-struct SubmitReadCall {
-    Key key;
-    std::shared_ptr<ReadRequestState> state;
-    Status status{Status::OK()};
-};
-
-struct InstallSnapshotCall {
-    InstallSnapshotParam param;
-    Status status{Status::OK()};
-};
-
-struct ProposeCall {
-    ProposeParam param;
-    Milliseconds timeout{0};
-    Status status{Status::OK()};
-};
-
-struct AddMemberCall {
-    PeerMember member;
-    Status status{Status::OK()};
-};
-
-struct RemoveMemberCall {
-    ReplicaID replica_id;
-    Status status{Status::OK()};
-};
-
-struct RecoverCall {
-    bool need_recover{false};
-    Status status{Status::OK()};
-};
-
-using Call = std::variant<RequestVoteCall*, PreVoteCall*, AppendEntriesCall*, SubmitReadCall*, InstallSnapshotCall*,
-                          ProposeCall*, AddMemberCall*, RemoveMemberCall*, RecoverCall*>;
-
 class ReplicaLoopTestPeer;
 
 class ReplicaLoop {
@@ -156,42 +39,72 @@ public:
     DISALLOW_COPY_AND_ASSIGN(ReplicaLoop)
 
     void start();
+    void close();
     void stop();
-    void stop_snapshot_writer() { snapshot_tracker_.stop_writer(); }
-
     void submit_async(Event event);
-    void submit_and_wait(Call call);
+
+    template <typename Request>
+    CompletionResult<typename Request::Result> submit_and_wait(Request request, const WaitPolicy& policy = {}) {
+        auto completion = std::make_shared<Completion<typename Request::Result>>();
+        if (!completion_registry_.add(completion)) {
+            completion->fail(Status::ERROR("raft loop is not running"));
+            return completion->wait();
+        }
+        auto remove_completion_defer = Defer([&] { completion_registry_.remove(completion); });
+        if (!post(QueuedCall<Request>{std::move(request), completion})) {
+            completion->fail(Status::ERROR("raft loop is not running"));
+        }
+        if (policy.timeout.has_value()) {
+            return completion->wait_for(*policy.timeout, policy.timeout_status);
+        }
+        return completion->wait();
+    }
 
     bool on_loop_thread() const;
-
-    void fault_stop();
+    void enter_fault();
 
 private:
     friend class ReplicaLoopTestPeer;
 
-    using Task = std::function<void()>;
-    using PendingTask = std::variant<Task, ProposalItem>;
-
     void run();
-    std::vector<ProposalItem> collect_write_batch(ProposalItem first, std::optional<PendingTask>& pending);
-    Status handle_write_batch(std::vector<ProposalItem> items);
+    std::vector<QueuedCall<ProposeCall>> collect_write_batch(QueuedCall<ProposeCall> first);
     bool post(PendingTask task);
+    bool faulted_{false};
+    void advance_trackers();
 
-    void finish_fault_stop();
-    bool fault_pending_{false};
+    Status finish_dispatch(Status status);
 
-    template <typename T>
-    bool enqueue_call(T& call, CompletionManager::Ticket ticket);
-    bool enqueue_call(ProposeCall& call, CompletionManager::Ticket ticket);
-    bool enqueue_call(SubmitReadCall& call, CompletionManager::Ticket ticket);
+    template <typename Request>
+    Status dispatch(QueuedCall<Request>& call) {
+        auto result = handle_call(call.request);
+        Status status = finish_dispatch(result.status);
+        if (status.fail()) {
+            result = CompletionResult<typename Request::Result>::fail(status);
+        }
+        IGNORE_RESULT(call.completion->complete(std::move(result)))
+        return status;
+    }
 
-    template <typename T>
-    Status wait_call(const T& call, CompletionManager::Ticket ticket);
-    Status wait_call(const ProposeCall& call, CompletionManager::Ticket ticket);
-    Status wait_call(const SubmitReadCall& call, CompletionManager::Ticket ticket);
+    Status dispatch(QueuedCall<ProposeCall>& call) {
+        std::vector<QueuedCall<ProposeCall>> calls = collect_write_batch(std::move(call));
+        if (!active_.load()) {
+            return Status::OK();
+        }
+        return finish_dispatch(proposal_tracker_.submit_batch(std::move(calls)));
+    }
 
-    void advance_pending_work();
-    void finish_work_unit(CompletionManager::Ticket ticket = 0, const Status& status = Status::OK());
+    Status dispatch(QueuedCall<SubmitReadCall>& call) {
+        Status status = finish_dispatch(read_tracker_.establish(call.request.key, call.completion));
+        if (status.fail()) {
+            call.completion->fail(status);
+        }
+        return status;
+    }
+
+    template <typename EventType>
+    Status dispatch(const EventType& event) {
+        return finish_dispatch(handle_event(event));
+    }
 
     Status handle_event(const TickEvent& event);
     Status handle_event(const AppendResponseEvent& event);
@@ -201,28 +114,24 @@ private:
     Status handle_event(const AppendSendFailedEvent& event);
     Status handle_event(const SnapshotSendFailedEvent& event);
     Status handle_event(const SnapshotDoneEvent& event);
-
-    void on_snapshot_written(LogIndex capture_index, Term capture_term, Status status);
     Status handle_event(const FaultEvent& event);
     Status handle_event(const ReadQuorumResponseEvent& event);
+    void on_snapshot_written(LogIndex capture_index, Term capture_term, Status status);
 
     Status apply_committed_entries_inline();
     Status apply_one_entry(const LogEntry& entry);
 
-    Status handle_call(RequestVoteCall& call);
-    Status handle_call(PreVoteCall& call);
-    Status handle_call(AppendEntriesCall& call);
-    Status handle_call(InstallSnapshotCall& call);
-    Status handle_call(AddMemberCall& call);
-    Status handle_call(RemoveMemberCall& call);
-    Status handle_call(RecoverCall& call);
-
+    CompletionResult<RequestVoteResult> handle_call(const RequestVoteCall& call);
+    CompletionResult<PreVoteResult> handle_call(const PreVoteCall& call);
+    CompletionResult<AppendEntriesResult> handle_call(const AppendEntriesCall& call);
+    CompletionResult<void> handle_call(const InstallSnapshotCall& call);
+    CompletionResult<void> handle_call(const AddMemberCall& call);
+    CompletionResult<void> handle_call(const RemoveMemberCall& call);
+    CompletionResult<void> handle_call(const RecoverCall& call);
     void fail_all_pending(const Status& status);
 
     void publish_runtime_info_snapshot() {
-        if (runtime_info_publisher_) {
-            runtime_info_publisher_();
-        }
+        if (runtime_info_publisher_) runtime_info_publisher_();
     }
 
     ReplicaID replica_id_;
@@ -231,19 +140,16 @@ private:
     StateMachine& state_machine_;
     ReplicaMessageDispatcher& message_dispatcher_;
     FaultReporter fault_reporter_;
-
-    CompletionManager completions_;
+    CompletionRegistry completion_registry_;
     RaftEffectExecutor raft_effect_executor_;
     ProposalTracker proposal_tracker_;
     ReadTracker read_tracker_;
-
     BlockingQueue<PendingTask> queue_;
+    std::optional<PendingTask> next_task_;
     std::thread worker_;
     std::atomic<bool> started_{false};
     std::atomic<bool> active_{false};
-
     SnapshotTracker snapshot_tracker_;
-
     std::function<void()> runtime_info_publisher_;
 };
 

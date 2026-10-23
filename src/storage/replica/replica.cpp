@@ -13,10 +13,10 @@
 #include "common/metrics/metrics.h"
 #include "common/model/model.h"
 #include "common/oper_gate.h"
+#include "common/path.h"
 #include "common/status.h"
 #include "common/types.h"
 #include "storage/model/param.h"
-#include "common/path.h"
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/core/raft_core.h"
 #include "storage/raft/state_machine/kv_state_machine.h"
@@ -40,7 +40,7 @@ bool disk_has_replica_state(const ReplicaInitParam& param) {
            std::filesystem::exists(adviskv::snapshot_file(dir), ec);
 }
 
-}
+}  // namespace
 
 Status Replica::init(const ReplicaInitParam& param) {
     shard_id_ = ShardID{param.replica_id.table_id, param.replica_id.shard_index};
@@ -91,9 +91,8 @@ Status Replica::start() {
         return Status::OK();
     }
     if (local_state_.load() == LocalState::AWAITING_RECOVER) {
-        LOG_WARN(
-                "[Replica] start rejected: persisted state exists, recover is required first. replica_id:{}",
-                replica_id_.to_string());
+        LOG_WARN("[Replica] start rejected: persisted state exists, recover is required first. replica_id:{}",
+                 replica_id_.to_string());
         return Status::NOT_INIT("replica has persisted state, recover must run before start");
     }
     message_dispatcher_->start();
@@ -106,21 +105,21 @@ Status Replica::put(const PutParam& param) {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
     RETURN_IF_INVALID_STATUS(ensure_serving());
 
-    ProposeCall call{ProposeParam::write(WriteOpType::PUT, param.key, param.value, param.request_id),
-                     Milliseconds{K_REPLICA_PROPOSAL_COMMIT_TIMEOUT_MS}};
-    loop_->submit_and_wait(&call);
-    RETURN_IF_INVALID_STATUS(call.status)
-
-    return Status::OK();
+    ProposeCall call;
+    call.param = ProposeParam::write(WriteOpType::PUT, param.key, param.value, param.request_id);
+    CompletionResult<void> r = loop_->submit_and_wait(
+            std::move(call), WaitPolicy::proposal(Milliseconds{K_REPLICA_PROPOSAL_COMMIT_TIMEOUT_MS}));
+    return r.status;
 }
 
 Status Replica::handle_install_snapshot(const InstallSnapshotParam& param) {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
     RETURN_IF_INVALID_STATUS(ensure_running())
 
-    InstallSnapshotCall call{param};
-    loop_->submit_and_wait(&call);
-    return call.status;
+    InstallSnapshotCall call;
+    call.param = param;
+    CompletionResult<void> r = loop_->submit_and_wait(std::move(call));
+    return r.status;
 }
 
 Status Replica::get(const GetParam& param, Value& value) {
@@ -128,16 +127,15 @@ Status Replica::get(const GetParam& param, Value& value) {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
     RETURN_IF_INVALID_STATUS(ensure_serving())
 
-    SubmitReadCall read_call;
-    read_call.key = param.key;
-    loop_->submit_and_wait(&read_call);
-    if (read_call.status.fail()) {
-        return read_call.status;
+    SubmitReadCall call;
+    call.key = param.key;
+    CompletionResult<Value> r =
+            loop_->submit_and_wait(std::move(call), WaitPolicy::read(Milliseconds{K_REPLICA_READ_TIMEOUT_MS}));
+    if (r.status.fail()) {
+        return r.status;
     }
-    if (read_call.state->status.ok()) {
-        value = std::move(read_call.state->value);
-    }
-    return read_call.state->status;
+    value = std::move(r.value.value());
+    return r.status;
 }
 
 Status Replica::del(const DelParam& param) {
@@ -145,12 +143,11 @@ Status Replica::del(const DelParam& param) {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
     RETURN_IF_INVALID_STATUS(ensure_serving());
 
-    ProposeCall call{ProposeParam::write(WriteOpType::DEL, param.key, "", param.request_id),
-                     Milliseconds{K_REPLICA_PROPOSAL_COMMIT_TIMEOUT_MS}};
-    loop_->submit_and_wait(&call);
-    RETURN_IF_INVALID_STATUS(call.status)
-
-    return Status::OK();
+    ProposeCall call;
+    call.param = ProposeParam::write(WriteOpType::DEL, param.key, "", param.request_id);
+    CompletionResult<void> r = loop_->submit_and_wait(
+            std::move(call), WaitPolicy::proposal(Milliseconds{K_REPLICA_PROPOSAL_COMMIT_TIMEOUT_MS}));
+    return r.status;
 }
 
 Status Replica::cas(const CasParam& param) {
@@ -158,21 +155,22 @@ Status Replica::cas(const CasParam& param) {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
     RETURN_IF_INVALID_STATUS(ensure_serving());
 
-    ProposeCall call{ProposeParam::write(WriteOpType::CAS, param.key, param.value, param.request_id, param.expected),
-                     Milliseconds{K_REPLICA_PROPOSAL_COMMIT_TIMEOUT_MS}};
-    loop_->submit_and_wait(&call);
-    RETURN_IF_INVALID_STATUS(call.status)
-    return Status::OK();
+    ProposeCall call;
+    call.param = ProposeParam::write(WriteOpType::CAS, param.key, param.value, param.request_id, param.expected);
+    CompletionResult<void> r = loop_->submit_and_wait(
+            std::move(call), WaitPolicy::proposal(Milliseconds{K_REPLICA_PROPOSAL_COMMIT_TIMEOUT_MS}));
+    return r.status;
 }
 
 Status Replica::handle_request_vote(const RequestVoteParam& param, RequestVoteResult& result) {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
     RETURN_IF_INVALID_STATUS(ensure_running())
 
-    RequestVoteCall call{param};
-    loop_->submit_and_wait(&call);
-    RETURN_IF_INVALID_STATUS(call.status)
-    result = call.result;
+    RequestVoteCall call;
+    call.param = param;
+    CompletionResult<RequestVoteResult> r = loop_->submit_and_wait(std::move(call));
+    RETURN_IF_INVALID_STATUS(r.status)
+    result = std::move(r.value.value());
     return Status::OK();
 }
 
@@ -180,10 +178,11 @@ Status Replica::handle_pre_vote(const PreVoteParam& param, PreVoteResult& result
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
     RETURN_IF_INVALID_STATUS(ensure_running())
 
-    PreVoteCall call{param};
-    loop_->submit_and_wait(&call);
-    RETURN_IF_INVALID_STATUS(call.status)
-    result = call.result;
+    PreVoteCall call;
+    call.param = param;
+    CompletionResult<PreVoteResult> r = loop_->submit_and_wait(std::move(call));
+    RETURN_IF_INVALID_STATUS(r.status)
+    result = std::move(r.value.value());
     return Status::OK();
 }
 
@@ -192,11 +191,11 @@ Status Replica::handle_append_entries(const AppendEntriesParam& param, AppendEnt
     RETURN_IF_INVALID_STATUS(ensure_running())
 
     ADVISKV_METRICS_TIMER("storage_replica_handle_append_entries_raft_step");
-    AppendEntriesCall call{param};
-    loop_->submit_and_wait(&call);
-    RETURN_IF_INVALID_STATUS(call.status)
-    result = call.result;
-
+    AppendEntriesCall call;
+    call.param = param;
+    CompletionResult<AppendEntriesResult> r = loop_->submit_and_wait(std::move(call));
+    RETURN_IF_INVALID_STATUS(r.status)
+    result = std::move(r.value.value());
     return Status::OK();
 }
 
@@ -204,10 +203,10 @@ Status Replica::add_member(const PeerMember& member) {
     RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
     RETURN_IF_INVALID_STATUS(ensure_serving());
     LOG_INFO("[Replica] add_member, replica_id:{}, add target:{}", replica_id_.to_string(), member.to_string());
-    AddMemberCall call{member};
-    loop_->submit_and_wait(&call);
-    RETURN_IF_INVALID_STATUS(call.status)
-    return Status::OK();
+    AddMemberCall call;
+    call.member = member;
+    CompletionResult<void> r = loop_->submit_and_wait(std::move(call));
+    return r.status;
 }
 
 Status Replica::remove_member(const ReplicaID& replica_id) {
@@ -215,10 +214,10 @@ Status Replica::remove_member(const ReplicaID& replica_id) {
     RETURN_IF_INVALID_STATUS(ensure_serving());
     LOG_INFO("[Replica] remove_member, replica_id:{}, remove target:{}", replica_id_.to_string(),
              replica_id.to_string());
-    RemoveMemberCall call{replica_id};
-    loop_->submit_and_wait(&call);
-    RETURN_IF_INVALID_STATUS(call.status)
-    return Status::OK();
+    RemoveMemberCall call;
+    call.replica_id = replica_id;
+    CompletionResult<void> r = loop_->submit_and_wait(std::move(call));
+    return r.status;
 }
 
 void Replica::on_tick() {
@@ -229,6 +228,7 @@ void Replica::on_tick() {
 }
 
 Status Replica::recover() {
+    RETURN_IF_OPER_GUARD_ACQUIRE_FAILED(oper_gate_)
     const LocalState state = local_state_.load();
     if (state == LocalState::FAULTED) {
         return Status::IS_FAULTED("faulted or shut down replica requires destroy and rebuild");
@@ -242,13 +242,17 @@ Status Replica::recover() {
     }
 
     RecoverCall call;
-    loop_->submit_and_wait(&call);
-    if (call.status.fail()) {
-        report_fault(call.status);
-        return call.status;
+    CompletionResult<void> r = loop_->submit_and_wait(std::move(call));
+    if (r.status.fail()) {
+        report_fault(r.status);
+        return r.status;
     }
 
-    local_state_.store(LocalState::RECOVERING);
+    LocalState expected = state;
+    if (!local_state_.compare_exchange_strong(expected, LocalState::RECOVERING)) {
+        return expected == LocalState::FAULTED ? Status::IS_FAULTED("replica stopped during recovery")
+                                               : Status::ERROR("replica state changed during recovery");
+    }
     return Status::OK();
 }
 
@@ -274,7 +278,7 @@ void Replica::report_fault(Status status) {
         return;
     }
     if (loop_->on_loop_thread()) {
-        loop_->fault_stop();
+        loop_->enter_fault();
         return;
     }
     loop_->submit_async(FaultEvent{std::move(status)});
@@ -282,13 +286,16 @@ void Replica::report_fault(Status status) {
 
 void Replica::shutdown() {
     local_state_.store(LocalState::FAULTED);
-    oper_gate_.close_and_wait();
+    oper_gate_.close();
+    if (loop_) {
+        loop_->close();
+    }
+    oper_gate_.wait();
+    if (loop_) {
+        loop_->stop();
+    }
     if (message_dispatcher_) {
         message_dispatcher_->stop();
-    }
-    if (loop_) {
-        loop_->stop_snapshot_writer();
-        loop_->stop();
     }
 }
 

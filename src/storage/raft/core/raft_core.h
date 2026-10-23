@@ -20,6 +20,7 @@ namespace adviskv::storage {
 // RaftCore 本身不加锁，调用方要保证所有访问串行进行。
 class RaftCore {
 public:
+
     RaftCore(const ReplicaID& self_id, const std::vector<PeerMember>& members);
 
     void tick(RaftEffects& effects);
@@ -42,6 +43,7 @@ public:
     void handle_append_send_failed(const ReplicaID& from, const AppendEntriesParam& sent_param, const Status& status);
 
     // 查询当前 raft 的状态
+    const ReplicaID& self_id() const;
     ReplicaRole role() const;
     Term current_term() const;
     LogIndex commit_index() const;

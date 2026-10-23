@@ -43,9 +43,15 @@ public:
         return Status::OK();
     }
 
-    void close_and_wait() {
-        closed_.store(true);
+    void close() { closed_.store(true); }
+
+    void wait() {
         std::unique_lock lock(mutex_);
+    }
+
+    void close_and_wait() {
+        close();
+        wait();
     }
 
 private:

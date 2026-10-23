@@ -24,6 +24,8 @@ RaftCore::RaftCore(const ReplicaID& self_id, const std::vector<PeerMember>& memb
           election_tick_trigger_(K_ELECTION_TIMEOUT_FUNC),
           heartbeat_tick_trigger_(K_RAFT_HEARTBEAT_INTERVAL_TICKS) {}
 
+const ReplicaID& RaftCore::self_id() const { return self_id_; }
+
 LogIndex RaftCore::last_log_index() const { return raft_log_.last_log_index(); }
 
 Term RaftCore::last_log_term() const { return raft_log_.last_log_term(); }
@@ -57,13 +59,9 @@ bool RaftCore::later_than_other(Term other_term, LogIndex other_index) const {
     return raft_log_.last_log_index() > other_index;
 }
 
-bool RaftCore::is_recent_leader_active() const {
-    return recent_leader_active_;
-}
+bool RaftCore::is_recent_leader_active() const { return recent_leader_active_; }
 
-void RaftCore::clear_recent_leader_active() {
-    recent_leader_active_ = false;
-}
+void RaftCore::clear_recent_leader_active() { recent_leader_active_ = false; }
 
 void RaftCore::mark_recent_leader_active() { recent_leader_active_ = true; }
 
@@ -96,8 +94,7 @@ Status RaftCore::ensure_readable_leader() const {
 
 void RaftCore::record_hard_state(RaftEffects& effects) const { effects.hard_state = election_.hard_state(); }
 
-std::vector<LogEntry> RaftCore::extract_committed_entries(size_t budget_entries, size_t budget_bytes,
-                                                          bool* has_more) {
+std::vector<LogEntry> RaftCore::extract_committed_entries(size_t budget_entries, size_t budget_bytes, bool* has_more) {
     bool unused_has_more = false;
     bool& has_more_ref = has_more != nullptr ? *has_more : unused_has_more;
     return raft_apply_.extract_committed_entries(budget_entries, budget_bytes, has_more_ref);

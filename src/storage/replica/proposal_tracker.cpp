@@ -10,24 +10,19 @@
 
 namespace adviskv::storage {
 
-ProposalTracker::ProposalTracker(RaftCore& raft_core, StateMachine& state_machine, RaftEffectExecutor& effect_executor,
-                                 CompletionManager& completions)
-        : raft_core_(raft_core),
-          state_machine_(state_machine),
-          effect_executor_(effect_executor),
-          completions_(completions) {}
+ProposalTracker::ProposalTracker(RaftCore& raft_core, StateMachine& state_machine, RaftEffectExecutor& effect_executor)
+        : raft_core_(raft_core), state_machine_(state_machine), effect_executor_(effect_executor) {}
 
-Status ProposalTracker::submit_batch(std::vector<ProposalItem> items) {
+Status ProposalTracker::submit_batch(std::vector<QueuedCall<ProposeCall>> calls) {
     std::vector<ProposeParam> params;
     std::vector<std::string> candidate_ids;
-    params.reserve(items.size());
-    candidate_ids.reserve(items.size());
+    params.reserve(calls.size());
+    candidate_ids.reserve(calls.size());
 
-    for (const ProposalItem& item : items) {
-        auto* write = std::get_if<WriteProposal>(&item.param.payload);
+    for (const QueuedCall<ProposeCall>& call : calls) {
+        auto* write = std::get_if<WriteProposal>(&call.request.param.payload);
         if (write == nullptr || write->request_id.empty()) {
-            IGNORE_RESULT(completions_.finish(
-                    item.ticket, Status::INVALID_ARGUMENT("request_id is required for every write proposal")))
+            finish_call(call, Status::INVALID_ARGUMENT("request_id is required for every write proposal"));
             continue;
         }
 
@@ -46,12 +41,12 @@ Status ProposalTracker::submit_batch(std::vector<ProposalItem> items) {
             Status status = record.payload_hash == write_hash
                                     ? record.apply_status
                                     : Status::INVALID_ARGUMENT("request_id was reused with a different write");
-            IGNORE_RESULT(completions_.finish(item.ticket, status))
+            finish_call(call, status);
             continue;
         }
         if (find_status.code() != StatusCode::KEY_NOT_FOUND) {
             ADVISKV_METRICS_COUNTER("storage_replica_request_record_error");
-            IGNORE_RESULT(completions_.finish(item.ticket, find_status))
+            finish_call(call, find_status);
             continue;
         }
         ADVISKV_METRICS_COUNTER("storage_replica_request_record_miss");
@@ -59,13 +54,13 @@ Status ProposalTracker::submit_batch(std::vector<ProposalItem> items) {
         auto tracked = entries_.find(write->request_id);
         if (tracked != entries_.end()) {
             if (tracked->second.payload_hash != write_hash) {
-                IGNORE_RESULT(completions_.finish(
-                        item.ticket, Status::INVALID_ARGUMENT("request_id was reused with a different write")))
+                finish_call(call, Status::INVALID_ARGUMENT("request_id was reused with a different write"));
             } else if (tracked->second.committed && write->op != WriteOpType::CAS) {
-                IGNORE_RESULT(completions_.finish(item.ticket, Status::OK()))
+                finish_call(call, Status::OK());
                 ADVISKV_METRICS_COUNTER("storage_replica_request_pending_deduplicated");
             } else {
-                tracked->second.tickets.push_back(item.ticket);
+                // 同一个 request_id 的等待者聚合到同一个 Entry 上
+                tracked->second.completions.push_back(call.completion);
                 ADVISKV_METRICS_COUNTER("storage_replica_request_pending_deduplicated");
             }
             continue;
@@ -74,16 +69,15 @@ Status ProposalTracker::submit_batch(std::vector<ProposalItem> items) {
         Entry entry;
         entry.op = write->op;
         entry.payload_hash = write_hash;
-        entry.tickets.push_back(item.ticket);
+        entry.completions.push_back(call.completion);
         if (auto* logged = raft_core_.find_request(write->request_id)) {
             uint64_t logged_hash = RequestRecord::request_payload_hash(*logged);
             if (logged_hash != write_hash) {
-                IGNORE_RESULT(completions_.finish(
-                        item.ticket, Status::INVALID_ARGUMENT("request_id was reused with a different write")))
+                finish_call(call, Status::INVALID_ARGUMENT("request_id was reused with a different write"));
                 continue;
             }
             if (logged->index <= 0) {
-                IGNORE_RESULT(completions_.finish(item.ticket, Status::ERROR("invalid existing proposal log index")))
+                finish_call(call, Status::ERROR("invalid existing proposal log index"));
                 continue;
             }
             entry.index = logged->index;
@@ -91,7 +85,7 @@ Status ProposalTracker::submit_batch(std::vector<ProposalItem> items) {
         if (entry.index > 0) {
             ADVISKV_METRICS_COUNTER("storage_replica_request_pending_deduplicated");
         } else {
-            params.push_back(item.param);
+            params.push_back(call.request.param);
             candidate_ids.push_back(write->request_id);
         }
         entries_.emplace(write->request_id, std::move(entry));
@@ -147,7 +141,7 @@ void ProposalTracker::advance() {
         if (!entry.committed && entry.index > 0 && entry.index <= commit_index) {
             entry.committed = true;
             if (entry.op != WriteOpType::CAS) {
-                finish_tickets(entry, Status::OK(), true);
+                finish_completions(entry, Status::OK(), true);
             }
         }
         if (entry.committed && entry.index > 0 && entry.index <= last_applied) {
@@ -159,7 +153,7 @@ void ProposalTracker::advance() {
                                      ? record.apply_status
                                      : Status::INVALID_ARGUMENT("request_id was reused with a different write");
                 }
-                finish_tickets(entry, status, true);
+                finish_completions(entry, status, true);
             }
             it = entries_.erase(it);
         } else {
@@ -173,18 +167,36 @@ void ProposalTracker::advance() {
 
 void ProposalTracker::fail_all(const Status& status) {
     for (auto& [_, entry] : entries_) {
-        finish_tickets(entry, status);
+        finish_completions(entry, status);
     }
     entries_.clear();
 }
 
-void ProposalTracker::finish_tickets(Entry& entry, const Status& status, bool count_timeout) {
-    for (CompletionManager::Ticket ticket : entry.tickets) {
-        if (!completions_.finish(ticket, status) && count_timeout) {
+void ProposalTracker::finish_call(const QueuedCall<ProposeCall>& call, const Status& status) {
+    if (!call.completion) {
+        return;
+    }
+    if (status.ok()) {
+        IGNORE_RESULT(call.completion->complete(CompletionResult<void>::ok()))
+    } else {
+        IGNORE_RESULT(call.completion->complete(CompletionResult<void>::fail(status)))
+    }
+}
+
+void ProposalTracker::finish_completions(Entry& entry, const Status& status, bool count_timeout) {
+    for (auto& completion : entry.completions) {
+        if (!completion) continue;
+        CompleteStatus cs;
+        if (status.ok()) {
+            cs = completion->complete(CompletionResult<void>::ok());
+        } else {
+            cs = completion->complete(CompletionResult<void>::fail(status));
+        }
+        if (cs == CompleteStatus::TimedOut && count_timeout) {
             ADVISKV_METRICS_COUNTER("storage_replica_request_commit_after_timeout");
         }
     }
-    entry.tickets.clear();
+    entry.completions.clear();
 }
 
 void ProposalTracker::fail_request(const std::string& request_id, const Status& status) {
@@ -192,7 +204,7 @@ void ProposalTracker::fail_request(const std::string& request_id, const Status& 
     if (it == entries_.end()) {
         return;
     }
-    finish_tickets(it->second, status);
+    finish_completions(it->second, status);
     entries_.erase(it);
 }
 

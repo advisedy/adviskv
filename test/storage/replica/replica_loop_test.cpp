@@ -1,88 +1,83 @@
-#include <gtest/gtest.h>
+#include "storage/replica/replica_loop.h"
 
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <future>
 #include <mutex>
+#include <optional>
+#include <string>
 #include <thread>
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+
+#include "common/completion.h"
+#include "common/defer.h"
 #include "common/model/model.h"
 #include "storage/model/model.h"
 #include "storage/persist/persist_engine.h"
 #include "storage/raft/core/raft_core.h"
 #include "storage/raft/state_machine/kv_state_machine.h"
-#include "storage/replica/replica_loop.h"
 #include "storage/replica/replica_message_dispatcher.h"
 #include "test/storage/raft/core/raft_core_test_access.h"
+#include "test/test_env.h"
 
 namespace adviskv::storage {
 
 class ReplicaLoopTestPeer {
 public:
-    using Ticket = CompletionManager::Ticket;
-
-    static bool post_task(ReplicaLoop& loop, ReplicaLoop::Task task) {
-        return loop.post(ReplicaLoop::PendingTask{std::move(task)});
+    // 启动前排好具体请求，避免靠线程调度猜测第二个调用有没有入队。
+    // 和提交入口一样登记 completion，关闭测试才真正覆盖 registry 的唤醒。
+    template <typename Request>
+    static auto queue_call(ReplicaLoop& loop, Request request) {
+        auto completion = std::make_shared<Completion<typename Request::Result>>();
+        EXPECT_TRUE(loop.completion_registry_.add(completion));
+        EXPECT_TRUE(loop.queue_.push(PendingTask{QueuedCall<Request>{std::move(request), completion}}));
+        return completion;
     }
 
-    static bool post_empty_task(ReplicaLoop& loop) {
-        return loop.post(ReplicaLoop::PendingTask{ReplicaLoop::Task{}});
-    }
-
-    static Ticket create_ticket(ReplicaLoop& loop) { return loop.completions_.create(); }
-
-    static Status wait_for(ReplicaLoop& loop, Ticket ticket, Milliseconds timeout, const Status& timeout_status) {
-        return loop.completions_.wait_for(ticket, timeout, timeout_status);
-    }
-
-    static bool finish(ReplicaLoop& loop, Ticket ticket, const Status& status) {
-        return loop.completions_.finish(ticket, status);
-    }
-
-    static void finish_work_unit(ReplicaLoop& loop, Ticket ticket, const Status& status) {
-        loop.finish_work_unit(ticket, status);
-    }
-
-    static std::shared_ptr<ReadRequestState> new_read(ReplicaLoop& loop, Ticket ticket) {
-        return loop.read_tracker_.new_request("k", ticket);
-    }
-
-    static Status establish_read(ReplicaLoop& loop, const std::shared_ptr<ReadRequestState>& state) {
-        return loop.read_tracker_.establish(state);
-    }
-
-    static void advance_reads(ReplicaLoop& loop) { loop.read_tracker_.advance(); }
+    static bool post_tick(ReplicaLoop& loop) { return loop.post(PendingTask{TickEvent{}}); }
 
     static std::thread::id worker_id(ReplicaLoop& loop) { return loop.worker_.get_id(); }
 
-    static bool active(ReplicaLoop& loop) { return loop.active_.load(); }
-
-    static bool post_proposal(ReplicaLoop& loop, Ticket ticket) {
-        return loop.post(ReplicaLoop::PendingTask{
-                ProposalItem{ProposeParam::write(WriteOpType::PUT, "k", "v"), ticket}});
+    // 往队列里塞一个写请求。它和别的请求一样走请求通道，没有单独的入队方式。
+    static void queue_write(ReplicaLoop& loop, const std::string& request_id) {
+        auto completion = std::make_shared<Completion<void>>();
+        EXPECT_TRUE(loop.queue_.push(PendingTask{QueuedCall<ProposeCall>{
+                ProposeCall{ProposeParam::write(WriteOpType::PUT, "k", "v", request_id)}, completion}}));
     }
 
-    static std::vector<size_t> collect_batch_sizes(ReplicaLoop& loop, size_t item_count) {
-        for (size_t i = 0; i < item_count; ++i) {
-            loop.queue_.push(ReplicaLoop::PendingTask{
-                    ProposalItem{ProposeParam::write(WriteOpType::PUT, "k", "v"), i + 1}});
+    // 按脚本往队列里排任务：'w' 写请求、'c' 普通调用、'e' 事件。
+    // 然后照 loop 的写法跑批收集，返回每个写批的尺寸。
+    static std::vector<size_t> collect_batch_sizes(ReplicaLoop& loop, const std::string& script) {
+        for (size_t i = 0; i < script.size(); ++i) {
+            if (script[i] == 'w') {
+                queue_write(loop, "rid-" + std::to_string(i));
+            } else if (script[i] == 'c') {
+                queue_call(loop, PreVoteCall{});
+            } else {
+                EXPECT_TRUE(loop.queue_.push(PendingTask{TickEvent{}}));
+            }
         }
 
         std::vector<size_t> sizes;
-        std::optional<ReplicaLoop::PendingTask> pending;
         while (true) {
-            ReplicaLoop::PendingTask next;
-            if (pending.has_value()) {
-                next = std::move(*pending);
-                pending.reset();
+            PendingTask next;
+            // 和 run() 一样：先看暂存项，没有才从队列取。
+            if (loop.next_task_.has_value()) {
+                next = std::move(*loop.next_task_);
+                loop.next_task_.reset();
             } else if (!loop.queue_.try_pop(next)) {
                 break;
             }
-            auto items = loop.collect_write_batch(std::move(std::get<ProposalItem>(next)), pending);
-            sizes.push_back(items.size());
+            auto* first_write = std::get_if<QueuedCall<ProposeCall>>(&next);
+            if (first_write == nullptr) {
+                // 非写任务在真 loop 里直接分发，不产生写批。
+                continue;
+            }
+            sizes.push_back(loop.collect_write_batch(std::move(*first_write)).size());
         }
         return sizes;
     }
@@ -92,36 +87,38 @@ namespace {
 
 class LoopHarness {
 public:
-    explicit LoopHarness(const std::function<void()>& runtime_info_publisher = [] {})
+    // 默认不初始化持久化目录，只有真正写日志的测试才准备磁盘状态。
+    explicit LoopHarness(
+            const std::function<void()>& runtime_info_publisher = [] {}, const std::string& data_dir = "unused")
             : id_{301, 4, 0},
-              persist_("unused", id_),
+              persist_(data_dir, id_),
               state_machine_(EngineType::MAP),
               raft_core_(id_, {PeerMember{"self", id_, Endpoint{"127.0.0.1", 19090}}}),
               dispatcher_(1000, persist_, [](Event) {}),
-              fault_reporter_([this](Status status) {
-                  if (status.fail() && loop_ptr_ != nullptr) {
-                      loop_ptr_->fault_stop();
-                  }
-                  return status;
-              }, [this](Status) {
-                  if (loop_ptr_ != nullptr) {
-                      loop_ptr_->fault_stop();
-                  }
-              }),
+              fault_reporter_(
+                      [this](Status status) {
+                          if (status.fail() && loop_ptr_ != nullptr) {
+                              loop_ptr_->enter_fault();
+                          }
+                          return status;
+                      },
+                      [this](Status) {
+                          if (loop_ptr_ != nullptr) {
+                              loop_ptr_->enter_fault();
+                          }
+                      }),
               loop_(id_, raft_core_, persist_, state_machine_, dispatcher_, fault_reporter_, 1000,
                     runtime_info_publisher) {
         loop_ptr_ = &loop_;
     }
 
-    ~LoopHarness() {
-        loop_.stop_snapshot_writer();
-        loop_.stop();
-    }
+    ~LoopHarness() { loop_.stop(); }
 
     DISALLOW_COPY_AND_ASSIGN(LoopHarness)
 
     ReplicaLoop& loop() { return loop_; }
     RaftCore& raft_core() { return raft_core_; }
+    PersistEngine& persist() { return persist_; }
 
 private:
     ReplicaID id_;
@@ -136,8 +133,6 @@ private:
 
 class Gate {
 public:
-    ~Gate() { release(); }
-
     void arrive_and_wait() {
         std::unique_lock lock(mutex_);
         arrived_ = true;
@@ -163,395 +158,244 @@ private:
     bool released_{false};
 };
 
-TEST(CompletionManagerTest, CompletedTicketsNoLongerNeedResults) {
-    CompletionManager completions;
-    const auto ticket = completions.create();
-    EXPECT_TRUE(completions.needs_result(ticket));
-    EXPECT_FALSE(completions.needs_result(0));
-
-    ASSERT_TRUE(completions.finish(ticket, Status::OK()));
-    EXPECT_FALSE(completions.needs_result(ticket));
-    EXPECT_TRUE(completions.wait(ticket).ok());
-    EXPECT_FALSE(completions.needs_result(ticket));
-    EXPECT_FALSE(completions.finish(ticket, Status::OK()));
-}
-
-TEST(CompletionManagerTest, TimeoutEndsWaitingAndRejectsLateResults) {
-    CompletionManager completions;
-    const auto ticket = completions.create();
-    const Status timeout = Status::NOT_LEADER("read index quorum not reached before timeout");
-
-    const Status status = completions.wait_for(ticket, Milliseconds{0}, timeout);
-    EXPECT_EQ(status.code(), timeout.code());
-    EXPECT_EQ(status.msg(), timeout.msg());
-    EXPECT_FALSE(completions.needs_result(ticket));
-    EXPECT_FALSE(completions.finish(ticket, Status::OK()));
-}
-
-TEST(CompletionManagerTest, FailAllEndsWaitingBeforeResultsAreConsumed) {
-    CompletionManager completions;
-    const auto first = completions.create();
-    const auto second = completions.create();
-    const Status failure = Status::ERROR("raft loop is stopped");
-
-    completions.fail_all(failure);
-    EXPECT_FALSE(completions.needs_result(first));
-    EXPECT_FALSE(completions.needs_result(second));
-    EXPECT_EQ(completions.wait(first).msg(), failure.msg());
-    EXPECT_EQ(completions.wait(second).msg(), failure.msg());
-}
-
-TEST(ReplicaLoopTest, ExecutesOrdinaryTasksInOrderOnItsWorkerThread) {
-    LoopHarness harness;
-    ReplicaLoop& loop = harness.loop();
-    EXPECT_FALSE(loop.on_loop_thread());
-    loop.start();
-    const std::thread::id worker_id = ReplicaLoopTestPeer::worker_id(loop);
-
-    std::mutex mutex;
-    std::condition_variable cv;
-    std::vector<int> order;
-    bool all_ran_on_loop = true;
-    for (int i = 0; i < 40; ++i) {
-        ASSERT_TRUE(ReplicaLoopTestPeer::post_task(loop, [&loop, &mutex, &cv, &order, &all_ran_on_loop, i] {
-            std::lock_guard lock(mutex);
-            all_ran_on_loop = all_ran_on_loop && loop.on_loop_thread();
-            order.push_back(i);
-            cv.notify_all();
-        }));
-    }
-
-    std::unique_lock lock(mutex);
-    const bool completed = cv.wait_for(lock, std::chrono::seconds(2), [&] { return order.size() == 40; });
-    lock.unlock();
-    ASSERT_TRUE(completed);
-    EXPECT_TRUE(all_ran_on_loop);
-    EXPECT_EQ(worker_id, ReplicaLoopTestPeer::worker_id(loop));
-    ASSERT_EQ(order.size(), 40U);
-    for (int i = 0; i < 40; ++i) {
-        EXPECT_EQ(order[i], i);
-    }
-}
-
-TEST(ReplicaLoopTest, CallPublishesRuntimeInfoBeforeWakingItsWaiter) {
-    Gate gate;
-    LoopHarness harness([&gate]() { gate.arrive_and_wait(); });
-    ReplicaLoop& loop = harness.loop();
-    loop.start();
-    auto result = std::async(std::launch::async, [&loop]() {
-        PreVoteCall call;
-        loop.submit_and_wait(&call);
-        return call.status;
-    });
-    const bool arrived = gate.wait_until_arrived();
-    const auto before_publish = result.wait_for(std::chrono::milliseconds(100));
-    gate.release();
-    EXPECT_TRUE(arrived);
-    EXPECT_EQ(before_publish, std::future_status::timeout);
-    ASSERT_EQ(result.wait_for(std::chrono::seconds(2)), std::future_status::ready);
-    EXPECT_TRUE(result.get().ok());
-}
-
 TEST(ReplicaLoopTest, CollectsWriteBatchesAtTheFixedLimit) {
     LoopHarness harness;
     ReplicaLoop& loop = harness.loop();
-
-    EXPECT_EQ(ReplicaLoopTestPeer::collect_batch_sizes(loop, 1), (std::vector<size_t>{1}));
-    EXPECT_EQ(ReplicaLoopTestPeer::collect_batch_sizes(loop, 64), (std::vector<size_t>{64}));
-    EXPECT_EQ(ReplicaLoopTestPeer::collect_batch_sizes(loop, 65), (std::vector<size_t>{64, 1}));
-    EXPECT_EQ(ReplicaLoopTestPeer::collect_batch_sizes(loop, 130), (std::vector<size_t>{64, 64, 2}));
+    EXPECT_EQ(ReplicaLoopTestPeer::collect_batch_sizes(loop, "w"), (std::vector<size_t>{1}));
+    EXPECT_EQ(ReplicaLoopTestPeer::collect_batch_sizes(loop, std::string(64, 'w')), (std::vector<size_t>{64}));
+    EXPECT_EQ(ReplicaLoopTestPeer::collect_batch_sizes(loop, std::string(65, 'w')), (std::vector<size_t>{64, 1}));
+    EXPECT_EQ(ReplicaLoopTestPeer::collect_batch_sizes(loop, std::string(130, 'w')), (std::vector<size_t>{64, 64, 2}));
 }
 
-TEST(ReplicaLoopTest, OrdinaryTaskSeparatesNeighboringWriteBatches) {
+// 普通 Call 和 Event 都会把写批断开：断点后面的写请求留到下一轮，顺序和内容都不许变。
+TEST(ReplicaLoopTest, NonWriteTaskBreaksTheWriteBatch) {
     LoopHarness harness;
     ReplicaLoop& loop = harness.loop();
-    loop.start();
-    std::promise<std::vector<Status>> middle_promise;
-    auto middle_result = middle_promise.get_future();
-    std::promise<Status> end_promise;
-    auto end_result = end_promise.get_future();
-    Gate gate;
-    ASSERT_TRUE(ReplicaLoopTestPeer::post_task(loop, [&gate] { gate.arrive_and_wait(); }));
-    ASSERT_TRUE(gate.wait_until_arrived());
-
-    const auto first_ticket = ReplicaLoopTestPeer::create_ticket(loop);
-    const auto second_ticket = ReplicaLoopTestPeer::create_ticket(loop);
-    const auto third_ticket = ReplicaLoopTestPeer::create_ticket(loop);
-    const auto fourth_ticket = ReplicaLoopTestPeer::create_ticket(loop);
-    ASSERT_TRUE(ReplicaLoopTestPeer::post_proposal(loop, first_ticket));
-    ASSERT_TRUE(ReplicaLoopTestPeer::post_proposal(loop, second_ticket));
-
-    ASSERT_TRUE(ReplicaLoopTestPeer::post_task(loop, [&loop, &middle_promise, first_ticket, second_ticket, third_ticket] {
-        const Status not_finished = Status::ERROR("ticket was not finished before the barrier");
-        std::vector<Status> observed;
-        observed.push_back(ReplicaLoopTestPeer::wait_for(loop, first_ticket, Milliseconds(0), not_finished));
-        observed.push_back(ReplicaLoopTestPeer::wait_for(loop, second_ticket, Milliseconds(0), not_finished));
-        observed.push_back(ReplicaLoopTestPeer::wait_for(loop, third_ticket, Milliseconds(0), not_finished));
-        middle_promise.set_value(std::move(observed));
-    }));
-    ASSERT_TRUE(ReplicaLoopTestPeer::post_proposal(loop, third_ticket));
-    ASSERT_TRUE(ReplicaLoopTestPeer::post_proposal(loop, fourth_ticket));
-
-    ASSERT_TRUE(ReplicaLoopTestPeer::post_task(loop, [&loop, &end_promise, fourth_ticket] {
-        end_promise.set_value(ReplicaLoopTestPeer::wait_for(
-                loop, fourth_ticket, Milliseconds(0), Status::ERROR("last write was not handled")));
-    }));
-    gate.release();
-
-    ASSERT_EQ(middle_result.wait_for(std::chrono::seconds(2)), std::future_status::ready);
-    const std::vector<Status> observed = middle_result.get();
-    EXPECT_EQ(observed[0].code(), StatusCode::INVALID_ARGUMENT);
-    EXPECT_EQ(observed[1].code(), StatusCode::INVALID_ARGUMENT);
-    EXPECT_EQ(observed[2].msg(), "ticket was not finished before the barrier");
-    ASSERT_EQ(end_result.wait_for(std::chrono::seconds(2)), std::future_status::ready);
-    EXPECT_EQ(end_result.get().code(), StatusCode::INVALID_ARGUMENT);
+    EXPECT_EQ(ReplicaLoopTestPeer::collect_batch_sizes(loop, "wwcw"), (std::vector<size_t>{2, 1}));
+    EXPECT_EQ(ReplicaLoopTestPeer::collect_batch_sizes(loop, "wew"), (std::vector<size_t>{1, 1}));
+    // 批首不是写请求时，它自己就不该被当成写批处理
+    EXPECT_EQ(ReplicaLoopTestPeer::collect_batch_sizes(loop, "cww"), (std::vector<size_t>{2}));
+    EXPECT_EQ(ReplicaLoopTestPeer::collect_batch_sizes(loop, "weew"), (std::vector<size_t>{1, 1}));
 }
 
-TEST(ReplicaLoopTest, RejectsSubmissionsBeforeStartAfterStopAndEmptyTasks) {
+TEST(ReplicaLoopTest, RejectsSubmissionsBeforeStartAndAfterStop) {
     LoopHarness harness;
     ReplicaLoop& loop = harness.loop();
-    EXPECT_FALSE(ReplicaLoopTestPeer::post_task(loop, [] {}));
+    EXPECT_FALSE(ReplicaLoopTestPeer::post_tick(loop));
+    EXPECT_EQ(loop.submit_and_wait(PreVoteCall{}).status.code(), StatusCode::ERROR);
     loop.start();
     const std::thread::id worker_id = ReplicaLoopTestPeer::worker_id(loop);
     loop.start();
     EXPECT_EQ(worker_id, ReplicaLoopTestPeer::worker_id(loop));
-    EXPECT_FALSE(ReplicaLoopTestPeer::post_empty_task(loop));
-
     loop.stop();
     loop.stop();
-    EXPECT_FALSE(ReplicaLoopTestPeer::post_task(loop, [] {}));
+    EXPECT_FALSE(ReplicaLoopTestPeer::post_tick(loop));
+    EXPECT_EQ(loop.submit_and_wait(PreVoteCall{}).status.code(), StatusCode::ERROR);
 }
 
-TEST(ReplicaLoopTest, StopFailsAcceptedTasksThatWereNotExecuted) {
+// 启动前就 close 掉的 loop 不允许再被 start 拉起来：不然会多出一个对着已关闭队列空转的 worker。
+TEST(ReplicaLoopTest, CloseBeforeStartDoesNotCreateWorker) {
     LoopHarness harness;
     ReplicaLoop& loop = harness.loop();
+    loop.close();
     loop.start();
+    EXPECT_EQ(ReplicaLoopTestPeer::worker_id(loop), std::thread::id{});
+    EXPECT_FALSE(ReplicaLoopTestPeer::post_tick(loop));
+    EXPECT_EQ(loop.submit_and_wait(PreVoteCall{}).status.code(), StatusCode::ERROR);
+}
+
+TEST(ReplicaLoopTest, ProposeCallCompletesViaCompletion) {
+    const auto dir = adviskv::test::make_unique_test_dir("propose_completion", 0);
+    LoopHarness harness([] {}, dir.string());
+    ASSERT_TRUE(harness.persist().init().ok());
+    ReplicaLoop& loop = harness.loop();
+    RaftEffects effects;
+    RaftCoreTestPeer::become_candidate(harness.raft_core(), effects);
+    ASSERT_TRUE(harness.raft_core().is_leader());
+    loop.start();
+
+    auto result = loop.submit_and_wait(ProposeCall{ProposeParam::write(WriteOpType::PUT, "k1", "v1", "req-1")},
+                                       WaitPolicy::proposal(Milliseconds{2000}));
+    EXPECT_TRUE(result.status.ok()) << result.status.to_string();
+}
+
+TEST(ReplicaLoopTest, ProposeCallDeduplicatesByRequestId) {
+    const auto dir = adviskv::test::make_unique_test_dir("propose_completion", 1);
+    LoopHarness harness([] {}, dir.string());
+    ASSERT_TRUE(harness.persist().init().ok());
+    ReplicaLoop& loop = harness.loop();
+    RaftEffects effects;
+    RaftCoreTestPeer::become_candidate(harness.raft_core(), effects);
+    ASSERT_TRUE(harness.raft_core().is_leader());
+    loop.start();
+
+    auto run_put = [&loop]() {
+        return std::async(std::launch::async, [&loop]() {
+            return loop.submit_and_wait(ProposeCall{ProposeParam::write(WriteOpType::PUT, "k", "v", "dup-1")},
+                                        WaitPolicy::proposal(Milliseconds{2000}));
+        });
+    };
+    auto f1 = run_put();
+    auto f2 = run_put();
+    EXPECT_TRUE(f1.get().status.ok());
+    EXPECT_TRUE(f2.get().status.ok());
+}
+
+TEST(ReplicaLoopTest, ProposeCallFailsWhenLoopNotRunning) {
+    LoopHarness harness;
+    auto result = harness.loop().submit_and_wait(ProposeCall{ProposeParam::write(WriteOpType::PUT, "k", "v", "req-x")},
+                                                 WaitPolicy::proposal(Milliseconds{100}));
+    EXPECT_EQ(result.status.code(), StatusCode::ERROR);
+}
+
+TEST(ReplicaLoopTest, ProposeCallAfterFaultStopFailsImmediately) {
+    ReplicaLoop* loop_ptr = nullptr;
+    // 故障必须在 loop 线程触发，避免测试自己跨线程修改故障状态。
+    LoopHarness harness([&] { loop_ptr->enter_fault(); });
+    loop_ptr = &harness.loop();
+    auto first = ReplicaLoopTestPeer::queue_call(*loop_ptr, PreVoteCall{});
+    loop_ptr->start();
+    EXPECT_EQ(first->wait_for(Milliseconds{2000}, Status::ERROR("test timeout")).status.code(), StatusCode::IS_FAULTED);
+    auto result = loop_ptr->submit_and_wait(ProposeCall{ProposeParam::write(WriteOpType::PUT, "k", "v", "req-faulted")},
+                                            WaitPolicy::proposal(Milliseconds{30}));
+    EXPECT_EQ(result.status.code(), StatusCode::ERROR);
+}
+
+TEST(ReplicaLoopTest, ProposeCallOnFollowerFailsFast) {
+    LoopHarness harness;
+    harness.loop().start();
+    auto result =
+            harness.loop().submit_and_wait(ProposeCall{ProposeParam::write(WriteOpType::PUT, "k", "v", "req-follower")},
+                                           WaitPolicy::proposal(Milliseconds{2000}));
+    EXPECT_EQ(result.status.code(), StatusCode::NOT_LEADER);
+}
+
+TEST(ReplicaLoopTest, PublishesBeforeWakingCallerAndProcessingNextCall) {
     Gate gate;
-    ASSERT_TRUE(ReplicaLoopTestPeer::post_task(loop, [&gate] { gate.arrive_and_wait(); }));
+    LoopHarness harness([&] { gate.arrive_and_wait(); });
+    auto first = ReplicaLoopTestPeer::queue_call(harness.loop(), PreVoteCall{});
+    auto second = ReplicaLoopTestPeer::queue_call(harness.loop(), PreVoteCall{});
+    // 必须先释放 gate 再析构 harness，ASSERT 提前返回也不能卡在 join。
+    auto release = Defer([&] { gate.release(); });
+    harness.loop().start();
+    ASSERT_TRUE(gate.wait_until_arrived());
+    EXPECT_EQ(first->state(), CompletionState::Pending);
+    EXPECT_EQ(second->state(), CompletionState::Pending);
+    gate.release();
+    EXPECT_TRUE(first->wait_for(Milliseconds{2000}, Status::ERROR("test timeout")).status.ok());
+    EXPECT_TRUE(second->wait_for(Milliseconds{2000}, Status::ERROR("test timeout")).status.ok());
+}
+
+TEST(ReplicaLoopTest, CloseWakesQueuedCallerWhileWorkerIsBlocked) {
+    Gate gate;
+    LoopHarness harness([&] { gate.arrive_and_wait(); });
+    auto first = ReplicaLoopTestPeer::queue_call(harness.loop(), PreVoteCall{});
+    auto queued = ReplicaLoopTestPeer::queue_call(harness.loop(), PreVoteCall{});
+    std::future<CompletionResult<PreVoteResult>> waiter;
+    std::future<void> stopper;
+    // guard 比 future 晚构造，失败退出时先放行 worker，再等 future 析构。
+    auto release = Defer([&] { gate.release(); });
+    harness.loop().start();
+    ASSERT_TRUE(gate.wait_until_arrived());
+    waiter = std::async(std::launch::async,
+                        [queued] { return queued->wait_for(Milliseconds{2000}, Status::ERROR("test timeout")); });
+    stopper = std::async(std::launch::async, [&] {
+        harness.loop().close();
+        harness.loop().close();
+    });
+    // 如果 close 错误地等 join，断言失败时 guard 也会先放行它。
+    ASSERT_EQ(stopper.wait_for(std::chrono::seconds(1)), std::future_status::ready);
+    stopper.get();
+    EXPECT_EQ(first->state(), CompletionState::Completed);
+    EXPECT_EQ(queued->state(), CompletionState::Completed);
+    ASSERT_EQ(waiter.wait_for(std::chrono::seconds(1)), std::future_status::ready);
+    EXPECT_EQ(waiter.get().status.code(), StatusCode::ERROR);
+    EXPECT_EQ(harness.loop().submit_and_wait(PreVoteCall{}).status.code(), StatusCode::ERROR);
+    // 上面的所有断言都发生在 worker 仍卡住时，stop 的 join 留到放行之后。
+    gate.release();
+    harness.loop().stop();
+}
+
+TEST(ReplicaLoopTest, WaitPoliciesExpireWhileRequestsAreQueued) {
+    Gate gate;
+    LoopHarness harness([&] { gate.arrive_and_wait(); });
+    auto blocker = ReplicaLoopTestPeer::queue_call(harness.loop(), PreVoteCall{});
+    auto release = Defer([&] { gate.release(); });
+    harness.loop().start();
     ASSERT_TRUE(gate.wait_until_arrived());
 
-    const auto ticket = ReplicaLoopTestPeer::create_ticket(loop);
-    ASSERT_TRUE(ReplicaLoopTestPeer::post_task(loop, [&loop, ticket] {
-        ReplicaLoopTestPeer::finish(loop, ticket, Status::OK());
-    }));
-    std::thread stopper([&loop] { loop.stop(); });
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    while (ReplicaLoopTestPeer::active(loop) && std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::yield();
-    }
-    const bool stopped = !ReplicaLoopTestPeer::active(loop);
+    // worker 确定卡在发布阶段，超时只能由提交入口的等待预算触发。
+    auto proposal = harness.loop().submit_and_wait(
+            ProposeCall{ProposeParam::write(WriteOpType::PUT, "k", "v", "queued-timeout")},
+            WaitPolicy::proposal(Milliseconds{10}));
+    EXPECT_EQ(proposal.status.code(), StatusCode::NOT_YET_COMMIT);
+    auto read = harness.loop().submit_and_wait(SubmitReadCall{"missing"}, WaitPolicy::read(Milliseconds{10}));
+    EXPECT_EQ(read.status.code(), StatusCode::NOT_LEADER);
+    EXPECT_FALSE(read.value.has_value());
+    EXPECT_EQ(blocker->state(), CompletionState::Pending);
     gate.release();
-    stopper.join();
-
-    EXPECT_TRUE(stopped);
-    EXPECT_EQ(ReplicaLoopTestPeer::wait_for(
-                      loop, ticket, Milliseconds(0), Status::ERROR("ticket was not failed by stop"))
-                      .msg(),
-              "raft loop is stopped");
 }
 
-TEST(ReplicaLoopTest, FaultStopsAndFailsAnAcceptedPendingTask) {
-    LoopHarness harness;
-    ReplicaLoop& loop = harness.loop();
-    loop.start();
+// 排队期间就超时走人的写请求，loop 后面照样会处理它，但结果不能再交付一次。
+TEST(ReplicaLoopTest, LateProposalResultIsNotRedeliveredAfterTimeout) {
     Gate gate;
-    ASSERT_TRUE(ReplicaLoopTestPeer::post_task(loop, [&gate] { gate.arrive_and_wait(); }));
+    LoopHarness harness([&] { gate.arrive_and_wait(); });
+    auto blocker = ReplicaLoopTestPeer::queue_call(harness.loop(), PreVoteCall{});
+    auto proposal = ReplicaLoopTestPeer::queue_call(
+            harness.loop(), ProposeCall{ProposeParam::write(WriteOpType::PUT, "k", "v", "late-timeout")});
+    // 排在写请求后面的普通调用，它完成就说明写请求一定已经被 loop 处理过了。
+    auto after = ReplicaLoopTestPeer::queue_call(harness.loop(), PreVoteCall{});
+    auto release = Defer([&] { gate.release(); });
+    harness.loop().start();
     ASSERT_TRUE(gate.wait_until_arrived());
 
-    const auto ticket = ReplicaLoopTestPeer::create_ticket(loop);
-    loop.submit_async(FaultEvent{Status::ERROR("test fault")});
-    ASSERT_TRUE(ReplicaLoopTestPeer::post_task(loop, [&loop, ticket] {
-        ReplicaLoopTestPeer::finish(loop, ticket, Status::OK());
-    }));
-    gate.release();
+    EXPECT_EQ(proposal->wait_for(Milliseconds{10}, Status::NOT_YET_COMMIT("queued")).status.code(),
+              StatusCode::NOT_YET_COMMIT);
+    ASSERT_EQ(proposal->state(), CompletionState::TimedOut);
 
-    const Status status = ReplicaLoopTestPeer::wait_for(
-            loop, ticket, Milliseconds(2000), Status::ERROR("fault did not finish the pending ticket"));
-    EXPECT_EQ(status.code(), StatusCode::IS_FAULTED);
+    gate.release();
+    EXPECT_TRUE(blocker->wait_for(Milliseconds{2000}, Status::ERROR("test timeout")).status.ok());
+    EXPECT_TRUE(after->wait_for(Milliseconds{2000}, Status::ERROR("test timeout")).status.ok());
+
+    // 终态是超时，迟到的失败结果和随后的成功都送不进去。
+    EXPECT_EQ(proposal->state(), CompletionState::TimedOut);
+    EXPECT_EQ(proposal->complete(CompletionResult<void>::ok()), CompleteStatus::TimedOut);
 }
 
-TEST(ReplicaLoopTest, FaultTailPreservesCurrentCallErrorAndFailsOtherTickets) {
-    LoopHarness harness;
-    ReplicaLoop& loop = harness.loop();
-    loop.start();
-    const auto current_ticket = ReplicaLoopTestPeer::create_ticket(loop);
-    const auto pending_ticket = ReplicaLoopTestPeer::create_ticket(loop);
-    ASSERT_TRUE(ReplicaLoopTestPeer::post_task(loop, [&loop, current_ticket]() {
-        loop.fault_stop();
-        ReplicaLoopTestPeer::finish_work_unit(loop, current_ticket, Status::ERROR("original call error"));
-    }));
-    const Status timeout = Status::ERROR("fault tail did not finish ticket");
-    const Status current = ReplicaLoopTestPeer::wait_for(loop, current_ticket, Milliseconds(500), timeout);
-    EXPECT_EQ(current.code(), StatusCode::ERROR);
-    EXPECT_EQ(current.msg(), "original call error");
-    EXPECT_EQ(ReplicaLoopTestPeer::wait_for(loop, pending_ticket, Milliseconds(500), timeout).code(),
+TEST(ReplicaLoopTest, FaultPreservesCurrentErrorAndFailsQueuedCaller) {
+    ReplicaLoop* loop_ptr = nullptr;
+    LoopHarness harness([&] { loop_ptr->enter_fault(); });
+    loop_ptr = &harness.loop();
+    // follower 的成员变更先产生 NOT_LEADER，再在发布阶段触发故障。
+    // 当前请求应保留原始错误，排队请求才收到统一的 IS_FAULTED。
+    auto current = ReplicaLoopTestPeer::queue_call(
+            *loop_ptr, AddMemberCall{PeerMember{"other", ReplicaID{301, 4, 1}, Endpoint{"127.0.0.1", 19091}}});
+    auto queued = ReplicaLoopTestPeer::queue_call(*loop_ptr, PreVoteCall{});
+    loop_ptr->start();
+    EXPECT_EQ(current->wait_for(Milliseconds{2000}, Status::ERROR("test timeout")).status.code(),
+              StatusCode::NOT_LEADER);
+    EXPECT_EQ(queued->wait_for(Milliseconds{2000}, Status::ERROR("test timeout")).status.code(),
               StatusCode::IS_FAULTED);
 }
 
-TEST(ReplicaLoopTest, FaultTailRejectsCurrentCallSuccess) {
+TEST(ReplicaLoopTest, FaultRejectsCurrentSuccessWithoutPayload) {
+    ReplicaLoop* loop_ptr = nullptr;
+    LoopHarness harness([&] { loop_ptr->enter_fault(); });
+    loop_ptr = &harness.loop();
+    auto current = ReplicaLoopTestPeer::queue_call(*loop_ptr, PreVoteCall{});
+    loop_ptr->start();
+    auto result = current->wait_for(Milliseconds{2000}, Status::ERROR("test timeout"));
+    EXPECT_EQ(result.status.code(), StatusCode::IS_FAULTED);
+    EXPECT_FALSE(result.value.has_value());
+}
+
+TEST(ReplicaLoopTest, ReadCallOnFollowerFailsFast) {
     LoopHarness harness;
-    ReplicaLoop& loop = harness.loop();
-    loop.start();
-    const auto ticket = ReplicaLoopTestPeer::create_ticket(loop);
-    ASSERT_TRUE(ReplicaLoopTestPeer::post_task(loop, [&loop, ticket]() {
-        loop.fault_stop();
-        ReplicaLoopTestPeer::finish_work_unit(loop, ticket, Status::OK());
-    }));
-    EXPECT_EQ(ReplicaLoopTestPeer::wait_for(
-                      loop, ticket, Milliseconds(500), Status::ERROR("fault tail did not finish ticket")).code(),
-              StatusCode::IS_FAULTED);
+    harness.loop().start();
+    auto result = harness.loop().submit_and_wait(SubmitReadCall{"missing"}, WaitPolicy::read(Milliseconds{2000}));
+    EXPECT_EQ(result.status.code(), StatusCode::NOT_LEADER);
+    EXPECT_FALSE(result.value.has_value());
 }
 
-TEST(ReplicaLoopTest, ExpiredQueuedReadDoesNotEstablishQuorum) {
-    LoopHarness harness;
-    ReplicaLoop& loop = harness.loop();
-    const auto ticket = ReplicaLoopTestPeer::create_ticket(loop);
-    const auto state = ReplicaLoopTestPeer::new_read(loop, ticket);
-    const Status timeout = Status::NOT_LEADER("read index quorum not reached before timeout");
-
-    EXPECT_EQ(ReplicaLoopTestPeer::wait_for(loop, ticket, Milliseconds{0}, timeout).code(),
-              StatusCode::NOT_LEADER);
-    ASSERT_TRUE(ReplicaLoopTestPeer::establish_read(loop, state).ok());
-    EXPECT_EQ(state->read_seq, 0U);
-    EXPECT_TRUE(state->voter_ids.empty());
-    loop.stop();
-    EXPECT_FALSE(state->done);
-}
-
-TEST(ReplicaLoopTest, TimedOutReadIsRemovedBeforeApplyAndStop) {
-    LoopHarness harness;
-    ReplicaLoop& loop = harness.loop();
-    RaftCore& core = harness.raft_core();
-    RaftEffects effects;
-    RaftCoreTestPeer::become_candidate(core, effects);
-    ASSERT_TRUE(core.is_leader());
-    ASSERT_GT(core.commit_index(), core.last_applied());
-
-    const auto ticket = ReplicaLoopTestPeer::create_ticket(loop);
-    const auto state = ReplicaLoopTestPeer::new_read(loop, ticket);
-    ASSERT_TRUE(ReplicaLoopTestPeer::establish_read(loop, state).ok());
-    const Status timeout = Status::NOT_LEADER("read index quorum not reached before timeout");
-    EXPECT_EQ(ReplicaLoopTestPeer::wait_for(loop, ticket, Milliseconds{0}, timeout).code(),
-              StatusCode::NOT_LEADER);
-
-    ReplicaLoopTestPeer::advance_reads(loop);
-    core.advance_last_applied(core.commit_index());
-    ReplicaLoopTestPeer::advance_reads(loop);
-    loop.stop();
-    EXPECT_FALSE(state->done);
-    EXPECT_TRUE(state->value.empty());
-    EXPECT_FALSE(ReplicaLoopTestPeer::finish(loop, ticket, Status::OK()));
-}
-
-TEST(ReplicaLoopTest, PendingReadWaitsForApplyThenCompletes) {
-    LoopHarness harness;
-    ReplicaLoop& loop = harness.loop();
-    RaftCore& core = harness.raft_core();
-    RaftEffects effects;
-    RaftCoreTestPeer::become_candidate(core, effects);
-    ASSERT_TRUE(core.is_leader());
-    ASSERT_GT(core.commit_index(), core.last_applied());
-
-    const auto ticket = ReplicaLoopTestPeer::create_ticket(loop);
-    const auto state = ReplicaLoopTestPeer::new_read(loop, ticket);
-    ASSERT_TRUE(ReplicaLoopTestPeer::establish_read(loop, state).ok());
-    ReplicaLoopTestPeer::advance_reads(loop);
-    EXPECT_FALSE(state->done);
-
-    core.advance_last_applied(core.commit_index());
-    ReplicaLoopTestPeer::advance_reads(loop);
-    EXPECT_TRUE(state->done);
-    EXPECT_EQ(state->status.code(), StatusCode::KEY_NOT_FOUND);
-    EXPECT_EQ(ReplicaLoopTestPeer::wait_for(
-                      loop, ticket, Milliseconds{0}, Status::ERROR("read did not complete")).code(),
-              StatusCode::KEY_NOT_FOUND);
-}
-
-TEST(ReplicaLoopTest, ResponseTailFailsPendingReadsAfterLeaderChanges) {
-    LoopHarness harness;
-    ReplicaLoop& loop = harness.loop();
-    RaftCore& core = harness.raft_core();
-    RaftEffects effects;
-    RaftCoreTestPeer::become_candidate(core, effects);
-    ASSERT_TRUE(core.is_leader());
-    ASSERT_GT(core.commit_index(), core.last_applied());
-
-    const auto ticket = ReplicaLoopTestPeer::create_ticket(loop);
-    const auto state = ReplicaLoopTestPeer::new_read(loop, ticket);
-    ASSERT_TRUE(ReplicaLoopTestPeer::establish_read(loop, state).ok());
-    ASSERT_FALSE(state->done);
-
-    AppendEntriesResult response;
-    response.term = core.current_term() + 1;
-    RaftEffects step_down_effects;
-    EXPECT_EQ(core.handle_append_response(ReplicaID{301, 4, 0}, AppendEntriesParam{}, response,
-                                         step_down_effects).code(), StatusCode::NOT_LEADER);
-    ASSERT_FALSE(core.is_leader());
-    loop.start();
-    loop.submit_async(VoteResponseEvent{ReplicaID{301, 4, 0}, RequestVoteResult{core.current_term(), false}});
-
-    const Status status = ReplicaLoopTestPeer::wait_for(
-            loop, ticket, Milliseconds(500), Status::ERROR("response tail did not fail pending read"));
-    EXPECT_EQ(status.code(), StatusCode::NOT_LEADER);
-    EXPECT_TRUE(state->done);
-}
-
-TEST(ReplicaLoopTest, FaultTailFailsAReadBeforeItCanCompleteNormally) {
-    LoopHarness harness;
-    ReplicaLoop& loop = harness.loop();
-    RaftCore& core = harness.raft_core();
-    RaftEffects effects;
-    RaftCoreTestPeer::become_candidate(core, effects);
-    ASSERT_TRUE(core.is_leader());
-
-    const auto ticket = ReplicaLoopTestPeer::create_ticket(loop);
-    const auto state = ReplicaLoopTestPeer::new_read(loop, ticket);
-    ASSERT_TRUE(ReplicaLoopTestPeer::establish_read(loop, state).ok());
-    ASSERT_FALSE(state->done);
-    core.advance_last_applied(core.commit_index());
-    loop.start();
-    loop.submit_async(FaultEvent{Status::ERROR("test fault")});
-
-    const Status status = ReplicaLoopTestPeer::wait_for(
-            loop, ticket, Milliseconds(500), Status::ERROR("fault tail did not finish pending read"));
-    EXPECT_EQ(status.code(), StatusCode::IS_FAULTED);
-    EXPECT_EQ(state->status.code(), StatusCode::IS_FAULTED);
-    EXPECT_TRUE(state->done);
-}
-
-TEST(ReplicaLoopTest, ApplyFailureCancelsThePrefetchedTaskAndFailsItsTicket) {
-    LoopHarness harness;
-    ReplicaLoop& loop = harness.loop();
-    ReplicaID id{301, 4, 0};
-    LogEntry poison;
-    poison.term = 1;
-    poison.index = 1;
-    poison.op_type = WriteOpType::PROMOTE_VOTER;
-    poison.config_replica_id = ReplicaID{301, 4, 99};
-    harness.raft_core().update_log_entries({poison});
-    RaftEffects effects;
-    AppendEntriesResult append_result;
-    harness.raft_core().handle_append_entries(
-            AppendEntriesParam{id, id, 1, {}, 1, 1, 1}, append_result, effects);
-    ASSERT_TRUE(append_result.success);
-
-    loop.start();
-    Gate gate;
-    ASSERT_TRUE(ReplicaLoopTestPeer::post_task(loop, [&gate] { gate.arrive_and_wait(); }));
-    ASSERT_TRUE(gate.wait_until_arrived());
-
-    const auto write_ticket = ReplicaLoopTestPeer::create_ticket(loop);
-    const auto pending_ticket = ReplicaLoopTestPeer::create_ticket(loop);
-    ASSERT_TRUE(ReplicaLoopTestPeer::post_proposal(loop, write_ticket));
-    ASSERT_TRUE(ReplicaLoopTestPeer::post_task(loop, [&loop, pending_ticket] {
-        ReplicaLoopTestPeer::finish(loop, pending_ticket, Status::OK());
-    }));
-    gate.release();
-
-    const Status status = ReplicaLoopTestPeer::wait_for(
-            loop, pending_ticket, Milliseconds(2000), Status::ERROR("apply failure did not fail pending task"));
-    EXPECT_EQ(status.code(), StatusCode::IS_FAULTED);
-}
-
-}
-}
+}  // namespace
+}  // namespace adviskv::storage
