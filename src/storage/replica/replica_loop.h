@@ -45,6 +45,10 @@ public:
 
     template <typename Request>
     CompletionResult<typename Request::Result> submit_and_wait(Request request, const WaitPolicy& policy = {}) {
+        // 已经停下来的 loop 需要直接拒绝新请求
+        if (!active_.load()) {
+            return CompletionResult<typename Request::Result>::fail(Status::ERROR("raft loop is not running"));
+        }
         auto completion = std::make_shared<Completion<typename Request::Result>>();
         if (!completion_registry_.add(completion)) {
             completion->fail(Status::ERROR("raft loop is not running"));

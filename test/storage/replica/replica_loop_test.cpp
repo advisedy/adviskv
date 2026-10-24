@@ -254,11 +254,18 @@ TEST(ReplicaLoopTest, ProposeCallAfterFaultStopFailsImmediately) {
     LoopHarness harness([&] { loop_ptr->enter_fault(); });
     loop_ptr = &harness.loop();
     auto first = ReplicaLoopTestPeer::queue_call(*loop_ptr, PreVoteCall{});
+    auto queued = ReplicaLoopTestPeer::queue_call(
+            *loop_ptr, ProposeCall{ProposeParam::write(WriteOpType::PUT, "k", "v", "req-queued")});
     loop_ptr->start();
     EXPECT_EQ(first->wait_for(Milliseconds{2000}, Status::ERROR("test timeout")).status.code(), StatusCode::IS_FAULTED);
     auto result = loop_ptr->submit_and_wait(ProposeCall{ProposeParam::write(WriteOpType::PUT, "k", "v", "req-faulted")},
                                             WaitPolicy::proposal(Milliseconds{30}));
     EXPECT_EQ(result.status.code(), StatusCode::ERROR);
+    // 新请求直接拒绝，故障前已排队的请求仍由清理流程返回 IS_FAULTED。
+    EXPECT_EQ(loop_ptr->submit_and_wait(PreVoteCall{}).status.code(), StatusCode::ERROR);
+    EXPECT_EQ(queued->wait_for(Milliseconds{2000}, Status::ERROR("test timeout")).status.code(), StatusCode::IS_FAULTED);
+    loop_ptr->stop();
+    EXPECT_EQ(loop_ptr->submit_and_wait(PreVoteCall{}).status.code(), StatusCode::ERROR);
 }
 
 TEST(ReplicaLoopTest, ProposeCallOnFollowerFailsFast) {
